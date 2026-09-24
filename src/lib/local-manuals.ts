@@ -138,6 +138,21 @@ export async function disconnect(): Promise<void> {
   await idbDel("index");
 }
 
+/** Is the manuals folder readable right now without asking? (Browsers may re-ask after a restart.) */
+export async function canReadWithoutPrompt(): Promise<boolean> {
+  try {
+    const root = await getRoot();
+    if (!root) return sessionFiles.size > 0;
+    return (await root.queryPermission({ mode: "read" })) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+export async function getLocalFile(path: string): Promise<File> {
+  return fileAt(path);
+}
+
 async function fileAt(path: string): Promise<File> {
   const s = sessionFiles.get(path);
   if (s) return s;

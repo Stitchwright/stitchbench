@@ -7,7 +7,8 @@ import { fmtDate, money, ticketNo } from "@/lib/format";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { LINE_LABEL, PAYMENT_LABEL } from "@/lib/constants";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
-import { specsFor, gRange } from "@/lib/model-info";
+import { specsFor, settingsFor, gRange } from "@/lib/model-info";
+import { valueRange } from "@/lib/adjustments";
 import { PageHeader, Section, KV, modelHref } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Checklist, StatusSelect } from "@/components/ticket-controls";
@@ -20,6 +21,7 @@ import {
   removeLine,
   removePayment,
   saveAccessories,
+  saveMeasurements,
   saveTension,
   saveTicketText,
 } from "@/actions/tickets";
@@ -62,12 +64,15 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   });
   if (!t) notFound();
 
-  const [services, parts, techs, specs] = await Promise.all([
+  const [services, parts, techs, specs, settings] = await Promise.all([
     db.serviceItem.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { sortOrder: "asc" } }),
     db.part.findMany({ where: { shopId: user.shopId }, orderBy: { partNumber: "asc" }, select: { partNumber: true, description: true, qtyOnHand: true } }),
     db.user.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { name: "asc" } }),
     specsFor(t.machine.brand, t.machine.model),
+    settingsFor(t.machine.brand, t.machine.model),
   ]);
+  const measurable = settings.filter((x) => (x.valueMin != null || x.valueMax != null) && (x.unit === "mm" || x.unit === "deg"));
+  const meas = (t.measurements ?? {}) as Record<string, { found?: number; left?: number }>;
   const spec = specs.find((s) => s.upperMinG != null || s.bobbinMinG != null);
   const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct);
   const checklistItems = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
@@ -214,6 +219,62 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 </div>
               </ActionForm>
             </div>
+            {measurable.length > 0 && (
+              <div className="mt-5 border-t border-line pt-4">
+                <h3 className="font-semibold">Timing and adjustment readings</h3>
+                <p className="muted mb-3 text-sm">Factory standard from the service manual. Enter what you measured before and after.</p>
+                <ActionForm action={saveMeasurements.bind(null, t.id)} success="Readings saved">
+                  <div className="scroll-x">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Adjustment</th>
+                          <th>Factory</th>
+                          <th>As found</th>
+                          <th>As left</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {measurable.map((x) => {
+                          const m = meas[x.id] ?? {};
+                          const ok = (v?: number) =>
+                            v == null ? null : (x.valueMin == null || v >= x.valueMin) && (x.valueMax == null || v <= x.valueMax);
+                          const unit = x.unit === "deg" ? "°" : "mm";
+                          return (
+                            <tr key={x.id}>
+                              <td>
+                                <div className="font-semibold">{x.label}</div>
+                                {x.conditions && <div className="muted text-xs">{x.conditions}</div>}
+                              </td>
+                              <td className="num whitespace-nowrap">{valueRange(x.valueMin, x.valueMax, x.unit)}</td>
+                              {(["found", "left"] as const).map((k) => (
+                                <td key={k}>
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      name={`${k}:${x.id}`}
+                                      aria-label={`${x.label} as ${k}`}
+                                      defaultValue={m[k] ?? ""}
+                                      inputMode="decimal"
+                                      className="input num w-20"
+                                      placeholder={unit}
+                                    />
+                                    {ok(m[k]) === true && <span className="pill tone-ready">ok</span>}
+                                    {ok(m[k]) === false && <span className="pill tone-bad">out</span>}
+                                  </div>
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <Submit className="btn">Save readings</Submit>
+                  </div>
+                </ActionForm>
+              </div>
+            )}
           </Section>
 
           <Section title="Charges">

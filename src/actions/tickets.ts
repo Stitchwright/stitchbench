@@ -196,6 +196,20 @@ export const saveTension = safe(async function saveTension(ticketId: string, for
   refresh(ticketId);
 });
 
+export const saveMeasurements = safe(async function saveMeasurements(ticketId: string, formData: FormData) {
+  const user = await requireUser();
+  await ownTicket(user.shopId, ticketId);
+  const out: Record<string, { found?: number; left?: number }> = {};
+  for (const [k, v] of formData.entries()) {
+    const m = /^(found|left):(.+)$/.exec(k);
+    const n = grams(v); // non-negative number or null
+    if (!m || n == null) continue;
+    (out[m[2]] ??= {})[m[1] as "found" | "left"] = n;
+  }
+  await db.ticket.update({ where: { id: ticketId }, data: { measurements: out } });
+  refresh(ticketId);
+});
+
 export const saveAccessories = safe(async function saveAccessories(ticketId: string, formData: FormData) {
   const user = await requireUser();
   const t = await ownTicket(user.shopId, ticketId);

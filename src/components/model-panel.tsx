@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Pin, Trash2 } from "lucide-react";
-import { specsFor, notesFor, gRange, type SpecRow } from "@/lib/model-info";
+import { specsFor, settingsFor, notesFor, gRange, type SpecRow } from "@/lib/model-info";
+import { FactorySettings } from "@/components/factory-settings";
 import { LocalManuals, OpenSpecSource } from "@/components/local-manuals";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addNote, deleteNote, toggleNotePin } from "@/actions/records";
@@ -142,7 +143,7 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
 
 /** Everything known about one brand + model: factory tension, gotchas, manuals on this PC. */
 export async function ModelPanel({ shopId, brand, model, showLink = true }: { shopId: string; brand: string; model: string; showLink?: boolean }) {
-  const specs = await specsFor(brand, model);
+  const [specs, settings] = await Promise.all([specsFor(brand, model), settingsFor(brand, model)]);
   return (
     <div className="space-y-4">
       <Section
@@ -166,6 +167,9 @@ export async function ModelPanel({ shopId, brand, model, showLink = true }: { sh
             .
           </p>
         )}
+      </Section>
+      <Section title={`Timing and adjustments${settings.length ? ` (${settings.length})` : ""}`}>
+        <FactorySettings settings={settings} brand={brand} />
       </Section>
       <Section title="Important facts and gotchas">
         <Gotchas shopId={shopId} brand={brand} model={model} />

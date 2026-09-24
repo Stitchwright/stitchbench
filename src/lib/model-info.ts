@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { brandKey, modelKey } from "@/lib/format";
+import { ADJ_ORDER } from "@/lib/adjustments";
 
 // Some brands are filed under more than one spelling, and some machines are rebadges.
 const BRAND_ALIASES: Record<string, string[]> = {
@@ -37,6 +38,18 @@ function rank(r: { confidence: string | null; docType: string | null; upperMinG:
   if (r.bobbinMinG != null) s += 1;
   return s;
 }
+
+/** Factory timing / adjustment standards for one brand + model, in bench order. */
+export async function settingsFor(brand: string, model: string) {
+  const key = modelKey(model);
+  if (!key) return [];
+  const rows = await db.factorySetting.findMany({ where: { modelKeys: { has: key } } });
+  return rows
+    .filter((r) => brandMatches(r.brand, brand))
+    .sort((a, b) => (ADJ_ORDER[a.adjustment] ?? 99) - (ADJ_ORDER[b.adjustment] ?? 99) || a.label.localeCompare(b.label));
+}
+
+export type SettingRowT = Awaited<ReturnType<typeof settingsFor>>[number];
 
 export async function notesFor(shopId: string, brand: string, model: string) {
   return db.modelNote.findMany({

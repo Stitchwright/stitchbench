@@ -21,7 +21,7 @@ const items = [
   { href: "/machines", label: "Machines", icon: Cog },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/parts", label: "Parts", icon: Package },
-  { href: "/specs", label: "Tension specs", icon: Gauge },
+  { href: "/specs", label: "Factory specs", icon: Gauge },
   { href: "/manuals", label: "My manuals", icon: BookOpen },
   { href: "/scan", label: "Scan a manual", icon: ScanLine },
   { href: "/sales", label: "Sales log", icon: Receipt },

@@ -53,6 +53,50 @@ async function seedSpecs() {
   console.log(`Tension specs: ${rows.length}`);
 }
 
+type SettingRow = {
+  id: string;
+  category: string;
+  brand: string;
+  models: string;
+  modelKeys: string[];
+  machineType: string | null;
+  adjustment: string;
+  label: string;
+  valueMin: number | null;
+  valueMax: number | null;
+  unit: string | null;
+  valueText: string | null;
+  conditions: string | null;
+  reference: string | null;
+  tools: string | null;
+  sourceFile: string;
+  sourcePath: string | null;
+  pages: string | null;
+  figurePage: number | null;
+  figureBox: number[];
+  docType: string | null;
+  confidence: string | null;
+  notes: string | null;
+};
+
+async function seedSettings() {
+  const file = join(__dirname, "seed-data", "factory_settings.json");
+  let rows: SettingRow[];
+  try {
+    rows = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    console.log("No factory_settings.json yet; skipping.");
+    return;
+  }
+  const ids = rows.map((r) => r.id);
+  await db.factorySetting.deleteMany({ where: { id: { notIn: ids } } });
+  for (let i = 0; i < rows.length; i += 200) {
+    const chunk = rows.slice(i, i + 200);
+    await db.$transaction(chunk.map((r) => db.factorySetting.upsert({ where: { id: r.id }, create: r, update: r })));
+  }
+  console.log(`Factory settings: ${rows.length}`);
+}
+
 async function seedFirstShop() {
   if ((await db.user.count()) > 0) {
     console.log("Users exist; skipping shop/owner seed.");
@@ -82,6 +126,7 @@ async function seedFirstShop() {
 
 async function main() {
   await seedSpecs();
+  await seedSettings();
   await seedFirstShop();
   // Shops created before the checklist existed get the default one.
   const n = await db.$executeRaw`UPDATE "Shop" SET "checklistItems" = ${DEFAULT_CHECKLIST} WHERE "checklistItems" IS NULL OR cardinality("checklistItems") = 0`;

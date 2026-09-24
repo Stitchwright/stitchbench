@@ -183,6 +183,41 @@ model TensionSpec {
 }
 
 // ============================================================
+// Reference: factory timing and core adjustment standards read out of OEM service manuals.
+// Shared by all shops. Seeded from prisma/seed-data/factory_settings.json.
+// The manual's figure is drawn in each tech's browser from their own copy (figurePage + figureBox).
+// ============================================================
+
+model FactorySetting {
+  id          String   @id
+  category    String
+  brand       String
+  models      String
+  modelKeys   String[]
+  machineType String?
+  adjustment  String // hook_timing_rise, needle_bar_height, feed_dog_height ... (see src/lib/adjustments.ts)
+  label       String
+  valueMin    Float?
+  valueMax    Float?
+  unit        String? // mm | deg | g | N | other
+  valueText   String?
+  conditions  String?
+  reference   String?
+  tools       String?
+  sourceFile  String
+  sourcePath  String?
+  pages       String?
+  figurePage  Int?
+  figureBox   Float[] // [x0, y0, x1, y1] as fractions of the page; empty = whole page
+  docType     String?
+  confidence  String?
+  notes       String?
+
+  @@index([brand])
+  @@index([adjustment])
+}
+
+// ============================================================
 // Tickets / POS
 // ============================================================
 
@@ -226,6 +261,8 @@ model Ticket {
   upperLeftG          Float?
   bobbinFoundG        Float?
   bobbinLeftG         Float?
+  // Timing / adjustment readings: { "<factory setting id>": { "found": 2.4, "left": 3.1 } }
+  measurements        Json         @default("{}")
   taxRatePct          Float        @default(0)
   intakeAt            DateTime     @default(now())
   readyAt             DateTime?
