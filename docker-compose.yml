@@ -1,0 +1,14 @@
+# Local Postgres for development: docker compose up -d
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: stitchbench
+      POSTGRES_PASSWORD: stitchbench
+      POSTGRES_DB: stitchbench
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

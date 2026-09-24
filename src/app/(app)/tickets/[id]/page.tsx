@@ -1,0 +1,450 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Trash2, Printer } from "lucide-react";
+import { db } from "@/lib/db";
+import { requireUser } from "@/lib/session";
+import { fmtDate, money, ticketNo } from "@/lib/format";
+import { lineTotal, ticketTotals } from "@/lib/ticket-math";
+import { LINE_LABEL, PAYMENT_LABEL } from "@/lib/constants";
+import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
+import { specsFor, gRange } from "@/lib/model-info";
+import { PageHeader, Section, KV, modelHref } from "@/components/ui";
+import { ActionButton, ActionForm, Submit } from "@/components/action-form";
+import { Checklist, StatusSelect } from "@/components/ticket-controls";
+import { PhotoStrip } from "@/components/photo-strip";
+import { ModelPanel } from "@/components/model-panel";
+import {
+  addLine,
+  addPayment,
+  removeAccessory,
+  removeLine,
+  removePayment,
+  saveAccessories,
+  saveTension,
+  saveTicketText,
+} from "@/actions/tickets";
+
+function inRange(v: number | null, min: number | null, max: number | null) {
+  if (v == null || min == null) return null;
+  return v >= min && (max == null || v <= max);
+}
+
+function Reading({ id, label, value, min, max }: { id: string; label: string; value: number | null; min: number | null; max: number | null }) {
+  const ok = inRange(value, min, max);
+  return (
+    <div className="field">
+      <label htmlFor={id} className="label">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input id={id} name={id} defaultValue={value ?? ""} inputMode="decimal" className="input num" placeholder="g" />
+        {ok === true && <span className="pill tone-ready">in spec</span>}
+        {ok === false && <span className="pill tone-bad">out</span>}
+      </div>
+    </div>
+  );
+}
+
+export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
+  const { id } = await params;
+  const t = await db.ticket.findFirst({
+    where: { id, shopId: user.shopId },
+    include: {
+      shop: true,
+      machine: { include: { photos: { select: { id: true, caption: true, createdAt: true, ticketId: true }, orderBy: { createdAt: "desc" } } } },
+      customer: true,
+      viaAccount: true,
+      lines: { orderBy: { createdAt: "asc" } },
+      payments: { orderBy: { paidAt: "asc" } },
+      tech: true,
+    },
+  });
+  if (!t) notFound();
+
+  const [services, parts, techs, specs] = await Promise.all([
+    db.serviceItem.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { sortOrder: "asc" } }),
+    db.part.findMany({ where: { shopId: user.shopId }, orderBy: { partNumber: "asc" }, select: { partNumber: true, description: true, qtyOnHand: true } }),
+    db.user.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { name: "asc" } }),
+    specsFor(t.machine.brand, t.machine.model),
+  ]);
+  const spec = specs.find((s) => s.upperMinG != null || s.bobbinMinG != null);
+  const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct);
+  const checklistItems = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
+  const checklist = (t.checklist ?? {}) as Record<string, { done: boolean; by?: string; at?: string }>;
+  const m = t.machine;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        back={{ href: "/tickets", label: "Tickets" }}
+        title={
+          <>
+            <span className="mono">#{ticketNo(t.number)}</span> {m.brand} {m.model}
+          </>
+        }
+        sub={
+          <>
+            {t.customer ? (
+              <Link href={`/customers/${t.customer.id}`} className="link">
+                {t.customer.name}
+              </Link>
+            ) : (
+              "No customer"
+            )}
+            {t.customer?.phone && ` · ${t.customer.phone}`}
+            {t.viaAccount && ` · via ${t.viaAccount.name}`}
+            {m.serial && (
+              <>
+                {" · "}
+                <span className="mono">SN {m.serial}</span>
+              </>
+            )}{" "}
+            · in {fmtDate(t.intakeAt)}
+          </>
+        }
+        actions={
+          <>
+            <Link href={`/machines/${m.id}`} className="btn">
+              Machine history
+            </Link>
+            <Link href={`/tickets/${t.id}/invoice`} className="btn">
+              <Printer size={14} aria-hidden /> Invoice
+            </Link>
+          </>
+        }
+      />
+
+      <div className="grid gap-6 xl:grid-cols-5">
+        <div className="space-y-6 xl:col-span-3">
+          <Section title="Status and work">
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <StatusSelect ticketId={t.id} status={t.status} />
+              <KV k="Ready" v={t.readyAt ? fmtDate(t.readyAt) : null} />
+              <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil) : null} />
+            </div>
+            <ActionForm action={saveTicketText.bind(null, t.id)} success="Saved" className="space-y-3">
+              <div className="grid-form">
+                <div className="field">
+                  <label htmlFor="serviceRequested" className="label">
+                    Service requested
+                  </label>
+                  <input id="serviceRequested" name="serviceRequested" defaultValue={t.serviceRequested ?? ""} className="input" />
+                </div>
+                <div className="field">
+                  <label htmlFor="techId" className="label">
+                    Tech
+                  </label>
+                  <select id="techId" name="techId" defaultValue={t.techId ?? ""} className="select">
+                    <option value="">-</option>
+                    {techs.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field sm:col-span-2">
+                  <label htmlFor="problem" className="label">
+                    Problem reported
+                  </label>
+                  <textarea id="problem" name="problem" rows={2} defaultValue={t.problem ?? ""} className="textarea" />
+                </div>
+                <div className="field sm:col-span-2">
+                  <label htmlFor="diagnosis" className="label">
+                    What we found
+                  </label>
+                  <textarea id="diagnosis" name="diagnosis" rows={3} defaultValue={t.diagnosis ?? ""} className="textarea" />
+                </div>
+                <div className="field sm:col-span-2">
+                  <label htmlFor="workDone" className="label">
+                    Work done (prints on the invoice)
+                  </label>
+                  <textarea id="workDone" name="workDone" rows={3} defaultValue={t.workDone ?? ""} className="textarea" />
+                </div>
+                <div className="field">
+                  <label htmlFor="preApproved" className="label">
+                    Pre-approved over service ($)
+                  </label>
+                  <input id="preApproved" name="preApproved" defaultValue={t.preApprovedCents != null ? (t.preApprovedCents / 100).toFixed(2) : ""} className="input num" />
+                </div>
+                <div className="field">
+                  <label htmlFor="approved" className="label">
+                    Customer approved ($)
+                  </label>
+                  <input id="approved" name="approved" defaultValue={t.approvedCents != null ? (t.approvedCents / 100).toFixed(2) : ""} className="input num" />
+                </div>
+                <div className="field sm:col-span-2">
+                  <label htmlFor="notes" className="label">
+                    Internal notes
+                  </label>
+                  <textarea id="notes" name="notes" rows={2} defaultValue={t.notes ?? ""} className="textarea" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Submit>Save</Submit>
+              </div>
+            </ActionForm>
+          </Section>
+
+          <Section title="Service checklist">
+            <Checklist ticketId={t.id} items={checklistItems} state={checklist} />
+            <div className="mt-5 border-t border-line pt-4">
+              <h3 className="font-semibold">Tension gauge readings</h3>
+              <p className="muted mb-3 text-sm">
+                {spec ? (
+                  <>
+                    Factory: upper <strong className="num">{gRange(spec.upperMinG, spec.upperMaxG) || "-"}</strong>, bobbin{" "}
+                    <strong className="num">{gRange(spec.bobbinMinG, spec.bobbinMaxG) || "-"}</strong>
+                    {spec.upperConditions && ` (${spec.upperConditions})`}
+                  </>
+                ) : (
+                  "No factory gauge spec on file for this model. Readings are still worth recording."
+                )}
+              </p>
+              <ActionForm action={saveTension.bind(null, t.id)} success="Readings saved">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Reading id="upperFoundG" label="Upper as found" value={t.upperFoundG} min={spec?.upperMinG ?? null} max={spec?.upperMaxG ?? null} />
+                  <Reading id="upperLeftG" label="Upper as left" value={t.upperLeftG} min={spec?.upperMinG ?? null} max={spec?.upperMaxG ?? null} />
+                  <Reading id="bobbinFoundG" label="Bobbin as found" value={t.bobbinFoundG} min={spec?.bobbinMinG ?? null} max={spec?.bobbinMaxG ?? null} />
+                  <Reading id="bobbinLeftG" label="Bobbin as left" value={t.bobbinLeftG} min={spec?.bobbinMinG ?? null} max={spec?.bobbinMaxG ?? null} />
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Submit className="btn">Save readings</Submit>
+                </div>
+              </ActionForm>
+            </div>
+          </Section>
+
+          <Section title="Charges">
+            {t.lines.length > 0 && (
+              <div className="scroll-x mb-4">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th className="text-right">Qty</th>
+                      <th className="text-right">Each</th>
+                      <th className="text-right">Total</th>
+                      <th className="no-print" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {t.lines.map((l) => (
+                      <tr key={l.id}>
+                        <td>
+                          <span className="label mr-2">{LINE_LABEL[l.kind]}</span>
+                          {l.description}
+                        </td>
+                        <td className="num text-right">{l.qty}</td>
+                        <td className="num text-right">{money(l.unitPriceCents)}</td>
+                        <td className="num text-right">{money(lineTotal(l))}</td>
+                        <td className="no-print text-right">
+                          <ActionButton action={removeLine.bind(null, l.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove line">
+                            <Trash2 size={12} aria-label="Remove" />
+                          </ActionButton>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <dl className="num mb-4 ml-auto grid max-w-xs grid-cols-2 gap-y-1 text-sm">
+              <dt className="muted">Subtotal</dt>
+              <dd className="text-right">{money(tot.subtotal)}</dd>
+              <dt className="muted">Tax ({t.taxRatePct}%)</dt>
+              <dd className="text-right">{money(tot.tax)}</dd>
+              <dt className="font-semibold">Total</dt>
+              <dd className="text-right font-semibold">{money(tot.total)}</dd>
+              <dt className="muted">Paid</dt>
+              <dd className="text-right">{money(tot.paid)}</dd>
+              <dt className="font-semibold">Balance</dt>
+              <dd className={`text-right font-semibold ${tot.balance > 0 ? "text-thread" : ""}`}>{money(tot.balance)}</dd>
+              {tot.commission > 0 && (
+                <>
+                  <dt className="muted">Shop commission</dt>
+                  <dd className="text-right">{money(tot.commission)}</dd>
+                </>
+              )}
+            </dl>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <ActionForm action={addLine.bind(null, t.id)} reset className="space-y-2 rounded border border-line p-3">
+                <input type="hidden" name="kind" value="SERVICE" />
+                <div className="label">Add service</div>
+                <select name="serviceItemId" aria-label="Service" className="select" defaultValue="">
+                  <option value="">Custom (type below)</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} · {money(s.priceCents)}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <input name="description" aria-label="Custom description" className="input" placeholder="Custom description" />
+                  <input name="price" aria-label="Price" inputMode="decimal" className="input num w-28" placeholder="$ price" />
+                </div>
+                <Submit className="btn btn-sm">Add service</Submit>
+              </ActionForm>
+
+              <ActionForm action={addLine.bind(null, t.id)} reset className="space-y-2 rounded border border-line p-3">
+                <input type="hidden" name="kind" value="LABOR" />
+                <div className="label">Add labor ({money(t.shop.laborRateCents)}/hr)</div>
+                <div className="flex gap-2">
+                  <input name="hours" aria-label="Hours" inputMode="decimal" className="input num w-28" placeholder="hours" required />
+                  <input name="description" aria-label="Labor description" className="input" placeholder="Repair labor" />
+                </div>
+                <Submit className="btn btn-sm">Add labor</Submit>
+              </ActionForm>
+
+              <ActionForm action={addLine.bind(null, t.id)} reset className="space-y-2 rounded border border-line p-3">
+                <input type="hidden" name="kind" value="PART" />
+                <div className="label">Add part from inventory</div>
+                <input name="partNumber" aria-label="Part" list="parts-list" className="input mono" placeholder="Part number" autoComplete="off" />
+                <datalist id="parts-list">
+                  {parts.map((p) => (
+                    <option key={p.partNumber} value={`${p.partNumber} | ${p.description} (${p.qtyOnHand} on hand)`} />
+                  ))}
+                </datalist>
+                <div className="flex gap-2">
+                  <input name="qty" aria-label="Quantity" inputMode="numeric" defaultValue="1" className="input num w-20" />
+                  <input name="price" aria-label="Price each" inputMode="decimal" className="input num" placeholder="$ each (blank = list price)" />
+                </div>
+                <input name="description" aria-label="Description if not stocked" className="input" placeholder="Not stocked? Describe it here" />
+                <Submit className="btn btn-sm">Add part</Submit>
+              </ActionForm>
+
+              <ActionForm action={addLine.bind(null, t.id)} reset className="space-y-2 rounded border border-line p-3">
+                <div className="label">Add fee or discount</div>
+                <select name="kind" aria-label="Fee or discount" className="select" defaultValue="FEE">
+                  <option value="FEE">Fee</option>
+                  <option value="DISCOUNT">Discount</option>
+                </select>
+                <div className="flex gap-2">
+                  <input name="description" aria-label="Description" className="input" placeholder="e.g. Storage fee" />
+                  <input name="price" aria-label="Amount" inputMode="decimal" className="input num w-28" placeholder="$" required />
+                </div>
+                <Submit className="btn btn-sm">Add</Submit>
+              </ActionForm>
+            </div>
+          </Section>
+
+          <Section title="Payments">
+            {t.payments.length > 0 && (
+              <ul className="mb-4 divide-y divide-line text-sm">
+                {t.payments.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                    <span>
+                      {fmtDate(p.paidAt)} · {PAYMENT_LABEL[p.method]}
+                      {p.note && <span className="muted"> · {p.note}</span>}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="num font-semibold">{money(p.amountCents)}</span>
+                      <ActionButton action={removePayment.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove payment">
+                        <Trash2 size={12} aria-label="Remove" />
+                      </ActionButton>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ActionForm action={addPayment.bind(null, t.id)} reset success="Payment recorded" className="flex flex-wrap items-end gap-2">
+              <div className="field">
+                <label htmlFor="amount" className="label">
+                  Amount
+                </label>
+                <input
+                  id="amount"
+                  name="amount"
+                  inputMode="decimal"
+                  className="input num w-32"
+                  defaultValue={tot.balance > 0 ? (tot.balance / 100).toFixed(2) : ""}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="method" className="label">
+                  Method
+                </label>
+                <select id="method" name="method" className="select" defaultValue="CARD">
+                  {Object.entries(PAYMENT_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field min-w-40 flex-1">
+                <label htmlFor="payNote" className="label">
+                  Note
+                </label>
+                <input id="payNote" name="note" className="input" placeholder="check #, last 4..." />
+              </div>
+              <Submit>Record payment</Submit>
+            </ActionForm>
+          </Section>
+        </div>
+
+        <div className="space-y-6 xl:col-span-2">
+          <Section title="Photos">
+            <PhotoStrip machineId={m.id} ticketId={t.id} photos={m.photos} />
+          </Section>
+
+          <Section title="Accessories">
+            {t.accessories.length === 0 ? (
+              <p className="muted mb-3 text-sm">Nothing logged. Machine only.</p>
+            ) : (
+              <ActionForm action={saveAccessories.bind(null, t.id)} success="Saved" className="mb-3">
+                <p className="muted mb-2 text-xs">Tick each item as it goes back to the customer.</p>
+                <ul className="space-y-1">
+                  {t.accessories.map((a, i) => (
+                    <li key={a + i} className="flex items-center gap-2">
+                      <input
+                        id={`acc-${i}`}
+                        type="checkbox"
+                        name="returned"
+                        value={a}
+                        className="check"
+                        defaultChecked={t.accessoriesReturned.includes(a)}
+                      />
+                      <label htmlFor={`acc-${i}`} className="flex-1 text-sm">
+                        {a}
+                      </label>
+                      <ActionButton action={removeAccessory.bind(null, t.id, a)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove item">
+                        <Trash2 size={12} aria-label="Remove" />
+                      </ActionButton>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-xs">
+                    {t.accessoriesReturned.length}/{t.accessories.length} returned
+                  </span>
+                  <Submit className="btn btn-sm">Save returned</Submit>
+                </div>
+              </ActionForm>
+            )}
+            <ActionForm action={saveAccessories.bind(null, t.id)} reset className="flex gap-2">
+              {t.accessoriesReturned.map((a) => (
+                <input key={a} type="hidden" name="returned" value={a} />
+              ))}
+              <label htmlFor="acc-add" className="sr-only">
+                Add accessories
+              </label>
+              <input id="acc-add" name="add" className="input" placeholder="Add items, comma separated" />
+              <Submit className="btn">Add</Submit>
+            </ActionForm>
+          </Section>
+
+          <ModelPanel shopId={user.shopId} brand={m.brand} model={m.model} />
+          <p className="text-sm">
+            <Link href={modelHref(m.brand, m.model)} className="link">
+              Everything about the {m.brand} {m.model}
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,369 @@
+// StitchBench — sewing / embroidery / longarm machine repair bench.
+// One Shop = one repair business. Every business row carries shopId; the
+// tension-spec reference table is shared by all shops (facts from OEM manuals).
+// Money is stored in integer cents.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Shops and users
+// ============================================================
+
+enum Role {
+  OWNER
+  ADMIN
+  TECH
+}
+
+model Shop {
+  id                 String   @id @default(cuid())
+  name               String
+  phone              String?
+  email              String?
+  address            String?
+  laborRateCents     Int      @default(9800)
+  taxRatePct         Float    @default(0)
+  partsMarkupPct     Float    @default(30)
+  warrantyDays       Int      @default(90)
+  abandonedAfterDays Int      @default(60)
+  storageFeeCents    Int      @default(4500)
+  nextTicketNumber   Int      @default(51)
+  // Service checklist template, one item per line of work (edited in Settings)
+  checklistItems     String[]
+  createdAt          DateTime @default(now())
+
+  users        User[]
+  customers    Customer[]
+  machines     Machine[]
+  tickets      Ticket[]
+  parts        Part[]
+  stockMoves   StockMove[]
+  notes        ModelNote[]
+  serviceItems ServiceItem[]
+  photos       MachinePhoto[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(TECH)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  notes         ModelNote[]
+  ticketsOpened Ticket[]    @relation("TicketOpenedBy")
+  ticketsAsTech Ticket[]    @relation("TicketTech")
+  stockMoves    StockMove[]
+}
+
+// ============================================================
+// Customers: retail customers and trade accounts (quilt shops, dealers)
+// ============================================================
+
+enum CustomerKind {
+  RETAIL
+  TRADE
+}
+
+model Customer {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind          CustomerKind @default(RETAIL)
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  // Trade accounts only
+  code          String? // short code printed on route sheets, e.g. QS1
+  commissionPct Float?
+  routeDay      String?
+  notes         String?
+  createdAt     DateTime     @default(now())
+
+  machines    Machine[]
+  tickets     Ticket[]  @relation("TicketCustomer")
+  viaTickets  Ticket[]  @relation("TicketViaAccount")
+
+  @@index([shopId, name])
+}
+
+// ============================================================
+// Machines (tracked by brand + model + serial)
+// ============================================================
+
+model Machine {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand       String
+  model       String
+  modelKey    String // normalized model for matching specs, notes and local manuals
+  serial      String?
+  machineType String?
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  tickets Ticket[]
+  photos  MachinePhoto[]
+
+  @@index([shopId, serial])
+  @@index([shopId, brand, modelKey])
+}
+
+// Important facts and gotchas, attached to a brand + model (not to one machine),
+// so every tech who opens that model sees them.
+enum NoteKind {
+  GOTCHA
+  FACT
+  TIP
+}
+
+model ModelNote {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand      String
+  modelKey   String
+  modelLabel String
+  kind       NoteKind @default(GOTCHA)
+  body       String
+  pinned     Boolean  @default(false)
+  authorId   String?
+  author     User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([shopId, brand, modelKey])
+}
+
+// ============================================================
+// Reference: factory thread-tension specs read out of OEM manuals.
+// Shared by all shops. Seeded from prisma/seed-data/tension_specs.json.
+// ============================================================
+
+model TensionSpec {
+  id              String  @id
+  category        String // Embroidery | Sewing | Longarm | Industrial-Sewing
+  brand           String
+  models          String // as printed / as filed, e.g. "BAS-411, BAS-415"
+  modelKeys       String[] // normalized model tokens for matching
+  machineType     String?
+  upperMinG       Float?
+  upperMaxG       Float?
+  bobbinMinG      Float?
+  bobbinMaxG      Float?
+  upperPrinted    String? // value and unit exactly as printed, e.g. "0.7-1.3 N"
+  bobbinPrinted   String?
+  upperText       String?
+  upperConditions String?
+  bobbinText      String?
+  bobbinConditions String?
+  otherSpecs      String?
+  sourceFile      String // PDF file name, used to find the manual in a tech's local library
+  sourcePath      String? // where it sits in the reference library
+  pages           String?
+  docType         String?
+  confidence      String?
+  notes           String?
+
+  @@index([brand])
+}
+
+// ============================================================
+// Tickets / POS
+// ============================================================
+
+enum TicketStatus {
+  AT_SHOP_AWAITING_PICKUP
+  IN_TRUCK
+  ON_BENCH
+  WAITING_CUSTOMER_OK
+  WAITING_PARTS
+  READY_IN_TRUCK
+  READY_FOR_PICKUP
+  COLLECTED
+  ABANDONED
+  RETURNED_UNREPAIRED
+}
+
+model Ticket {
+  id                  String       @id @default(cuid())
+  shopId              String
+  shop                Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number              Int
+  status              TicketStatus @default(ON_BENCH)
+  machineId           String
+  machine             Machine      @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  customerId          String?
+  customer            Customer?    @relation("TicketCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  viaAccountId        String? // quilt shop / dealer the machine came through
+  viaAccount          Customer?    @relation("TicketViaAccount", fields: [viaAccountId], references: [id], onDelete: SetNull)
+  serviceRequested    String?
+  problem             String?
+  diagnosis           String?
+  workDone            String?
+  preApprovedCents    Int? // customer OK'd up to this much over the service price
+  approvedCents       Int?
+  accessories         String[] // what came in with the machine
+  accessoriesReturned String[] // the subset confirmed back with the customer
+  // Service checklist: { "<item text>": { done: true, by: "<user name>", at: "<iso>" } }
+  checklist           Json         @default("{}")
+  // Tension measured with gauges, grams-force
+  upperFoundG         Float?
+  upperLeftG          Float?
+  bobbinFoundG        Float?
+  bobbinLeftG         Float?
+  taxRatePct          Float        @default(0)
+  intakeAt            DateTime     @default(now())
+  readyAt             DateTime?
+  closedAt            DateTime?
+  warrantyUntil       DateTime?
+  openedById          String?
+  openedBy            User?        @relation("TicketOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  techId              String?
+  tech                User?        @relation("TicketTech", fields: [techId], references: [id], onDelete: SetNull)
+  notes               String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  lines    TicketLine[]
+  payments Payment[]
+  photos   MachinePhoto[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+}
+
+enum LineKind {
+  SERVICE
+  LABOR
+  PART
+  FEE
+  DISCOUNT
+}
+
+model TicketLine {
+  id             String   @id @default(cuid())
+  ticketId       String
+  ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  kind           LineKind
+  description    String
+  qty            Float    @default(1)
+  unitPriceCents Int
+  taxable        Boolean  @default(true)
+  partId         String?
+  part           Part?    @relation(fields: [partId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+}
+
+enum PaymentMethod {
+  CARD
+  CASH
+  CHECK
+  SHOP_COLLECTED
+  INVOICE
+  OTHER
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  ticketId    String
+  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  method      PaymentMethod
+  amountCents Int
+  paidAt      DateTime      @default(now())
+  note        String?
+}
+
+// Menu of standard services with a set price (clean/oil/time/adjust etc.)
+model ServiceItem {
+  id         String  @id @default(cuid())
+  shopId     String
+  shop       Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name       String
+  priceCents Int
+  active     Boolean @default(true)
+  sortOrder  Int     @default(0)
+}
+
+// ============================================================
+// Parts inventory
+// ============================================================
+
+model Part {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partNumber  String
+  description String
+  brand       String?
+  fits        String? // models it fits, free text
+  location    String? // bin / drawer
+  qtyOnHand   Int      @default(0)
+  reorderAt   Int      @default(0)
+  costCents   Int?
+  priceCents  Int?
+  supplier    String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  moves StockMove[]
+  lines TicketLine[]
+
+  @@unique([shopId, partNumber])
+}
+
+enum MoveReason {
+  RECEIVED
+  USED
+  RETURNED
+  ADJUSTED
+}
+
+model StockMove {
+  id        String     @id @default(cuid())
+  shopId    String
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId    String
+  part      Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
+  qty       Int // + in, - out
+  reason    MoveReason
+  ticketId  String?
+  note      String?
+  userId    String?
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+}
+
+// ============================================================
+// Machine photos (stored in Postgres; resized in the browser before upload)
+// ============================================================
+
+model MachinePhoto {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  machineId String
+  machine   Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  ticketId  String?
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  caption   String?
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([machineId])
+}

@@ -1,0 +1,97 @@
+"use client";
+
+import { useTransition } from "react";
+import { toast } from "sonner";
+import type { TicketStatus } from "@/generated/prisma/enums";
+import { STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
+import { setStatus, toggleChecklist } from "@/actions/tickets";
+
+export function StatusSelect({ ticketId, status }: { ticketId: string; status: TicketStatus }) {
+  const [pending, start] = useTransition();
+  return (
+    <div className="field">
+      <label htmlFor="status" className="label">
+        Status
+      </label>
+      <select
+        id="status"
+        className="select"
+        defaultValue={status}
+        disabled={pending}
+        onChange={(e) => {
+          const next = e.target.value as TicketStatus;
+          start(async () => {
+            const r = await setStatus(ticketId, next);
+            if (r?.error) toast.error(r.error);
+            else toast.success(`Status: ${STATUS_LABEL[next]}`);
+          });
+        }}
+      >
+        {STATUS_ORDER.map((s) => (
+          <option key={s} value={s}>
+            {STATUS_LABEL[s]}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+type Done = { done: boolean; by?: string; at?: string };
+
+export function Checklist({
+  ticketId,
+  items,
+  state,
+}: {
+  ticketId: string;
+  items: string[];
+  state: Record<string, Done>;
+}) {
+  const [pending, start] = useTransition();
+  const doneCount = items.filter((i) => state[i]?.done).length;
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded bg-surface-2" aria-hidden>
+          <div className="h-full bg-navy" style={{ width: `${items.length ? (doneCount / items.length) * 100 : 0}%` }} />
+        </div>
+        <span className="num text-sm font-semibold">
+          {doneCount}/{items.length} done
+        </span>
+      </div>
+      <ul className="space-y-1">
+        {items.map((item, i) => {
+          const s = state[item];
+          const id = `chk-${i}`;
+          return (
+            <li key={item} className="flex items-start gap-3 rounded px-1 py-1.5 hover:bg-surface-2">
+              <input
+                id={id}
+                type="checkbox"
+                className="check mt-0.5"
+                defaultChecked={!!s?.done}
+                disabled={pending}
+                onChange={(e) => {
+                  const done = e.target.checked;
+                  start(async () => {
+                    const r = await toggleChecklist(ticketId, item, done);
+                    if (r?.error) toast.error(r.error);
+                  });
+                }}
+              />
+              <label htmlFor={id} className="flex-1 cursor-pointer">
+                <span className={s?.done ? "text-ink" : ""}>{item}</span>
+                {s?.done && (
+                  <span className="muted block text-xs">
+                    {s.by || "Someone"}, {s.at ? new Date(s.at).toLocaleString() : ""}
+                  </span>
+                )}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}

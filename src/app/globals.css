@@ -1,26 +1,221 @@
 @import "tailwindcss";
 
+/* StitchBench palette: workshop navy, cream paper, thread red. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --surface-2: #efece4;
+  --ink: #17202e;
+  --ink-2: #4a5566;
+  --line: #d9d4c7;
+  --navy: #1f3a5f;
+  --navy-ink: #ffffff;
+  --thread: #b3261e;
+  --ok: #2e7d4f;
+  --ok-bg: #e3f1e8;
+  --wait: #9a6a00;
+  --wait-bg: #fbf0d6;
+  --work: #1f5f99;
+  --work-bg: #e2edf8;
+  --bad: #9b2c2c;
+  --bad-bg: #f8e3e1;
+  --muted-bg: #ebe8e0;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #11161e;
+    --surface: #18202b;
+    --surface-2: #1f2835;
+    --ink: #e8e4da;
+    --ink-2: #a9b1bd;
+    --line: #2d3848;
+    --navy: #6f9fd8;
+    --navy-ink: #0d1520;
+    --thread: #e5675e;
+    --ok: #6fc592;
+    --ok-bg: #1b3326;
+    --wait: #e2b54f;
+    --wait-bg: #3a2f14;
+    --work: #7fb3ea;
+    --work-bg: #1a2c42;
+    --bad: #ee8a84;
+    --bad-bg: #3d1f1d;
+    --muted-bg: #242d3a;
+    color-scheme: dark;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-line: var(--line);
+  --color-navy: var(--navy);
+  --color-navy-ink: var(--navy-ink);
+  --color-thread: var(--thread);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
+}
+
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@layer components {
+  .card {
+    @apply rounded-md border border-line bg-surface;
+  }
+  .card-pad {
+    @apply p-4;
+  }
+  .h1 {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  .h2 {
+    @apply text-lg font-semibold;
+  }
+  .label {
+    @apply text-xs font-semibold uppercase tracking-wide text-ink-2;
+  }
+  .muted {
+    @apply text-ink-2;
+  }
+  .mono {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .input,
+  .select,
+  .textarea {
+    @apply w-full rounded border border-line bg-surface px-3 py-2 text-base text-ink outline-none;
+  }
+  .input:focus,
+  .select:focus,
+  .textarea:focus {
+    border-color: var(--navy);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--navy) 25%, transparent);
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded border px-3 py-2 text-sm font-semibold whitespace-nowrap;
+    border-color: var(--line);
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .btn:hover {
+    background: var(--surface-2);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn:focus-visible,
+  a:focus-visible,
+  input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 2px;
+  }
+  .btn-primary {
+    background: var(--navy);
+    border-color: var(--navy);
+    color: var(--navy-ink);
+  }
+  .btn-primary:hover {
+    background: color-mix(in srgb, var(--navy) 88%, black);
+  }
+  .btn-danger {
+    color: var(--bad);
+  }
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+  .link {
+    color: var(--navy);
+    @apply underline-offset-2 hover:underline;
+  }
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+  .table th {
+    @apply border-b border-line px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-2;
+  }
+  .table td {
+    @apply border-b border-line px-3 py-2 align-top;
+  }
+  .table tr:last-child td {
+    border-bottom: 0;
+  }
+  .scroll-x {
+    @apply overflow-x-auto;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
+  }
+  .tone-neutral {
+    background: var(--muted-bg);
+    color: var(--ink-2);
+  }
+  .tone-work {
+    background: var(--work-bg);
+    color: var(--work);
+  }
+  .tone-wait {
+    background: var(--wait-bg);
+    color: var(--wait);
+  }
+  .tone-ready {
+    background: var(--ok-bg);
+    color: var(--ok);
+  }
+  .tone-done {
+    background: var(--muted-bg);
+    color: var(--ink-2);
+  }
+  .tone-bad {
+    background: var(--bad-bg);
+    color: var(--bad);
+  }
+  .field {
+    @apply flex flex-col gap-1;
+  }
+  .grid-form {
+    @apply grid gap-3 sm:grid-cols-2;
+  }
+  .check {
+    @apply h-5 w-5 shrink-0;
+    accent-color: var(--navy);
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }
