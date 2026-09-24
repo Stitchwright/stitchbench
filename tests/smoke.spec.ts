@@ -51,7 +51,7 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   await page.getByLabel("Upper as found", { exact: true }).fill("40");
   await page.getByLabel("Upper as left", { exact: true }).fill("70");
   await page.getByLabel("Bobbin as left", { exact: true }).fill("12");
-  await page.getByRole("button", { name: "Save readings" }).click();
+  await page.getByRole("button", { name: "Save tension readings" }).click();
   await expect(page.getByText("Readings saved")).toBeVisible();
 
   // Charges

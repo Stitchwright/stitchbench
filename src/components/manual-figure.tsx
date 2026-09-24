@@ -12,7 +12,7 @@ import { findByName, getLocalFile, loadIndex, openLocal, type LibraryIndex } fro
 type PdfDoc = { getPage(n: number): Promise<PdfPage>; numPages: number };
 type PdfPage = {
   getViewport(o: { scale: number; offsetX?: number; offsetY?: number }): { width: number; height: number };
-  render(o: { canvas: HTMLCanvasElement; viewport: unknown }): { promise: Promise<void> };
+  render(o: { canvas: HTMLCanvasElement | null; canvasContext?: CanvasRenderingContext2D; viewport: unknown }): { promise: Promise<void> };
 };
 
 const docs = new Map<string, Promise<PdfDoc>>();
@@ -25,7 +25,8 @@ async function loadDoc(path: string): Promise<PdfDoc> {
       const pdfjs = await import("pdfjs-dist");
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       const data = new Uint8Array(await (await getLocalFile(path)).arrayBuffer());
-      return (await pdfjs.getDocument({ data }).promise) as unknown as PdfDoc;
+      // Plain 2D-canvas rendering: the OffscreenCanvas / ImageDecoder paths have crashed Chrome in testing.
+      return (await pdfjs.getDocument({ data, isOffscreenCanvasSupported: false, isImageDecoderSupported: false }).promise) as unknown as PdfDoc;
     })();
     docs.set(path, p);
     p.catch(() => docs.delete(path));
@@ -44,7 +45,8 @@ async function draw(canvas: HTMLCanvasElement, path: string, pageNo: number, box
   canvas.width = Math.round((x1 - x0) * full.width);
   canvas.height = Math.round((y1 - y0) * full.height);
   canvas.style.width = `${width}px`;
-  await page.render({ canvas, viewport: vp }).promise;
+  const ctx = canvas.getContext("2d")!;
+  await page.render({ canvas: null, canvasContext: ctx, viewport: vp }).promise;
 }
 
 export function ManualFigure({ file, page, box, width = 440 }: { file: string; page: number | null; box: number[]; width?: number }) {

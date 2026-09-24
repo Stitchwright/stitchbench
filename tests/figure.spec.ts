@@ -1,48 +1,36 @@
-// Manual figures are drawn from the tech's own PDF. The folder picker can't be automated, so this
-// puts one real manual in the browser's private file system (OPFS) and uses that as the "manuals folder".
-// Needs MANUAL_PDF (a local PDF), MANUAL_BRAND, MANUAL_MODEL, and the E2E_* login.
+// Manual figures are drawn from the tech's own PDF. The real folder picker can't be scripted, so this uses
+// the pick-a-folder fallback (what Firefox/Safari get) with MANUAL_DIR, a folder holding the manual.
+// Needs an E2E shop that already has a machine of MANUAL_BRAND + MANUAL_MODEL (the smoke test makes one).
 import { test, expect } from "@playwright/test";
-import { basename } from "node:path";
 
-const pdf = process.env.MANUAL_PDF!;
-const name = basename(pdf.split("\\").join("/"));
-const brand = process.env.MANUAL_BRAND ?? "Janome";
-const model = process.env.MANUAL_MODEL ?? "MC6700P";
+const dir = process.env.MANUAL_DIR!;
+const label = `${process.env.MANUAL_BRAND ?? "Janome"} ${process.env.MANUAL_MODEL ?? "MC6700P"}`;
 
 test("draws a timing figure from the tech's own manual", async ({ page }) => {
   await page.addInitScript(() => {
-    // stand-in for the real folder picker
-    (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker = () =>
-      navigator.storage.getDirectory();
+    delete (window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker;
   });
-  await page.route("**/__test/manual.pdf", (r) => r.fulfill({ path: pdf, contentType: "application/pdf" }));
-
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL!);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD!);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
 
-  await page.goto("/manuals");
-  await page.evaluate(async (fileName) => {
-    const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle("Janome", { create: true });
-    const fh = await dir.getFileHandle(fileName, { create: true });
-    const w = await fh.createWritable();
-    await w.write(await (await fetch("/__test/manual.pdf")).blob());
-    await w.close();
-  }, name);
-  await page.getByRole("button", { name: "Connect manuals folder" }).click();
+  // Picked files live in memory for the visit, so move around with in-app links from here on.
+  await page.getByRole("link", { name: "My manuals" }).click();
+  await page.locator("#pick-folder").setInputFiles(dir);
   await expect(page.getByText(/PDFs indexed/)).toBeVisible();
 
-  await page.goto(`/models/${brand}/${model}`);
+  await page.getByRole("link", { name: "Machines" }).click();
+  await page.getByRole("link", { name: label }).first().click();
   await expect(page.getByRole("heading", { name: /Timing and adjustments/ })).toBeVisible();
-  await expect(page.getByText(name).first()).toBeVisible();
   await page.getByRole("button", { name: "Show figure" }).first().click();
-  const canvas = page.locator("canvas").first();
-  await expect(canvas).toBeVisible({ timeout: 60_000 });
-  const w = await canvas.evaluate((c: HTMLCanvasElement) => c.width);
-  expect(w).toBeGreaterThan(100);
-  await canvas.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "test-results/figure.png", fullPage: false });
+  await expect(page.getByRole("button", { name: "Hide figure" }).first()).toBeVisible({ timeout: 60_000 });
+  page.on("console", (m) => m.type() === "error" && console.log("[browser error]", m.text()));
+  const canvas = page.locator("canvas:not(.hidden)").first();
+  // the page is drawn once the canvas takes the crop's size (a fresh canvas is 300x150)
+  await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.height), { timeout: 60_000 }).toBeGreaterThan(150);
+  await expect(page.getByText(/Drawing page/)).toHaveCount(0);
+  await canvas.screenshot({ path: "test-results/figure-canvas.png" });
+  await page.screenshot({ path: "test-results/figure-page.png" });
 });

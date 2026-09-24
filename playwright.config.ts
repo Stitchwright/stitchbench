@@ -10,5 +10,6 @@ export default defineConfig({
     viewport: { width: 1400, height: 1000 },
     // PW_CHANNEL=chrome uses the installed Google Chrome instead of downloading a browser.
     channel: process.env.PW_CHANNEL || undefined,
+    launchOptions: { args: process.env.PW_ARGS ? process.env.PW_ARGS.split(" ") : [] },
   },
 });

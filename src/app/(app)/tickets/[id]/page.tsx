@@ -215,7 +215,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <Reading id="bobbinLeftG" label="Bobbin as left" value={t.bobbinLeftG} min={spec?.bobbinMinG ?? null} max={spec?.bobbinMaxG ?? null} />
                 </div>
                 <div className="mt-3 flex justify-end">
-                  <Submit className="btn">Save readings</Submit>
+                  <Submit className="btn">Save tension readings</Submit>
                 </div>
               </ActionForm>
             </div>
@@ -223,7 +223,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <div className="mt-5 border-t border-line pt-4">
                 <h3 className="font-semibold">Timing and adjustment readings</h3>
                 <p className="muted mb-3 text-sm">Factory standard from the service manual. Enter what you measured before and after.</p>
-                <ActionForm action={saveMeasurements.bind(null, t.id)} success="Readings saved">
+                <ActionForm action={saveMeasurements.bind(null, t.id)} success="Timing readings saved">
                   <div className="scroll-x">
                     <table className="table">
                       <thead>
@@ -270,7 +270,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                     </table>
                   </div>
                   <div className="mt-3 flex justify-end">
-                    <Submit className="btn">Save readings</Submit>
+                    <Submit className="btn">Save timing readings</Submit>
                   </div>
                 </ActionForm>
               </div>

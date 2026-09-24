@@ -3,6 +3,8 @@ import type { NextAuthConfig } from "next-auth";
 // Edge-safe auth config shared by the proxy and the full auth setup.
 // Do NOT import bcrypt or the Prisma client here.
 export const authConfig = {
+  // Self-hosted (Railway / local): trust the Host header the platform's proxy sets.
+  trustHost: true,
   pages: { signIn: "/login" },
   providers: [],
   callbacks: {
