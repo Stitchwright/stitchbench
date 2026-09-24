@@ -349,7 +349,14 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 ))}
               </ul>
             )}
-            <ActionForm action={addPayment.bind(null, t.id)} reset success="Payment recorded" className="flex flex-wrap items-end gap-2">
+            <ActionForm
+              // remount when the balance changes so the amount box always shows the current balance
+              key={tot.balance}
+              action={addPayment.bind(null, t.id)}
+              reset
+              success="Payment recorded"
+              className="flex flex-wrap items-end gap-2"
+            >
               <div className="field">
                 <label htmlFor="amount" className="label">
                   Amount
