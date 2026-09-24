@@ -2319,7 +2319,7 @@
 "otherSpecs": null,
 "sourceFile": "BabyLock_B15+B17+B21_ServiceManual_2000.pdf",
 "sourcePath": "Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_B15+B17+B21_ServiceManual_2000.pdf",
-"pages": "25, 27",
+"pages": "25",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Models from filename only. Upper and bobbin use different threads (poly #50 vs cotton #50).",
@@ -2328,7 +2328,7 @@
 "B17",
 "B21"
 ],
-"id": "d2c37fdd6368a14e3fa7"
+"id": "0f4720bdd457ce283bb0"
 },
 {
 "category": "Sewing",
@@ -3831,15 +3831,15 @@
 "otherSpecs": null,
 "sourceFile": "Brother_CS8072+PC2800_ServiceManual_2001.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_CS8072+PC2800_ServiceManual_2001.pdf",
-"pages": "45, 46",
+"pages": "34",
 "docType": "Service/Technical manual",
 "confidence": "high",
-"notes": "Figure misprints '44-45g'; text says 44-54 g twice. Also says silk #80 bobbin tension should differ by 2-3 g (no absolute value). Text names PC2800/Super Ace III/Super Ace SE; CS8072 from filename.  Same manual also at: Sewing\\Brother\\ServiceManuals\\Brother_PC3000_ServiceManual_1998.pdf",
+"notes": "Figure misprints '44-45g'; text says 44-54 g twice. Also says silk #80 bobbin tension should differ by 2-3 g (no absolute value). Text names PC2800/Super Ace III/Super Ace SE; CS8072 from filename.",
 "modelKeys": [
 "CS8072",
 "PC2800"
 ],
-"id": "4d1adb52a04845086d8b"
+"id": "99d983c69ce5b0e78543"
 },
 {
 "category": "Sewing",
@@ -3859,15 +3859,15 @@
 "otherSpecs": null,
 "sourceFile": "Brother_CS8072+PC2800_ServiceManual_2001.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_CS8072+PC2800_ServiceManual_2001.pdf",
-"pages": "45",
+"pages": "33",
 "docType": "Service/Technical manual",
 "confidence": "high",
-"notes": "'12. Dial tension' calibration step done before the total (plate + discs) check in the previous row.  Same manual also at: Sewing\\Brother\\ServiceManuals\\Brother_PC3000_ServiceManual_1998.pdf",
+"notes": "'12. Dial tension' calibration step done before the total (plate + discs) check in the previous row.",
 "modelKeys": [
 "CS8072",
 "PC2800"
 ],
-"id": "63fb833105041a8bb0e8"
+"id": "0548dc07a78a55da3016"
 },
 {
 "category": "Sewing",
@@ -4003,14 +4003,14 @@
 "otherSpecs": null,
 "sourceFile": "Brother_LS1217_ServiceManual_2000.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_LS1217_ServiceManual_2000.pdf",
-"pages": "19, 21",
+"pages": "18",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "The upper value is the dial-0 (minimum) baseline, set by re-indexing the dial on its adjusting nut. No value is given for a sewing dial setting.",
 "modelKeys": [
 "LS1217"
 ],
-"id": "22fe647da40269ab4a17"
+"id": "deafc92b898b949a15c6"
 },
 {
 "category": "Sewing",
@@ -4030,7 +4030,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_LS1717+LS2020+LS2250PRW_ServiceManual_2010.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_LS1717+LS2020+LS2250PRW_ServiceManual_2010.pdf",
-"pages": "18, 20",
+"pages": "17, 19",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "The upper value is the dial-0 (minimum) baseline, set by re-indexing the dial on its adjusting nut. No value is given for a sewing dial setting.",
@@ -4039,7 +4039,7 @@
 "LS2020",
 "LS2250PRW"
 ],
-"id": "057344bc185391a54627"
+"id": "ab2bd1b621fc5b8b07cf"
 },
 {
 "category": "Sewing",
@@ -4059,7 +4059,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_LS2220+LS1520+LS2125-series_ServiceManual_2001.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_LS2220+LS1520+LS2125-series_ServiceManual_2001.pdf",
-"pages": "17, 19",
+"pages": "16, 18",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "The upper value is the dial-0 (minimum) baseline, set by re-indexing the dial on its adjusting nut. No value is given for a sewing dial setting.  Same manual also at: Sewing\\Brother\\ServiceManuals\\Brother_VX1435_ServiceManual.pdf",
@@ -4069,7 +4069,7 @@
 "LS2125SERIES",
 "LS2220"
 ],
-"id": "9b3f7914001bf025df6c"
+"id": "1c986b6fdc869c412f0f"
 },
 {
 "category": "Sewing",
@@ -4636,6 +4636,60 @@
 {
 "category": "Sewing",
 "brand": "Brother",
+"models": "PC3000",
+"machineType": "Domestic sewing",
+"upperMinG": 44.0,
+"upperMaxG": 54.0,
+"bobbinMinG": 10.0,
+"bobbinMaxG": 12.0,
+"upperPrinted": "44-54 g",
+"bobbinPrinted": "10-12 g",
+"upperText": "check that the total tension of the tension plate and the tension discs is 44 to 54 g",
+"upperConditions": "Tension dial at 4; polyester thread #60 through tension plate and tension discs (total); presser foot down",
+"bobbinText": "inner rotary hook tension should be 10-12g",
+"bobbinConditions": "Polyester thread #60, pulled slowly",
+"otherSpecs": null,
+"sourceFile": "Brother_PC3000_ServiceManual_1998.pdf",
+"sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC3000_ServiceManual_1998.pdf",
+"pages": "35",
+"docType": "Service/Technical manual",
+"confidence": "high",
+"notes": "The manual adds that silk thread (#80) should read 2-3 g different from the polyester #60 bobbin value; the direction is not stated. The figure label reads '44-45g', apparently a misprint of 44-54 g.",
+"modelKeys": [
+"PC3000"
+],
+"id": "82e3bb9a52f83032e3b8"
+},
+{
+"category": "Sewing",
+"brand": "Brother",
+"models": "PC3000",
+"machineType": "Domestic sewing",
+"upperMinG": 33.0,
+"upperMaxG": 38.0,
+"bobbinMinG": null,
+"bobbinMaxG": null,
+"upperPrinted": "33-38 g",
+"bobbinPrinted": null,
+"upperText": "check that the tension between the tension discs is 33 to 38 g",
+"upperConditions": "Tension dial at 4; polyester thread #60 between tension discs only (dial tension); presser foot down",
+"bobbinText": null,
+"bobbinConditions": null,
+"otherSpecs": null,
+"sourceFile": "Brother_PC3000_ServiceManual_1998.pdf",
+"sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC3000_ServiceManual_1998.pdf",
+"pages": "34",
+"docType": "Service/Technical manual",
+"confidence": "high",
+"notes": "The 'dial tension' through the discs only, set before the total upper tension.",
+"modelKeys": [
+"PC3000"
+],
+"id": "c1077dc85f0b22da4afb"
+},
+{
+"category": "Sewing",
+"brand": "Brother",
 "models": "PC6500",
 "machineType": "Domestic embroidery",
 "upperMinG": null,
@@ -4651,14 +4705,14 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PC6500_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC6500_ServiceManual.pdf",
-"pages": "55",
+"pages": "43",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "The upper tension is automatic (thread tension pulse motor), so the manual gives no gauge value for it. The manual adds that silk thread (#80) should read 2-3 g different from the #60 value; the direction is not stated. Sewing/embroidery combo.",
 "modelKeys": [
 "PC6500"
 ],
-"id": "c15e143e3c3f56020b67"
+"id": "fa3d4b79109973151acd"
 },
 {
 "category": "Sewing",
@@ -4705,14 +4759,14 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PC8500_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC8500_ServiceManual.pdf",
-"pages": "57",
+"pages": "44",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "The upper tension is automatic (thread tension pulse motor), so the manual gives no gauge value for it. The manual adds that silk thread (#80) should read 2-3 g different from the #60 value; the direction is not stated. Sewing/embroidery combo.",
 "modelKeys": [
 "PC8500"
 ],
-"id": "dc2159f8d49f02ec23c4"
+"id": "42035bd33f32b07e608b"
 },
 {
 "category": "Sewing",
@@ -4732,14 +4786,14 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PE150_ServiceManual_1999.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE150_ServiceManual_1999.pdf",
-"pages": "41, 42",
+"pages": "26",
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "The upper-tension STANDARD names #60 polyester, but the adjustment steps pass #90 polyester through the disc, so which thread applies is ambiguous. The bobbin value is clear.  Same manual also at: Sewing\\Brother\\ServiceManuals\\Brother_PE180D_ServiceManual_2001.pdf; Sewing\\Brother\\ServiceManuals\\Brother_SE2_ServiceManual.pdf",
 "modelKeys": [
 "PE150"
 ],
-"id": "895b6d616708db5fc2fe"
+"id": "c5f140acd057d11da423"
 },
 {
 "category": "Sewing",
@@ -4759,14 +4813,14 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PE200_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE200_ServiceManual.pdf",
-"pages": "41, 42",
+"pages": "26",
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "The upper-tension STANDARD names #60 polyester, but the adjustment steps pass #90 polyester through the disc, so which thread applies is ambiguous. The bobbin value is clear.",
 "modelKeys": [
 "PE200"
 ],
-"id": "90369e32e3a3d7cb4572"
+"id": "f56d2acfb4b5770810da"
 },
 {
 "category": "Sewing",
@@ -4786,14 +4840,14 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PE400D_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE400D_ServiceManual.pdf",
-"pages": "53, 54",
+"pages": "43",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
 "modelKeys": [
 "PE400D"
 ],
-"id": "279086adec736d2769d7"
+"id": "15d0b2d36ac4e930544e"
 },
 {
 "category": "Sewing",
@@ -4950,7 +5004,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PS1000_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PS1000_ServiceManual.pdf",
-"pages": "40, 58",
+"pages": "36, 54",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Dial-4 standard applies to B338/B346/B347/B348 (B338 not named on title page). Bobbin spec applies to all models.",
@@ -4966,7 +5020,7 @@
 "STAR10",
 "STAR15"
 ],
-"id": "1af9bf8916eaf5cbdf96"
+"id": "6f3e7695d03e23829749"
 },
 {
 "category": "Sewing",
@@ -4986,7 +5040,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PS1000_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PS1000_ServiceManual.pdf",
-"pages": "40, 58",
+"pages": "36, 54",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Manual gives two dial standards by model code. AUTO/10-13 g applies to B341/B349/B351/B352 (B341 not named on title page). Bobbin spec applies to all models.",
@@ -5004,7 +5058,7 @@
 "STAR30E",
 "STAR40E"
 ],
-"id": "9b0cea7716609a2c2828"
+"id": "17c3d5ae85b2090cbbc7"
 },
 {
 "category": "Sewing",
@@ -5098,7 +5152,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PS2250_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PS2250_ServiceManual.pdf",
-"pages": "57, 69",
+"pages": "47, 59",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Models from title page. Drive/timing belt forces (200 g / 300 g) on p46 ignored.",
@@ -5108,7 +5162,7 @@
 "PS2470",
 "PS3100"
 ],
-"id": "f214d1c2223b74fe16f6"
+"id": "3856b203d920b24b8ab8"
 },
 {
 "category": "Sewing",
@@ -5128,7 +5182,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_PX100+PX200+PX300_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PX100+PX200+PX300_ServiceManual.pdf",
-"pages": "31, 36",
+"pages": "28",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Manual compiled for XL5300/5200/5100/5030/5020/5010 and PX300/200/100.",
@@ -5143,7 +5197,7 @@
 "XL5200",
 "XL5300"
 ],
-"id": "442b3f0393b5f5016d10"
+"id": "fa392d209b71966a31e6"
 },
 {
 "category": "Sewing",
@@ -5219,7 +5273,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_SE3_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_SE3_ServiceManual.pdf",
-"pages": "42, 43",
+"pages": "26",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Home embroidery machine (SE3, BL60E). Rotary-hook belt 2 N (200 g) on p34 ignored.",
@@ -5227,7 +5281,7 @@
 "BL60E",
 "SE3"
 ],
-"id": "5893338605d2d8b5ff0e"
+"id": "4b8bf4add80ae8432b47"
 },
 {
 "category": "Sewing",
@@ -5306,7 +5360,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_ULT2001_ServiceManual_2000.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_ULT2001_ServiceManual_2000.pdf",
-"pages": "56, 63",
+"pages": "49",
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Upper value found on p56 (section 12 'Tension adjustment'; not labeled 'upper' but it is the needle-thread tension set in test mode 25). Bobbin: the difference vs silk thread #80 should be 0.02-0.03N (2-3g). Y timing belt 1.2 N (120 g) ignored.",
@@ -5315,7 +5369,7 @@
 "SUPERGALAXIE3000",
 "ULT2001"
 ],
-"id": "c62c1477a80b17fc1f67"
+"id": "a650d0890c35a345b459"
 },
 {
 "category": "Sewing",
@@ -5335,7 +5389,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_ULT2002D_ServiceManual_2001.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_ULT2002D_ServiceManual_2001.pdf",
-"pages": "56, 63",
+"pages": "49",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Printed as 52-62 cN (53-63 gf); grams used. Fine adjustment -8 to +8 in test mode 25 afterwards. Bobbin: difference vs silk thread #80 should be 0.02-0.03N (2-3g). Y timing belt force ignored.",
@@ -5344,7 +5398,7 @@
 "SUPERGALAXIE3000",
 "ULT2002D"
 ],
-"id": "1d8f0751ac56d8dc898f"
+"id": "042ad9be9daf32280348"
 },
 {
 "category": "Sewing",
@@ -5364,7 +5418,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_ULT2003D+ULT2001N+M3000_ServiceManual_2003.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_ULT2003D+ULT2001N+M3000_ServiceManual_2003.pdf",
-"pages": "55, 63",
+"pages": "52",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Section titled 'Adjusting the upper thread tension'. Printed as 52-62 cN (53-63 gf); grams used. Bobbin: difference vs silk thread #80 should be 0.02-0.03N (2-3g).  Same manual also at: _inbox\\boards\\sewing\\Brother\\7417963.pdf",
@@ -5378,7 +5432,7 @@
 "ULT2001N",
 "ULT2003D"
 ],
-"id": "603466f3f2e5db51e183"
+"id": "bc55bedad77441cdc265"
 },
 {
 "category": "Sewing",
@@ -5551,7 +5605,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_XL6562+XL6000-series_ServiceManual_2001.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_XL6562+XL6000-series_ServiceManual_2001.pdf",
-"pages": "57, 69",
+"pages": "56",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Manual compiled for XL-6562, XL6452, XR-46. Drive/timing belt forces (200 g / 300 g) on p46 ignored.",
@@ -5561,7 +5615,7 @@
 "XL6562",
 "XR46"
 ],
-"id": "f7fdece7bda4b826600b"
+"id": "f07eb46e4e5e33d34d2d"
 },
 {
 "category": "Sewing",
@@ -5581,7 +5635,7 @@
 "otherSpecs": null,
 "sourceFile": "Brother_XR52C_ServiceManual.pdf",
 "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_XR52C_ServiceManual.pdf",
-"pages": "50, 62",
+"pages": "44, 56",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Models from title page (2001, rev. 2003). Drive/timing belt forces on p39 ignored.",
@@ -5592,7 +5646,7 @@
 "XR52C",
 "XR65T"
 ],
-"id": "85a6d69a9f56befa4af2"
+"id": "fe9773339f21de2f0eac"
 },
 {
 "category": "Sewing",
@@ -13993,14 +14047,14 @@
 "otherSpecs": "Same procedure: pretension closed only = approx. 300 g; all tensions open = below approx. 100 g (911-211-10 with thread burner: as low as possible)",
 "sourceFile": "DurkoppAdler_911-210-10_ServiceManual.pdf",
 "sourcePath": "Industrial-Sewing\\DurkoppAdler\\DurkoppAdler_911-210-10_ServiceManual.pdf",
-"pages": "52, 53, 54",
+"pages": "53, 54",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Approx. Needle thread 40/3, spring balance (up to 1 kg) pulled evenly parallel to the tabletop; thread take-up spring bypassed.",
 "modelKeys": [
 "91121010"
 ],
-"id": "ae83522aef9c09bb9d0a"
+"id": "e35ff55ad8e47263ea8f"
 },
 {
 "category": "Industrial-Sewing",
@@ -14020,14 +14074,14 @@
 "otherSpecs": "All tensions open = below approx. 100 g",
 "sourceFile": "DurkoppAdler_911-210-10_ServiceManual.pdf",
 "sourcePath": "Industrial-Sewing\\DurkoppAdler\\DurkoppAdler_911-210-10_ServiceManual.pdf",
-"pages": "57, 58",
+"pages": "54, 58",
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Approx. Needle thread 40/3, spring balance (up to 1 kg) pulled evenly parallel to the tabletop; thread take-up spring bypassed.",
 "modelKeys": [
 "91121010"
 ],
-"id": "0a37a2fe884c20fb60a5"
+"id": "f6363f119f91cbe2db26"
 },
 {
 "category": "Industrial-Sewing",
