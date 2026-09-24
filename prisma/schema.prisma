@@ -35,6 +35,8 @@ model Shop {
   abandonedAfterDays Int      @default(60)
   storageFeeCents    Int      @default(4500)
   nextTicketNumber   Int      @default(51)
+  // Where the shop keeps its manual library on every PC (links show this path)
+  libraryRoot        String   @default("C:\\Manuals")
   // Service checklist template, one item per line of work (edited in Settings)
   checklistItems     String[]
   createdAt          DateTime @default(now())
@@ -403,4 +405,57 @@ model MachinePhoto {
   createdAt DateTime @default(now())
 
   @@index([machineId])
+}
+
+// ============================================================
+// In-house reference library (shared by the shop's techs)
+// ============================================================
+
+// Every manual in the shop library (C:\Manuals), so a model page can list them
+// with their path. Techs keep the library at the same path on every PC.
+model LibraryDoc {
+  id        String   @id
+  path      String   @unique // relative to the library root, backslashes, e.g. Sewing\Janome\ServiceManuals\X.pdf
+  category  String
+  brand     String
+  file      String
+  docType   String?
+  title     String?
+  pages     Int?
+  sizeBytes Int?
+  modelKeys String[]
+
+  @@index([brand])
+}
+
+// A picture of the machine, cut from its own manual (cover or front pages).
+model ModelImage {
+  id         String   @id
+  brand      String
+  models     String
+  modelKeys  String[]
+  sourcePath String
+  page       Int
+  mime       String
+  width      Int
+  height     Int
+  data       Bytes
+
+  @@index([brand])
+}
+
+// A figure cut from a manual page for a timing/adjustment setting, stored so it
+// shows on any device. Keyed by manual + page + crop box.
+model FigureImage {
+  id         String   @id // sha1(sourcePath|page|box)[:24]
+  sourcePath String
+  page       Int
+  box        Float[]
+  mime       String
+  width      Int
+  height     Int
+  data       Bytes
+  createdAt  DateTime @default(now())
+
+  @@index([sourcePath, page])
 }

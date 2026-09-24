@@ -97,6 +97,34 @@ async function seedSettings() {
   console.log(`Factory settings: ${rows.length}`);
 }
 
+type LibRow = {
+  id: string;
+  path: string;
+  category: string;
+  brand: string;
+  file: string;
+  docType: string | null;
+  title: string | null;
+  pages: number | null;
+  sizeBytes: number | null;
+  modelKeys: string[];
+};
+
+async function seedLibrary() {
+  let rows: LibRow[];
+  try {
+    rows = JSON.parse(readFileSync(join(__dirname, "seed-data", "library_docs.json"), "utf8"));
+  } catch {
+    console.log("No library_docs.json; skipping library.");
+    return;
+  }
+  await db.libraryDoc.deleteMany({ where: { id: { notIn: rows.map((r) => r.id) } } });
+  for (let i = 0; i < rows.length; i += 500) {
+    await db.libraryDoc.createMany({ data: rows.slice(i, i + 500), skipDuplicates: true });
+  }
+  console.log(`Library documents: ${rows.length}`);
+}
+
 async function seedFirstShop() {
   if ((await db.user.count()) > 0) {
     console.log("Users exist; skipping shop/owner seed.");
@@ -127,6 +155,7 @@ async function seedFirstShop() {
 async function main() {
   await seedSpecs();
   await seedSettings();
+  await seedLibrary();
   await seedFirstShop();
   // Shops created before the checklist existed get the default one.
   const n = await db.$executeRaw`UPDATE "Shop" SET "checklistItems" = ${DEFAULT_CHECKLIST} WHERE "checklistItems" IS NULL OR cardinality("checklistItems") = 0`;

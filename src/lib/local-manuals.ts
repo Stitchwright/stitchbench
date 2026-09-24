@@ -247,6 +247,24 @@ export function findByName(index: LibraryIndex | undefined, name: string): Index
   return index.files.find((f) => f.name.toLowerCase() === n);
 }
 
+/**
+ * Find a library file by its path relative to the library root (e.g. Sewing\Janome\X.pdf).
+ * Works whether the tech connected the whole library folder or a sub-folder of it; falls back to the file name.
+ */
+export function findByPath(index: LibraryIndex | undefined, libPath: string): IndexedFile | undefined {
+  if (!index) return undefined;
+  const want = libPath.split("\\").join("/").toLowerCase();
+  const name = want.split("/").pop()!;
+  let byName: IndexedFile | undefined;
+  for (const f of index.files) {
+    if (f.name.toLowerCase() !== name) continue;
+    const have = f.path.toLowerCase();
+    if (want === have || want.endsWith("/" + have) || have.endsWith("/" + want)) return f;
+    byName ??= f;
+  }
+  return byName;
+}
+
 export function firstPage(pages: string | null | undefined): number | null {
   const m = pages?.match(/\d+/);
   return m ? Number(m[0]) : null;

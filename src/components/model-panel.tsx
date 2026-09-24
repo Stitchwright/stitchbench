@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Pin, Trash2 } from "lucide-react";
-import { specsFor, settingsFor, notesFor, gRange, type SpecRow } from "@/lib/model-info";
+import { specsFor, settingsFor, notesFor, gRange, pictureFor, libraryFor, type SpecRow } from "@/lib/model-info";
+import { db } from "@/lib/db";
+import { MachineInfo } from "@/components/machine-info";
+import { LibraryManuals } from "@/components/library-manuals";
 import { FactorySettings } from "@/components/factory-settings";
-import { LocalManuals, OpenSpecSource } from "@/components/local-manuals";
+import { OpenSpecSource } from "@/components/local-manuals";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addNote, deleteNote, toggleNotePin } from "@/actions/records";
 import { NOTE_LABEL } from "@/lib/constants";
@@ -143,9 +146,19 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
 
 /** Everything known about one brand + model: factory tension, gotchas, manuals on this PC. */
 export async function ModelPanel({ shopId, brand, model, showLink = true }: { shopId: string; brand: string; model: string; showLink?: boolean }) {
-  const [specs, settings] = await Promise.all([specsFor(brand, model), settingsFor(brand, model)]);
+  const [specs, settings, picture, library, shop] = await Promise.all([
+    specsFor(brand, model),
+    settingsFor(brand, model),
+    pictureFor(brand, model),
+    libraryFor(brand, model),
+    db.shop.findUnique({ where: { id: shopId }, select: { libraryRoot: true } }),
+  ]);
+  const category = library[0]?.category ?? settings[0]?.category ?? specs[0]?.category ?? null;
   return (
     <div className="space-y-4">
+      <Section title={`${brand} ${model}`}>
+        <MachineInfo brand={brand} model={model} picture={picture} category={category} />
+      </Section>
       <Section
         title={`Factory tension - ${brand} ${model}`}
         actions={
@@ -174,8 +187,13 @@ export async function ModelPanel({ shopId, brand, model, showLink = true }: { sh
       <Section title="Important facts and gotchas">
         <Gotchas shopId={shopId} brand={brand} model={model} />
       </Section>
-      <Section title="Manuals on this PC">
-        <LocalManuals brand={brand} model={model} />
+      <Section title={`Manuals${library.length ? ` (${library.length})` : ""}`}>
+        <LibraryManuals
+          docs={library.map((d) => ({ path: d.path, file: d.file, docType: d.docType, pages: d.pages, sizeBytes: d.sizeBytes }))}
+          root={shop?.libraryRoot ?? "C:\\Manuals"}
+          brand={brand}
+          model={model}
+        />
       </Section>
     </div>
   );

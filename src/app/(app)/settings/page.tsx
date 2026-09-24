@@ -38,6 +38,7 @@ export default async function SettingsPage() {
                 ["abandonedAfterDays", "Abandoned after (days from ready-call)", String(shop.abandonedAfterDays)],
                 ["storageFee", "Storage fee ($)", d(shop.storageFeeCents)],
                 ["nextTicketNumber", "Next ticket number", String(shop.nextTicketNumber)],
+                ["libraryRoot", "Manual library folder (same on every PC)", shop.libraryRoot],
               ] as const
             ).map(([k, label, v]) => (
               <div key={k} className="field">

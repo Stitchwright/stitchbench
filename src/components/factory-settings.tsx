@@ -59,7 +59,7 @@ export function FactorySettings({ settings, brand }: { settings: SettingRowT[]; 
                     </div>
                   </div>
                   <div className="mt-2">
-                    <ManualFigure file={s.sourceFile} page={s.figurePage} box={s.figureBox} />
+                    <ManualFigure file={s.sourceFile} sourcePath={s.sourcePath} page={s.figurePage} box={s.figureBox} figureId={s.figureId} stored={s.figureStored} />
                   </div>
                 </li>
               ))}

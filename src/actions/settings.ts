@@ -29,6 +29,7 @@ export const saveShop = safe(async function saveShop(formData: FormData) {
       abandonedAfterDays: Math.round(num("abandonedAfterDays", shop.abandonedAfterDays)),
       storageFeeCents: toCents(formData.get("storageFee")) ?? shop.storageFeeCents,
       nextTicketNumber: Math.max(1, Math.round(num("nextTicketNumber", shop.nextTicketNumber))),
+      libraryRoot: str(formData.get("libraryRoot")) ?? shop.libraryRoot,
     },
   });
   revalidatePath("/", "layout");

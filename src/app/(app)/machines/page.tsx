@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { MACHINE_TYPES } from "@/lib/constants";
 import { PageHeader, Section, Empty, modelHref } from "@/components/ui";
+import { picturesFor } from "@/lib/model-info";
+import { modelKey } from "@/lib/format";
 import { ActionForm, Submit } from "@/components/action-form";
 import { createMachine } from "@/actions/records";
 
@@ -32,6 +34,7 @@ export default async function Machines({ searchParams }: { searchParams: Promise
     db.customer.findMany({ where: { shopId: user.shopId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
+  const pics = await picturesFor(machines.map((m) => ({ brand: m.brand, model: m.model })));
   return (
     <div className="space-y-6">
       <PageHeader title="Machines" sub="Every machine we've had on the bench, by serial number." />
@@ -62,10 +65,25 @@ export default async function Machines({ searchParams }: { searchParams: Promise
                 {machines.map((m) => (
                   <tr key={m.id}>
                     <td>
-                      <Link href={`/machines/${m.id}`} className="link font-semibold">
-                        {m.brand} {m.model}
-                      </Link>
-                      {m.machineType && <div className="muted text-xs">{m.machineType}</div>}
+                      <div className="flex items-center gap-3">
+                        {pics.get(`${m.brand}|${modelKey(m.model)}`) ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- authenticated image route
+                          <img
+                            src={`/api/model-images/${pics.get(`${m.brand}|${modelKey(m.model)}`)}`}
+                            alt=""
+                            className="h-10 w-14 shrink-0 rounded border border-line bg-white object-contain"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-10 w-14 shrink-0 rounded border border-dashed border-line" aria-hidden />
+                        )}
+                        <div>
+                          <Link href={`/machines/${m.id}`} className="link font-semibold">
+                            {m.brand} {m.model}
+                          </Link>
+                          {m.machineType && <div className="muted text-xs">{m.machineType}</div>}
+                        </div>
+                      </div>
                     </td>
                     <td className="mono">{m.serial ?? "-"}</td>
                     <td>{m.customer?.name ?? "-"}</td>

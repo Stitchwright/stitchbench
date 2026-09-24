@@ -6,6 +6,7 @@ import { ADJUSTMENTS, ADJ_NAME, valueRange } from "@/lib/adjustments";
 import { PageHeader } from "@/components/ui";
 import { SpecsTable } from "@/components/model-panel";
 import { ManualFigure } from "@/components/manual-figure";
+import { withFigures } from "@/lib/model-info";
 
 type SP = { q?: string; brand?: string; tab?: string; adj?: string };
 
@@ -102,7 +103,7 @@ async function Settings({ sp }: { sp: SP }) {
   const term = sp.q?.trim() ?? "";
   const key = modelKey(term);
   const adj = ADJUSTMENTS.some((a) => a.key === sp.adj) ? sp.adj : undefined;
-  const [brands, rows] = await Promise.all([
+  const [brands, rawRows] = await Promise.all([
     db.factorySetting.groupBy({ by: ["brand"], _count: { _all: true }, orderBy: { brand: "asc" } }),
     term || sp.brand || adj
       ? db.factorySetting.findMany({
@@ -125,6 +126,7 @@ async function Settings({ sp }: { sp: SP }) {
         })
       : Promise.resolve([]),
   ]);
+  const rows = await withFigures(rawRows);
   return (
     <div className="space-y-4">
       <form className="flex flex-wrap gap-2">
@@ -200,7 +202,7 @@ async function Settings({ sp }: { sp: SP }) {
                     <div className="muted max-w-48 truncate" title={r.sourceFile}>
                       {r.sourceFile}
                     </div>
-                    <ManualFigure file={r.sourceFile} page={r.figurePage} box={r.figureBox} width={360} />
+                    <ManualFigure file={r.sourceFile} sourcePath={r.sourcePath} page={r.figurePage} box={r.figureBox} figureId={r.figureId} stored={r.figureStored} width={360} />
                   </td>
                 </tr>
               ))}
