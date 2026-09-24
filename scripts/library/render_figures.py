@@ -11,13 +11,29 @@ SRC = os.path.join(os.path.dirname(__file__), "..", "..", "prisma", "seed-data",
 OUT = os.path.join(MEDIA, "figures")
 os.makedirs(OUT, exist_ok=True)
 man_path = os.path.join(MEDIA, "figures.json")
-manifest = {m["id"]: m for m in json.load(open(man_path))} if os.path.exists(man_path) else {}
+try:
+    manifest = {m["id"]: m for m in json.load(open(man_path))} if os.path.exists(man_path) else {}
+except ValueError:
+    manifest = {}  # damaged (e.g. two runs at once); rebuilt from the image files below
 
+settings = json.load(open(SRC, encoding="utf-8"))
 todo = {}
-for s in json.load(open(SRC, encoding="utf-8")):
-    if s["category"] in cats and s.get("figurePage"):
+known = {}
+for s in settings:
+    if s.get("figurePage"):
         fid = figure_id(s["sourcePath"], s["figurePage"], s["figureBox"])
-        todo.setdefault(fid, (s["sourcePath"], s["figurePage"], s["figureBox"]))
+        known.setdefault(fid, (s["sourcePath"], s["figurePage"], s["figureBox"]))
+        if s["category"] in cats:
+            todo.setdefault(fid, known[fid])
+
+# Put back any already-cut figure the manifest doesn't list (size read from the JPEG).
+for f in os.listdir(OUT):
+    fid = f[:-4]
+    if f.endswith(".jpg") and fid not in manifest and fid in known:
+        path, page, box = known[fid]
+        pm = pymupdf.Pixmap(os.path.join(OUT, f))
+        manifest[fid] = {"id": fid, "sourcePath": path, "page": page, "box": list(box), "width": pm.width, "height": pm.height}
+json.dump(list(manifest.values()), open(man_path, "w"))
 print(len(todo), "figures wanted,", sum(1 for f in todo if f in manifest), "already cut", flush=True)
 
 open_doc = (None, None)
