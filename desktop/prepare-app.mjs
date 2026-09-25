@@ -1,11 +1,11 @@
-// Builds the self-contained StitchBench server into desktop/app for the Windows program:
+// Builds the self-contained StitchBench server into desktop/server for the Windows program:
 // the Next.js standalone build, its static files, public/, and the database migrations.
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
-const out = path.join(import.meta.dirname, "app");
+const out = path.join(import.meta.dirname, "server");
 
 if (!process.argv.includes("--no-build")) {
   execSync("npm run build", { cwd: root, stdio: "inherit", env: { ...process.env, STANDALONE: "1" } });
@@ -22,6 +22,18 @@ fs.cpSync(path.join(root, "prisma", "migrations"), path.join(out, "migrations"),
 // Never ship the developer's .env (database password, auth secret); the program passes its own settings.
 for (const f of fs.readdirSync(out)) if (f.startsWith(".env")) fs.rmSync(path.join(out, f));
 fs.rmSync(path.join(out, "src"), { recursive: true, force: true }); // traced source files; not needed to run
+
+// electron-builder leaves every folder named node_modules out of extra resources, so ship them as _node_modules;
+// the program renames them back when it starts (main.mjs, unpackModules).
+const rename = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    const p = path.join(dir, e.name);
+    rename(p);
+    if (e.name === "node_modules") fs.renameSync(p, path.join(dir, "_node_modules"));
+  }
+};
+rename(out);
 
 const size = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).reduce((s, e) => s + (e.isDirectory() ? size(path.join(dir, e.name)) : fs.statSync(path.join(dir, e.name)).size), 0);

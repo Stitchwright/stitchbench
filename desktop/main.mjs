@@ -15,7 +15,7 @@ import { migrate } from "./migrate.mjs";
 import { backup, restore, listBackups } from "./backup.mjs";
 
 const HERE = import.meta.dirname;
-const APP_DIR = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(HERE, "app");
+const APP_DIR = app.isPackaged ? path.join(process.resourcesPath, "server") : path.join(HERE, "server");
 const DATA = app.getPath("userData"); // %APPDATA%\StitchBench
 const CONFIG_FILE = path.join(DATA, "config.json");
 const LOG_FILE = path.join(DATA, "logs", "stitchbench.log");
@@ -116,7 +116,27 @@ function get(url) {
   });
 }
 
+/** The installer carries the server's node_modules folders as _node_modules (see prepare-app.mjs); put the names back. */
+function unpackModules(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    let p = path.join(dir, e.name);
+    if (e.name === "_node_modules") {
+      const real = path.join(dir, "node_modules");
+      fs.rmSync(real, { recursive: true, force: true });
+      fs.renameSync(p, real);
+      p = real;
+    }
+    unpackModules(p);
+  }
+}
+
 async function startServer() {
+  // Only after a fresh install or update.
+  if (fs.existsSync(path.join(APP_DIR, "_node_modules"))) {
+    log("unpacking the server's modules");
+    unpackModules(APP_DIR);
+  }
   const shops = Number((await pool.query(`SELECT count(*) AS n FROM "Shop"`)).rows[0].n);
   // A brand-new install lets the first person create the company and owner login, then closes sign-up.
   signupOpen = shops === 0;

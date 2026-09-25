@@ -26,7 +26,8 @@
     "productName": "StitchBench",
     "asar": false,
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "app": "."
     },
     "files": [
       "main.mjs",
@@ -38,8 +39,8 @@
     ],
     "extraResources": [
       {
-        "from": "app",
-        "to": "app"
+        "from": "server",
+        "to": "server"
       }
     ],
     "win": {

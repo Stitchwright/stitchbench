@@ -49,6 +49,6 @@ next-env.d.ts
 /playwright-report
 /public/pdf.worker.min.mjs
 desktop/node_modules/
-desktop/app/
+desktop/server/
 desktop/dist/
 /public/pdfjs/
