@@ -1,7 +1,7 @@
 {
   "name": "stitchbench-desktop",
   "productName": "StitchBench",
-  "version": "1.1.0",
+  "version": "1.4.1",
   "description": "StitchBench (repair bench) or StitchShop (sewing / quilt shop counter) for the shop PC: runs the app and its database, and serves it to every device on the shop network.",
   "author": "Timing & Tension",
   "private": true,
@@ -10,8 +10,10 @@
   "scripts": {
     "prepare-app": "node prepare-app.mjs",
     "start": "electron .",
-    "dist": "node prepare-app.mjs && electron-builder --win nsis",
-    "dist:stitchshop": "node prepare-app.mjs && electron-builder --win nsis -c.extraMetadata.flavor=stitchshop -c.extraMetadata.productName=StitchShop -c.productName=StitchShop -c.appId=com.timingandtension.stitchshop -c.nsis.shortcutName=StitchShop -c.directories.output=dist-stitchshop"
+    "installer": "electron-builder --win nsis --publish never",
+    "installer:stitchshop": "electron-builder --win nsis --publish never -c.extraMetadata.flavor=stitchshop -c.extraMetadata.productName=StitchShop -c.productName=StitchShop -c.appId=com.timingandtension.stitchshop -c.nsis.shortcutName=StitchShop -c.directories.output=dist-stitchshop",
+    "dist": "node prepare-app.mjs && npm run installer",
+    "dist:stitchshop": "node prepare-app.mjs && npm run installer:stitchshop"
   },
   "dependencies": {
     "embedded-postgres": "17.10.0-beta.17",

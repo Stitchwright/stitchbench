@@ -245,14 +245,21 @@ Discord.
 
 ## For maintainers
 
+### Building the installers on GitHub
+The **Windows installers** workflow (`.github/workflows/installers.yml`) builds `StitchBench Setup <version>.exe`
+and `StitchShop Setup <version>.exe` on GitHub's Windows machines: **Actions → Windows installers → Run workflow**
+(or push a tag like `v1.4.1`), then download them from the run's **Artifacts** (kept 7 days). Set the version in
+`desktop/package.json` first. From the command line: `gh workflow run installers.yml`, then
+`gh run download <run id> -n installers`.
+
 ### Building the Windows installer
 ```bash
 npm install
 cd desktop
 npm install
 node prepare-app.mjs                 # builds the app into desktop/server (with the database migrations)
-npx electron-builder --win nsis      # → desktop/dist/StitchBench Setup <version>.exe
-npm run dist:stitchshop              # → desktop/dist-stitchshop/StitchShop Setup <version>.exe (same program, StitchShop name and defaults)
+npm run installer                    # → desktop/dist/StitchBench Setup <version>.exe
+npm run installer:stitchshop         # → desktop/dist-stitchshop/StitchShop Setup <version>.exe (same program, StitchShop name and defaults)
 ```
 
 Set the version in `desktop/package.json`. Windows Smart App Control and SmartScreen block or warn about

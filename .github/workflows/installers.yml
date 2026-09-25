@@ -1,0 +1,57 @@
+# Builds the Windows installers, "StitchBench Setup <version>.exe" and "StitchShop Setup <version>.exe", on GitHub's
+# Windows machines (Smart App Control on the shop PC blocks unsigned build tools). Run it from the Actions tab
+# (Windows installers -> Run workflow) or by pushing a tag like v1.4.1. Download the installers from the run's page;
+# they're kept for 7 days. Set the version in desktop/package.json first. The installers aren't code-signed yet.
+name: Windows installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      # Not used while building, but Prisma's config reads it.
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install the app's packages
+        run: npm ci
+
+      - name: Install the program's packages
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the app for the program
+        working-directory: desktop
+        run: node prepare-app.mjs
+
+      - name: StitchBench installer
+        working-directory: desktop
+        run: npm run installer
+
+      - name: StitchShop installer
+        working-directory: desktop
+        run: npm run installer:stitchshop
+
+      - name: Keep the installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers
+          path: |
+            desktop/dist/*.exe
+            desktop/dist-stitchshop/*.exe
+          retention-days: 7
+          compression-level: 0
