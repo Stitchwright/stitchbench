@@ -27,8 +27,10 @@ jobs:
             package-lock.json
             desktop/package-lock.json
 
+      # npm install, not npm ci: a lock file written on Windows leaves out helpers that Tailwind's optional WebAssembly
+      # build lists, and npm ci refuses that. Everything else still comes from the lock file.
       - name: Install the app's packages
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Install the program's packages
         working-directory: desktop
