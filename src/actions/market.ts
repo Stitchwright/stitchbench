@@ -161,7 +161,7 @@ async function takeFromStock(o: HubOrder, userId: string, shopId: string) {
   ]);
 }
 
-const ACTIONS = ["accept", "decline", "buyer-paid", "paid", "ship", "received", "cancel", "message"] as const;
+const ACTIONS = ["accept", "decline", "buyer-paid", "paid", "ship", "received", "cancel", "message", "rate"] as const;
 type OrderAction = (typeof ACTIONS)[number];
 
 export const orderAction = safe(async function orderAction(orderId: string, action: OrderAction, formData: FormData) {
@@ -192,7 +192,14 @@ export const orderAction = safe(async function orderAction(orderId: string, acti
       const carrier = str(formData.get("carrier"));
       const tracking = str(formData.get("tracking"));
       if (!carrier) throw new UserError("Pick the carrier.");
+      if (!tracking) throw new UserError("Enter the tracking number.");
       body = { carrier, tracking };
+      break;
+    }
+    case "rate": {
+      const stars = Math.round(Number(str(formData.get("stars")) ?? "0"));
+      if (!(stars >= 1 && stars <= 5)) throw new UserError("Pick 1 to 5 stars.");
+      body = { stars, comment: str(formData.get("comment")) };
       break;
     }
     case "message": {

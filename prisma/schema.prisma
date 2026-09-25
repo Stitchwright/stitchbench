@@ -665,6 +665,10 @@ model Listing {
   photoIds      String[]
   createdAt     DateTime
   updatedAt     DateTime
+  // The seller's install on the hub, and how buyers have rated them
+  sellerId      String?
+  sellerAvg     Float?
+  sellerCount   Int      @default(0)
 
   @@index([status])
   @@index([numberKey])

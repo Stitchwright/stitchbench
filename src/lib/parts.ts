@@ -112,3 +112,10 @@ export const numbersText = (n: XNumber[]) => n.map((x) => `${x.brand}, ${x.numbe
 export const fitsText = (f: XFit[]) => f.map((x) => `${x.brand}, ${x.model}`).join("\n");
 export const sourcesText = (s: XSource[]) =>
   s.map((x) => [x.vendor, x.url, x.priceCents != null ? (x.priceCents / 100).toFixed(2) : null].filter(Boolean).join(", ")).join("\n");
+
+/** Supplier site searches for a part number: always there, no scraping. Suppliers are added as their search pages are verified. */
+export const SEARCH_SITES: { name: string; url: (q: string) => string }[] = [
+  { name: "eBay", url: (q) => `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}` },
+  { name: "Amazon", url: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}` },
+  { name: "Google", url: (q) => `https://www.google.com/search?q=${encodeURIComponent(`"${q}" sewing machine part`)}` },
+];

@@ -100,11 +100,24 @@ test("cross-reference and marketplace", async ({ page }) => {
   await expect(page.getByText("$14.00")).toBeVisible();
   await page.getByRole("button", { name: "Mark it paid" }).click();
   await expect(page.getByText("Marked paid")).toBeVisible();
+  // Once paid, the seller can rate the buyer.
+  await page.locator("#rt-stars").selectOption("5");
+  await page.locator("#rt-comment").fill("Paid fast");
+  await page.getByRole("button", { name: "Send rating" }).click();
+  await expect(page.getByText("Thanks for rating")).toBeVisible();
+  const sellOrderId = page.url().split("/").pop()!;
   await page.locator("#sh-track").fill("9400100000000000000000");
   await page.getByRole("checkbox", { name: /Take 2 out of my parts stock/ }).uncheck();
   await page.getByRole("button", { name: "Mark shipped" }).click();
   await expect(page.getByText("Shipped: the buyer has the tracking")).toBeVisible();
   await expect(page.getByRole("link", { name: /9400100000000000000000/ })).toHaveAttribute("href", /usps/i);
+  // The buyer (member B) rates us after it shipped; we see it on the order.
+  await api(`/v1/orders/${sellOrderId}/rate`, bKey, { json: { stars: 4, comment: "Well packed" } });
+  await page.goto("/market/orders?role=seller");
+  await refresh(page);
+  await page.goto(`/market/orders/${sellOrderId}`);
+  await expect(page.getByText("“Well packed”")).toBeVisible();
+  await expect(page.getByText("“Paid fast”")).toBeVisible();
   await page.getByRole("link", { name: "Invoice", exact: true }).click();
   await expect(page.getByText(/Invoice\s+SH-/)).toBeVisible();
   await page.screenshot({ path: "test-results/market-invoice-seller.png", fullPage: true });
@@ -137,6 +150,13 @@ test("cross-reference and marketplace", async ({ page }) => {
   await page.goto(`/market/orders/${orderId}`);
   await page.getByRole("button", { name: "Mark received" }).click();
   await expect(page.getByText("Received", { exact: true }).first()).toBeVisible();
+  await page.locator("#rt-stars").selectOption("3");
+  await page.locator("#rt-comment").fill("Slow to ship");
+  await page.getByRole("button", { name: "Send rating" }).click();
+  await expect(page.getByText("Thanks for rating")).toBeVisible();
+  // Member B's shop page shows the rating we gave it as a seller.
+  await page.goto(`/market/shops/${b.installId}`);
+  await expect(page.getByText("“Slow to ship”")).toBeVisible();
   await page.goto(`/parts?q=PF-${run}`);
   await expect(page.getByRole("link", { name: `PF-${run}` })).toBeVisible();
   await page.screenshot({ path: "test-results/market-received.png", fullPage: true });

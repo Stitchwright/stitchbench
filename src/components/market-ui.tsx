@@ -13,6 +13,19 @@ export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
   CANCELLED: { label: "Cancelled", tone: "tone-bad" },
 };
 
+/** "★ 4.8 (12)" or "No ratings yet". */
+export function Stars({ avg, count, what = "rating" }: { avg: number | null | undefined; count: number; what?: string }) {
+  if (!count || avg == null) return <span className="muted text-xs">No {what}s yet</span>;
+  return (
+    <span className="text-xs whitespace-nowrap" title={`${avg.toFixed(1)} out of 5 from ${count} ${what}${count === 1 ? "" : "s"}`}>
+      <span className="text-[var(--wait)]" aria-hidden>
+        ★
+      </span>{" "}
+      <span className="num font-semibold">{avg.toFixed(1)}</span> <span className="muted">({count})</span>
+    </span>
+  );
+}
+
 export function OrderStatus({ status }: { status: string }) {
   const s = ORDER_STATUS[status] ?? { label: status, tone: "tone-neutral" };
   return <span className={`pill ${s.tone}`}>{s.label}</span>;
@@ -31,6 +44,8 @@ type L = {
   status: string;
   photoIds: string[];
   mine: boolean;
+  sellerAvg?: number | null;
+  sellerCount?: number;
 };
 
 export function ListingCard({ l }: { l: L }) {
@@ -53,8 +68,9 @@ export function ListingCard({ l }: { l: L }) {
             {l.qty} available{l.shippingCents != null ? ` · ship ${money(l.shippingCents)}` : ""}
           </span>
         </div>
-        <div className="muted text-xs">
+        <div className="muted flex flex-wrap items-center gap-2 text-xs">
           {l.mine ? "Your listing" : l.shopName}
+          {!l.mine && <Stars avg={l.sellerAvg} count={l.sellerCount ?? 0} />}
           {l.status !== "ACTIVE" && <span className="pill tone-neutral ml-2">{l.status.toLowerCase().replace("_", " ")}</span>}
         </div>
       </div>

@@ -228,7 +228,12 @@ export type HubListing = {
   photos: { id: string; sortOrder: number }[];
   createdAt: string;
   updatedAt: string;
+  sellerId?: string;
+  sellerRating?: Reputation;
 };
+
+export type Reputation = { avg: number | null; count: number };
+export type Rating = { stars: number; comment: string | null; at: string } | null;
 
 export type HubOrder = {
   id: string;
@@ -260,6 +265,10 @@ export type HubOrder = {
   createdAt: string;
   updatedAt: string;
   events: { at: string; by: "buyer" | "seller"; action: string; note: string | null }[];
+  // buyer = the buyer's rating of the seller; seller = the seller's rating of the buyer
+  ratings?: { buyer: Rating; seller: Rating };
+  sellerReputation?: Reputation;
+  buyerReputation?: Reputation;
 };
 
 const key = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -312,6 +321,9 @@ export async function saveListing(l: HubListing) {
     photoIds: [...l.photos].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id),
     createdAt: new Date(l.createdAt),
     updatedAt: new Date(l.updatedAt),
+    sellerId: l.sellerId ?? null,
+    sellerAvg: l.sellerRating?.avg ?? null,
+    sellerCount: l.sellerRating?.count ?? 0,
   };
   await db.listing.upsert({ where: { id: l.id }, create: { id: l.id, ...row }, update: row });
 }

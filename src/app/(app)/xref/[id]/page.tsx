@@ -9,6 +9,7 @@ import { PageHeader, Section, Empty, modelHref } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { XrefForm } from "@/components/xref-form";
 import { XrefHistory } from "@/components/xref-history";
+import { PartSearchLinks } from "@/components/part-search-links";
 import { mergeCrossRef, removeCrossRef } from "@/actions/xref";
 
 const ORDER = ["tested", "maker", "listed"];
@@ -143,6 +144,10 @@ export default async function CrossRefEntry({ params }: { params: Promise<{ id: 
                 ))}
               </ul>
             )}
+          </Section>
+
+          <Section title="Search suppliers">
+            <PartSearchLinks numbers={numbers.map((n) => n.number)} />
           </Section>
 
           <Section title={`On the marketplace (${listings.length})`}>

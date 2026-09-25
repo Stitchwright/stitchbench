@@ -7,7 +7,7 @@ import { money } from "@/lib/format";
 import { KIND_LABEL } from "@/lib/parts";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
-import { CONDITION_LABEL, MarketNav } from "@/components/market-ui";
+import { CONDITION_LABEL, MarketNav, Stars } from "@/components/market-ui";
 import { placeOrder, removeListing, updateListing } from "@/actions/market";
 
 const d2 = (c: number | null) => (c == null ? "" : (c / 100).toFixed(2));
@@ -27,7 +27,24 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       <PageHeader
         back={{ href: l.mine ? "/market/mine" : "/market", label: l.mine ? "My listings" : "Marketplace" }}
         title={l.title}
-        sub={`${l.mine ? "Your listing" : `Sold by ${l.shopName}`}${l.shipsFrom ? ` · ships from ${l.shipsFrom}` : ""}`}
+        sub={
+          <>
+            {l.mine ? (
+              "Your listing"
+            ) : l.sellerId ? (
+              <>
+                Sold by{" "}
+                <Link href={`/market/shops/${l.sellerId}`} className="link">
+                  {l.shopName}
+                </Link>{" "}
+                <Stars avg={l.sellerAvg} count={l.sellerCount} />
+              </>
+            ) : (
+              `Sold by ${l.shopName}`
+            )}
+            {l.shipsFrom ? ` · ships from ${l.shipsFrom}` : ""}
+          </>
+        }
       />
       <MarketNav current={l.mine ? "mine" : "browse"} />
       <div className="grid gap-6 xl:grid-cols-5">

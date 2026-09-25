@@ -5,7 +5,7 @@ import { History } from "lucide-react";
 import { ActionButton } from "@/components/action-form";
 import { crossRefHistory, revertCrossRef, type XRevision } from "@/actions/xref";
 
-const ACTION: Record<string, string> = { added: "Added", edited: "Changed", merged: "Merged", reverted: "Rolled back", removed: "Removed", restored: "Restored" };
+const ACTION: Record<string, string> = { added: "Added", edited: "Changed", merged: "Merged", reverted: "Rolled back", removed: "Removed", restored: "Restored", sources: "Where-to-buy links updated" };
 
 /** Every version of a cross-reference entry on the hub, with a button to go back to any of them. */
 export function XrefHistory({ id }: { id: string }) {

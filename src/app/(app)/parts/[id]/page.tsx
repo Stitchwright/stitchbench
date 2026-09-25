@@ -10,6 +10,7 @@ import { addPartSource, moveStock, preferPartSource, removePartSource, updatePar
 import { addPartToCrossRef } from "@/actions/xref";
 import { ActionButton } from "@/components/action-form";
 import { ListingForm } from "@/components/listing-form";
+import { PartSearchLinks } from "@/components/part-search-links";
 import { hubJoined } from "@/lib/hub";
 import { EVIDENCE_LABEL, KIND_LABEL, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 import { ExternalLink, Trash2 } from "lucide-react";
@@ -125,6 +126,9 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
                 )}
               </ul>
             )}
+            <div className="mt-3">
+              <PartSearchLinks numbers={[p.partNumber, ...p.altNumbers]} />
+            </div>
             <details className="mt-3 border-t border-line pt-3">
               <summary className="link cursor-pointer text-sm">Add a supplier</summary>
               <ActionForm action={addPartSource.bind(null, p.id)} reset success="Supplier added" className="mt-2 grid gap-2 sm:grid-cols-2">

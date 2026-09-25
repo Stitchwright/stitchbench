@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
+import { MarketTodo } from "@/components/market-todo";
 
 function daysSince(d: Date) {
   return (Date.now() - d.getTime()) / 86400000;
@@ -52,6 +53,8 @@ export default async function Dashboard() {
           </Link>
         ))}
       </div>
+
+      <MarketTodo />
 
       {overdue.length > 0 && (
         <div className="card card-pad tone-bad">

@@ -7,7 +7,7 @@ import { money } from "@/lib/format";
 import type { HubOrder } from "@/lib/hub";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
-import { MarketNav, OrderStatus, CONDITION_LABEL } from "@/components/market-ui";
+import { MarketNav, OrderStatus, CONDITION_LABEL, Stars } from "@/components/market-ui";
 import { orderAction } from "@/actions/market";
 
 const ACTION_LABEL: Record<string, string> = {
@@ -35,6 +35,9 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const buyer = o.role === "buyer";
   const act = (a: Parameters<typeof orderAction>[1]) => orderAction.bind(null, o.id, a);
   const beforeShipping = ["REQUESTED", "ACCEPTED", "PAID"].includes(o.status);
+  // The buyer rates the seller once it has shipped; the seller rates the buyer once they've paid.
+  const canRate = buyer ? ["SHIPPED", "RECEIVED"].includes(o.status) : ["PAID", "SHIPPED", "RECEIVED"].includes(o.status);
+  const mine = o.ratings?.[o.role] ?? null;
 
   return (
     <div className="space-y-6">
@@ -153,7 +156,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                   <label htmlFor="sh-track" className="sr-only">
                     Tracking number
                   </label>
-                  <input id="sh-track" name="tracking" className="input mono" placeholder="Tracking number" />
+                  <input id="sh-track" name="tracking" className="input mono" placeholder="Tracking number" required />
                   <label className="flex items-center gap-2">
                     <input type="checkbox" name="takeFromStock" defaultChecked className="check" /> Take {o.qty} out of my parts stock
                   </label>
@@ -195,7 +198,55 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             </div>
           </Section>
 
+          <Section title="Ratings">
+            <div className="space-y-3 text-sm">
+              {(["buyer", "seller"] as const).map((side) => {
+                const r = o.ratings?.[side];
+                const who = side === "buyer" ? `${o.buyerShop} rated ${o.sellerShop}` : `${o.sellerShop} rated ${o.buyerShop}`;
+                return r ? (
+                  <div key={side}>
+                    <span className="muted text-xs">{who}</span>
+                    <div>
+                      <span className="text-[var(--wait)]" aria-label={`${r.stars} out of 5`}>
+                        {"★".repeat(r.stars)}
+                        <span className="text-line">{"★".repeat(5 - r.stars)}</span>
+                      </span>
+                      {r.comment && <span> &ldquo;{r.comment}&rdquo;</span>}
+                    </div>
+                  </div>
+                ) : null;
+              })}
+              {canRate && (
+                <ActionForm action={act("rate")} success="Thanks for rating" className="space-y-2 border-t border-line pt-3">
+                  <label htmlFor="rt-stars" className="label">
+                    {mine ? "Change your rating of" : "Rate"} {seller ? o.buyerShop : o.sellerShop}
+                  </label>
+                  <select id="rt-stars" name="stars" defaultValue={String(mine?.stars ?? 5)} className="select w-40">
+                    {[5, 4, 3, 2, 1].map((n) => (
+                      <option key={n} value={n}>
+                        {"★".repeat(n)} {n}
+                      </option>
+                    ))}
+                  </select>
+                  <label htmlFor="rt-comment" className="sr-only">
+                    Comment
+                  </label>
+                  <input id="rt-comment" name="comment" defaultValue={mine?.comment ?? ""} className="input" placeholder={seller ? "e.g. paid fast, easy to deal with" : "e.g. well packed, as described"} />
+                  <Submit className="btn btn-sm">{mine ? "Update rating" : "Send rating"}</Submit>
+                </ActionForm>
+              )}
+              {!canRate && !o.ratings?.buyer && !o.ratings?.seller && (
+                <p className="muted text-xs">
+                  {seller ? "You can rate the buyer once they've paid." : "You can rate the seller once it has shipped."}
+                </p>
+              )}
+            </div>
+          </Section>
+
           <Section title={seller ? "Buyer" : "Seller"}>
+            <div className="mb-2">
+              <Stars avg={(seller ? o.buyerReputation : o.sellerReputation)?.avg} count={(seller ? o.buyerReputation : o.sellerReputation)?.count ?? 0} />
+            </div>
             <div className="space-y-1 text-sm">
               {seller ? (
                 <>
