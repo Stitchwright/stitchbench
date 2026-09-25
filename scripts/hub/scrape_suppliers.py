@@ -54,9 +54,9 @@ def get(url, delay):
     if wait > 0:
         time.sleep(wait)
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json, text/xml, */*"})
-    for attempt in range(3):
+    for attempt in range(4):
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
+            with urllib.request.urlopen(req, timeout=90) as r:
                 data = r.read()
                 _last[host] = time.time()
                 if url.endswith(".gz") or r.headers.get("Content-Encoding") == "gzip":
@@ -64,7 +64,13 @@ def get(url, delay):
                 return data
         except urllib.error.HTTPError as e:
             _last[host] = time.time()
-            if e.code in (429, 503) and attempt < 2:
+            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                time.sleep(30 * (attempt + 1))  # busy or hiccup: back off, then try again
+                continue
+            raise
+        except (TimeoutError, urllib.error.URLError, ConnectionError) as e:
+            _last[host] = time.time()
+            if attempt < 3:
                 time.sleep(30 * (attempt + 1))
                 continue
             raise
@@ -134,13 +140,29 @@ def sitemap_vendor(vendor, index, keep, delay):
     return n
 
 
+def premier():
+    """BigCommerce product sitemap, 10,000 URLs per page: walk the pages until one comes back empty (Crawl-delay 10)."""
+    out = open(os.path.join(OUT, "premierstitching.jsonl"), "w", encoding="utf-8")
+    n = 0
+    for page in range(1, 50):
+        urls = sitemap_urls(f"https://www.premierstitching.com/xmlsitemap.php?type=products&page={page}", 10)
+        if not urls:
+            break
+        for url in urls:
+            slug = url.rstrip("/").split("/")[-1]
+            row = {"vendor": "premierstitching", "raw": slug, "url": url, "priceCents": None, "title": None}
+            out.write(json.dumps(row) + chr(10))
+            n += 1
+        print(f"premierstitching: page {page}, {n} product URLs", flush=True)
+    out.close()
+    return n
+
+
 VENDORS = {
     "sewingpartsonline": lambda: shopify("sewingpartsonline", "https://www.sewingpartsonline.com"),
     "gromes": lambda: shopify("gromes", "https://www.gromes.com"),
     "sewingmachinesplus": lambda: shopify("sewingmachinesplus", "https://www.sewingmachinesplus.com"),
-    "premierstitching": lambda: sitemap_vendor(
-        "premierstitching", "https://www.premierstitching.com/xmlsitemap.php?type=products&page=1", lambda u: True, 10
-    ),
+    "premierstitching": lambda: premier(),
     "allbrands": lambda: sitemap_vendor("allbrands", "https://www.allbrands.com/sitemap.xml", lambda u: "/products/" in u, 3),
     "brother-usa": lambda: sitemap_vendor("brother-usa", "https://www.brother-usa.com/sitemap_product_0.xml", lambda u: "/p/" in u, 3),
 }
