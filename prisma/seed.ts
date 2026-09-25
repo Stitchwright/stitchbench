@@ -1,6 +1,6 @@
 // Seed: the reference tension specs (all shops) plus, on an empty database,
 // the first shop, its owner account and a starter service menu.
-// Run: npm run db:seed   (safe to re-run; specs are upserted by id)
+// Run: npm run db:seed   (safe to re-run; specs are upserted by id). Deploys run it with --if-empty.
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,6 +40,12 @@ async function seedSpecs() {
     readFileSync(join(__dirname, "seed-data", "tension_specs.json"), "utf8"),
   );
   const ids = rows.map((r) => r.id);
+  if ((await db.tensionSpec.count()) === 0) {
+    // A new database: bulk insert (much faster than upserting row by row).
+    for (let i = 0; i < rows.length; i += 1000) await db.tensionSpec.createMany({ data: rows.slice(i, i + 1000) });
+    console.log(`Tension specs: ${rows.length}`);
+    return;
+  }
   // Replace the reference set wholesale so re-exports drop stale rows.
   await db.tensionSpec.deleteMany({ where: { id: { notIn: ids } } });
   for (let i = 0; i < rows.length; i += 200) {
@@ -89,6 +95,11 @@ async function seedSettings() {
     return;
   }
   const ids = rows.map((r) => r.id);
+  if ((await db.factorySetting.count()) === 0) {
+    for (let i = 0; i < rows.length; i += 1000) await db.factorySetting.createMany({ data: rows.slice(i, i + 1000) });
+    console.log(`Factory settings: ${rows.length}`);
+    return;
+  }
   await db.factorySetting.deleteMany({ where: { id: { notIn: ids } } });
   for (let i = 0; i < rows.length; i += 200) {
     const chunk = rows.slice(i, i + 200);
@@ -152,10 +163,22 @@ async function seedFirstShop() {
   if (!process.env.SEED_OWNER_PASSWORD) console.log(`Owner password (change it in Settings): ${password}`);
 }
 
+// --if-empty: only load reference data a table doesn't have yet (each deploy runs this; the first one loads it all).
+const ifEmpty = process.argv.includes("--if-empty");
+
+async function step(name: string, count: () => Promise<number>, run: () => Promise<void>) {
+  if (ifEmpty && (await count()) > 0) {
+    console.log(`${name}: already loaded`);
+    return;
+  }
+  await run();
+}
+
 async function main() {
-  await seedSpecs();
-  await seedSettings();
-  await seedLibrary();
+  await step("Tension specs", () => db.tensionSpec.count(), seedSpecs);
+  await step("Factory settings", () => db.factorySetting.count(), seedSettings);
+  // The manual-library listing describes one shop's own C:\Manuals; other shops don't load it.
+  if (process.env.SEED_LIBRARY === "true") await step("Library documents", () => db.libraryDoc.count(), seedLibrary);
   await seedFirstShop();
   // Shops created before the checklist existed get the default one.
   const n = await db.$executeRaw`UPDATE "Shop" SET "checklistItems" = ${DEFAULT_CHECKLIST} WHERE "checklistItems" IS NULL OR cardinality("checklistItems") = 0`;
