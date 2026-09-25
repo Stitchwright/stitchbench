@@ -2,6 +2,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { figureId } from "@/lib/figures";
+import { shareFigure } from "@/lib/hub";
 
 export async function POST(req: Request) {
   if (!(await auth())?.user) return new Response("Sign in first.", { status: 401 });
@@ -25,10 +26,13 @@ export async function POST(req: Request) {
   const id = figureId(sourcePath, page, box);
   const width = Number(form.get("width")) || 0;
   const height = Number(form.get("height")) || 0;
+  const data = new Uint8Array(await file.arrayBuffer());
   await db.figureImage.upsert({
     where: { id },
-    create: { id, sourcePath, page, box, width, height, mime: "image/jpeg", data: new Uint8Array(await file.arrayBuffer()) },
+    create: { id, sourcePath, page, box, width, height, mime: "image/jpeg", data },
     update: {},
   });
+  // Offer it to the community hub too, so shops without this manual can see the figure.
+  shareFigure(id, "image/jpeg", data, width, height).catch(() => {});
   return Response.json({ id });
 }

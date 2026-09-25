@@ -13,6 +13,7 @@ import { ModelPanel } from "@/components/model-panel";
 import { ModelMachines, ModelPhotos } from "@/components/model-history";
 import { ShareForm } from "@/components/share-form";
 import { SharedPosts } from "@/components/shared-posts";
+import { ManualLinks } from "@/components/manual-links";
 import { ActionForm, Submit } from "@/components/action-form";
 import { updateMachine } from "@/actions/records";
 
@@ -273,7 +274,8 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
 
         <div className="space-y-6 xl:col-span-2">
           <ModelPanel shopId={user.shopId} brand={m.brand} model={m.model} />
-          <SharedPosts user={user} brand={m.brand} model={m.model} title="Shared by techs on StitchBench" />
+          <ManualLinks brand={m.brand} model={m.model} />
+          <SharedPosts user={user} brand={m.brand} model={m.model} title="Shared by techs" />
         </div>
       </div>
     </div>

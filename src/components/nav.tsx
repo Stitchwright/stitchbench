@@ -17,6 +17,8 @@ import {
   Tags,
   Share2,
   Building2,
+  Link2,
+  MessagesSquare,
 } from "lucide-react";
 
 const items = [
@@ -28,6 +30,7 @@ const items = [
   { href: "/parts", label: "Parts", icon: Package },
   { href: "/specs", label: "Factory specs", icon: Gauge },
   { href: "/shared", label: "Shared by techs", icon: Share2 },
+  { href: "/links", label: "Manual links", icon: Link2 },
   { href: "/manuals", label: "My manuals", icon: BookOpen },
   { href: "/scan", label: "Scan a manual", icon: ScanLine },
   { href: "/price-list", label: "Price list", icon: Tags },
@@ -36,10 +39,22 @@ const items = [
 ];
 const platformItems = [{ href: "/companies", label: "Companies", icon: Building2 }];
 
-export function Nav({ platformAdmin = false }: { platformAdmin?: boolean }) {
+export function Nav({ platformAdmin = false, chatUrl }: { platformAdmin?: boolean; chatUrl?: string | null }) {
   const path = usePathname();
   return (
     <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-visible md:pb-0" aria-label="Main">
+      {chatUrl && (
+        // The community's Discord (from the community hub); opens in the Discord app or the browser.
+        <a
+          href={chatUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink md:order-last"
+        >
+          <MessagesSquare size={16} aria-hidden />
+          Community chat
+        </a>
+      )}
       {[...items, ...(platformAdmin ? platformItems : [])].map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
           return (

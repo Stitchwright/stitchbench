@@ -493,6 +493,8 @@ model SharedPost {
   body      String
   createdAt DateTime      @default(now())
   photos    SharedPhoto[]
+  // Set once it has been sent to the community hub (its HubPost id there).
+  hubId     String?       @unique
 
   @@index([modelKey])
   @@index([createdAt])
@@ -509,4 +511,82 @@ model SharedPhoto {
   sortOrder Int        @default(0)
 
   @@index([postId])
+}
+
+// ---------- community hub (the install's side) ----------
+// The community hub is a separate small server (the stitchbench-hub project). It holds what the StitchBench
+// community shares: manual LINKS (never the PDFs), shared tech notes and photos, and manual figure snapshots.
+// These tables are this install's synced copy of it.
+
+// Where a manual can be downloaded from. Anyone can fix a link on the hub; history and rollback live there.
+model ManualLink {
+  id         String    @id // the hub's id
+  category   String?
+  brand      String
+  models     String // as written, e.g. "PR650, PR655"
+  modelKeys  String[]
+  docType    String?
+  title      String
+  fileName   String? // the library file name it was filed as, when known
+  url        String
+  source     String? // site, e.g. janome.com
+  status     String    @default("unchecked") // ok | dead | blocked (site refuses automatic checks) | unchecked
+  httpStatus Int?
+  checkedAt  DateTime?
+  updatedAt  DateTime
+
+  @@index([modelKeys], type: Gin)
+  @@index([brand])
+}
+
+// Tech notes shared by every shop in the community.
+model HubPost {
+  id         String     @id // the hub's id
+  shopName   String
+  authorName String?
+  brand      String
+  model      String
+  modelKey   String
+  kind       NoteKind   @default(GOTCHA)
+  title      String
+  body       String
+  mine       Boolean    @default(false) // shared from this install
+  createdAt  DateTime
+  photos     HubPhoto[]
+
+  @@index([modelKey])
+}
+
+model HubPhoto {
+  id        String    @id // the hub's id
+  postId    String
+  post      HubPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind      PhotoKind
+  caption   String?
+  mime      String
+  data      Bytes? // fetched from the hub the first time someone looks at it
+  sortOrder Int       @default(0)
+
+  @@index([postId])
+}
+
+// Figure snapshots the hub has, so the app can show them without a local copy.
+model HubFigure {
+  id   String  @id
+  mime String?
+  data Bytes? // fetched from the hub the first time someone looks at it
+}
+
+// This install's connection to the hub (set in Settings → Community hub).
+model HubState {
+  id         Int       @id @default(1)
+  url        String?
+  hubName    String?
+  discordUrl String? // the community's Discord invite (menu: Community chat)
+  installId  String?
+  installKey String?
+  joinedAt   DateTime?
+  cursor     String? // the hub's "changes since" marker
+  lastSyncAt DateTime?
+  lastError  String?
 }

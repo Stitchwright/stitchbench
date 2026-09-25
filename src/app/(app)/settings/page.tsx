@@ -15,8 +15,78 @@ import {
   saveShop,
   setUserActive,
 } from "@/actions/settings";
+import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
+import { InviteInput } from "@/components/invite-input";
 
 const d = (c: number) => (c / 100).toFixed(2);
+
+/** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
+async function CommunityHub({ admin }: { admin: boolean }) {
+  const [s, links, notes, figures] = await Promise.all([db.hubState.findUnique({ where: { id: 1 } }), db.manualLink.count(), db.hubPost.count(), db.hubFigure.count()]);
+  const joined = Boolean(s?.url && s.installKey);
+  return (
+    <Section title="Community hub">
+      {joined ? (
+        <div className="space-y-3 text-sm">
+          <p>
+            Connected to {s!.hubName ? <strong>{s!.hubName}</strong> : null} <span className="mono">{s!.url}</span>
+            {s!.joinedAt && <> since {s!.joinedAt.toLocaleDateString()}</>}. Syncs every 10 minutes.
+          </p>
+          <p className="muted">
+            {links} manual links · {notes} shared notes · {figures} figure snapshots · last sync {s!.lastSyncAt ? s!.lastSyncAt.toLocaleString() : "not yet"}
+          </p>
+          {s!.discordUrl && (
+            <p>
+              Community chat:{" "}
+              <a href={s!.discordUrl} target="_blank" rel="noreferrer" className="link">
+                {s!.discordUrl}
+              </a>
+            </p>
+          )}
+          {s!.lastError && <p className="pill tone-bad inline-block">Last sync failed: {s!.lastError}</p>}
+          <div className="flex flex-wrap gap-2">
+            <ActionButton action={syncCommunityHub} className="btn btn-sm" success="Synced with the hub">
+              Sync now
+            </ActionButton>
+            {admin && (
+              <ActionButton action={leaveCommunityHub} className="btn btn-sm btn-danger" confirm="Disconnect from the hub?" success="Disconnected">
+                Leave the hub
+              </ActionButton>
+            )}
+          </div>
+        </div>
+      ) : admin ? (
+        <ActionForm action={joinCommunityHub} success="Joined the community hub" className="space-y-3">
+          <p className="muted text-sm">
+            The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers,
+            tickets and prices never leave this StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
+          </p>
+          <InviteInput />
+          <details>
+            <summary className="link cursor-pointer text-sm">Or type the hub address and join key</summary>
+            <div className="grid-form mt-2">
+              <div className="field">
+                <label htmlFor="hub-url" className="label">
+                  Hub address
+                </label>
+                <input id="hub-url" name="url" className="input mono" placeholder="https://..." defaultValue={s?.url ?? ""} />
+              </div>
+              <div className="field">
+                <label htmlFor="hub-key" className="label">
+                  Join key
+                </label>
+                <input id="hub-key" name="joinKey" className="input mono" autoComplete="off" />
+              </div>
+            </div>
+          </details>
+          <Submit>Join</Submit>
+        </ActionForm>
+      ) : (
+        <p className="muted text-sm">Not connected to a community hub. The shop owner or an admin can join one here.</p>
+      )}
+    </Section>
+  );
+}
 
 export default async function SettingsPage() {
   const user = await requireUser();
@@ -32,6 +102,10 @@ export default async function SettingsPage() {
   return (
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Settings" />
+
+      <div id="hub">
+        <CommunityHub admin={admin} />
+      </div>
 
       {admin && (
         <Section title="Shop">

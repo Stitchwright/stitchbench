@@ -1,10 +1,12 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { hubPicture } from "@/lib/hub";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!(await auth())?.user) return new Response("Sign in first.", { status: 401 });
   const { id } = await ctx.params;
-  const img = await db.figureImage.findUnique({ where: { id }, select: { data: true, mime: true } });
+  // This install's own copy first, then the community hub's.
+  const img = (await db.figureImage.findUnique({ where: { id }, select: { data: true, mime: true } })) ?? (await hubPicture("figure", id).catch(() => null));
   if (!img) return new Response("Not found", { status: 404 });
   return new Response(Buffer.from(img.data), {
     headers: { "Content-Type": img.mime, "Cache-Control": "private, max-age=31536000, immutable" },

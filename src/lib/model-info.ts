@@ -12,7 +12,7 @@ const BRAND_ALIASES: Record<string, string[]> = {
   DURKOPPADLER: ["DURKOPPADLER", "DURKOPP"],
 };
 
-function brandMatches(specBrand: string, brand: string) {
+export function brandMatches(specBrand: string, brand: string) {
   const a = brandKey(specBrand);
   const b = brandKey(brand);
   if (a === b) return true;
@@ -57,9 +57,14 @@ type HasFigure = { sourcePath: string | null; sourceFile: string; figurePage: nu
 export async function withFigures<T extends HasFigure>(rows: T[]) {
   const withIds = rows.map((r) => ({ ...r, figureId: r.figurePage ? figureId(r.sourcePath ?? r.sourceFile, r.figurePage, r.figureBox) : null }));
   const ids = withIds.map((r) => r.figureId).filter((x): x is string => !!x);
-  const stored = new Set(
-    ids.length ? (await db.figureImage.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((f) => f.id) : [],
-  );
+  // Stored here, or on the community hub (fetched the first time it's shown).
+  const [own, hub] = ids.length
+    ? await Promise.all([
+        db.figureImage.findMany({ where: { id: { in: ids } }, select: { id: true } }),
+        db.hubFigure.findMany({ where: { id: { in: ids } }, select: { id: true } }),
+      ])
+    : [[], []];
+  const stored = new Set([...own, ...hub].map((f) => f.id));
   return withIds.map((r) => ({ ...r, figureStored: !!r.figureId && stored.has(r.figureId) }));
 }
 

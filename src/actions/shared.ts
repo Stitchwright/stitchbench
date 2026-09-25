@@ -1,6 +1,6 @@
 "use server";
 
-// Sharing a tech's photos and notes with every shop on StitchBench.
+// Sharing a tech's photos and notes with every shop on the community hub (kept here until the hub has it).
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/shops";
 import { str } from "@/lib/format";
 import { modelHref } from "@/components/ui";
+import { hubJoined, syncHub } from "@/lib/hub";
 import type { NoteKind } from "@/generated/prisma/enums";
 
 const KINDS: NoteKind[] = ["GOTCHA", "TIP", "FACT"];
@@ -38,6 +39,8 @@ export const sharePost = safe(async function sharePost(machineId: string, formDa
       photos: { create: photos.map((p, i) => ({ kind: p.kind, caption: p.caption, mime: p.mime, data: p.data, sortOrder: i })) },
     },
   });
+  // Send it to the community hub now; if the hub can't be reached, the next sync sends it.
+  if (await hubJoined()) await syncHub().catch(() => {});
   revalidatePath(`/machines/${machineId}`);
   revalidatePath(modelHref(m.brand, m.model));
   revalidatePath("/shared");

@@ -6,6 +6,7 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 import { ModelPanel } from "@/components/model-panel";
 import { ModelMachines, ModelPhotos } from "@/components/model-history";
 import { SharedPosts } from "@/components/shared-posts";
+import { ManualLinks } from "@/components/manual-links";
 
 export default async function ModelPage({ params }: { params: Promise<{ brand: string; model: string }> }) {
   const user = await requireUser();
@@ -24,11 +25,12 @@ export default async function ModelPage({ params }: { params: Promise<{ brand: s
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
           <ModelPanel shopId={user.shopId} brand={brand} model={model} showLink={false} />
+          <ManualLinks brand={brand} model={model} />
         </div>
         <div className="space-y-6 xl:col-span-2">
           <ModelMachines shopId={user.shopId} brand={brand} model={model} title="Serviced here" />
           <ModelPhotos shopId={user.shopId} brand={brand} model={model} title="Inside & wiring photos" />
-          <SharedPosts user={user} brand={brand} model={model} title="Shared by techs on StitchBench" />
+          <SharedPosts user={user} brand={brand} model={model} title="Shared by techs" />
           <Section title="Parts in stock that fit">
             {parts.length === 0 ? (
               <Empty>No stocked part lists this model in its &ldquo;fits&rdquo; field.</Empty>
