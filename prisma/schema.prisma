@@ -41,6 +41,8 @@ model Shop {
   checklistItems     String[]
   // Fine print at the bottom of the printed price list
   priceListNote      String?
+  // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
+  payInstructions    String?
   createdAt          DateTime @default(now())
 
   users        User[]
@@ -373,11 +375,39 @@ model Part {
   supplier    String?
   notes       String?
   createdAt   DateTime @default(now())
+  kind        PartKind @default(PART)
+  // Other numbers it's sold under (other makers' numbers, generic numbers)
+  altNumbers  String[]
+  // partNumber + altNumbers, upper-case letters and digits only, for matching the cross-reference
+  numberKeys  String[]
 
-  moves StockMove[]
-  lines TicketLine[]
+  moves   StockMove[]
+  lines   TicketLine[]
+  sources PartSource[]
 
   @@unique([shopId, partNumber])
+  @@index([numberKeys], type: Gin)
+}
+
+enum PartKind {
+  PART
+  ACCESSORY
+  SUPPLY
+}
+
+// Where this shop buys a part (its own list; the community's list is on the cross-reference).
+model PartSource {
+  id         String   @id @default(cuid())
+  partId     String
+  part       Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  vendor     String
+  url        String?
+  priceCents Int?
+  note       String?
+  preferred  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([partId])
 }
 
 enum MoveReason {
@@ -579,14 +609,82 @@ model HubFigure {
 
 // This install's connection to the hub (set in Settings → Community hub).
 model HubState {
-  id         Int       @id @default(1)
-  url        String?
-  hubName    String?
-  discordUrl String? // the community's Discord invite (menu: Community chat)
-  installId  String?
-  installKey String?
-  joinedAt   DateTime?
-  cursor     String? // the hub's "changes since" marker
-  lastSyncAt DateTime?
-  lastError  String?
+  id          Int       @id @default(1)
+  url         String?
+  hubName     String?
+  discordUrl  String? // the community's Discord invite (menu: Community chat)
+  installId   String?
+  installKey  String?
+  joinedAt    DateTime?
+  cursor      String? // the hub's "changes since" marker
+  orderCursor String? // same for marketplace orders
+  lastSyncAt  DateTime?
+  lastError   String?
+}
+
+// The community parts cross-reference (synced copy): one physical part, every number it goes by, what it fits.
+model XPart {
+  id         String   @id // the hub's id
+  name       String
+  kind       String   @default("PART")
+  category   String?
+  specs      String?
+  notes      String?
+  numbers    Json // [{ brand, number }]
+  numberKeys String[]
+  fits       Json // [{ brand, model, modelKey, evidence, source }]
+  fitKeys    String[]
+  sources    Json // [{ id, vendor, url, priceCents, currency, note, byShop, updatedAt }]
+  updatedAt  DateTime
+
+  @@index([numberKeys], type: Gin)
+  @@index([fitKeys], type: Gin)
+}
+
+// Marketplace listings from every shop on the hub (synced copy).
+model Listing {
+  id            String   @id // the hub's id
+  shopName      String
+  mine          Boolean  @default(false)
+  title         String
+  description   String?
+  kind          String   @default("PART")
+  condition     String   @default("NEW")
+  brand         String?
+  partNumber    String?
+  numberKey     String?
+  xpartId       String?
+  fits          String?
+  priceCents    Int
+  currency      String   @default("USD")
+  qty           Int
+  shippingCents Int?
+  shippingNote  String?
+  shipsFrom     String?
+  status        String
+  photoIds      String[]
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  @@index([status])
+  @@index([numberKey])
+}
+
+// Listing photos, fetched from the hub the first time someone looks at them.
+model ListingPhoto {
+  id   String @id
+  mime String
+  data Bytes
+}
+
+// This shop's marketplace orders, as buyer or seller (synced copy of the hub's order).
+model MarketOrder {
+  id        String   @id // the hub's id
+  number    String
+  role      String // buyer | seller
+  status    String
+  data      Json // the whole order as the hub sent it
+  updatedAt DateTime
+
+  @@index([role, status])
 }

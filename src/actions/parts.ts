@@ -6,14 +6,24 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
+import { partKeys, splitList } from "@/lib/parts";
+import type { PartKind } from "@/generated/prisma/enums";
+
+const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY"];
 
 function partData(formData: FormData) {
   const partNumber = str(formData.get("partNumber"));
   const description = str(formData.get("description"));
   if (!partNumber || !description) throw new UserError("Enter a part number and description.");
+  const kind = (str(formData.get("kind")) ?? "PART") as PartKind;
+  if (!KINDS.includes(kind)) throw new UserError("Pick part, accessory or supply.");
+  const altNumbers = splitList(str(formData.get("altNumbers"))).filter((n) => n !== partNumber);
   return {
     partNumber,
     description,
+    kind,
+    altNumbers,
+    numberKeys: partKeys(partNumber, altNumbers),
     brand: str(formData.get("brand")),
     fits: str(formData.get("fits")),
     location: str(formData.get("location")),
@@ -79,4 +89,42 @@ export const moveStock = safe(async function moveStock(partId: string, formData:
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/parts");
   revalidatePath("/");
+});
+
+// ---------- where to buy (this shop's own suppliers for a part) ----------
+
+async function ownPart(partId: string) {
+  const user = await requireUser();
+  const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId }, select: { id: true } });
+  if (!p) throw new UserError("Part not found.");
+  return p;
+}
+
+export const addPartSource = safe(async function addPartSource(partId: string, formData: FormData) {
+  await ownPart(partId);
+  const vendor = str(formData.get("vendor"));
+  const url = str(formData.get("url"));
+  if (!vendor) throw new UserError("Enter where you buy it.");
+  if (url && !/^https?:\/\//i.test(url)) throw new UserError("The link must start with http:// or https://");
+  const preferred = formData.get("preferred") === "on";
+  await db.$transaction([
+    ...(preferred ? [db.partSource.updateMany({ where: { partId }, data: { preferred: false } })] : []),
+    db.partSource.create({ data: { partId, vendor, url, priceCents: toCents(formData.get("price")), note: str(formData.get("note")), preferred } }),
+  ]);
+  revalidatePath(`/parts/${partId}`);
+});
+
+export const removePartSource = safe(async function removePartSource(partId: string, sourceId: string) {
+  await ownPart(partId);
+  await db.partSource.deleteMany({ where: { id: sourceId, partId } });
+  revalidatePath(`/parts/${partId}`);
+});
+
+export const preferPartSource = safe(async function preferPartSource(partId: string, sourceId: string) {
+  await ownPart(partId);
+  await db.$transaction([
+    db.partSource.updateMany({ where: { partId }, data: { preferred: false } }),
+    db.partSource.updateMany({ where: { id: sourceId, partId }, data: { preferred: true } }),
+  ]);
+  revalidatePath(`/parts/${partId}`);
 });

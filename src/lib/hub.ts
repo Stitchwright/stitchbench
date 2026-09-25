@@ -190,6 +190,149 @@ async function savePost(p: HubPostIn) {
   }
 }
 
+// ---------- parts cross-reference and marketplace (see the stitchhub docs/parts-and-marketplace.md) ----------
+
+export type HubXPart = {
+  id: string;
+  name: string;
+  kind: string;
+  category: string | null;
+  specs: string | null;
+  notes: string | null;
+  deleted: boolean;
+  updatedAt: string;
+  numbers: { brand: string; number: string }[];
+  fits: { brand: string; model: string; modelKey: string; evidence: string; source?: string | null }[];
+  sources: { id?: string; vendor: string; url?: string | null; priceCents?: number | null; currency?: string; note?: string | null; byShop?: string | null; updatedAt?: string }[];
+};
+
+export type HubListing = {
+  id: string;
+  shopName: string;
+  mine: boolean;
+  title: string;
+  description: string | null;
+  kind: string;
+  condition: string;
+  brand: string | null;
+  partNumber: string | null;
+  xpartId: string | null;
+  fits: string | null;
+  priceCents: number;
+  currency: string;
+  qty: number;
+  shippingCents: number | null;
+  shippingNote: string | null;
+  shipsFrom: string | null;
+  status: string;
+  photos: { id: string; sortOrder: number }[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HubOrder = {
+  id: string;
+  number: string;
+  role: "buyer" | "seller";
+  listingId: string;
+  item: { title: string; brand: string | null; partNumber: string | null; condition: string };
+  sellerShop: string;
+  buyerShop: string;
+  qty: number;
+  unitPriceCents: number;
+  shippingCents: number | null;
+  totalCents: number;
+  currency: string;
+  shipTo: string | null;
+  buyerNote: string | null;
+  buyerContact: { name?: string | null; email?: string | null; phone?: string | null } | null;
+  sellerContact: { name?: string | null; address?: string | null; email?: string | null; phone?: string | null } | null;
+  payInstructions: string | null;
+  status: string;
+  buyerPaidNote: string | null;
+  paidAt: string | null;
+  carrier: string | null;
+  tracking: string | null;
+  trackingUrl: string | null;
+  shippedAt: string | null;
+  receivedAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  events: { at: string; by: "buyer" | "seller"; action: string; note: string | null }[];
+};
+
+const key = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+export async function saveXPart(x: HubXPart) {
+  if (x.deleted) {
+    await db.xPart.deleteMany({ where: { id: x.id } });
+    return;
+  }
+  const row = {
+    name: x.name,
+    kind: x.kind,
+    category: x.category,
+    specs: x.specs,
+    notes: x.notes,
+    numbers: x.numbers,
+    numberKeys: [...new Set(x.numbers.map((n) => key(n.number)).filter(Boolean))],
+    fits: x.fits,
+    fitKeys: [...new Set(x.fits.map((f) => f.modelKey || key(f.model)).filter(Boolean))],
+    sources: x.sources,
+    updatedAt: new Date(x.updatedAt),
+  };
+  await db.xPart.upsert({ where: { id: x.id }, create: { id: x.id, ...row }, update: row });
+}
+
+export async function saveListing(l: HubListing) {
+  if (l.status === "REMOVED") {
+    await db.listing.deleteMany({ where: { id: l.id } });
+    return;
+  }
+  const row = {
+    shopName: l.shopName,
+    mine: l.mine,
+    title: l.title,
+    description: l.description,
+    kind: l.kind,
+    condition: l.condition,
+    brand: l.brand,
+    partNumber: l.partNumber,
+    numberKey: l.partNumber ? key(l.partNumber) : null,
+    xpartId: l.xpartId,
+    fits: l.fits,
+    priceCents: l.priceCents,
+    currency: l.currency,
+    qty: l.qty,
+    shippingCents: l.shippingCents,
+    shippingNote: l.shippingNote,
+    shipsFrom: l.shipsFrom,
+    status: l.status,
+    photoIds: [...l.photos].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id),
+    createdAt: new Date(l.createdAt),
+    updatedAt: new Date(l.updatedAt),
+  };
+  await db.listing.upsert({ where: { id: l.id }, create: { id: l.id, ...row }, update: row });
+}
+
+export async function saveOrder(o: HubOrder) {
+  const row = { number: o.number, role: o.role, status: o.status, data: o, updatedAt: new Date(o.updatedAt) };
+  await db.marketOrder.upsert({ where: { id: o.id }, create: { id: o.id, ...row }, update: row });
+}
+
+async function pullOrders(cursor: string | null) {
+  let since = cursor ?? "0";
+  for (let page = 0; page < 100; page++) {
+    const r = (await (await hubFetch(`/v1/orders?since=${since}`)).json()) as { orders: HubOrder[]; next: string | number };
+    for (const o of r.orders) await saveOrder(o);
+    const next = String(r.next);
+    if (next !== since) await db.hubState.update({ where: { id: 1 }, data: { orderCursor: next } });
+    if (!r.orders.length || next === since) break;
+    since = next;
+  }
+}
+
 /** Send notes this shop shared that the hub doesn't have yet. */
 async function pushPending() {
   const pending = await db.sharedPost.findMany({
@@ -236,11 +379,15 @@ async function doSync(): Promise<SyncResult> {
         links: HubLink[];
         posts: HubPostIn[];
         figures: string[];
+        xparts?: HubXPart[];
+        listings?: HubListing[];
         next: string;
         more: boolean;
       };
       for (const l of ch.links) await saveLink(l);
       for (const p of ch.posts) await savePost(p);
+      for (const x of ch.xparts ?? []) await saveXPart(x);
+      for (const l of ch.listings ?? []) await saveListing(l);
       if (ch.figures.length) await db.hubFigure.createMany({ data: ch.figures.map((id) => ({ id })), skipDuplicates: true });
       n.links += ch.links.length;
       n.posts += ch.posts.length;
@@ -249,6 +396,7 @@ async function doSync(): Promise<SyncResult> {
       await db.hubState.update({ where: { id: 1 }, data: { cursor: since } });
       if (!ch.more) break;
     }
+    await pullOrders(s.orderCursor);
     await db.hubState.update({ where: { id: 1 }, data: { lastSyncAt: new Date(), lastError: null } });
     return n;
   } catch (e) {
@@ -267,8 +415,17 @@ export function syncHub(): Promise<SyncResult> {
   return running;
 }
 
-/** A picture from the hub (note photo or figure snapshot), kept locally after the first look. */
-export async function hubPicture(kind: "photo" | "figure", id: string): Promise<{ mime: string; data: Uint8Array } | null> {
+/** A picture from the hub (note photo, figure snapshot or listing photo), kept locally after the first look. */
+export async function hubPicture(kind: "photo" | "figure" | "listing", id: string): Promise<{ mime: string; data: Uint8Array } | null> {
+  if (kind === "listing") {
+    const have = await db.listingPhoto.findUnique({ where: { id } });
+    if (have) return { mime: have.mime, data: have.data };
+    const r = await hubFetch(`/v1/listing-photos/${id}`);
+    const mime = r.headers.get("content-type") ?? "image/jpeg";
+    const data = new Uint8Array(await r.arrayBuffer());
+    await db.listingPhoto.upsert({ where: { id }, create: { id, mime, data }, update: {} });
+    return { mime, data };
+  }
   if (kind === "photo") {
     const p = await db.hubPhoto.findUnique({ where: { id }, select: { mime: true, data: true } });
     if (!p) return null;

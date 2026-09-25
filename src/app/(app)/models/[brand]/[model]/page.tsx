@@ -7,6 +7,7 @@ import { ModelPanel } from "@/components/model-panel";
 import { ModelMachines, ModelPhotos } from "@/components/model-history";
 import { SharedPosts } from "@/components/shared-posts";
 import { ManualLinks } from "@/components/manual-links";
+import { PartsThatFit } from "@/components/parts-that-fit";
 
 export default async function ModelPage({ params }: { params: Promise<{ brand: string; model: string }> }) {
   const user = await requireUser();
@@ -29,6 +30,7 @@ export default async function ModelPage({ params }: { params: Promise<{ brand: s
         </div>
         <div className="space-y-6 xl:col-span-2">
           <ModelMachines shopId={user.shopId} brand={brand} model={model} title="Serviced here" />
+          <PartsThatFit shopId={user.shopId} brand={brand} model={model} />
           <ModelPhotos shopId={user.shopId} brand={brand} model={model} title="Inside & wiring photos" />
           <SharedPosts user={user} brand={brand} model={model} title="Shared by techs" />
           <Section title="Parts in stock that fit">

@@ -30,6 +30,7 @@ export const saveShop = safe(async function saveShop(formData: FormData) {
       storageFeeCents: toCents(formData.get("storageFee")) ?? shop.storageFeeCents,
       nextTicketNumber: Math.max(1, Math.round(num("nextTicketNumber", shop.nextTicketNumber))),
       libraryRoot: str(formData.get("libraryRoot")) ?? shop.libraryRoot,
+      payInstructions: str(formData.get("payInstructions")),
     },
   });
   revalidatePath("/", "layout");

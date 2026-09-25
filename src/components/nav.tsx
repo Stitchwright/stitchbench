@@ -19,6 +19,7 @@ import {
   Building2,
   Link2,
   MessagesSquare,
+  Store,
 } from "lucide-react";
 
 const items = [
@@ -28,6 +29,7 @@ const items = [
   { href: "/machines", label: "Machines", icon: Cog },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/parts", label: "Parts", icon: Package },
+  { href: "/market", label: "Marketplace", icon: Store },
   { href: "/specs", label: "Factory specs", icon: Gauge },
   { href: "/shared", label: "Shared by techs", icon: Share2 },
   { href: "/links", label: "Manual links", icon: Link2 },

@@ -1,5 +1,7 @@
 type P = {
   partNumber: string;
+  kind?: string;
+  altNumbers?: string[];
   description: string;
   brand: string | null;
   fits: string | null;
@@ -27,6 +29,22 @@ export function PartFields({ part, withQty = false }: { part?: P; withQty?: bool
           Description
         </label>
         <input id="description" name="description" required defaultValue={part?.description} className="input" />
+      </div>
+      <div className="field">
+        <label htmlFor="kind" className="label">
+          Type
+        </label>
+        <select id="kind" name="kind" defaultValue={part?.kind ?? "PART"} className="select">
+          <option value="PART">Part</option>
+          <option value="ACCESSORY">Accessory (feet, hoops, extension tables...)</option>
+          <option value="SUPPLY">Supply (needles, oil, bobbins, thread...)</option>
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="altNumbers" className="label">
+          Other part numbers (other makers, generic)
+        </label>
+        <input id="altNumbers" name="altNumbers" defaultValue={part?.altNumbers?.join(", ") ?? ""} className="input mono" placeholder="XA1234-001, 822020503" />
       </div>
       <div className="field">
         <label htmlFor="brand" className="label">

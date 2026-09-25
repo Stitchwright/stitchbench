@@ -6,14 +6,25 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
 import { createPart } from "@/actions/parts";
+import { KIND_LABEL } from "@/lib/parts";
+import type { PartKind } from "@/generated/prisma/enums";
 
-export default async function Parts({ searchParams }: { searchParams: Promise<{ q?: string; low?: string }> }) {
+const KINDS = [
+  { key: "", label: "All" },
+  { key: "PART", label: "Parts" },
+  { key: "ACCESSORY", label: "Accessories" },
+  { key: "SUPPLY", label: "Supplies" },
+] as const;
+
+export default async function Parts({ searchParams }: { searchParams: Promise<{ q?: string; low?: string; kind?: string }> }) {
   const user = await requireUser();
-  const { q, low } = await searchParams;
+  const { q, low, kind: k } = await searchParams;
   const term = q?.trim();
+  const kind = KINDS.some((x) => x.key && x.key === k) ? (k as PartKind) : undefined;
   let parts = await db.part.findMany({
     where: {
       shopId: user.shopId,
+      ...(kind ? { kind } : {}),
       ...(term
         ? {
             OR: [
@@ -21,6 +32,7 @@ export default async function Parts({ searchParams }: { searchParams: Promise<{ 
               { description: { contains: term, mode: "insensitive" } },
               { fits: { contains: term, mode: "insensitive" } },
               { brand: { contains: term, mode: "insensitive" } },
+              { altNumbers: { has: term } },
             ],
           }
         : {}),
@@ -33,8 +45,34 @@ export default async function Parts({ searchParams }: { searchParams: Promise<{ 
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Parts" sub={`${parts.length} part numbers · ${money(value)} on the shelf at cost`} />
+      <PageHeader
+        title="Parts and accessories"
+        sub={`${parts.length} items · ${money(value)} on the shelf at cost`}
+        actions={
+          <>
+            <Link href="/xref" className="btn">
+              Cross-reference
+            </Link>
+            <Link href="/market" className="btn">
+              Marketplace
+            </Link>
+          </>
+        }
+      />
+      <nav className="flex flex-wrap gap-2" aria-label="Type">
+        {KINDS.map((x) => (
+          <Link
+            key={x.key}
+            href={`/parts?${new URLSearchParams({ ...(x.key ? { kind: x.key } : {}), ...(term ? { q: term } : {}) })}`}
+            className={`btn btn-sm ${(kind ?? "") === x.key ? "btn-primary" : ""}`}
+            aria-current={(kind ?? "") === x.key ? "page" : undefined}
+          >
+            {x.label}
+          </Link>
+        ))}
+      </nav>
       <form className="flex flex-wrap gap-2">
+        {kind && <input type="hidden" name="kind" value={kind} />}
         <label htmlFor="pq" className="sr-only">
           Search parts
         </label>
@@ -72,7 +110,9 @@ export default async function Parts({ searchParams }: { searchParams: Promise<{ 
                     </td>
                     <td>
                       {p.description}
-                      {p.brand && <div className="muted text-xs">{p.brand}</div>}
+                      <div className="muted text-xs">
+                        {[p.kind !== "PART" ? KIND_LABEL[p.kind] : null, p.brand, p.altNumbers.length ? `also ${p.altNumbers.join(", ")}` : null].filter(Boolean).join(" · ")}
+                      </div>
                     </td>
                     <td className="max-w-56 text-xs">{p.fits}</td>
                     <td>{p.location}</td>
@@ -87,7 +127,7 @@ export default async function Parts({ searchParams }: { searchParams: Promise<{ 
           </div>
         )}
       </div>
-      <Section title="Add a part">
+      <Section title="Add a part or accessory">
         <ActionForm action={createPart} className="grid-form">
           <PartFields withQty />
           <div className="sm:col-span-2">
