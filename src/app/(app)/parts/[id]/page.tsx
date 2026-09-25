@@ -47,6 +47,16 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
           </>
         }
         sub={`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${p.qtyOnHand} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+        actions={
+          <>
+            <a href={`/labels?id=${p.id}&format=thermal`} target="_blank" rel="noreferrer" className="btn">
+              Print label
+            </a>
+            <Link href="/parts/scan" className="btn">
+              Scan
+            </Link>
+          </>
+        }
       />
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">

@@ -15,14 +15,14 @@ type P = {
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
 
-export function PartFields({ part, withQty = false }: { part?: P; withQty?: boolean }) {
+export function PartFields({ part, withQty = false, defaultNumber }: { part?: P; withQty?: boolean; defaultNumber?: string }) {
   return (
     <>
       <div className="field">
         <label htmlFor="partNumber" className="label">
           Part number
         </label>
-        <input id="partNumber" name="partNumber" required defaultValue={part?.partNumber} className="input mono" />
+        <input id="partNumber" name="partNumber" required defaultValue={part?.partNumber ?? defaultNumber} className="input mono" />
       </div>
       <div className="field">
         <label htmlFor="description" className="label">

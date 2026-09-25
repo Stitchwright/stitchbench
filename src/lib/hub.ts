@@ -345,6 +345,35 @@ async function pullOrders(cursor: string | null) {
   }
 }
 
+let lastUsagePush = 0;
+
+/** The next sync reports usage even if it did within the hour (a person pressed "Sync now"). */
+export function reportUsageNextSync() {
+  lastUsagePush = 0;
+}
+
+/** Tell the hub how many of each part this shop used this month and last (counts only), for the community's most-used list. */
+async function pushUsage() {
+  if (Date.now() - lastUsagePush < 3600_000) return;
+  const now = new Date();
+  for (const back of [0, 1]) {
+    const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - back + 1, 1);
+    const rows = await db.$queryRaw<{ number: string; brand: string | null; qty: bigint; tickets: bigint }[]>`
+      SELECT p."partNumber" AS number, p.brand, SUM(-sm.qty) AS qty, COUNT(DISTINCT sm."ticketId") AS tickets
+      FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
+      WHERE sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${start} AND sm."createdAt" < ${end}
+      GROUP BY p."partNumber", p.brand`;
+    const items = rows
+      .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Number(r.qty), tickets: Number(r.tickets) }))
+      .filter((i) => i.qty > 0)
+      .slice(0, 5000);
+    const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
+    await hubFetch("/v1/usage", { method: "POST", json: { month, items } });
+  }
+  lastUsagePush = Date.now();
+}
+
 /** Send notes this shop shared that the hub doesn't have yet. */
 async function pushPending() {
   const pending = await db.sharedPost.findMany({
@@ -409,6 +438,8 @@ async function doSync(): Promise<SyncResult> {
       if (!ch.more) break;
     }
     await pullOrders(s.orderCursor);
+    // An older hub may not have usage yet; that mustn't stop the sync.
+    await pushUsage().catch((e) => console.error("community hub usage:", e instanceof Error ? e.message : e));
     await db.hubState.update({ where: { id: 1 }, data: { lastSyncAt: new Date(), lastError: null } });
     return n;
   } catch (e) {

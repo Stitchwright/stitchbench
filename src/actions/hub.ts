@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
-import { hubFetch, joinHub, leaveHub, parseInvite, saveLink, syncHub, type HubLink, type LinkRevision } from "@/lib/hub";
+import { hubFetch, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, type HubLink, type LinkRevision } from "@/lib/hub";
 import { libraryDir } from "@/lib/library-dir";
 
 const UA = "StitchBench (manual download for a repair shop's own library)";
@@ -33,6 +33,7 @@ export const joinCommunityHub = safe(async function joinCommunityHub(formData: F
 
 export const syncCommunityHub = safe(async function syncCommunityHub() {
   await requireUser();
+  reportUsageNextSync();
   await syncHub();
   refresh();
 });

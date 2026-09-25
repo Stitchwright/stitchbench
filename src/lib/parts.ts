@@ -37,10 +37,10 @@ export async function xrefForKeys(keys: string[]) {
 }
 
 /** Community cross-reference parts that fit a machine (best evidence first), and this shop's stock of them. */
-export async function partsFittingModel(shopId: string, brand: string, model: string) {
+export async function partsFittingModel(shopId: string, brand: string, model: string, take = 400) {
   const key = modelKey(model);
   if (!key) return { xparts: [], stocked: new Map<string, { id: string; qtyOnHand: number; location: string | null }>() };
-  const rows = await db.xPart.findMany({ where: { fitKeys: { has: key } }, take: 400 });
+  const rows = await db.xPart.findMany({ where: { fitKeys: { has: key } }, take });
   const rank = (x: (typeof rows)[number]) => {
     const fits = (x.fits as XFit[]).filter((f) => f.modelKey === key && brandMatches(f.brand, brand));
     return fits.some((f) => f.evidence === "tested") ? 3 : fits.some((f) => f.evidence === "maker") ? 2 : fits.length ? 1 : 0;
@@ -114,7 +114,13 @@ export const sourcesText = (s: XSource[]) =>
   s.map((x) => [x.vendor, x.url, x.priceCents != null ? (x.priceCents / 100).toFixed(2) : null].filter(Boolean).join(", ")).join("\n");
 
 /** Supplier site searches for a part number: always there, no scraping. Suppliers are added as their search pages are verified. */
+// Search pages checked 2026-09-25 (they're for people to click; the scraper never fetches them).
 export const SEARCH_SITES: { name: string; url: (q: string) => string }[] = [
+  { name: "Sewing Parts Online", url: (q) => `https://www.sewingpartsonline.com/search?q=${encodeURIComponent(q.replace(/-/g, ""))}` },
+  { name: "AllBrands", url: (q) => `https://www.allbrands.com/search?search=${encodeURIComponent(q)}` },
+  { name: "Sewing Machines Plus", url: (q) => `https://www.sewingmachinesplus.com/search?q=${encodeURIComponent(q)}` },
+  { name: "Premier Stitching", url: (q) => `https://www.premierstitching.com/search.php?search_query=${encodeURIComponent(q.replace(/-/g, ""))}` },
+  { name: "Grome's", url: (q) => `https://www.gromes.com/search?q=${encodeURIComponent(q)}` },
   { name: "eBay", url: (q) => `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}` },
   { name: "Amazon", url: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}` },
   { name: "Google", url: (q) => `https://www.google.com/search?q=${encodeURIComponent(`"${q}" sewing machine part`)}` },

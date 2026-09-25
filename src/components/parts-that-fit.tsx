@@ -3,7 +3,7 @@ import Link from "next/link";
 import { hubJoined } from "@/lib/hub";
 import { modelKey } from "@/lib/format";
 import { EVIDENCE_LABEL, partsFittingModel, type XFit, type XNumber } from "@/lib/parts";
-import { Section, Empty } from "@/components/ui";
+import { Section, Empty, modelHref } from "@/components/ui";
 
 export async function PartsThatFit({ shopId, brand, model }: { shopId: string; brand: string; model: string }) {
   if (!(await hubJoined())) return null;
@@ -42,11 +42,11 @@ export async function PartsThatFit({ shopId, brand, model }: { shopId: string; b
             })}
           </ul>
           <p className="muted mt-2 text-xs">
-            {xparts.length > shown.length && (
+            {xparts.length > 0 && (
               <>
-                Showing {shown.length} of {xparts.length}.{" "}
-                <Link href={`/xref?q=${encodeURIComponent(model)}`} className="link">
-                  See them all
+                {xparts.length > shown.length ? `Showing ${shown.length} of ${xparts.length}. ` : ""}
+                <Link href={`${modelHref(brand, model)}/parts`} className="link">
+                  See the whole parts list
                 </Link>
                 .{" "}
               </>

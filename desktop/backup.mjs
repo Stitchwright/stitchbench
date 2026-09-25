@@ -1,5 +1,5 @@
 // Backups of the shop's own data: customers, machines, tickets, photos, parts, people, prices, shared notes.
-// Factory specs, the manual list and manual figures are left out: they're reloaded from the StitchBench repo.
+// Factory specs, the manual list, manual figures and the hub's cached data are left out: they're reloaded or re-synced.
 // Each backup is a folder of gzipped COPY files plus manifest.json; restore replaces the shop data with it.
 import fs from "node:fs";
 import path from "node:path";
@@ -8,7 +8,12 @@ import { pipeline } from "node:stream/promises";
 import copyStreams from "pg-copy-streams";
 
 const { to: copyTo, from: copyFrom } = copyStreams;
-const REFERENCE = new Set(["_prisma_migrations", "TensionSpec", "FactorySetting", "LibraryDoc", "FigureImage", "ModelImage"]);
+// Reference data (reloaded from the program) and the community hub's cached copies (re-synced from the hub) are left out;
+// the hub connection itself (HubState) and this shop's marketplace orders are kept.
+const REFERENCE = new Set([
+  "_prisma_migrations", "TensionSpec", "FactorySetting", "LibraryDoc", "FigureImage", "ModelImage",
+  "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "Listing", "ListingPhoto",
+]);
 const q = (name) => `"${name.replace(/"/g, '""')}"`;
 
 async function shopTables(client) {
@@ -94,6 +99,8 @@ export async function restore(pool, dir) {
         client.query(copyFrom(`COPY ${q(t.name)} (${t.columns.map(q).join(", ")}) FROM STDIN`)),
       );
     }
+    // The hub's cached data isn't in backups, so sync it all again from the start.
+    if (tables.includes("HubState")) await client.query(`UPDATE "HubState" SET cursor = '0', "orderCursor" = '0'`);
     await client.query("COMMIT");
     return manifest;
   } catch (e) {
