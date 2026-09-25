@@ -5,6 +5,8 @@ import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/con
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
+import { PartnerTodo } from "@/components/partner-todo";
+import { redirect } from "next/navigation";
 
 function daysSince(d: Date) {
   return (Date.now() - d.getTime()) / 86400000;
@@ -26,6 +28,8 @@ export default async function Dashboard() {
       _sum: { amountCents: true },
     }),
   ]);
+  // A sewing shop without a repair bench starts at the register.
+  if (!shop.doesRepair) redirect("/register");
 
   const byStatus = new Map(STATUS_ORDER.map((s) => [s, 0]));
   for (const t of open) byStatus.set(t.status, (byStatus.get(t.status) ?? 0) + 1);
@@ -55,6 +59,7 @@ export default async function Dashboard() {
       </div>
 
       <MarketTodo />
+      <PartnerTodo shopId={shopId} />
 
       {overdue.length > 0 && (
         <div className="card card-pad tone-bad">

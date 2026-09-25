@@ -9,6 +9,7 @@ import { modelKey, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { STATUS_ORDER } from "@/lib/constants";
+import { kickPartnerSync } from "@/lib/partners";
 
 async function ownTicket(shopId: string, ticketId: string) {
   const t = await db.ticket.findFirst({ where: { id: ticketId, shopId }, include: { shop: true } });
@@ -17,6 +18,8 @@ async function ownTicket(shopId: string, ticketId: string) {
 }
 
 function refresh(ticketId: string) {
+  // A ticket that came from a partner sewing shop: they see the change on their next sync (soon).
+  kickPartnerSync();
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
   revalidatePath("/");

@@ -9,14 +9,20 @@ import { str, toCents } from "@/lib/format";
 import { partKeys, splitList } from "@/lib/parts";
 import type { PartKind } from "@/generated/prisma/enums";
 
-const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY"];
+const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
+
+/** Whole numbers for most things; fabric by the yard to the eighth. */
+function qtyValue(v: FormDataEntryValue | null) {
+  const n = Number(str(v) ?? "0");
+  return Number.isFinite(n) ? Math.max(0, Math.round(n * 1000) / 1000) : 0;
+}
 
 function partData(formData: FormData) {
   const partNumber = str(formData.get("partNumber"));
   const description = str(formData.get("description"));
   if (!partNumber || !description) throw new UserError("Enter a part number and description.");
   const kind = (str(formData.get("kind")) ?? "PART") as PartKind;
-  if (!KINDS.includes(kind)) throw new UserError("Pick part, accessory or supply.");
+  if (!KINDS.includes(kind)) throw new UserError("Pick what kind of item it is.");
   const altNumbers = splitList(str(formData.get("altNumbers"))).filter((n) => n !== partNumber);
   return {
     partNumber,
@@ -27,7 +33,10 @@ function partData(formData: FormData) {
     brand: str(formData.get("brand")),
     fits: str(formData.get("fits")),
     location: str(formData.get("location")),
-    reorderAt: Math.max(0, Math.round(Number(str(formData.get("reorderAt")) ?? "0"))),
+    reorderAt: qtyValue(formData.get("reorderAt")),
+    unit: str(formData.get("unit")) === "yd" ? "yd" : null,
+    wholesaleCents: toCents(formData.get("wholesale")),
+    offerToPartners: formData.get("offerToPartners") === "on",
     costCents: toCents(formData.get("cost")),
     priceCents: toCents(formData.get("price")),
     supplier: str(formData.get("supplier")),
@@ -40,7 +49,7 @@ export const createPart = safe(async function createPart(formData: FormData) {
   const data = partData(formData);
   const exists = await db.part.findFirst({ where: { shopId: user.shopId, partNumber: data.partNumber } });
   if (exists) redirect(`/parts/${exists.id}`);
-  const qty = Math.max(0, Math.round(Number(str(formData.get("qtyOnHand")) ?? "0")));
+  const qty = qtyValue(formData.get("qtyOnHand"));
   const p = await db.part.create({
     data: {
       ...data,
@@ -68,8 +77,10 @@ export const moveStock = safe(async function moveStock(partId: string, formData:
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
   if (!p) throw new UserError("Part not found.");
   const mode = str(formData.get("mode"));
-  const n = Math.round(Number(str(formData.get("qty")) ?? "NaN"));
-  if (!Number.isFinite(n)) throw new UserError("Enter a quantity.");
+  const raw = Number(str(formData.get("qty")) ?? "NaN");
+  if (!Number.isFinite(raw)) throw new UserError("Enter a quantity.");
+  // Fabric is counted in yards (to the eighth); everything else in whole pieces.
+  const n = p.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
   const note = str(formData.get("note"));
   if (mode === "count") {
     const delta = n - p.qtyOnHand;

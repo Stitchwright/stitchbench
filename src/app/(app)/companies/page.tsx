@@ -72,6 +72,16 @@ export default async function Companies() {
             <input id="c-shop" name="shop" required className="input" />
           </div>
           <div className="field">
+            <label htmlFor="c-kind" className="label">
+              Kind of shop
+            </label>
+            <select id="c-kind" name="kind" className="select" defaultValue="repair">
+              <option value="repair">Repair shop (StitchBench)</option>
+              <option value="retail">Sewing / quilt shop (StitchShop register)</option>
+              <option value="both">Both: repairs and a counter</option>
+            </select>
+          </div>
+          <div className="field">
             <label htmlFor="c-name" className="label">
               Owner&apos;s name
             </label>

@@ -127,3 +127,25 @@ export const DOC_TYPES = [
   "Training",
   "Bulletin",
 ];
+
+/** A repair's status as the sewing shop that took the machine in sees it (the repair shop's ticket statuses). */
+export const JOB_STATUS_LABEL: Record<TicketStatus, string> = {
+  AT_SHOP_AWAITING_PICKUP: "Here, waiting for the repair shop",
+  IN_TRUCK: "With the repair shop",
+  ON_BENCH: "Being repaired",
+  WAITING_CUSTOMER_OK: "Needs the customer's OK",
+  WAITING_PARTS: "Waiting for parts",
+  READY_IN_TRUCK: "Fixed, on its way back",
+  READY_FOR_PICKUP: "Ready for the customer",
+  COLLECTED: "Customer has it",
+  ABANDONED: "Abandoned",
+  RETURNED_UNREPAIRED: "Returned unrepaired",
+};
+
+export const ORDER_STATUS_LABEL: Record<string, string> = {
+  PLACED: "Placed",
+  ACCEPTED: "Accepted",
+  DELIVERED: "Delivered",
+  RECEIVED: "Received",
+  CANCELLED: "Cancelled",
+};

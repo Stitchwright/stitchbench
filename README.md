@@ -38,6 +38,31 @@ cost) or hosted on Railway.
   https://github.com/bwattendorf/stitchhub.
 - **Sales log** by date range, with CSV export.
 
+## StitchShop: sewing and quilt shops, and their repair shop
+The same program, set to **Sewing / quilt shop** (at sign-up, or Settings → What this company does), becomes
+**StitchShop**:
+- **Register.** Scan a barcode (USB/Bluetooth scanner or the camera) or search, fabric by the yard in eighths, line
+  and whole-sale discounts, sales tax, split payments (cash with change, card on your own reader, check, gift card),
+  returns, voids, printable receipts, and a day's takings by payment type.
+- **Inventory** of notions, fabric, thread, patterns and accessories, with barcode labels, shelf counts, a spreadsheet
+  import (paste a supplier's line sheet from Excel, or a CSV), and an online lookup of store barcodes (UPC/EAN).
+- **Repairs sent to the partner repair shop.** Take a machine in at the counter (customer, machine, problem,
+  accessories, photos), print a two-part claim tag, and watch its status: waiting for pickup, being repaired,
+  **needs the customer's OK** (the estimate arrives; the shop calls the customer and answers), ready. The customer
+  pays at the register; the shop's commission is worked out from the repair shop's bill.
+- **Ordering** parts, notions and accessories from the repair shop's catalog at partner prices.
+- **Consignment.** The repair shop's stock on the sewing shop's shelf: each sale is reported to the owner, shelf
+  counts, returns.
+- **The partnership.** Terms both shops accept (commission on repairs, consignment split, who covers losses,
+  statements, notice, and whether the repair shop provides the software), a printable agreement, and a monthly
+  statement netting repairs, consignment and orders into one payment either way.
+
+On the repair shop's side, a machine taken in at a partner shop arrives as a ticket under the shop's trade account;
+its status, bill and a note go back to the shop automatically, and the customer's answer to an estimate comes back
+onto the ticket. A repair shop can **set up StitchShop for a sewing shop** on its own install (Partner shops →
+"Set up StitchShop for a sewing shop"): the company, its owner login and the partnership in one step. The two shops
+talk through StitchHub (a private channel per partnership), so either can run the Windows program or a hosted copy.
+
 ## Stack
 
 Next.js 16 (App Router, server actions) · React 19 · Prisma 7 + PostgreSQL · Auth.js v5 (email + password) ·
@@ -67,6 +92,8 @@ Opt-in suites:
 - `tests/hub.spec.ts` needs a test StitchHub (`HUB_URL`, `HUB_JOIN_KEY`, `PDF_URL`).
 - `tests/shop-library.spec.ts` runs against the Windows program (`SHOP_LIBRARY=1`).
 - `tests/walkthrough.spec.ts` records the demo screens (`DEMO_DIR`).
+- `tests/partners.spec.ts` plays both sides of a partnership on one install (`HUB_URL`; the E2E user must be in
+  `PLATFORM_ADMIN_EMAILS`).
 
 ## How the pieces fit
 

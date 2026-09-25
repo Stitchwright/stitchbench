@@ -14,8 +14,16 @@ import { PartSearchLinks } from "@/components/part-search-links";
 import { hubJoined } from "@/lib/hub";
 import { EVIDENCE_LABEL, KIND_LABEL, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 import { ExternalLink, Trash2 } from "lucide-react";
+import { qtyText } from "@/lib/register-math";
 
-const REASON: Record<string, string> = { RECEIVED: "Received", USED: "Used on ticket", RETURNED: "Returned to stock", ADJUSTED: "Count corrected" };
+const REASON: Record<string, string> = {
+  RECEIVED: "Received",
+  USED: "Used on ticket",
+  RETURNED: "Returned to stock",
+  ADJUSTED: "Count corrected",
+  SOLD: "Sold",
+  CONSIGNED: "Consignment",
+};
 
 export default async function PartPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -36,6 +44,7 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
   const ticketIds = [...new Set(p.moves.map((m) => m.ticketId).filter(Boolean))] as string[];
   const tickets = await db.ticket.findMany({ where: { id: { in: ticketIds }, shopId: user.shopId }, select: { id: true, number: true } });
   const tno = new Map(tickets.map((t) => [t.id, t.number]));
+  const consignedBy = p.consignLinkId ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: p.consignLinkId } } }) : null;
 
   return (
     <div className="space-y-6">
@@ -46,7 +55,7 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
             <span className="mono">{p.partNumber}</span> {p.description}
           </>
         }
-        sub={`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${p.qtyOnHand} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+        sub={`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
         actions={
           <>
             <a href={`/labels?id=${p.id}&format=thermal`} target="_blank" rel="noreferrer" className="btn">
@@ -58,11 +67,20 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
           </>
         }
       />
+      {consignedBy && (
+        <p className="card card-pad text-sm">
+          On consignment from <strong>{consignedBy.partnerName}</strong>: it stays theirs until it sells. Each sale is reported to them and shows on
+          your monthly statement.{" "}
+          <Link href={`/partners/${consignedBy.id}`} className="link">
+            Partnership
+          </Link>
+        </p>
+      )}
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">
           <Section title="Stock">
             <div className="mb-4 grid grid-cols-3 gap-3">
-              <KV k="On hand" v={<span className="num text-xl font-semibold">{p.qtyOnHand}</span>} />
+              <KV k="On hand" v={<span className="num text-xl font-semibold">{qtyText(p.qtyOnHand, p.unit)}</span>} />
               <KV k="Cost" v={money(p.costCents)} />
               <KV k="Price" v={money(p.priceCents)} />
             </div>

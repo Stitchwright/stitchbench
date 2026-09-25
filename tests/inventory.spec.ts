@@ -73,6 +73,31 @@ test("labels, scanner and most-used parts", async ({ page }) => {
   await expect(row).toBeVisible();
   await expect(row.locator("td").nth(1)).toHaveText("1");
 
+  // A supplier's line sheet pasted from Excel: columns are recognised from the header row.
+  await page.goto("/parts/import");
+  const upc = `04427${String(Date.now()).slice(-7)}`;
+  const sheet = [
+    ["SKU", "UPC", "Description", "Wholesale", "Retail", "Qty"],
+    [`CL-${run}`, upc, "Seam ripper", "4.10", "$8.25", "6"],
+    [`OL-${run}`, "", "Rotary blades 45mm, 5 pack", "12.00", "21.99", "3"],
+  ]
+    .map((r) => r.join("\t"))
+    .join("\n");
+  await page.locator("#paste").fill(sheet);
+  await expect(page.locator("#map-partNumber")).toHaveValue("0");
+  await expect(page.locator("#map-barcode")).toHaveValue("1");
+  await expect(page.locator("#map-cost")).toHaveValue("3");
+  await expect(page.getByRole("table", { name: "Preview" })).toContainText("$8.25");
+  await page.getByRole("button", { name: "Import 2 items" }).click();
+  await expect(page.getByText("Imported: 2 added, 0 updated, 0 skipped").first()).toBeVisible();
+  await page.goto(`/parts?q=CL-${run}`);
+  await expect(page.getByRole("link", { name: `CL-${run}` })).toBeVisible();
+  // The shop's own records as a spreadsheet (Settings -> Your data).
+  const exp = await page.request.get("/api/export/inventory");
+  expect(exp.status()).toBe(200);
+  expect(exp.headers()["content-type"]).toContain("text/csv");
+  expect(await exp.text()).toContain(`CL-${run},${upc},Seam ripper`);
+
   // Most used across the community (after this shop reports its counts to the hub).
   if (process.env.HUB_URL) {
     await page.goto("/settings");

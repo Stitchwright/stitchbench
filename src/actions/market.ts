@@ -12,7 +12,7 @@ import { hubFetch, saveListing, saveOrder, syncHub, type HubListing, type HubOrd
 import { numberKey } from "@/lib/parts";
 
 const CONDITIONS = ["NEW", "USED", "REFURB"];
-const KINDS = ["PART", "ACCESSORY", "SUPPLY"];
+const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 const IMAGE = ["image/jpeg", "image/png", "image/webp"];
 
 function refresh() {

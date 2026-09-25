@@ -7,10 +7,12 @@ import { isPlatformAdmin } from "@/lib/shops";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [shop, hub] = await Promise.all([
-    db.shop.findUnique({ where: { id: user.shopId }, select: { name: true } }),
-    db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true } }),
+  const [shop, hub, retailPartners] = await Promise.all([
+    db.shop.findUnique({ where: { id: user.shopId }, select: { name: true, doesRepair: true, sellsRetail: true } }),
+    db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
+    db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
+  const doesRepair = shop?.doesRepair ?? true;
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -18,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex items-center justify-between gap-2 px-4 py-3 md:block md:py-5">
           <Link href="/" className="block">
             <div className="text-lg font-bold tracking-tight">
-              Stitch<span className="text-thread">Bench</span>
+              Stitch<span className="text-thread">{doesRepair ? "Bench" : "Shop"}</span>
             </div>
             <div className="muted truncate text-xs">{shop?.name}</div>
           </Link>
@@ -27,9 +29,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <label htmlFor="q" className="sr-only">
             Search
           </label>
-          <input id="q" name="q" className="input text-sm" placeholder="Serial, model, customer, ticket #" />
+          <input id="q" name="q" className="input text-sm" placeholder={doesRepair ? "Serial, model, customer, ticket #" : "Customer, item, tag #"} />
         </form>
-        <Nav platformAdmin={isPlatformAdmin(user.email)} chatUrl={hub?.installKey ? hub.discordUrl : null} />
+        <Nav
+          platformAdmin={isPlatformAdmin(user.email)}
+          chatUrl={hub?.installKey && hub.scope !== "partner" ? hub.discordUrl : null}
+          doesRepair={doesRepair}
+          sellsRetail={shop?.sellsRetail ?? false}
+          retailPartners={retailPartners > 0}
+        />
         <div className="hidden px-4 py-4 text-xs md:block">
           <div className="muted">Signed in as {user.name}</div>
           <form

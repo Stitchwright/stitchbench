@@ -5,8 +5,10 @@ import { money } from "@/lib/format";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
+import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
 import { createPart } from "@/actions/parts";
 import { KIND_LABEL } from "@/lib/parts";
+import { qtyText } from "@/lib/register-math";
 import type { PartKind } from "@/generated/prisma/enums";
 
 const KINDS = [
@@ -14,6 +16,10 @@ const KINDS = [
   { key: "PART", label: "Parts" },
   { key: "ACCESSORY", label: "Accessories" },
   { key: "SUPPLY", label: "Supplies" },
+  { key: "NOTION", label: "Notions", retail: true },
+  { key: "FABRIC", label: "Fabric", retail: true },
+  { key: "THREAD", label: "Thread", retail: true },
+  { key: "PATTERN", label: "Patterns", retail: true },
 ] as const;
 
 export default async function Parts({
@@ -27,6 +33,8 @@ export default async function Parts({
   }>;
 }) {
   const user = await requireUser();
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, doesRepair: true } });
+  const tabs = KINDS.filter((x) => !("retail" in x) || shop.sellsRetail);
   const { q, low, kind: k, new: newCode } = await searchParams;
   const term = q?.trim();
   const kind = KINDS.some((x) => x.key && x.key === k)
@@ -60,10 +68,13 @@ export default async function Parts({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Parts and accessories"
+        title={shop.doesRepair ? "Parts and accessories" : "Inventory"}
         sub={`${parts.length} items · ${money(value)} on the shelf at cost`}
         actions={
           <>
+            <Link href="/parts/import" className="btn">
+              Import spreadsheet
+            </Link>
             <Link href="/parts/most-used" className="btn">
               Most used
             </Link>
@@ -77,7 +88,7 @@ export default async function Parts({
         }
       />
       <nav className="flex flex-wrap gap-2" aria-label="Type">
-        {KINDS.map((x) => (
+        {tabs.map((x) => (
           <Link
             key={x.key}
             href={`/parts?${new URLSearchParams({ ...(x.key ? { kind: x.key } : {}), ...(term ? { q: term } : {}) })}`}
@@ -213,10 +224,14 @@ export default async function Parts({
                             : ""
                         }
                       >
-                        {p.qtyOnHand}
+                        {qtyText(p.qtyOnHand, p.unit)}
                       </span>
+                      {p.consignLinkId && <div className="muted text-xs">consigned</div>}
                     </td>
-                    <td className="num text-right">{money(p.priceCents)}</td>
+                    <td className="num text-right">
+                      {money(p.priceCents)}
+                      {p.unit === "yd" ? "/yd" : ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -228,8 +243,9 @@ export default async function Parts({
         <Section title="Add a part or accessory">
           <ActionForm action={createPart} className="grid-form">
             <PartFields withQty defaultNumber={newCode} />
-            <div className="sm:col-span-2">
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Submit>Add part</Submit>
+              <BarcodeLookupButton />
             </div>
           </ActionForm>
         </Section>

@@ -122,6 +122,16 @@ export function parseInvite(text: string): Invite {
 export async function joinHub(url: string, joinKey: string, shopName: string, contact?: string | null) {
   const base = url.trim().replace(/\/+$/, "");
   if (!/^https?:\/\/[^/]+/.test(base)) throw new UserError("The hub address starts with https://");
+  // Already on this hub for partner shops only: the join key makes the same install a full member (partner links stay).
+  const cur = await hubState();
+  if (cur?.url === base && cur.installKey && cur.scope === "partner") {
+    const r = (await (await hubFetch("/v1/upgrade", { method: "POST", json: { joinKey: joinKey.trim() } })).json()) as { installId: string; hubName: string };
+    await db.hubState.update({ where: { id: 1 }, data: { scope: "member", hubName: r.hubName, cursor: "0", lastError: null } });
+    return { installId: r.installId, installKey: cur.installKey, hubName: r.hubName };
+  }
+  if (cur?.installKey && (await db.partnerLink.count({ where: { status: "ACTIVE" } }))) {
+    throw new UserError("This install's partner shops are connected through its current hub. End those partnerships before moving to another hub.");
+  }
   const r = await reach(`${base}/v1/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -129,13 +139,20 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
   });
   if (!r.ok) throw await failure(r);
   const j = (await r.json()) as { installId: string; installKey: string; hubName: string };
-  const data = { url: base, hubName: j.hubName, installId: j.installId, installKey: j.installKey, joinedAt: new Date(), cursor: "0", lastError: null };
+  const data = { url: base, hubName: j.hubName, installId: j.installId, installKey: j.installKey, joinedAt: new Date(), cursor: "0", lastError: null, scope: "member" };
   await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
   return j;
 }
 
 export async function leaveHub() {
-  await db.hubState.updateMany({ where: { id: 1 }, data: { url: null, installId: null, installKey: null, cursor: null, discordUrl: null } });
+  // Partner shops talk through the hub too: leaving only stops the community part while partnerships are active.
+  if (await db.partnerLink.count({ where: { status: "ACTIVE" } })) {
+    throw new UserError("Your partner shops are connected through this hub. End those partnerships first (Partners), then leave.");
+  }
+  await db.hubState.updateMany({
+    where: { id: 1 },
+    data: { url: null, installId: null, installKey: null, cursor: null, discordUrl: null, scope: "member", partnerCursor: null },
+  });
 }
 
 function linkRow(l: HubLink) {
@@ -273,12 +290,27 @@ export type HubOrder = {
 
 const key = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-export async function saveXPart(x: HubXPart) {
-  if (x.deleted) {
-    await db.xPart.deleteMany({ where: { id: x.id } });
-    return;
-  }
-  const row = {
+/**
+ * A page of changed links or parts in one statement each (a first sync brings thousands; one upsert per row took
+ * minutes). Deleted ones are removed.
+ */
+async function saveLinks(ls: HubLink[]) {
+  const gone = ls.filter((l) => l.deleted).map((l) => l.id);
+  if (gone.length) await db.manualLink.deleteMany({ where: { id: { in: gone } } });
+  const rows = ls.filter((l) => !l.deleted).map((l) => ({ id: l.id, ...linkRow(l) }));
+  if (!rows.length) return;
+  await db.$executeRaw`
+    INSERT INTO "ManualLink" (id, category, brand, models, "modelKeys", "docType", title, "fileName", url, source, status, "httpStatus", "checkedAt", "updatedAt")
+    SELECT id, category, brand, models, "modelKeys", "docType", title, "fileName", url, source, status, "httpStatus", "checkedAt", "updatedAt"
+    FROM jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS x(id text, category text, brand text, models text, "modelKeys" text[], "docType" text,
+      title text, "fileName" text, url text, source text, status text, "httpStatus" int, "checkedAt" timestamp, "updatedAt" timestamp)
+    ON CONFLICT (id) DO UPDATE SET category = EXCLUDED.category, brand = EXCLUDED.brand, models = EXCLUDED.models, "modelKeys" = EXCLUDED."modelKeys",
+      "docType" = EXCLUDED."docType", title = EXCLUDED.title, "fileName" = EXCLUDED."fileName", url = EXCLUDED.url, source = EXCLUDED.source,
+      status = EXCLUDED.status, "httpStatus" = EXCLUDED."httpStatus", "checkedAt" = EXCLUDED."checkedAt", "updatedAt" = EXCLUDED."updatedAt"`;
+}
+
+function xpartRow(x: HubXPart) {
+  return {
     name: x.name,
     kind: x.kind,
     category: x.category,
@@ -291,6 +323,29 @@ export async function saveXPart(x: HubXPart) {
     sources: x.sources,
     updatedAt: new Date(x.updatedAt),
   };
+}
+
+async function saveXParts(xs: HubXPart[]) {
+  const gone = xs.filter((x) => x.deleted).map((x) => x.id);
+  if (gone.length) await db.xPart.deleteMany({ where: { id: { in: gone } } });
+  const rows = xs.filter((x) => !x.deleted).map((x) => ({ id: x.id, ...xpartRow(x) }));
+  if (!rows.length) return;
+  await db.$executeRaw`
+    INSERT INTO "XPart" (id, name, kind, category, specs, notes, numbers, "numberKeys", fits, "fitKeys", sources, "updatedAt")
+    SELECT id, name, COALESCE(kind, 'PART'), category, specs, notes, numbers, "numberKeys", fits, "fitKeys", sources, "updatedAt"
+    FROM jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS x(id text, name text, kind text, category text, specs text, notes text, numbers jsonb,
+      "numberKeys" text[], fits jsonb, "fitKeys" text[], sources jsonb, "updatedAt" timestamp)
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, category = EXCLUDED.category, specs = EXCLUDED.specs,
+      notes = EXCLUDED.notes, numbers = EXCLUDED.numbers, "numberKeys" = EXCLUDED."numberKeys", fits = EXCLUDED.fits, "fitKeys" = EXCLUDED."fitKeys",
+      sources = EXCLUDED.sources, "updatedAt" = EXCLUDED."updatedAt"`;
+}
+
+export async function saveXPart(x: HubXPart) {
+  if (x.deleted) {
+    await db.xPart.deleteMany({ where: { id: x.id } });
+    return;
+  }
+  const row = xpartRow(x);
   await db.xPart.upsert({ where: { id: x.id }, create: { id: x.id, ...row }, update: row });
 }
 
@@ -365,7 +420,7 @@ async function pushUsage() {
       WHERE sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${start} AND sm."createdAt" < ${end}
       GROUP BY p."partNumber", p.brand`;
     const items = rows
-      .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Number(r.qty), tickets: Number(r.tickets) }))
+      .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Math.round(Number(r.qty)), tickets: Number(r.tickets) }))
       .filter((i) => i.qty > 0)
       .slice(0, 5000);
     const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
@@ -409,9 +464,17 @@ async function doSync(): Promise<SyncResult> {
   if (!s?.url || !s.installKey) return { skipped: true };
   try {
     // The hub's name and Discord link can change; keep them current.
-    const me = (await (await hubFetch("/v1/me")).json()) as { hubName?: string; discordInvite?: string | null };
+    const me = (await (await hubFetch("/v1/me")).json()) as { hubName?: string; discordInvite?: string | null; scope?: string };
     // The hub's Discord link wins when it has one; otherwise keep the one that came with the invite.
-    await db.hubState.update({ where: { id: 1 }, data: { hubName: me.hubName ?? null, ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) } });
+    await db.hubState.update({
+      where: { id: 1 },
+      data: { hubName: me.hubName ?? null, scope: me.scope ?? "member", ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) },
+    });
+    // On the hub for partner shops only: nothing of the community's to sync.
+    if (me.scope === "partner") {
+      await db.hubState.update({ where: { id: 1 }, data: { lastSyncAt: new Date(), lastError: null } });
+      return { skipped: true };
+    }
     const pushed = await pushPending();
     const n = { pushed, links: 0, posts: 0, figures: 0 };
     let since = s.cursor ?? "0";
@@ -425,9 +488,9 @@ async function doSync(): Promise<SyncResult> {
         next: string;
         more: boolean;
       };
-      for (const l of ch.links) await saveLink(l);
+      await saveLinks(ch.links);
       for (const p of ch.posts) await savePost(p);
-      for (const x of ch.xparts ?? []) await saveXPart(x);
+      await saveXParts(ch.xparts ?? []);
       for (const l of ch.listings ?? []) await saveListing(l);
       if (ch.figures.length) await db.hubFigure.createMany({ data: ch.figures.map((id) => ({ id })), skipDuplicates: true });
       n.links += ch.links.length;

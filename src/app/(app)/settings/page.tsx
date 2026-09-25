@@ -17,6 +17,7 @@ import {
 } from "@/actions/settings";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
+import { saveCompanyMode } from "@/actions/partners";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -108,6 +109,53 @@ export default async function SettingsPage() {
       </div>
 
       {admin && (
+        <div id="company">
+          <Section title="What this company does">
+            <ActionForm action={saveCompanyMode} success="Saved" className="space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="doesRepair" defaultChecked={shop.doesRepair} className="check" /> Repairs machines (the StitchBench bench:
+                tickets, specs, manuals)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="sellsRetail" defaultChecked={shop.sellsRetail} className="check" /> Sells over the counter (the StitchShop
+                register: notions, fabric by the yard, accessories, repair pickups)
+              </label>
+              <div className="field">
+                <label htmlFor="receiptNote" className="label">
+                  Bottom of register receipts (returns policy, hours)
+                </label>
+                <textarea id="receiptNote" name="receiptNote" rows={2} defaultValue={shop.receiptNote ?? ""} className="textarea" />
+              </div>
+              <Submit>Save</Submit>
+            </ActionForm>
+          </Section>
+        </div>
+      )}
+
+      {admin && (
+        <Section title="Your data">
+          <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
+          <div className="flex flex-wrap gap-2">
+            <a href="/api/export/customers" className="btn btn-sm">
+              Customers
+            </a>
+            <a href="/api/export/inventory" className="btn btn-sm">
+              Inventory
+            </a>
+            <a href="/api/export/register-sales" className="btn btn-sm">
+              Register sales
+            </a>
+            <a href="/api/export/repairs" className="btn btn-sm">
+              Repairs sent out / from partners
+            </a>
+            <a href="/api/sales" className="btn btn-sm">
+              Repair payments (sales log)
+            </a>
+          </div>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Shop">
           <ActionForm action={saveShop} success="Saved" className="grid-form">
             {(
@@ -141,7 +189,7 @@ export default async function SettingsPage() {
         </Section>
       )}
 
-      {admin && (
+      {admin && shop.doesRepair && (
         <Section title="Service checklist">
           <ActionForm action={saveChecklist} success="Checklist saved" className="space-y-2">
             <label htmlFor="items" className="label">
@@ -153,7 +201,7 @@ export default async function SettingsPage() {
         </Section>
       )}
 
-      {admin && (
+      {admin && shop.doesRepair && (
         <Section
           title="Service menu and price list"
           actions={

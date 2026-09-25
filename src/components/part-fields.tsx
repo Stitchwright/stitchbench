@@ -11,6 +11,9 @@ type P = {
   priceCents: number | null;
   supplier: string | null;
   notes: string | null;
+  unit?: string | null;
+  wholesaleCents?: number | null;
+  offerToPartners?: boolean;
 };
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
@@ -37,7 +40,20 @@ export function PartFields({ part, withQty = false, defaultNumber }: { part?: P;
         <select id="kind" name="kind" defaultValue={part?.kind ?? "PART"} className="select">
           <option value="PART">Part</option>
           <option value="ACCESSORY">Accessory (feet, hoops, extension tables...)</option>
-          <option value="SUPPLY">Supply (needles, oil, bobbins, thread...)</option>
+          <option value="SUPPLY">Supply (needles, oil, bobbins...)</option>
+          <option value="NOTION">Notion (scissors, rulers, pins, marking tools...)</option>
+          <option value="FABRIC">Fabric</option>
+          <option value="THREAD">Thread</option>
+          <option value="PATTERN">Pattern / book</option>
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="unit" className="label">
+          Sold
+        </label>
+        <select id="unit" name="unit" defaultValue={part?.unit ?? ""} className="select">
+          <option value="">Each</option>
+          <option value="yd">By the yard (fabric, cut to 1/8 yd)</option>
         </select>
       </div>
       <div className="field">
@@ -83,17 +99,27 @@ export function PartFields({ part, withQty = false, defaultNumber }: { part?: P;
         <input id="price" name="price" inputMode="decimal" defaultValue={c2d(part?.priceCents)} className="input num" />
       </div>
       <div className="field">
+        <label htmlFor="wholesale" className="label">
+          Partner price ($, to partner sewing shops)
+        </label>
+        <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" />
+      </div>
+      <label className="flex items-center gap-2 self-end pb-2 text-sm">
+        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" /> Offer to partner shops
+        (in their catalog)
+      </label>
+      <div className="field">
         <label htmlFor="reorderAt" className="label">
           Reorder when at or below
         </label>
-        <input id="reorderAt" name="reorderAt" inputMode="numeric" defaultValue={part?.reorderAt ?? 1} className="input num" />
+        <input id="reorderAt" name="reorderAt" inputMode="decimal" defaultValue={part?.reorderAt ?? 1} className="input num" />
       </div>
       {withQty && (
         <div className="field">
           <label htmlFor="qtyOnHand" className="label">
             Quantity on hand
           </label>
-          <input id="qtyOnHand" name="qtyOnHand" inputMode="numeric" defaultValue="0" className="input num" />
+          <input id="qtyOnHand" name="qtyOnHand" inputMode="decimal" defaultValue="0" className="input num" />
         </div>
       )}
       <div className="field sm:col-span-2">

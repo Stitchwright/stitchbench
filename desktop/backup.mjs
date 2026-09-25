@@ -100,7 +100,10 @@ export async function restore(pool, dir) {
       );
     }
     // The hub's cached data isn't in backups, so sync it all again from the start.
-    if (tables.includes("HubState")) await client.query(`UPDATE "HubState" SET cursor = '0', "orderCursor" = '0'`);
+    // Ask the hub again for everything; what was already applied is skipped (PartnerSeen), the rest catches the shop up.
+    if (tables.includes("HubState")) {
+      await client.query(`UPDATE "HubState" SET cursor = '0', "orderCursor" = '0', "partnerCursor" = CASE WHEN "partnerCursor" IS NULL THEN NULL ELSE '0' END`);
+    }
     await client.query("COMMIT");
     return manifest;
   } catch (e) {

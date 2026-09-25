@@ -18,7 +18,7 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   // A part to use later
   await page.goto("/parts");
   const pn = `E2E-${serial}`;
-  await page.getByLabel("Part number").fill(pn);
+  await page.getByLabel("Part number", { exact: true }).fill(pn);
   await page.getByLabel("Description", { exact: true }).fill("Bobbin case (test)");
   await page.getByLabel("Fits models").fill("MC6700P");
   await page.getByLabel("Cost each ($)").fill("18.50");

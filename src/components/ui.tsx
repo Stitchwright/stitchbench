@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { TicketStatus } from "@/generated/prisma/enums";
-import { STATUS_LABEL, STATUS_TONE } from "@/lib/constants";
+import { JOB_STATUS_LABEL, ORDER_STATUS_LABEL, STATUS_LABEL, STATUS_TONE } from "@/lib/constants";
 
 export function PageHeader({
   title,
@@ -31,6 +31,19 @@ export function PageHeader({
 
 export function StatusPill({ status }: { status: TicketStatus }) {
   return <span className={`pill tone-${STATUS_TONE[status]}`}>{STATUS_LABEL[status]}</span>;
+}
+
+/** A partner repair job's status, in the sewing shop's words or the repair shop's. */
+export function JobStatusPill({ status, side }: { status: string; side: string }) {
+  const s = status as TicketStatus;
+  const label = (side === "retail" ? JOB_STATUS_LABEL[s] : STATUS_LABEL[s]) ?? status;
+  return <span className={`pill tone-${STATUS_TONE[s] ?? "neutral"}`}>{label}</span>;
+}
+
+const ORDER_TONE: Record<string, string> = { PLACED: "wait", ACCEPTED: "work", DELIVERED: "ready", RECEIVED: "done", CANCELLED: "bad" };
+
+export function OrderStatusPill({ status }: { status: string }) {
+  return <span className={`pill tone-${ORDER_TONE[status] ?? "neutral"}`}>{ORDER_STATUS_LABEL[status] ?? status}</span>;
 }
 
 export function Section({

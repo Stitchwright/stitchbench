@@ -13,7 +13,15 @@ export const EVIDENCE_LABEL: Record<string, string> = {
   maker: "Maker says it fits",
   listed: "In that model's parts list",
 };
-export const KIND_LABEL: Record<string, string> = { PART: "Part", ACCESSORY: "Accessory", SUPPLY: "Supply" };
+export const KIND_LABEL: Record<string, string> = {
+  PART: "Part",
+  ACCESSORY: "Accessory",
+  SUPPLY: "Supply",
+  NOTION: "Notion",
+  FABRIC: "Fabric",
+  THREAD: "Thread",
+  PATTERN: "Pattern / book",
+};
 
 /** A part number reduced to letters and digits, upper-case: "XA-1234-001" → "XA1234001". */
 export const numberKey = (n: string) => n.toUpperCase().replace(/[^A-Z0-9]/g, "");

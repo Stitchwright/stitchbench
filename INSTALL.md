@@ -139,6 +139,11 @@ One Railway StitchBench can hold several companies, each with its own separate d
 to your email, and use the **Companies** page to add a company and its owner login. Alternatively, give each
 customer their own Railway project, which keeps the bills separate.
 
+A repair shop that sets up **StitchShop** for its partner sewing shops (README, "StitchShop") usually hosts them this
+way: one Railway StitchBench with the repair shop and its partner shops as companies, so the sewing shops sign in
+from their counters with nothing to install. The repair shop's own bench can stay on its Windows program; the two
+talk through the community hub either way.
+
 ---
 
 ## Joining the community hub

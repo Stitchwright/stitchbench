@@ -25,6 +25,7 @@ import {
   saveTension,
   saveTicketText,
 } from "@/actions/tickets";
+import { saveNoteForShop } from "@/actions/repair-jobs";
 
 function inRange(v: number | null, min: number | null, max: number | null) {
   if (v == null || min == null) return null;
@@ -63,6 +64,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     },
   });
   if (!t) notFound();
+  // Came in through a partner sewing shop (StitchShop)?
+  const job = await db.repairJob.findUnique({ where: { ticketId: t.id } });
+  const jobLink = job ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: job.linkId } } }) : null;
 
   const [services, parts, techs, specs, settings] = await Promise.all([
     db.serviceItem.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { sortOrder: "asc" } }),
@@ -119,6 +123,35 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </>
         }
       />
+
+      {job && (
+        <section className="card card-pad mb-6 space-y-2 text-sm">
+          <div>
+            From partner shop{" "}
+            <Link href={`/partners/${job.linkId}`} className="link font-semibold">
+              {jobLink?.partnerName ?? "partner"}
+            </Link>
+            : their tag <strong className="mono">{job.tag}</strong>, customer {job.customerName}
+            <div className="muted text-xs">
+              They see this ticket&apos;s status and bill. Set &quot;Waiting on customer OK&quot; and they call the customer.
+            </div>
+            {job.approval && (
+              <span className={`pill ml-1 ${job.approval === "APPROVED" ? "tone-done" : "tone-bad"}`}>
+                customer {job.approval === "APPROVED" ? `approved${job.approvedCents != null ? ` up to ${money(job.approvedCents)}` : ""}` : "declined"}
+              </span>
+            )}
+          </div>
+          <ActionForm action={saveNoteForShop.bind(null, t.id)} className="flex flex-wrap items-end gap-2" success="The shop will see it">
+            <div className="field min-w-64 flex-1">
+              <label htmlFor="repairNote" className="label">
+                Note for {jobLink?.partnerName ?? "the shop"} (what it needs, what it&apos;ll cost, when it&apos;s back)
+              </label>
+              <input id="repairNote" name="repairNote" defaultValue={job.repairNote ?? ""} className="input" />
+            </div>
+            <Submit className="btn btn-sm">Send note</Submit>
+          </ActionForm>
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">

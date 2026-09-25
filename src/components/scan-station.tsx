@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Camera, CameraOff } from "lucide-react";
 import { saveCounts, scanCode, type ScanResult, type ScannedPart } from "@/actions/scan";
+import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 
 type Mode = "lookup" | "receive" | "count" | "ticket";
 type Ticket = { id: string; label: string };
@@ -17,23 +18,6 @@ const MODES: { key: Mode; label: string; hint: string }[] = [
   { key: "ticket", label: "Use on ticket", hint: "Each scan puts the part on the ticket and takes it from stock." },
 ];
 
-function beep(ok: boolean) {
-  try {
-    const ctx = new AudioContext();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.frequency.value = ok ? 1175 : 220;
-    g.gain.value = 0.08;
-    o.connect(g).connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + (ok ? 0.09 : 0.3));
-  } catch {
-    /* sound is optional */
-  }
-}
-
-type Detector = { detect(src: HTMLVideoElement): Promise<{ rawValue: string }[]> };
-
 /** USB/Bluetooth scanners type the code and press Enter; phones and tablets can use the camera. */
 export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   const [mode, setMode] = useState<Mode>("lookup");
@@ -42,14 +26,10 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [counts, setCounts] = useState<Map<string, { part: ScannedPart; n: number }>>(new Map());
   const [busy, setBusy] = useState(false);
-  const [camera, setCamera] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const video = useRef<HTMLVideoElement>(null);
   const last = useRef({ code: "", at: 0 });
-  const stopCamera = useRef<(() => void) | null>(null);
 
   useEffect(() => input.current?.focus(), [mode]);
-  useEffect(() => () => stopCamera.current?.(), []);
 
   async function handle(raw: string) {
     const code = raw.trim();
@@ -80,52 +60,7 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
     }
   }
 
-  async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      const v = video.current!;
-      v.srcObject = stream;
-      await v.play();
-      setCamera(true);
-      let stopped = false;
-      const Native = (window as unknown as { BarcodeDetector?: new (o: object) => Detector }).BarcodeDetector;
-      if (Native) {
-        const det = new Native({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code", "data_matrix"] });
-        const tick = async () => {
-          if (stopped) return;
-          try {
-            const found = await det.detect(v);
-            if (found[0]?.rawValue) await handle(found[0].rawValue);
-          } catch {
-            /* keep looking */
-          }
-          setTimeout(tick, 250);
-        };
-        tick();
-      } else {
-        // Chrome on Windows and Safari on iPhone have no built-in barcode reader: use ZXing.
-        const { BrowserMultiFormatReader } = await import("@zxing/browser");
-        const reader = new BrowserMultiFormatReader();
-        const controls = await reader.decodeFromVideoElement(v, (res) => {
-          if (res && !stopped) handle(res.getText());
-        });
-        stopCamera.current = () => {
-          stopped = true;
-          controls.stop();
-          stream.getTracks().forEach((t) => t.stop());
-          setCamera(false);
-        };
-        return;
-      }
-      stopCamera.current = () => {
-        stopped = true;
-        stream.getTracks().forEach((t) => t.stop());
-        setCamera(false);
-      };
-    } catch (e) {
-      toast.error(e instanceof Error ? `Camera: ${e.message}` : "Couldn't start the camera.");
-    }
-  }
+  const cam = useBarcodeCamera((code) => handle(code));
 
   async function save() {
     const r = await saveCounts([...counts.values()].map((c) => ({ partId: c.part.id, qty: c.n })));
@@ -193,11 +128,11 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
           </div>
         )}
         <button className="btn btn-primary">Go</button>
-        <button type="button" className="btn" onClick={() => (camera ? stopCamera.current?.() : startCamera())}>
-          {camera ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camera ? "Stop camera" : "Use camera"}
+        <button type="button" className="btn" onClick={() => (cam.on ? cam.stop() : cam.start())}>
+          {cam.on ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {cam.on ? "Stop camera" : "Use camera"}
         </button>
       </form>
-      <video ref={video} className={camera ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
+      <video ref={cam.video} className={cam.on ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
       {mode === "count" && (
         <div className="card card-pad space-y-2">
