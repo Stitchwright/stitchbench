@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageIcon, ExternalLink, X } from "lucide-react";
-import { findByPath, getLocalFile, loadIndex, openLocal, type LibraryIndex } from "@/lib/local-manuals";
+import { getLocalFile, loadIndex, manualPath, openLocal, type LibraryIndex } from "@/lib/local-manuals";
 
 // Figures show from the server when they've been saved (any device, any browser).
 // Otherwise they're drawn here from the tech's own copy of the manual and then saved,
@@ -25,8 +25,18 @@ async function loadDoc(path: string): Promise<PdfDoc> {
       const pdfjs = await import("pdfjs-dist");
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       const data = new Uint8Array(await (await getLocalFile(path)).arrayBuffer());
-      // Plain 2D-canvas rendering (no OffscreenCanvas / ImageDecoder).
-      return (await pdfjs.getDocument({ data, isOffscreenCanvasSupported: false, isImageDecoderSupported: false }).promise) as unknown as PdfDoc;
+      // Plain 2D-canvas rendering (no OffscreenCanvas / ImageDecoder). The wasm decoders are what draw scanned
+      // pages (JBIG2 / JPEG 2000 images); without them those pages come out blank.
+      return (await pdfjs.getDocument({
+        data,
+        isOffscreenCanvasSupported: false,
+        isImageDecoderSupported: false,
+        wasmUrl: "/pdfjs/wasm/",
+        cMapUrl: "/pdfjs/cmaps/",
+        cMapPacked: true,
+        standardFontDataUrl: "/pdfjs/standard_fonts/",
+        iccUrl: "/pdfjs/iccs/",
+      }).promise) as unknown as PdfDoc;
     })();
     docs.set(path, p);
     p.catch(() => docs.delete(path));
@@ -49,8 +59,20 @@ async function draw(canvas: HTMLCanvasElement, path: string, pageNo: number, box
   await page.render({ canvas: null, canvasContext: ctx, viewport: vp }).promise;
 }
 
+/** Nearly all white: the page didn't really draw, so don't keep it. */
+function looksBlank(canvas: HTMLCanvasElement) {
+  const { width, height } = canvas;
+  if (!width || !height) return true;
+  const px = canvas.getContext("2d")!.getImageData(0, 0, width, height).data;
+  const step = Math.max(4, Math.floor(px.length / 4 / 20000)) * 4;
+  let dark = 0;
+  for (let i = 0; i < px.length; i += step) if (px[i] + px[i + 1] + px[i + 2] < 600) dark++;
+  return dark < 20;
+}
+
 /** Keep a copy of a figure drawn from a local manual, so other devices can show it. */
 function saveOnline(canvas: HTMLCanvasElement, sourcePath: string, page: number, box: number[]) {
+  if (looksBlank(canvas)) return;
   canvas.toBlob(
     (blob) => {
       if (!blob) return;
@@ -93,7 +115,7 @@ export function ManualFigure({
 
   useEffect(() => {
     indexPromise ??= loadIndex();
-    indexPromise.then((i) => setPath(findByPath(i, sourcePath ?? file)?.path ?? null));
+    indexPromise.then((i) => manualPath(i, sourcePath ?? file)).then(setPath);
   }, [file, sourcePath]);
 
   if (!page) return null;

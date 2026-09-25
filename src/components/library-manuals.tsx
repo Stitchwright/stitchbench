@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Copy, ExternalLink, FileText } from "lucide-react";
-import { findByPath, findManuals, loadIndex, openLocal, type LibraryIndex } from "@/lib/local-manuals";
+import { findByPath, findManuals, loadIndex, openLocal, serverLibrary, SERVER_PREFIX, type LibraryIndex } from "@/lib/local-manuals";
 
 type Doc = { path: string; file: string; docType: string | null; pages: number | null; sizeBytes: number | null };
 
@@ -26,9 +26,11 @@ function size(n: number | null) {
 export function LibraryManuals({ docs, root, brand, model }: { docs: Doc[]; root: string; brand: string; model: string }) {
   const [index, setIndex] = useState<LibraryIndex | undefined>();
   const [ready, setReady] = useState(false);
+  const [shop, setShop] = useState(false); // the shop PC serves the library (Windows program)
   useEffect(() => {
-    loadIndex().then((i) => {
+    Promise.all([loadIndex(), serverLibrary()]).then(([i, s]) => {
       setIndex(i);
+      setShop(s);
       setReady(true);
     });
   }, []);
@@ -52,7 +54,7 @@ export function LibraryManuals({ docs, root, brand, model }: { docs: Doc[]; root
         <ul className="divide-y divide-line">
           {docs.map((d) => {
             const full = `${root.replace(/[\\/]+$/, "")}${sep}${sep === "/" ? d.path.split("\\").join("/") : d.path}`;
-            const local = ready ? findByPath(index, d.path) : undefined;
+            const local = ready ? (findByPath(index, d.path) ?? (shop ? { path: SERVER_PREFIX + d.path } : undefined)) : undefined;
             return (
               <li key={d.path} className="py-2">
                 <div className="flex items-start gap-3">
@@ -105,7 +107,7 @@ export function LibraryManuals({ docs, root, brand, model }: { docs: Doc[]; root
           </ul>
         </div>
       )}
-      {ready && !index && docs.length > 0 && (
+      {ready && !index && !shop && docs.length > 0 && (
         <p className="muted text-xs">
           To open these straight from this PC, <Link href="/manuals" className="link">connect the manuals folder</Link> ({root}).
         </p>

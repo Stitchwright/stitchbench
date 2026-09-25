@@ -1,0 +1,57 @@
+{
+  "name": "stitchbench-desktop",
+  "productName": "StitchBench",
+  "version": "1.0.0",
+  "description": "StitchBench for the shop PC: runs the app and its database, and serves it to every device on the shop network.",
+  "author": "Timing & Tension",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "prepare-app": "node prepare-app.mjs",
+    "start": "electron .",
+    "dist": "node prepare-app.mjs && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "embedded-postgres": "17.10.0-beta.17",
+    "pg": "^8.16.3",
+    "pg-copy-streams": "^7.0.0"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.timingandtension.stitchbench",
+    "productName": "StitchBench",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.mjs",
+      "migrate.mjs",
+      "backup.mjs",
+      "icon.png",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "app",
+        "to": "app"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "StitchBench"
+    }
+  }
+}

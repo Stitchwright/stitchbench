@@ -153,7 +153,38 @@ export async function getLocalFile(path: string): Promise<File> {
   return fileAt(path);
 }
 
+// ---------- the shop PC's library (Windows program) ----------
+// The desktop program's server reads the library from disk, so any device on the shop network can open
+// manuals without connecting a folder. Paths with this prefix come from there instead of this PC.
+export const SERVER_PREFIX = "server:";
+let serverLib: Promise<boolean> | null = null;
+
+export function serverLibrary(): Promise<boolean> {
+  serverLib ??= fetch("/api/library/status")
+    .then((r) => (r.ok ? r.json() : { enabled: false }))
+    .then((j: { enabled?: boolean }) => Boolean(j.enabled))
+    .catch(() => false);
+  return serverLib;
+}
+
+function serverUrl(path: string) {
+  return `/api/library/file?path=${encodeURIComponent(path.slice(SERVER_PREFIX.length).split("\\").join("/"))}`;
+}
+
+/** Where to read a library manual from: this PC's connected folder first, then the shop PC. */
+export async function manualPath(index: LibraryIndex | undefined, libPath: string): Promise<string | null> {
+  const local = findByPath(index, libPath)?.path;
+  if (local) return local;
+  // The shop PC needs the path inside the library (Category\Brand\File.pdf), not just a file name.
+  return /[\\/]/.test(libPath) && (await serverLibrary()) ? SERVER_PREFIX + libPath : null;
+}
+
 async function fileAt(path: string): Promise<File> {
+  if (path.startsWith(SERVER_PREFIX)) {
+    const r = await fetch(serverUrl(path));
+    if (!r.ok) throw new Error((await r.text()) || "Could not get that manual from the shop PC.");
+    return new File([await r.blob()], path.split(/[\\/]/).pop() ?? "manual.pdf", { type: "application/pdf" });
+  }
   const s = sessionFiles.get(path);
   if (s) return s;
   const root = await getRoot();
@@ -167,6 +198,10 @@ async function fileAt(path: string): Promise<File> {
 
 /** Open a manual from the tech's own disk in a new tab, optionally at a page. */
 export async function openLocal(path: string, page?: number | null): Promise<void> {
+  if (path.startsWith(SERVER_PREFIX)) {
+    window.open(serverUrl(path) + (page ? `#page=${page}` : ""), "_blank");
+    return;
+  }
   // Open the tab first, while the click still counts as a user action, then point it at the file.
   const w = window.open("", "_blank");
   try {
@@ -182,8 +217,16 @@ export async function openLocal(path: string, page?: number | null): Promise<voi
 }
 
 /** Save a new PDF (e.g. a scan) into <library>/<Brand>/ and add it to the index. */
-export async function saveToLibrary(blob: Blob, brand: string, filename: string): Promise<{ saved: "library" | "download"; path: string }> {
+export async function saveToLibrary(blob: Blob, brand: string, filename: string): Promise<{ saved: "library" | "shop" | "download"; path: string }> {
   const root = await getRoot();
+  if (!root && (await serverLibrary())) {
+    const fd = new FormData();
+    fd.set("file", blob, filename);
+    fd.set("filename", filename);
+    const r = await fetch("/api/library/file", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.text()) || "Could not save to the shop library.");
+    return { saved: "shop", path: ((await r.json()) as { path: string }).path };
+  }
   if (root && (await ensurePermission(root, "readwrite"))) {
     const folder = brand.replace(/[^\w\- ]+/g, "").trim() || "Unsorted";
     const dir = await root.getDirectoryHandle(folder, { create: true });

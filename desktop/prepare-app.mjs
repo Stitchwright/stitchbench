@@ -1,0 +1,28 @@
+// Builds the self-contained StitchBench server into desktop/app for the Windows program:
+// the Next.js standalone build, its static files, public/, and the database migrations.
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
+
+const root = path.resolve(import.meta.dirname, "..");
+const out = path.join(import.meta.dirname, "app");
+
+if (!process.argv.includes("--no-build")) {
+  execSync("npm run build", { cwd: root, stdio: "inherit", env: { ...process.env, STANDALONE: "1" } });
+}
+const standalone = path.join(root, ".next", "standalone");
+if (!fs.existsSync(path.join(standalone, "server.js"))) throw new Error("No standalone build. Run: STANDALONE=1 npm run build");
+
+fs.rmSync(out, { recursive: true, force: true });
+fs.cpSync(standalone, out, { recursive: true });
+fs.cpSync(path.join(root, ".next", "static"), path.join(out, ".next", "static"), { recursive: true });
+fs.cpSync(path.join(root, "public"), path.join(out, "public"), { recursive: true });
+fs.cpSync(path.join(root, "prisma", "migrations"), path.join(out, "migrations"), { recursive: true });
+
+// Never ship the developer's .env (database password, auth secret); the program passes its own settings.
+for (const f of fs.readdirSync(out)) if (f.startsWith(".env")) fs.rmSync(path.join(out, f));
+fs.rmSync(path.join(out, "src"), { recursive: true, force: true }); // traced source files; not needed to run
+
+const size = (dir) =>
+  fs.readdirSync(dir, { withFileTypes: true }).reduce((s, e) => s + (e.isDirectory() ? size(path.join(dir, e.name)) : fs.statSync(path.join(dir, e.name)).size), 0);
+console.log(`app ready: ${out} (${(size(out) / 1e6).toFixed(0)} MB)`);

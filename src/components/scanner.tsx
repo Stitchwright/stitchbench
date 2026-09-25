@@ -97,7 +97,13 @@ export function Scanner({ brands, initialBrand, initialModel }: { brands: string
       }
       setBusy("Saving...");
       const r = await saveToLibrary(blob, brand.trim(), filename);
-      toast.success(r.saved === "library" ? `Saved to your manuals folder: ${r.path}` : `Downloaded ${r.path}. Move it into your manuals folder.`);
+      toast.success(
+        r.saved === "library"
+          ? `Saved to your manuals folder: ${r.path}`
+          : r.saved === "shop"
+            ? `Saved to the shop library: ${r.path}`
+            : `Downloaded ${r.path}. Move it into your manuals folder.`,
+      );
       setPages([]);
       setPdf(null);
     } catch (e) {
