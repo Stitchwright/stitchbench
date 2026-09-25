@@ -1,7 +1,7 @@
 {
   "name": "stitchbench-desktop",
   "productName": "StitchBench",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "StitchBench for the shop PC: runs the app and its database, and serves it to every device on the shop network.",
   "author": "Timing & Tension",
   "private": true,
