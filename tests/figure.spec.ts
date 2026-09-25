@@ -27,6 +27,12 @@ test("draws a timing figure from the tech's own manual", async ({ page }) => {
   await page.getByRole("button", { name: "Show figure" }).first().click();
   await expect(page.getByRole("button", { name: "Hide figure" }).first()).toBeVisible({ timeout: 60_000 });
   page.on("console", (m) => m.type() === "error" && console.log("[browser error]", m.text()));
+  const stored = page.locator('img[src^="/api/figures/"]').first();
+  if (await stored.count()) {
+    // Figure already saved online: it must load, and "Whole page" still draws from the tech's own PDF.
+    await expect.poll(() => stored.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Whole page" }).first().click();
+  }
   const canvas = page.locator("canvas:not(.hidden)").first();
   // the page is drawn once the canvas takes the crop's size (a fresh canvas is 300x150)
   await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.height), { timeout: 60_000 }).toBeGreaterThan(150);

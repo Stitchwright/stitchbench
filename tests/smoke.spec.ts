@@ -79,7 +79,7 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   // Machine page: photo, accessories, checklist, readings
   await page.getByRole("link", { name: "Machine history" }).click();
   await expect(page.getByText(`SN ${serial}`).first()).toBeVisible();
-  await expect(page.getByRole("img", { name: "Machine photo" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Check-in condition photo" })).toBeVisible();
   await expect(page.getByText("Service checklist (1/")).toBeVisible();
   await expect(page.getByText("returned").first()).toBeVisible();
   await page.screenshot({ path: "test-results/machine.png", fullPage: true });

@@ -50,15 +50,34 @@ export const saveServiceItem = safe(async function saveServiceItem(itemId: strin
   const name = str(formData.get("name"));
   const price = toCents(formData.get("price"));
   if (!name || price == null) throw new UserError("Enter a name and price.");
+  const listing = { category: str(formData.get("category")), description: str(formData.get("description")) };
   if (itemId) {
     const it = await db.serviceItem.findFirst({ where: { id: itemId, shopId: user.shopId } });
     if (!it) throw new UserError("Service not found.");
-    await db.serviceItem.update({ where: { id: itemId }, data: { name, priceCents: price, active: formData.get("active") === "on" } });
+    await db.serviceItem.update({ where: { id: itemId }, data: { name, priceCents: price, active: formData.get("active") === "on", ...listing } });
   } else {
     const count = await db.serviceItem.count({ where: { shopId: user.shopId } });
-    await db.serviceItem.create({ data: { shopId: user.shopId, name, priceCents: price, sortOrder: count } });
+    await db.serviceItem.create({ data: { shopId: user.shopId, name, priceCents: price, sortOrder: count, ...listing } });
   }
   revalidatePath("/settings");
+  revalidatePath("/price-list");
+});
+
+export const savePriceListNote = safe(async function savePriceListNote(formData: FormData) {
+  const user = await requireAdmin();
+  await db.shop.update({ where: { id: user.shopId }, data: { priceListNote: str(formData.get("priceListNote")) } });
+  revalidatePath("/settings");
+  revalidatePath("/price-list");
+});
+
+export const resetUserPassword = safe(async function resetUserPassword(userId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) throw new UserError("Use at least 8 characters.");
+  const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
+  if (!u) throw new UserError("User not found.");
+  if (u.role === "OWNER" && u.id !== admin.id) throw new UserError("Only the owner can change the owner's password.");
+  await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10) } });
 });
 
 export const addUser = safe(async function addUser(formData: FormData) {

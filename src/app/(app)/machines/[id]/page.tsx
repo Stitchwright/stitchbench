@@ -8,8 +8,11 @@ import { ticketTotals } from "@/lib/ticket-math";
 import { MACHINE_TYPES, OPEN_STATUSES } from "@/lib/constants";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { PageHeader, Section, StatusPill, KV, Empty, modelHref } from "@/components/ui";
-import { PhotoStrip } from "@/components/photo-strip";
+import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
+import { ModelMachines, ModelPhotos } from "@/components/model-history";
+import { ShareForm } from "@/components/share-form";
+import { SharedPosts } from "@/components/shared-posts";
 import { ActionForm, Submit } from "@/components/action-form";
 import { updateMachine } from "@/actions/records";
 
@@ -27,7 +30,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
     include: {
       shop: { select: { checklistItems: true } },
       customer: true,
-      photos: { select: { id: true, caption: true, createdAt: true, ticketId: true }, orderBy: { createdAt: "desc" } },
+      photos: { select: PHOTO_SELECT, orderBy: { createdAt: "desc" } },
       tickets: { orderBy: { intakeAt: "desc" }, include: { lines: true, payments: true, tech: { select: { name: true } } } },
     },
   });
@@ -76,6 +79,15 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
           <Section title="Photos">
             <PhotoStrip machineId={m.id} ticketId={current && OPEN_STATUSES.includes(current.status) ? current.id : undefined} photos={m.photos} />
           </Section>
+
+          <ShareForm
+            machineId={m.id}
+            model={`${m.brand} ${m.model}`}
+            photos={m.photos}
+            defaultBody={[current?.diagnosis, current?.workDone].filter(Boolean).join("\n\n") || undefined}
+          />
+
+          <ModelPhotos shopId={user.shopId} brand={m.brand} model={m.model} excludeMachineId={m.id} title={`Inside & wiring photos from other ${m.model}s`} hideWhenEmpty />
 
           {current ? (
             <Section
@@ -255,10 +267,13 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
               <KV k="Visits" v={String(m.tickets.length)} />
             </div>
           </Section>
+
+          <ModelMachines shopId={user.shopId} brand={m.brand} model={m.model} excludeMachineId={m.id} title={`Other ${m.brand} ${m.model}s we've worked on`} hideWhenEmpty />
         </div>
 
-        <div className="xl:col-span-2">
+        <div className="space-y-6 xl:col-span-2">
           <ModelPanel shopId={user.shopId} brand={m.brand} model={m.model} />
+          <SharedPosts user={user} brand={m.brand} model={m.model} title="Shared by techs on StitchBench" />
         </div>
       </div>
     </div>

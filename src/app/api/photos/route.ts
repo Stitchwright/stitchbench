@@ -1,5 +1,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { PHOTO_KINDS } from "@/lib/constants";
+import type { PhotoKind } from "@/generated/prisma/enums";
 
 const MAX_BYTES = 3 * 1024 * 1024; // photos are resized in the browser first; this is a backstop
 
@@ -29,7 +31,8 @@ export async function POST(req: Request) {
       ticketId,
       mime: file.type,
       data: new Uint8Array(await file.arrayBuffer()),
-      caption: form.get("caption") ? String(form.get("caption")) : null,
+      caption: form.get("caption") ? String(form.get("caption")).slice(0, 300) : null,
+      kind: PHOTO_KINDS.includes(String(form.get("kind")) as PhotoKind) ? (String(form.get("kind")) as PhotoKind) : "CONDITION",
     },
     select: { id: true },
   });

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
+import { isPlatformAdmin } from "@/lib/shops";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -25,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </label>
           <input id="q" name="q" className="input text-sm" placeholder="Serial, model, customer, ticket #" />
         </form>
-        <Nav />
+        <Nav platformAdmin={isPlatformAdmin(user.email)} />
         <div className="hidden px-4 py-4 text-xs md:block">
           <div className="muted">Signed in as {user.name}</div>
           <form

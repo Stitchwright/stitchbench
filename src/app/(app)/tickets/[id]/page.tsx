@@ -12,7 +12,7 @@ import { valueRange } from "@/lib/adjustments";
 import { PageHeader, Section, KV, modelHref } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Checklist, StatusSelect } from "@/components/ticket-controls";
-import { PhotoStrip } from "@/components/photo-strip";
+import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
 import {
   addLine,
@@ -54,7 +54,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     where: { id, shopId: user.shopId },
     include: {
       shop: true,
-      machine: { include: { photos: { select: { id: true, caption: true, createdAt: true, ticketId: true }, orderBy: { createdAt: "desc" } } } },
+      machine: { include: { photos: { select: PHOTO_SELECT, orderBy: { createdAt: "desc" } } } },
       customer: true,
       viaAccount: true,
       lines: { orderBy: { createdAt: "asc" } },

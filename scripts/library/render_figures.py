@@ -31,7 +31,11 @@ for f in os.listdir(OUT):
     fid = f[:-4]
     if f.endswith(".jpg") and fid not in manifest and fid in known:
         path, page, box = known[fid]
-        pm = pymupdf.Pixmap(os.path.join(OUT, f))
+        try:
+            pm = pymupdf.Pixmap(os.path.join(OUT, f))
+        except Exception:
+            os.remove(os.path.join(OUT, f))  # half-written by an interrupted run; cut again below
+            continue
         manifest[fid] = {"id": fid, "sourcePath": path, "page": page, "box": list(box), "width": pm.width, "height": pm.height}
 json.dump(list(manifest.values()), open(man_path, "w"))
 print(len(todo), "figures wanted,", sum(1 for f in todo if f in manifest), "already cut", flush=True)

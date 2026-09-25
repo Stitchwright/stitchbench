@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { modelKey, str } from "@/lib/format";
-import type { CustomerKind, NoteKind } from "@/generated/prisma/enums";
+import { PHOTO_KINDS } from "@/lib/constants";
+import type { CustomerKind, NoteKind, PhotoKind } from "@/generated/prisma/enums";
 
 // ---------- machines ----------
 
@@ -68,6 +69,21 @@ export const deletePhoto = safe(async function deletePhoto(photoId: string) {
   await db.machinePhoto.delete({ where: { id: photoId } });
   revalidatePath(`/machines/${p.machineId}`);
   if (p.ticketId) revalidatePath(`/tickets/${p.ticketId}`);
+});
+
+export const updatePhoto = safe(async function updatePhoto(photoId: string, formData: FormData) {
+  const user = await requireUser();
+  const p = await db.machinePhoto.findFirst({ where: { id: photoId, shopId: user.shopId }, select: { id: true, machineId: true, ticketId: true } });
+  if (!p) throw new UserError("Photo not found.");
+  const kind = str(formData.get("kind")) as PhotoKind | null;
+  if (kind && !PHOTO_KINDS.includes(kind)) throw new UserError("Pick what the photo shows.");
+  await db.machinePhoto.update({
+    where: { id: photoId },
+    data: { caption: str(formData.get("caption"))?.slice(0, 300) ?? null, ...(kind ? { kind } : {}) },
+  });
+  revalidatePath(`/machines/${p.machineId}`);
+  if (p.ticketId) revalidatePath(`/tickets/${p.ticketId}`);
+  revalidatePath("/models", "layout");
 });
 
 // ---------- customers ----------

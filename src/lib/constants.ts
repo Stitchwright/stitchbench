@@ -1,5 +1,5 @@
 // Lists that mirror the paper Machine Log so the bench, the route and the app use the same words.
-import type { TicketStatus, PaymentMethod, LineKind, NoteKind } from "@/generated/prisma/enums";
+import type { TicketStatus, PaymentMethod, LineKind, NoteKind, PhotoKind } from "@/generated/prisma/enums";
 
 export const STATUS_LABEL: Record<TicketStatus, string> = {
   AT_SHOP_AWAITING_PICKUP: "At shop - awaiting pickup",
@@ -68,6 +68,17 @@ export const NOTE_LABEL: Record<NoteKind, string> = {
   FACT: "Fact",
   TIP: "Tip",
 };
+
+export const PHOTO_KIND_LABEL: Record<PhotoKind, string> = {
+  CONDITION: "Check-in condition",
+  INSIDE: "Inside the machine",
+  WIRING: "Wiring & connectors",
+  PART: "Parts",
+  AFTER: "After repair",
+};
+export const PHOTO_KINDS = Object.keys(PHOTO_KIND_LABEL) as PhotoKind[];
+/** Photos that help with every machine of the model, so they also show on the model page. */
+export const MODEL_PHOTO_KINDS: PhotoKind[] = ["INSIDE", "WIRING"];
 
 export const MACHINE_TYPES = [
   "Mechanical",

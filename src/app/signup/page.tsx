@@ -1,8 +1,7 @@
 import { notFound, redirect } from "next/navigation";
-import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signIn } from "@/auth";
-import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "@/lib/service-menu";
+import { createShopWithOwner } from "@/lib/shops";
 
 // Lets another repair shop create its own account. Off unless ALLOW_SIGNUP=true.
 export default async function Signup({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -18,15 +17,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     const password = String(fd.get("password") ?? "");
     if (!shopName || !name || !email || password.length < 8) redirect("/signup?error=missing");
     if (await db.user.findUnique({ where: { email } })) redirect("/signup?error=taken");
-    await db.shop.create({
-      data: {
-        name: shopName,
-        checklistItems: DEFAULT_CHECKLIST,
-        users: { create: { email, name, role: "OWNER", passwordHash: await bcrypt.hash(password, 10) } },
-        // New shops start with the menu names but no prices; they set their own.
-        serviceItems: { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i })) },
-      },
-    });
+    await createShopWithOwner({ shopName, name, email, password });
     await signIn("credentials", { email, password, redirectTo: "/settings" });
   }
 
