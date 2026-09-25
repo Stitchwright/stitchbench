@@ -1,6 +1,7 @@
-# Installing StitchBench
+# Installing StitchBench and StitchShop
 
-There are two ways to run StitchBench. Each company picks one and pays its own costs.
+There are two ways to run StitchBench. Each company picks one and pays its own costs. StitchShop, the same program
+for sewing and quilt shops, runs the same two ways: see [Installing StitchShop](#installing-stitchshop-sewing-and-quilt-shops).
 
 | | **Windows program** (on the shop PC) | **Railway** (hosted) |
 |---|---|---|
@@ -119,6 +120,10 @@ your password in **Settings**, and add your people under **Settings → People**
 | `SEED_SHOP_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD` | the company and owner login made on the first start |
 | `ALLOW_SIGNUP` | leave unset. `true` lets anyone create a company at `/signup` |
 | `PLATFORM_ADMIN_EMAILS` | optional: emails that can add companies from the Companies page (hosting several shops) |
+| `APP_NAME`, `DEFAULT_SHOP_KIND` | `StitchShop` and `retail` for a StitchShop site (new companies start as sewing shops); leave unset for StitchBench |
+| `SEED_SHOP_KIND` | optional: `repair`, `retail` or `both` for the first company (defaults to `DEFAULT_SHOP_KIND`) |
+| `DEFAULT_HUB_URL` | optional: the hub a partner code joins when no hub is set (defaults to the StitchHub on Railway) |
+| `UPC_LOOKUP`, `UPCITEMDB_KEY` | optional: `off` turns barcode lookups off; a UPCitemdb key uses a paid plan instead of 100 free a day |
 
 ### Manuals on the hosted version
 The server can't see your PCs. Each tech connects their manuals folder once in the browser (**My manuals →
@@ -139,10 +144,92 @@ One Railway StitchBench can hold several companies, each with its own separate d
 to your email, and use the **Companies** page to add a company and its owner login. Alternatively, give each
 customer their own Railway project, which keeps the bills separate.
 
-A repair shop that sets up **StitchShop** for its partner sewing shops (README, "StitchShop") usually hosts them this
-way: one Railway StitchBench with the repair shop and its partner shops as companies, so the sewing shops sign in
-from their counters with nothing to install. The repair shop's own bench can stay on its Windows program; the two
-talk through the community hub either way.
+A repair shop that sets up **StitchShop** for its partner sewing shops usually hosts them this way: see
+[A repair shop hosting StitchShop for its partner shops](#a-repair-shop-hosting-stitchshop-for-its-partner-shops).
+
+---
+
+## Installing StitchShop (sewing and quilt shops)
+
+StitchShop is the same program set up for a sewing or quilt shop's counter: the register, inventory (notions,
+fabric by the yard, thread, patterns), and the machines the shop takes in for its repair shop. It has the same two
+ways to run, and each shop picks one:
+
+| | **Windows program** (on the shop PC) | **Railway** (hosted) |
+|---|---|---|
+| Monthly cost | none (your own PC) | about $5–10 to Railway (one hosted copy can hold several shops) |
+| Where the data lives | on the shop PC | in Railway's database |
+| The register works when the internet is down | yes | no |
+| Other devices | same Wi-Fi (`http://<pc-name>:3110`), or Tailscale | anywhere, at its web address |
+| Backups | automatic, every night | Railway database backups, or `pg_dump` |
+
+Either way, the shop connects to its repair shop with a **partner code** (see
+[Connecting a sewing shop to its repair shop](#connecting-a-sewing-shop-to-its-repair-shop)). The two talk through
+StitchHub, so neither needs to reach the other's computer.
+
+### Option 1: StitchShop Windows program
+1. Run **`StitchShop Setup <version>.exe`** (built with `npm run dist:stitchshop`, see
+   [For maintainers](#for-maintainers)). The same code-signing note as StitchBench applies.
+2. Start **StitchShop**. The first screen asks for the shop's name, the owner's name, email and a password; *What
+   kind of shop* is already set to **Sewing / quilt shop**. Paste the **partner code** from the repair shop in the
+   last box, and the two shops are connected as soon as the shop is created.
+3. Allow it on the network when Windows asks (both *Private* and *Public*), so the counter tablet or a second PC can
+   use it.
+
+It runs in the tray like StitchBench, keeps its own data in `%APPDATA%\StitchShop`, backs up nightly to
+`Documents\StitchShop Backups`, and uses port 3110 (database 5449), so StitchBench and StitchShop can share a PC.
+- **Barcode scanner:** any USB or Bluetooth scanner that types the code and presses Enter works in the register's
+  scan box. Phones and tablets can use their camera.
+- **Receipts:** print from the receipt page to any printer; an 80 mm receipt printer set up in Windows works.
+- **Cards:** run cards on your own card reader (Square, Clover, your bank's terminal) and choose **Card** on the
+  register. StitchShop doesn't process cards itself.
+
+### Option 2: StitchShop on Railway
+Same steps as [StitchBench on Railway](#option-2-railway-hosted), with a different service name and two more
+variables, so new companies start as sewing shops and the site is called StitchShop:
+
+```bash
+railway init --name stitchshop
+railway add --database postgres
+railway add --service stitchshop \
+  --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}}' \
+  --variables "AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(33).toString('base64'))")" \
+  --variables "AUTH_TRUST_HOST=true" \
+  --variables "APP_NAME=StitchShop" \
+  --variables "DEFAULT_SHOP_KIND=retail" \
+  --variables "SEED_SHOP_NAME=Your Shop Name" \
+  --variables "SEED_OWNER_NAME=Your Name" \
+  --variables "SEED_OWNER_EMAIL=you@example.com" \
+  --variables "SEED_OWNER_PASSWORD=a-temporary-password"
+railway up --service stitchshop --ci
+railway domain --service stitchshop
+```
+
+Sign in, change the password, and enter the partner code under **Partner shops → Enter a partner code**.
+
+### A repair shop hosting StitchShop for its partner shops
+A repair shop can run one hosted StitchShop and put each partner sewing shop in it as its own company (their data
+stays separate), so the shops have nothing to install:
+1. Deploy StitchShop on Railway as above, with `PLATFORM_ADMIN_EMAILS` set to your email and the first company
+   named for your hosting (for example "Timing & Tension hosting").
+2. For each sewing shop: in **your StitchBench** (wherever it runs) open **Partner shops → Make a code for another
+   shop**, set the terms, and copy the code.
+3. In the hosted StitchShop, **Companies → Add a company**: the shop's name, *Sewing / quilt shop*, the owner's
+   name, email and a temporary password, and the partner code. The company is created already connected to you.
+4. Give the owner the address and temporary password. They sign in, change it, accept the agreement under
+   **Partner shops**, and add their staff under **Settings → People**.
+
+If your StitchBench itself runs in the same hosted copy, **Partner shops → Set up StitchShop for a sewing shop** does
+steps 2 and 3 in one form.
+
+### Connecting a sewing shop to its repair shop
+- The repair shop makes the code (**Partner shops → Make a code for another shop**), with the terms it offers:
+  commission on repairs, consignment split, statements, notice. Codes work once and last 14 days.
+- The sewing shop enters it: at sign-up, under **Partner shops → Enter a partner code**, or by the host under
+  **Companies**. A shop that isn't on the community hub joins it for partners only; nothing else is shared.
+- Both shops accept the agreement under **Partner shops → (the partner) → Agreement**. From then on, machines taken
+  in, repair status, estimates, orders, consignment and statements flow between the two by themselves (about every
+  minute).
 
 ---
 
@@ -165,6 +252,7 @@ cd desktop
 npm install
 node prepare-app.mjs                 # builds the app into desktop/server (with the database migrations)
 npx electron-builder --win nsis      # → desktop/dist/StitchBench Setup <version>.exe
+npm run dist:stitchshop              # → desktop/dist-stitchshop/StitchShop Setup <version>.exe (same program, StitchShop name and defaults)
 ```
 
 Set the version in `desktop/package.json`. Windows Smart App Control and SmartScreen block or warn about

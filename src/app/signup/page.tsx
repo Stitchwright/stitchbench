@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { signIn } from "@/auth";
-import { createShopWithOwner, type ShopKind } from "@/lib/shops";
+import { appName, createShopWithOwner, defaultShopKind, type ShopKind } from "@/lib/shops";
 import { redeemPartnerCode } from "@/lib/partners";
 
 // Lets another repair shop create its own account. Off unless ALLOW_SIGNUP=true.
@@ -38,7 +38,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     <div className="flex min-h-screen items-center justify-center px-4">
       <form action={create} className="card card-pad w-full max-w-sm space-y-4">
         <div className="text-2xl font-bold tracking-tight">
-          Stitch<span className="text-thread">Bench</span>
+          Stitch<span className="text-thread">{appName() === "StitchShop" ? "Shop" : "Bench"}</span>
         </div>
         {error && (
           <p className="pill tone-bad" role="alert">
@@ -62,7 +62,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           <label htmlFor="kind" className="label">
             What kind of shop
           </label>
-          <select id="kind" name="kind" className="select" defaultValue="repair">
+          <select id="kind" name="kind" className="select" defaultValue={defaultShopKind()}>
             <option value="repair">Repair shop</option>
             <option value="retail">Sewing / quilt shop (register, inventory, repairs sent out)</option>
             <option value="both">Both: we repair and sell over the counter</option>

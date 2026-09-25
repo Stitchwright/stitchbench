@@ -1,7 +1,10 @@
-// StitchBench for the shop PC.
-// Starts its own PostgreSQL, updates the database, runs the StitchBench server for every device on the shop
-// network (Wi-Fi or Tailscale), opens it in a window, and keeps nightly backups. Closing the window leaves it
-// running in the tray so other devices can keep working; Quit from the tray stops everything.
+// StitchBench (or StitchShop) for the shop PC.
+// Starts its own PostgreSQL, updates the database, runs the server for every device on the shop network (Wi-Fi or
+// Tailscale), opens it in a window, and keeps nightly backups. Closing the window leaves it running in the tray so
+// other devices can keep working; Quit from the tray stops everything.
+// One program, two names: StitchBench for a repair bench, StitchShop for a sewing / quilt shop counter. The
+// StitchShop build sets "flavor": "stitchshop" in package.json (npm run dist:stitchshop); SB_FLAVOR overrides it for a
+// test run. The two keep separate data, ports and backups, so both can be on one PC.
 import { app, BrowserWindow, Tray, Menu, shell, clipboard, dialog, nativeImage, Notification } from "electron";
 import path from "node:path";
 import fs from "node:fs";
@@ -15,10 +18,14 @@ import { migrate } from "./migrate.mjs";
 import { backup, restore, listBackups } from "./backup.mjs";
 
 const HERE = import.meta.dirname;
+const PKG = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
+const FLAVOR = (process.env.SB_FLAVOR ?? PKG.flavor) === "stitchshop" ? "stitchshop" : "stitchbench";
+const NAME = FLAVOR === "stitchshop" ? "StitchShop" : "StitchBench";
+app.setName(NAME); // before anything asks for userData
 const APP_DIR = app.isPackaged ? path.join(process.resourcesPath, "server") : path.join(HERE, "server");
-const DATA = app.getPath("userData"); // %APPDATA%\StitchBench
+const DATA = app.getPath("userData"); // %APPDATA%\StitchBench or %APPDATA%\StitchShop
 const CONFIG_FILE = path.join(DATA, "config.json");
-const LOG_FILE = path.join(DATA, "logs", "stitchbench.log");
+const LOG_FILE = path.join(DATA, "logs", `${FLAVOR}.log`);
 const ICON = path.join(HERE, "icon.png");
 
 let cfg, db, pool, server, win, tray;
@@ -42,11 +49,13 @@ function log(...parts) {
 }
 
 function loadConfig() {
+  const shop = FLAVOR === "stitchshop";
   const defaults = {
-    port: 3100,
-    dbPort: 5439,
-    libraryDir: "C:\\Manuals",
-    backupDir: path.join(app.getPath("documents"), "StitchBench Backups"),
+    port: shop ? 3110 : 3100,
+    dbPort: shop ? 5449 : 5439,
+    // A sewing shop keeps no manual library (its repair shop does).
+    libraryDir: shop ? "" : "C:\\Manuals",
+    backupDir: path.join(app.getPath("documents"), `${NAME} Backups`),
     backupsToKeep: 30,
     platformAdminEmails: "",
     openAtLogin: true,
@@ -154,6 +163,8 @@ async function startServer() {
       LIBRARY_DIR: cfg.libraryDir,
       PLATFORM_ADMIN_EMAILS: cfg.platformAdminEmails,
       ALLOW_SIGNUP: signupOpen ? "true" : "false",
+      APP_NAME: NAME,
+      DEFAULT_SHOP_KIND: FLAVOR === "stitchshop" ? "retail" : "repair",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -166,10 +177,10 @@ async function startServer() {
   });
   for (let i = 0; i < 120; i++) {
     if ((await get(`http://127.0.0.1:${cfg.port}/login`)) === 200) return;
-    if (!server) throw new Error("The StitchBench server stopped while starting. See the log.");
+    if (!server) throw new Error(`The ${NAME} server stopped while starting. See the log.`);
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error("The StitchBench server didn't start within a minute. See the log.");
+  throw new Error(`The ${NAME} server didn't start within a minute. See the log.`);
 }
 
 async function stopServer() {
@@ -223,7 +234,7 @@ async function runBackup(reason) {
     return dir;
   } catch (e) {
     log("backup failed:", e);
-    new Notification({ title: "StitchBench backup failed", body: String(e instanceof Error ? e.message : e) }).show();
+    new Notification({ title: `${NAME} backup failed`, body: String(e instanceof Error ? e.message : e) }).show();
     return null;
   }
 }
@@ -243,7 +254,7 @@ setInterval(() => {
 }, 20 * 60_000);
 
 async function restoreFromBackup() {
-  const pick = await dialog.showOpenDialog({ title: "Choose a StitchBench backup folder", defaultPath: cfg.backupDir, properties: ["openDirectory"] });
+  const pick = await dialog.showOpenDialog({ title: `Choose a ${NAME} backup folder`, defaultPath: cfg.backupDir, properties: ["openDirectory"] });
   if (pick.canceled || !pick.filePaths[0]) return;
   const dir = pick.filePaths[0];
   if (!fs.existsSync(path.join(dir, "manifest.json"))) {
@@ -271,7 +282,7 @@ async function restoreFromBackup() {
     log("restore failed:", e);
     dialog.showErrorBox("Restore failed", String(e instanceof Error ? e.message : e));
   }
-  await startServer().catch((e) => dialog.showErrorBox("StitchBench", String(e)));
+  await startServer().catch((e) => dialog.showErrorBox(NAME, String(e)));
   win?.reload();
 }
 
@@ -293,7 +304,7 @@ function showWindow() {
     height: 950,
     show: false,
     icon: ICON,
-    title: "StitchBench",
+    title: NAME,
     autoHideMenuBar: true,
     webPreferences: { plugins: true }, // built-in PDF viewer for manuals
   });
@@ -312,7 +323,7 @@ function showWindow() {
     if (!cfg.toldAboutTray) {
       cfg.toldAboutTray = true;
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-      tray?.displayBalloon({ title: "StitchBench is still running", content: "Other devices can keep using it. Quit from this icon." });
+      tray?.displayBalloon({ title: `${NAME} is still running`, content: "Other devices can keep using it. Quit from this icon." });
     }
   });
   win.on("closed", () => (win = null));
@@ -321,20 +332,20 @@ function showWindow() {
 
 function buildTray() {
   tray ??= new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
-  tray.setToolTip("StitchBench");
+  tray.setToolTip(NAME);
   tray.on("double-click", showWindow);
   const addr = addresses();
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Open StitchBench", click: showWindow },
+      { label: `Open ${NAME}`, click: showWindow },
       {
         label: "Address for other devices (click to copy)",
         submenu: addr.map((a) => ({ label: `${a.label}: ${a.url}`, click: () => clipboard.writeText(a.url) })),
       },
       { type: "separator" },
-      { label: "Back up now", click: async () => (await runBackup("manual")) && new Notification({ title: "StitchBench", body: "Backup saved." }).show() },
+      { label: "Back up now", click: async () => (await runBackup("manual")) && new Notification({ title: NAME, body: "Backup saved." }).show() },
       { label: "Open backups folder", click: () => (fs.mkdirSync(cfg.backupDir, { recursive: true }), shell.openPath(cfg.backupDir)) },
-      { label: "Restore a backup...", click: () => restoreFromBackup().catch((e) => dialog.showErrorBox("StitchBench", String(e))) },
+      { label: "Restore a backup...", click: () => restoreFromBackup().catch((e) => dialog.showErrorBox(NAME, String(e))) },
       { type: "separator" },
       {
         label: "Start with Windows",
@@ -348,9 +359,9 @@ function buildTray() {
       },
       { label: "Settings file (restart to apply)", click: () => shell.openPath(CONFIG_FILE) },
       { label: "Show log", click: () => shell.openPath(LOG_FILE) },
-      { label: "Restart StitchBench", click: () => (app.relaunch(), quit()) },
+      { label: `Restart ${NAME}`, click: () => (app.relaunch(), quit()) },
       { type: "separator" },
-      { label: "Quit StitchBench", click: quit },
+      { label: `Quit ${NAME}`, click: quit },
     ]),
   );
 }
@@ -379,7 +390,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("window-all-closed", () => {}); // keep serving from the tray
   app.whenReady().then(async () => {
     cfg = loadConfig();
-    log(`starting StitchBench ${app.getVersion()}`);
+    log(`starting ${NAME} ${app.getVersion()}`);
     buildTray();
     applyLoginItem();
     try {
@@ -387,7 +398,7 @@ if (!app.requestSingleInstanceLock()) {
       await startServer();
     } catch (e) {
       log("startup failed:", e);
-      dialog.showErrorBox("StitchBench couldn't start", `${e instanceof Error ? e.message : e}\n\nLog: ${LOG_FILE}`);
+      dialog.showErrorBox(`${NAME} couldn't start`, `${e instanceof Error ? e.message : e}\n\nLog: ${LOG_FILE}`);
       return quit();
     }
     buildTray(); // addresses can change while starting (Tailscale comes up late)

@@ -143,9 +143,14 @@ async function seedFirstShop() {
   }
   const email = (process.env.SEED_OWNER_EMAIL || "owner@example.com").toLowerCase();
   const password = process.env.SEED_OWNER_PASSWORD || randomBytes(9).toString("base64url");
+  // SEED_SHOP_KIND (or DEFAULT_SHOP_KIND): repair | retail (a sewing / quilt shop, StitchShop) | both
+  const kind = process.env.SEED_SHOP_KIND || process.env.DEFAULT_SHOP_KIND || "repair";
+  const doesRepair = kind !== "retail";
   const shop = await db.shop.create({
     data: {
-      name: process.env.SEED_SHOP_NAME || "My Repair Shop",
+      name: process.env.SEED_SHOP_NAME || (doesRepair ? "My Repair Shop" : "My Sewing Shop"),
+      doesRepair,
+      sellsRetail: kind === "retail" || kind === "both",
       users: {
         create: {
           email,
@@ -154,9 +159,7 @@ async function seedFirstShop() {
           passwordHash: await bcrypt.hash(password, 10),
         },
       },
-      serviceItems: {
-        create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: s.priceCents, sortOrder: i })),
-      },
+      serviceItems: doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: s.priceCents, sortOrder: i })) } : undefined,
     },
   });
   console.log(`Shop "${shop.name}" created. Owner login: ${email}`);

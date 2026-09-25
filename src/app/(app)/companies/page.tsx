@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { isPlatformAdmin } from "@/lib/shops";
+import { defaultShopKind, isPlatformAdmin } from "@/lib/shops";
 import { fmtDate } from "@/lib/format";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
@@ -75,7 +75,7 @@ export default async function Companies() {
             <label htmlFor="c-kind" className="label">
               Kind of shop
             </label>
-            <select id="c-kind" name="kind" className="select" defaultValue="repair">
+            <select id="c-kind" name="kind" className="select" defaultValue={defaultShopKind()}>
               <option value="repair">Repair shop (StitchBench)</option>
               <option value="retail">Sewing / quilt shop (StitchShop register)</option>
               <option value="both">Both: repairs and a counter</option>
@@ -98,6 +98,12 @@ export default async function Companies() {
               Temporary password (8+ characters)
             </label>
             <input id="c-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
+          </div>
+          <div className="field sm:col-span-2">
+            <label htmlFor="c-code" className="label">
+              Partner code from its repair shop (optional: connects a sewing shop to the repair shop that made the code)
+            </label>
+            <input id="c-code" name="partnerCode" autoComplete="off" className="input mono" placeholder="7KQP-M2XH-9TRD" />
           </div>
           <div className="sm:col-span-2">
             <Submit>Create company</Submit>

@@ -6,6 +6,20 @@ import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "@/lib/service-menu";
 
 export type ShopKind = "repair" | "retail" | "both";
 
+/**
+ * Which product this install is: StitchBench (a repair bench) or StitchShop (a sewing / quilt shop counter). Set by the
+ * Windows program's build, or APP_NAME / DEFAULT_SHOP_KIND on a hosted install. It only changes names and defaults:
+ * any company can still do repairs, sell over the counter, or both.
+ */
+export function defaultShopKind(): ShopKind {
+  const k = process.env.DEFAULT_SHOP_KIND;
+  return k === "retail" || k === "both" ? k : "repair";
+}
+
+export function appName(): "StitchShop" | "StitchBench" {
+  return process.env.APP_NAME === "StitchShop" || (!process.env.APP_NAME && defaultShopKind() === "retail") ? "StitchShop" : "StitchBench";
+}
+
 /** What a company does, from the sign-up / Companies choice. */
 export function shopModes(kind: string | null | undefined) {
   return { doesRepair: kind !== "retail", sellsRetail: kind === "retail" || kind === "both" };

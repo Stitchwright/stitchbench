@@ -225,3 +225,37 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await s.goto(`/partners/${linkId}`);
   await expect(s.getByText(/partnership ended/)).toBeVisible();
 });
+
+// Hosting: the repair shop makes a code in its own StitchBench; the host adds the sewing shop from Companies with it.
+test("a hosted sewing shop added from Companies with a partner code", async ({ browser }) => {
+  const host = { shop: `Hosted Quilts ${run}`, name: "Lee Hosted", email: `lee.${run.toLowerCase()}@quilt.test`, password: "hosted-pass-1" };
+  const r = await login(browser, repair);
+  await r.goto("/partners");
+  await r.locator("#repairCommissionPct").fill("12");
+  await r.getByRole("button", { name: "Make partner code" }).click();
+  const code = (await r.getByTestId("partner-code").textContent())!.trim();
+  expect(code).toMatch(/^[2-9A-Z]{4}-[2-9A-Z]{4}-[2-9A-Z]{4}$/);
+
+  await r.goto("/companies");
+  await r.locator("#c-shop").fill(host.shop);
+  await r.locator("#c-kind").selectOption("retail");
+  await r.locator("#c-name").fill(host.name);
+  await r.locator("#c-email").fill(host.email);
+  await r.locator("#c-pw").fill(host.password);
+  await r.locator("#c-code").fill(code.toLowerCase());
+  await r.getByRole("button", { name: "Create company" }).click();
+  await expect(r.getByText("Company created")).toBeVisible();
+  await sync(r);
+
+  // The new shop is a sewing shop, already partnered on the offered terms; the repair shop sees it too.
+  const s = await login(browser, host);
+  await expect(s).toHaveURL(/\/register$/);
+  await s.goto("/partners");
+  await expect(s.locator("tr", { hasText: "E2E Test Shop" })).toContainText("12% on repairs");
+  await r.goto("/partners");
+  await expect(r.getByRole("link", { name: host.shop })).toBeVisible();
+  // Tidy up: end it so the install can leave the hub in other tests.
+  await r.getByRole("link", { name: host.shop }).click();
+  await r.getByRole("button", { name: "End partnership" }).click();
+  await expect(r.getByText("Partnership ended", { exact: true })).toBeVisible();
+});

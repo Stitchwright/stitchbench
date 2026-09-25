@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import Link from "next/link";
 import { signIn } from "@/auth";
+import { appName } from "@/lib/shops";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
+  const shopApp = appName() === "StitchShop";
 
   async function login(formData: FormData) {
     "use server";
@@ -25,9 +27,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <form action={login} className="card card-pad w-full max-w-sm space-y-4">
         <div>
           <div className="text-2xl font-bold tracking-tight">
-            Stitch<span className="text-thread">Bench</span>
+            Stitch<span className="text-thread">{shopApp ? "Shop" : "Bench"}</span>
           </div>
-          <p className="muted text-sm">Sign in to your repair bench.</p>
+          <p className="muted text-sm">{shopApp ? "Sign in to your shop." : "Sign in to your repair bench."}</p>
         </div>
         {error && (
           <p className="pill tone-bad" role="alert">

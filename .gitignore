@@ -51,4 +51,5 @@ next-env.d.ts
 desktop/node_modules/
 desktop/server/
 desktop/dist/
+desktop/dist-stitchshop/
 /public/pdfjs/

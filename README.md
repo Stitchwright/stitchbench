@@ -63,6 +63,10 @@ onto the ticket. A repair shop can **set up StitchShop for a sewing shop** on it
 "Set up StitchShop for a sewing shop"): the company, its owner login and the partnership in one step. The two shops
 talk through StitchHub (a private channel per partnership), so either can run the Windows program or a hosted copy.
 
+StitchShop installs the same two ways as StitchBench: a **StitchShop Windows program** (`npm run dist:stitchshop`
+builds `StitchShop Setup <version>.exe`, with its own data, ports and backups) or **StitchShop on Railway**
+(`APP_NAME=StitchShop`, `DEFAULT_SHOP_KIND=retail`). See [INSTALL.md](INSTALL.md#installing-stitchshop-sewing-and-quilt-shops).
+
 ## Stack
 
 Next.js 16 (App Router, server actions) · React 19 · Prisma 7 + PostgreSQL · Auth.js v5 (email + password) ·
