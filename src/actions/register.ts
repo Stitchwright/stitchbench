@@ -4,7 +4,7 @@
 // Cards are run on the shop's own card terminal; the register records how each sale was paid.
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { sendToPartner } from "@/lib/partners";
@@ -276,7 +276,12 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
               shopKeepsCents: Math.round((gross * (shares.get(l.consignLinkId) ?? 0)) / 100),
             },
           });
-          await tx.consignItem.updateMany({ where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey }, data: { sold: { increment: l.qty } } });
+          // A return takes back only what was sold (the repair shop applies the same rule, so both books agree).
+          const took = await tx.consignItem.updateMany({
+            where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, ...(l.qty < 0 ? { sold: { gte: -l.qty } } : {}) },
+            data: { sold: { increment: l.qty } },
+          });
+          if (!took.count) throw new UserError(`More of ${l.description} is being returned than was sold on consignment.`);
           await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx);
         }
         if (l.repairJobId) {
@@ -306,7 +311,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     revalidatePath("/parts", "layout");
     return { saleId: sale.id, number: sale.number, changeCents: totals.change };
   } catch (e) {
-    if (e instanceof UserError) return { error: e.message };
+    if (isUserError(e)) return { error: e.message };
     throw e;
   }
 }
@@ -345,7 +350,11 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
         await tx.consignSale.create({
           data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at, shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null },
         });
-        await tx.consignItem.updateMany({ where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey }, data: { sold: { decrement: l.qty } } });
+        const undone = await tx.consignItem.updateMany({
+          where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, ...(l.qty > 0 ? { sold: { gte: l.qty } } : {}) },
+          data: { sold: { decrement: l.qty } },
+        });
+        if (!undone.count) throw new UserError(`${l.description} was returned since this sale; void that return first.`);
         await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, at: at.toISOString() }, tx);
       }
     }

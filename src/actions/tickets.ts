@@ -215,13 +215,22 @@ export const saveTension = safe(async function saveTension(ticketId: string, for
 export const saveMeasurements = safe(async function saveMeasurements(ticketId: string, formData: FormData) {
   const user = await requireUser();
   await ownTicket(user.shopId, ticketId);
-  const out: Record<string, { found?: number; left?: number }> = {};
+  // Field names come from the browser: a Map (not an object, where "__proto__" would reach every object in the
+  // server) keyed only by factory settings that exist.
+  const read = new Map<string, { found?: number; left?: number }>();
   for (const [k, v] of formData.entries()) {
-    const m = /^(found|left):(.+)$/.exec(k);
+    const m = /^(found|left):([A-Za-z0-9_.:-]{1,120})$/.exec(k);
     const n = grams(v); // non-negative number or null
     if (!m || n == null) continue;
-    (out[m[2]] ??= {})[m[1] as "found" | "left"] = n;
+    const entry = read.get(m[2]) ?? {};
+    entry[m[1] as "found" | "left"] = n;
+    read.set(m[2], entry);
+    if (read.size > 500) throw new UserError("Too many readings in one save.");
   }
+  const known = new Set(
+    (await db.factorySetting.findMany({ where: { id: { in: [...read.keys()] } }, select: { id: true } })).map((f) => f.id),
+  );
+  const out = Object.fromEntries([...read].filter(([id]) => known.has(id)));
   await db.ticket.update({ where: { id: ticketId }, data: { measurements: out } });
   refresh(ticketId);
 });

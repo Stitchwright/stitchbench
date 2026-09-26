@@ -33,7 +33,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
         {error && (
           <p className="pill tone-bad" role="alert">
-            Email or password is wrong (or too many tries: wait 15 minutes).
+            Email or password is wrong. After several wrong tries, signing in to that account slows down for 15 minutes.
           </p>
         )}
         {ended && !error && (

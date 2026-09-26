@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
 import { isPlatformAdmin } from "@/lib/shops";
+import { hubOfflineSince } from "@/lib/hub";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -13,6 +14,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
   const doesRepair = shop?.doesRepair ?? true;
+  // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
+  const offline = hub?.installKey ? hubOfflineSince() : null;
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -38,6 +41,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           sellsRetail={shop?.sellsRetail ?? false}
           retailPartners={retailPartners > 0}
         />
+        {offline && (
+          <div className="px-4 pb-2">
+            <span className="pill tone-wait text-xs" title="Sharing, the marketplace and messages to partner shops wait until the connection is back. Tickets, the register, customers and parts work as usual.">
+              Offline since {new Date(offline).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          </div>
+        )}
         {/* On phones too: a shared counter tablet or a tech's phone must be able to sign out. */}
         <div className="px-4 py-2 text-xs md:py-4">
           <div className="muted">Signed in as {user.name}</div>

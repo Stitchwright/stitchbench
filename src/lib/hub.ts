@@ -2,6 +2,7 @@ import "server-only";
 // This install's connection to StitchHub, the community server (see the stitchhub project).
 // Sync pushes what this shop shared, then pulls every change since last time into the local copy
 // (ManualLink, HubPost, HubPhoto, HubFigure). Pictures are fetched the first time someone looks at them.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
 import type { NoteKind, PhotoKind } from "@/generated/prisma/enums";
@@ -90,22 +91,92 @@ export function checkHubUrl(url: string) {
   return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
 }
 
-async function reach(url: string, init: RequestInit) {
+// ---------- when the internet is down ----------
+// Everything on this install works from its own database; only hub features (sharing, the marketplace, sending partner
+// messages) wait for the connection. Once the hub stops answering, a person waiting on a page or a button gets an
+// answer within seconds (one quick check, reused for 15 seconds) instead of sitting through a timeout. The background
+// sync always tries in full: it is what notices the connection is back. Kept on globalThis so the pages, the actions
+// and the background timers (which Next may load as separate copies of this module) share one state.
+const net = ((globalThis as unknown as { __hubNet?: HubNet }).__hubNet ??= {
+  offlineSince: null,
+  checkedAt: 0,
+  lastOk: 0,
+  background: new AsyncLocalStorage<true>(),
+});
+type HubNet = { offlineSince: number | null; checkedAt: number; lastOk: number; background: AsyncLocalStorage<true> };
+
+export const OFFLINE =
+  "No connection to the community hub right now (the internet may be down). Everything else keeps working here; try this again when the connection is back.";
+
+/** When the hub stopped answering (null while it answers). */
+export function hubOfflineSince() {
+  return net.offlineSince;
+}
+
+/** Sync work: always tries the hub in full, whatever happened last time. */
+export function inBackground<T>(fn: () => Promise<T>) {
+  return net.background.run(true, fn);
+}
+
+function wentOffline(why: string) {
+  if (!net.offlineSince) console.log(`community hub: out of reach (${why}); local work carries on`);
+  net.offlineSince ??= Date.now();
+  net.checkedAt = Date.now();
+}
+
+function heardFromHub() {
+  if (net.offlineSince) console.log("community hub: reachable again");
+  net.offlineSince = null;
+  net.lastOk = Date.now();
+}
+
+/** quick: someone is waiting on a page for this (a picture, ratings): give up sooner. */
+async function reach(url: string, init: RequestInit & { quick?: boolean }, base: string) {
+  const { quick, ...rest } = init;
+  if (!net.background.getStore()) {
+    // Someone is waiting on this. Known to be down: one short check, shared for 15 seconds, before anyone waits on a
+    // full request. Not heard from lately: the same short check first, so a line that just went dead costs 4 seconds
+    // here, not the 30 a full request would wait.
+    if (net.offlineSince && Date.now() - net.checkedAt < 15_000) throw new UserError(OFFLINE);
+    if (net.offlineSince || Date.now() - net.lastOk > 90_000) {
+      net.checkedAt = Date.now();
+      const up = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4000) })
+        .then((r) => r.ok)
+        .catch(() => false);
+      if (!up) {
+        wentOffline("no answer to a quick check");
+        throw new UserError(OFFLINE);
+      }
+      heardFromHub();
+    }
+  }
   try {
-    return await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(30_000) });
-  } catch {
-    throw new UserError("Couldn't reach the community hub. Check the internet connection and try again.");
+    const r = await fetch(url, { ...rest, signal: rest.signal ?? AbortSignal.timeout(quick ? 8000 : 30_000) });
+    heardFromHub();
+    return r;
+  } catch (e) {
+    wentOffline(e instanceof Error ? e.name : "error");
+    throw new UserError(OFFLINE);
   }
 }
 
 /** The hub said no; status tells a refusal for good (most 4xx) from a busy or broken moment (429, 5xx). */
 export class HubError extends UserError {
+  readonly hubError = true;
   constructor(
     message: string,
     public status: number,
   ) {
     super(message);
+    this.name = "HubError";
   }
+}
+
+/** The status the hub answered with, from any copy of the code; 0 when the hub wasn't reached at all. */
+export function hubStatus(e: unknown): number {
+  if (e instanceof HubError) return e.status;
+  const x = e as { hubError?: unknown; status?: unknown } | null;
+  return typeof x === "object" && x !== null && x.hubError === true && typeof x.status === "number" ? x.status : 0;
 }
 
 async function failure(r: Response) {
@@ -119,7 +190,8 @@ async function failure(r: Response) {
   return new HubError(msg, r.status);
 }
 
-export async function hubFetch(path: string, init: RequestInit & { json?: unknown } = {}) {
+/** quick: a page is waiting on this (a picture, ratings); it gives up sooner when the hub is slow or down. */
+export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean } = {}) {
   const s = await hubState();
   if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → Community hub).");
   // Only API paths, and nothing in them that could climb out of the path (ids are checked by hubId too).
@@ -128,11 +200,15 @@ export async function hubFetch(path: string, init: RequestInit & { json?: unknow
     throw new UserError("That hub request isn't allowed.");
   }
   const { json, ...rest } = init;
-  const r = await reach(s.url + path, {
-    ...rest,
-    headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
+  const r = await reach(
+    s.url + path,
+    {
+      ...rest,
+      headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
+      body: json !== undefined ? JSON.stringify(json) : rest.body,
+    },
+    s.url,
+  );
   if (!r.ok) throw await failure(r);
   return r;
 }
@@ -173,11 +249,11 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
   if (cur?.installKey && (await db.partnerLink.count({ where: { status: "ACTIVE" } }))) {
     throw new UserError("This install's partner shops are connected through its current hub. End those partnerships before moving to another hub.");
   }
-  const r = await reach(`${base}/v1/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ joinKey: joinKey.trim(), name: shopName, contact }),
-  });
+  const r = await reach(
+    `${base}/v1/register`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ joinKey: joinKey.trim(), name: shopName, contact }) },
+    base,
+  );
   if (!r.ok) throw await failure(r);
   const j = (await r.json()) as { installId: string; installKey: string; hubName: string };
   // A different hub numbers its changes, orders and partner messages its own way: start every cursor over.
@@ -590,14 +666,14 @@ async function doSync(): Promise<SyncResult> {
   }
 }
 
-let running: Promise<SyncResult> | null = null;
+// One sync at a time, shared by every copy of this module Next loads; a second caller waits for the one running.
+const shared = globalThis as unknown as { __hubSync?: Promise<SyncResult> | null };
 
-/** One sync at a time; a second caller waits for the one already running. */
 export function syncHub(): Promise<SyncResult> {
-  running ??= doSync().finally(() => {
-    running = null;
+  shared.__hubSync ??= inBackground(doSync).finally(() => {
+    shared.__hubSync = null;
   });
-  return running;
+  return shared.__hubSync;
 }
 
 /** A picture from the hub (note photo, figure snapshot or listing photo), kept locally after the first look. */
@@ -606,7 +682,7 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
   if (kind === "listing") {
     const have = await db.listingPhoto.findUnique({ where: { id } });
     if (have) return { mime: safeImageType(have.mime), data: have.data };
-    const r = await hubFetch(`/v1/listing-photos/${id}`);
+    const r = await hubFetch(`/v1/listing-photos/${id}`, { quick: true });
     const mime = safeImageType(r.headers.get("content-type"));
     const data = new Uint8Array(await r.arrayBuffer());
     await db.listingPhoto.upsert({ where: { id }, create: { id, mime, data }, update: {} });
@@ -616,7 +692,7 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
     const p = await db.hubPhoto.findUnique({ where: { id }, select: { mime: true, data: true } });
     if (!p) return null;
     if (p.data) return { mime: safeImageType(p.mime), data: p.data };
-    const r = await hubFetch(`/v1/photos/${id}`);
+    const r = await hubFetch(`/v1/photos/${id}`, { quick: true });
     const data = new Uint8Array(await r.arrayBuffer());
     await db.hubPhoto.update({ where: { id }, data: { data } });
     return { mime: safeImageType(p.mime), data };
@@ -624,7 +700,7 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
   const f = await db.hubFigure.findUnique({ where: { id } });
   if (!f) return null;
   if (f.data && f.mime) return { mime: safeImageType(f.mime), data: f.data };
-  const r = await hubFetch(`/v1/figures/${id}`);
+  const r = await hubFetch(`/v1/figures/${id}`, { quick: true });
   const mime = safeImageType(r.headers.get("content-type"));
   const data = new Uint8Array(await r.arrayBuffer());
   await db.hubFigure.update({ where: { id }, data: { mime, data } });

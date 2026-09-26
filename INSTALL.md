@@ -51,6 +51,16 @@ device) in 15 minutes, sign-in pauses for that email or device.
 
 Add each person under **Settings → People**. Everyone signs in with their own email and password.
 
+### When the internet is down
+Everything the shop does all day is on the shop PC: tickets, customers, machines, the register, inventory,
+manuals, partner jobs already received, and the community notes, links and parts already synced. None of it needs
+the internet, and other devices on the shop's own Wi-Fi keep working. What needs the hub waits for the connection:
+- Messages to partner shops (a machine taken in, a status change, an order) are kept and sent as soon as the hub
+  answers again, in order. Nothing is lost; the other shop just hears about it later.
+- Sharing a note, listing something on the marketplace, editing a manual link, "Download to library", and the
+  barcode lookup say "No connection to the community hub" within a few seconds instead of hanging.
+- The sidebar shows *Offline since <time>* while the hub is out of reach and clears itself once it's back.
+
 ### Manuals
 Keep manuals in `C:\Manuals` (or change `libraryDir` in the settings file). Every device opens them through
 StitchBench, and scans made on any device are saved to `C:\Manuals\_inbox`.
@@ -110,6 +120,7 @@ railway add --service stitchbench \
   --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}}' \
   --variables "AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(33).toString('base64'))")" \
   --variables "AUTH_TRUST_HOST=true" \
+  --variables "TRUST_PROXY=true" \
   --variables "SEED_SHOP_NAME=Your Shop Name" \
   --variables "SEED_OWNER_NAME=Your Name" \
   --variables "SEED_OWNER_EMAIL=you@example.com" \
@@ -134,6 +145,7 @@ your password in **Settings**, and add your people under **Settings → People**
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (Railway fills it in) |
 | `AUTH_SECRET` | a long random secret (keep it private) |
 | `AUTH_TRUST_HOST` | `true` |
+| `TRUST_PROXY` | `true` on Railway: sign-in limits per device use the address Railway's proxy reports. Leave unset anywhere without a proxy in front |
 | `SEED_SHOP_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD` | the company and owner login made on the first start |
 | `ALLOW_SIGNUP` | leave unset. `true` lets anyone create a company at `/signup` |
 | `PLATFORM_ADMIN_EMAILS` | optional: emails that can add companies from the Companies page (hosting several shops) |
@@ -196,6 +208,8 @@ StitchHub, so neither needs to reach the other's computer.
 
 It runs in the tray like StitchBench, keeps its own data in `%APPDATA%\StitchShop`, backs up nightly to
 `Documents\StitchShop Backups`, and uses port 3110 (database 5449), so StitchBench and StitchShop can share a PC.
+The register, repairs desk and inventory work with no internet (see [When the internet is down](#when-the-internet-is-down));
+what's for the repair shop goes out when the connection is back.
 - **Barcode scanner:** any USB or Bluetooth scanner that types the code and presses Enter works in the register's
   scan box. Phones and tablets can use their camera.
 - **Receipts:** print from the receipt page to any printer; an 80 mm receipt printer set up in Windows works.
@@ -213,6 +227,7 @@ railway add --service stitchshop \
   --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}}' \
   --variables "AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(33).toString('base64'))")" \
   --variables "AUTH_TRUST_HOST=true" \
+  --variables "TRUST_PROXY=true" \
   --variables "APP_NAME=StitchShop" \
   --variables "DEFAULT_SHOP_KIND=retail" \
   --variables "SEED_SHOP_NAME=Your Shop Name" \

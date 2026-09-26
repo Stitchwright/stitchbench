@@ -894,6 +894,7 @@ model RepairJob {
   pickedUpAt       DateTime?
   events           Json      @default("[]") // [{ at, status, note }]
   sentHash         String? // repair side: what the sewing shop last heard
+  snapshotAt       DateTime? // retail side: time of the repair shop's update last applied (older ones are ignored)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

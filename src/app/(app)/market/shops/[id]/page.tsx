@@ -13,7 +13,7 @@ export default async function ShopPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const [listings, rep] = await Promise.all([
     db.listing.findMany({ where: { sellerId: id, status: "ACTIVE" }, orderBy: { createdAt: "desc" } }),
-    hubFetch(`/v1/reputation/${id}`)
+    hubFetch(`/v1/reputation/${id}`, { quick: true })
       .then((r) => r.json() as Promise<Rep>)
       .catch(() => null),
   ]);

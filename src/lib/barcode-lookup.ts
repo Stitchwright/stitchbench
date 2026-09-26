@@ -17,10 +17,10 @@ export async function lookupBarcode(code: string): Promise<BarcodeInfo | null> {
   try {
     r = await fetch(url, {
       headers: { Accept: "application/json", ...(key ? { user_key: key, key_type: "3scale" } : {}) },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(8000), // a scan mustn't wait long when the internet is down
     });
   } catch {
-    throw new Error("Couldn't reach the barcode lookup. Type the details in.");
+    throw new Error("Couldn't reach the barcode lookup (no internet?). Type the details in.");
   }
   if (r.status === 429) throw new Error("Today's free barcode lookups are used up (100 a day). Type the details in.");
   if (r.status === 404) return null;

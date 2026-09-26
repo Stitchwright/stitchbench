@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: stitchbench
       POSTGRES_DB: stitchbench
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432" # this PC only: the dev password is in this file
     volumes:
       - pgdata:/var/lib/postgresql/data
 volumes:

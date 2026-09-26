@@ -238,6 +238,8 @@ export function ImportItems() {
                   setResult(msg);
                   toast.success(msg);
                 }
+              } catch {
+                toast.error("The import didn't finish, and nothing was changed. Try again, or send fewer rows.");
               } finally {
                 setBusy(false);
               }

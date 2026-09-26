@@ -4,7 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { modelKey, str } from "@/lib/format";
 import { hubFetch, hubId, saveXPart, type HubXPart } from "@/lib/hub";
@@ -90,7 +90,7 @@ export async function crossRefHistory(id: string): Promise<{ revisions: XRevisio
     await requireUser();
     return { revisions: (await (await hubFetch(`/v1/xparts/${hubId(id)}/history`)).json()) as XRevision[] };
   } catch (e) {
-    return { error: e instanceof UserError ? e.message : "Couldn't load the history from the hub." };
+    return { error: isUserError(e) ? e.message : "Couldn't load the history from the hub." };
   }
 }
 

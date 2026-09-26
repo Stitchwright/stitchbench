@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { signIn } from "@/auth";
 import { appName, createShopWithOwner, defaultShopKind, type ShopKind } from "@/lib/shops";
 import { redeemPartnerCode } from "@/lib/partners";
-import { UserError } from "@/lib/action";
+import { UserError, isUserError } from "@/lib/action";
 
 /**
  * The Windows program's first run passes SETUP_TOKEN: sign-up then only works from the program's own window (it opens
@@ -40,7 +40,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
       shop = await createShopWithOwner({ shopName, name, email, password, kind }, { firstOnly });
     } catch (e) {
       // The first company already exists (this install's sign-up is closed), or the email was just taken.
-      if (e instanceof UserError) redirect(firstOnly ? "/login" : back("taken"));
+      if (isUserError(e)) redirect(firstOnly ? "/login" : back("taken"));
       throw e;
     }
     // A partner code from the repair shop (or sewing shop) connects the two right away.

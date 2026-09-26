@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { termsFromForm } from "@/lib/partner-terms";
@@ -42,7 +42,7 @@ export async function makePartnerCode(formData: FormData): Promise<InviteResult>
     const r = await createPartnerInvite(shop.id, shop.name, side, termsFromForm(formData));
     return { code: r.code, long: r.long, expiresAt: r.expiresAt };
   } catch (e) {
-    if (e instanceof UserError) return { error: e.message };
+    if (isUserError(e)) return { error: e.message };
     throw e;
   }
 }
@@ -84,6 +84,7 @@ export const syncPartnersNow = safe(async function syncPartnersNow() {
   await requireUser();
   const r = await syncPartners();
   if ("skipped" in r) throw new UserError("Nothing to sync yet: make or enter a partner code first.");
+  if ("busy" in r) throw new UserError("Another sync is running right now. Try again in a minute.");
   refresh();
 });
 

@@ -4,7 +4,7 @@
 import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { UserError, safe } from "@/lib/action";
+import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { modelKey, str, toCents } from "@/lib/format";
 import { normalizeTerms } from "@/lib/partner-terms";
@@ -138,7 +138,7 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     refresh();
     return { id };
   } catch (e) {
-    if (e instanceof UserError) return { error: e.message };
+    if (isUserError(e)) return { error: e.message };
     throw e;
   }
 }

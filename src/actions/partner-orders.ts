@@ -5,7 +5,7 @@
 import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { UserError, safe } from "@/lib/action";
+import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { numberKey, partKeys } from "@/lib/parts";
@@ -66,7 +66,7 @@ export async function placePartnerOrder(linkId: string, wanted: { itemKey: strin
     refresh(linkId);
     return { id };
   } catch (e) {
-    if (e instanceof UserError) return { error: e.message };
+    if (isUserError(e)) return { error: e.message };
     throw e;
   }
 }

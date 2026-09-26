@@ -16,7 +16,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
-import { checkHubUrl, HubError, hubFetch, hubId, hubState } from "@/lib/hub";
+import { checkHubUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey } from "@/lib/format";
 import { normalizeTerms, repairCommission, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
@@ -461,25 +461,37 @@ async function pushCatalogs() {
 /**
  * Send what's waiting, oldest first per partnership. A message the hub refuses for good (bad data, unknown link) is set
  * aside and shown; one that fails because the hub or the internet is down waits and is tried again, never dropped,
- * and holds back only later messages of the same partnership (an update must not overtake its job).
+ * and holds back every later message of the same partnership until it goes (an update must not overtake its job),
+ * across syncs: a partnership whose oldest waiting message isn't due yet sends nothing.
  */
 async function pushOutbox() {
-  const now = new Date();
-  const rows = await db.partnerOutbox.findMany({
-    where: { sentAt: null, deadAt: null, OR: [{ nextTryAt: null }, { nextTryAt: { lte: now } }] },
+  const now = Date.now();
+  // The waiting list without the messages themselves (a job can carry photos); each is loaded when it's sent.
+  const waiting = await db.partnerOutbox.findMany({
+    where: { sentAt: null, deadAt: null },
     orderBy: { createdAt: "asc" },
-    take: 300,
+    select: { id: true, shopId: true, linkId: true, nextTryAt: true },
+    take: 5000,
   });
   const held = new Set<string>();
   let sent = 0;
-  for (const m of rows) {
-    if (held.has(m.linkId)) continue;
+  let tried = 0;
+  for (const w of waiting) {
+    const key = `${w.shopId}|${w.linkId}`;
+    if (held.has(key)) continue;
+    if (w.nextTryAt && w.nextTryAt.getTime() > now) {
+      held.add(key);
+      continue;
+    }
+    if (++tried > 300) break; // the rest next time
+    const m = await db.partnerOutbox.findUnique({ where: { id: w.id } });
+    if (!m || m.sentAt || m.deadAt) continue;
     try {
       await hubFetch(`/v1/partners/links/${hubId(m.linkId)}/messages`, { method: "POST", json: { id: m.id, shopRef: m.shopId, type: m.type, data: m.data } });
       await db.partnerOutbox.update({ where: { id: m.id }, data: { sentAt: new Date(), error: null, nextTryAt: null } });
       sent++;
     } catch (e) {
-      const status = e instanceof HubError ? e.status : 0;
+      const status = hubStatus(e);
       const forGood = status >= 400 && status < 500 && status !== 408 && status !== 429;
       const tries = m.tries + 1;
       await db.partnerOutbox.update({
@@ -490,7 +502,7 @@ async function pushOutbox() {
           ...(forGood ? { deadAt: new Date() } : { nextTryAt: new Date(Date.now() + Math.min(30 * 60_000, 15_000 * 2 ** Math.min(tries, 7))) }),
         },
       });
-      if (!forGood) held.add(m.linkId);
+      if (!forGood) held.add(key);
     }
   }
   return sent;
@@ -562,7 +574,7 @@ async function pullMessages(cursor: string) {
   return received;
 }
 
-export type PartnerSyncResult = { sent: number; received: number } | { skipped: true };
+export type PartnerSyncResult = { sent: number; received: number } | { skipped: true } | { busy: true };
 
 /** One partner sync at a time on this install, even with several server processes (a lease on the HubState row). */
 async function withSyncLease<T>(run: () => Promise<T>): Promise<T | null> {
@@ -601,16 +613,19 @@ async function doPartnerSync(): Promise<PartnerSyncResult> {
       throw e;
     }
   });
-  return result ?? { sent: 0, received: 0 };
+  // The lease is held by another copy of the server (a hosted install runs several): its sync is the one running.
+  return result ?? { busy: true };
 }
 
-let running: Promise<PartnerSyncResult> | null = null;
+// One sync at a time, shared by every copy of this module Next loads (the timers and the pages each bundle their own):
+// a person pressing "Sync now" while the background sync is out waits for that one and hears how it went.
+const shared = globalThis as unknown as { __partnerSync?: Promise<PartnerSyncResult> | null };
 
 export function syncPartners(): Promise<PartnerSyncResult> {
-  running ??= doPartnerSync().finally(() => {
-    running = null;
+  shared.__partnerSync ??= inBackground(doPartnerSync).finally(() => {
+    shared.__partnerSync = null;
   });
-  return running;
+  return shared.__partnerSync;
 }
 
 // ---------- applying what the partner sent ----------
@@ -739,6 +754,8 @@ async function applyMessage(m: HubMessage) {
     case "job.update": {
       const job = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id: idOf(d.id, "job") } } });
       if (!job || job.side !== "retail" || job.linkId !== link.id) return;
+      // Each update is the repair shop's whole view of the job at its time: an older one arriving late changes nothing.
+      if (job.snapshotAt && at <= job.snapshotAt) return;
       const status = STATUSES.includes(String(d.status)) ? String(d.status) : job.status;
       const lines = arr(d.lines, 200, "bill").map((x) => {
         const l = obj(x, "bill line");
@@ -768,6 +785,7 @@ async function applyMessage(m: HubMessage) {
           events,
           ...(paidAt && !job.paidAt ? { paidAt, paidWhere: job.paidCents ? "split" : "repair" } : {}),
           ...(status === "COLLECTED" && !job.pickedUpAt ? { pickedUpAt: at } : {}),
+          snapshotAt: at,
         },
       });
       return;
@@ -943,13 +961,17 @@ async function applyMessage(m: HubMessage) {
       const qty = qtyOf(d.qty, "qty");
       const priceCents = int(d.priceCents, 0, MAX_MONEY, "price");
       if (qty === 0) return;
-      // A negative sale only undoes a sale we have (a void on the register).
-      if (qty < 0) {
-        const original = id.endsWith("-void") ? await db.consignSale.findUnique({ where: { shopId_id: { shopId, id: id.slice(0, -5) } } }) : null;
-        if (!original || original.qty < -qty) return bad("a returned consigned sale doesn't match a sale");
-      }
       const item = await db.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
       if (!item) return bad("a consigned sale for an item that isn't on consignment");
+      // A negative sale takes back sales we have: a void of one sale on their register ("<sale>-void"), or a customer's
+      // return rung up at their counter. Never more than we've counted as sold of this item.
+      if (qty < 0) {
+        if (id.endsWith("-void")) {
+          const original = await db.consignSale.findUnique({ where: { shopId_id: { shopId, id: id.slice(0, -5) } } });
+          if (!original || original.itemKey !== itemKey || original.qty < -qty) return bad("a voided consigned sale doesn't match a sale");
+        }
+        if (item.sold < -qty) return bad("a consigned return is more than was sold");
+      }
       const gross = Math.round(qty * priceCents);
       await db.$transaction([
         db.consignSale.create({

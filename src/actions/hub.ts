@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { safe, UserError, isUserError } from "@/lib/action";
 import { requireInstallAdmin, requireUser } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/shops";
 import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
@@ -93,7 +93,7 @@ export async function manualLinkHistory(linkId: string): Promise<{ revisions: Li
     await requireUser();
     return { revisions: (await (await hubFetch(`/v1/links/${hubId(linkId)}/history`)).json()) as LinkRevision[] };
   } catch (e) {
-    return { error: e instanceof UserError ? e.message : "Couldn't load the history from the hub." };
+    return { error: isUserError(e) ? e.message : "Couldn't load the history from the hub." };
   }
 }
 
@@ -146,7 +146,13 @@ export const removeHubPost = safe(async function removeHubPost(postId: string) {
   if (!p?.mine) throw new UserError("Only the shop that shared a note can remove it.");
   // Same rule as before it reached the hub: its author, their shop's owner or admin, or the StitchBench administrator.
   const own = await db.sharedPost.findFirst({ where: { hubId: postId }, select: { shopId: true, authorId: true } });
-  const allowed = isPlatformAdmin(user.email) || (own != null && own.shopId === user.shopId && (own.authorId === user.id || user.role !== "TECH"));
+  // With no local copy (an older backup was restored, or it was deleted while uploading), the owner or an admin of the
+  // company can still remove it when this install holds just that one company.
+  const soleCompany = !own && (await db.shop.count()) === 1;
+  const allowed =
+    isPlatformAdmin(user.email) ||
+    (own != null && own.shopId === user.shopId && (own.authorId === user.id || user.role !== "TECH")) ||
+    (soleCompany && user.role !== "TECH");
   if (!allowed) throw new UserError("Only whoever shared this note, or their shop's owner or admin, can remove it.");
   await hubFetch(`/v1/posts/${hubId(postId)}`, { method: "DELETE" });
   await db.hubPost.delete({ where: { id: postId } });
