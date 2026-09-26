@@ -17,8 +17,10 @@ export function PartnerOrderForm({ linkId, items, kindLabel }: { linkId: string;
   const router = useRouter();
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = items.filter((i) => words.every((w) => `${i.partNumber} ${i.description} ${i.brand ?? ""} ${i.kind}`.toLowerCase().includes(w)));
-  const wanted = items.filter((i) => Number(qty[i.itemKey]) > 0);
-  const total = wanted.reduce((a, i) => a + Math.round(Number(qty[i.itemKey]) * i.wholesaleCents), 0);
+  // Whole pieces (yards for fabric): the total shown is what the order will be.
+  const qtyOf = (i: CatalogItem) => (i.unit === "yd" ? Math.round(Number(qty[i.itemKey]) * 1000) / 1000 : Math.round(Number(qty[i.itemKey])));
+  const wanted = items.filter((i) => qtyOf(i) > 0);
+  const total = wanted.reduce((a, i) => a + Math.round(qtyOf(i) * i.wholesaleCents), 0);
 
   return (
     <div className="space-y-3">
@@ -57,7 +59,7 @@ export function PartnerOrderForm({ linkId, items, kindLabel }: { linkId: string;
                 <td>
                   <input
                     aria-label={`Quantity of ${i.partNumber}`}
-                    inputMode="decimal"
+                    inputMode={i.unit === "yd" ? "decimal" : "numeric"}
                     className="input num"
                     value={qty[i.itemKey] ?? ""}
                     onChange={(e) => setQty({ ...qty, [i.itemKey]: e.target.value })}
@@ -87,7 +89,7 @@ export function PartnerOrderForm({ linkId, items, kindLabel }: { linkId: string;
             try {
               const r = await placePartnerOrder(
                 linkId,
-                wanted.map((i) => ({ itemKey: i.itemKey, qty: Number(qty[i.itemKey]) })),
+                wanted.map((i) => ({ itemKey: i.itemKey, qty: qtyOf(i) })),
                 note || null,
               );
               if ("error" in r) toast.error(r.error);

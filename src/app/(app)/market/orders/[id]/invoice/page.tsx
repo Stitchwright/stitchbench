@@ -9,10 +9,10 @@ import { CONDITION_LABEL } from "@/components/market-ui";
 
 // The invoice for a marketplace order, from the seller to the buyer. The buyer pays the seller directly.
 export default async function MarketInvoice({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
   const row = await db.marketOrder.findUnique({ where: { id } });
-  if (!row) notFound();
+  if (!row || row.shopId !== user.shopId) notFound();
   const o = row.data as unknown as HubOrder;
   if (!["ACCEPTED", "PAID", "SHIPPED", "RECEIVED"].includes(o.status)) notFound();
   const accepted = o.events.find((e) => e.action === "accepted")?.at ?? o.createdAt;

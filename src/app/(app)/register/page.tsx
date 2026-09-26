@@ -41,7 +41,7 @@ export default async function RegisterPage() {
         }
       />
       <PartnerTodo shopId={user.shopId} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} />
     </div>
   );
 }

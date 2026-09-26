@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { modelKey, str } from "@/lib/format";
-import { hubFetch, saveXPart, type HubXPart } from "@/lib/hub";
+import { hubFetch, hubId, saveXPart, type HubXPart } from "@/lib/hub";
 import { numberKey, parseFits, parseNumbers, parseSources, partKeys, splitList, type XFit, type XSource } from "@/lib/parts";
 
 const KINDS = ["PART", "ACCESSORY", "SUPPLY"];
@@ -46,7 +46,7 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
   if (!body.numbers.length) throw new UserError("Add at least one part number (one per line: Brand, number).");
   const clash = await numberOwner(body.numbers, id ?? undefined);
   if (clash) throw new UserError(`One of those numbers is already on "${clash.name}". Open that part and merge the two instead.`);
-  const x = (await (await hubFetch(id ? `/v1/xparts/${id}` : "/v1/xparts", { method: id ? "PUT" : "POST", json: body })).json()) as HubXPart;
+  const x = (await (await hubFetch(id ? `/v1/xparts/${hubId(id)}` : "/v1/xparts", { method: id ? "PUT" : "POST", json: body })).json()) as HubXPart;
   await saveXPart(x);
   refresh(x.id);
   if (!id) redirect(`/xref/${x.id}`);
@@ -61,7 +61,7 @@ export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formD
     (await db.xPart.findUnique({ where: { id: target }, select: { id: true } })) ??
     (await db.xPart.findFirst({ where: { numberKeys: { has: numberKey(target) }, id: { not: id } }, select: { id: true } }));
   if (!into || into.id === id) throw new UserError("No other cross-reference entry has that part number.");
-  const merged = (await (await hubFetch(`/v1/xparts/${id}/merge`, { method: "POST", json: { intoId: into.id, byName: user.name, note: str(formData.get("note")) } })).json()) as HubXPart;
+  const merged = (await (await hubFetch(`/v1/xparts/${hubId(id)}/merge`, { method: "POST", json: { intoId: into.id, byName: user.name, note: str(formData.get("note")) } })).json()) as HubXPart;
   await saveXPart(merged);
   await db.xPart.deleteMany({ where: { id } });
   refresh(merged.id);
@@ -70,7 +70,7 @@ export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formD
 
 export const removeCrossRef = safe(async function removeCrossRef(id: string) {
   const user = await requireUser();
-  await hubFetch(`/v1/xparts/${id}`, { method: "DELETE", json: { byName: user.name } });
+  await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: { byName: user.name } });
   await db.xPart.deleteMany({ where: { id } });
   refresh();
   redirect("/xref");
@@ -78,7 +78,7 @@ export const removeCrossRef = safe(async function removeCrossRef(id: string) {
 
 export const revertCrossRef = safe(async function revertCrossRef(id: string, revisionId: string) {
   const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${id}/revert`, { method: "POST", json: { revisionId, byName: user.name } })).json()) as HubXPart;
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/revert`, { method: "POST", json: { revisionId, byName: user.name } })).json()) as HubXPart;
   await saveXPart(x);
   refresh(id);
 });
@@ -88,7 +88,7 @@ export type XRevision = { id: string; action: string; snapshot: HubXPart; byName
 export async function crossRefHistory(id: string): Promise<{ revisions: XRevision[] } | { error: string }> {
   try {
     await requireUser();
-    return { revisions: (await (await hubFetch(`/v1/xparts/${id}/history`)).json()) as XRevision[] };
+    return { revisions: (await (await hubFetch(`/v1/xparts/${hubId(id)}/history`)).json()) as XRevision[] };
   } catch (e) {
     return { error: e instanceof UserError ? e.message : "Couldn't load the history from the hub." };
   }

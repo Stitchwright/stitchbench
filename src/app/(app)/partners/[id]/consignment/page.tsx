@@ -77,7 +77,7 @@ export default async function Consignment({ params }: { params: Promise<{ id: st
                         )}
                       </td>
                       <td>
-                        {shelf(i) > 0 && (
+                        {shelf(i) > 0 && !owner && (
                           <ActionForm action={returnConsigned.bind(null, id, i.itemKey)} className="flex gap-1" success="Recorded">
                             <input name="qty" aria-label={`Quantity of ${i.partNumber} going back`} inputMode="decimal" className="input num w-16" placeholder="qty" required />
                             <Submit className="btn btn-sm">{owner ? "Took back" : "Returned"}</Submit>

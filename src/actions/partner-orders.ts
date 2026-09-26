@@ -34,10 +34,12 @@ export async function placePartnerOrder(linkId: string, wanted: { itemKey: strin
     const lines: OrderLine[] = [];
     for (const w of wanted) {
       const c = catalog.get(w.itemKey);
-      const qty = Number(w.qty);
       if (!c) throw new UserError("Something in the order isn't in the catalog any more. Refresh and try again.");
+      // Whole pieces, or yards to the thousandth; checked after rounding so nothing becomes a line of 0.
+      const raw = Number(w.qty);
+      const qty = c.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
       if (!(qty > 0) || qty > 10000) continue;
-      lines.push({ itemKey: c.itemKey, partNumber: c.partNumber, description: c.description, qty: c.unit === "yd" ? qty : Math.round(qty), unitCents: c.wholesaleCents });
+      lines.push({ itemKey: c.itemKey, partNumber: c.partNumber, description: c.description, qty, unitCents: c.wholesaleCents });
     }
     if (!lines.length) throw new UserError("Add at least one item with a quantity.");
     const id = crypto.randomUUID();
@@ -209,14 +211,17 @@ export const placeConsignment = safe(async function placeConsignment(linkId: str
 export const returnConsigned = safe(async function returnConsigned(linkId: string, itemKey: string, formData: FormData) {
   const user = await requireUser();
   const link = await partnerLink(user.shopId, linkId);
+  // The sewing shop records a return (it hands the stock over), so one hand-off is never counted by both shops.
+  if (link.side !== "retail") throw new UserError(`${link.partnerName} records stock going back when they hand it to you.`);
   const item = await db.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId: user.shopId, linkId, itemKey } } });
   if (!item) throw new UserError("That item isn't on consignment here.");
   const onShelf = item.placed - item.sold - item.returned;
   const qty = Number(str(formData.get("qty")) ?? "0");
   if (!(qty > 0) || qty > onShelf + 1e-9) throw new UserError(`Between 1 and ${onShelf} can go back.`);
   const at = new Date();
-  await consignReturned(user.shopId, link, itemKey, qty, at);
-  await sendToPartner(user.shopId, linkId, "consign.return", { id: crypto.randomUUID(), items: [{ itemKey, qty }], at: at.toISOString() });
+  const back = await consignReturned(user.shopId, link, itemKey, qty, at);
+  if (!back) throw new UserError("Nothing went back: the shelf count changed meanwhile. Reload and try again.");
+  await sendToPartner(user.shopId, linkId, "consign.return", { id: crypto.randomUUID(), items: [{ itemKey, qty: back }], at: at.toISOString() });
   refresh(linkId);
 });
 

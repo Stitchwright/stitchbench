@@ -112,7 +112,11 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
               {t.warrantyUntil ? ` (through ${fmtDate(t.warrantyUntil)})` : ""}. Parts we didn&apos;t install are not covered.
             </p>
           )}
-          {t.accessories.length > 0 && <p className="mt-1">Returned with the machine: {t.accessories.join(", ")}.</p>}
+          {/* Only what was ticked as handed back; anything else is still with the shop. */}
+          {t.accessoriesReturned.length > 0 && <p className="mt-1">Returned with the machine: {t.accessoriesReturned.join(", ")}.</p>}
+          {t.accessories.some((a) => !t.accessoriesReturned.includes(a)) && (
+            <p className="mt-1">Still with us: {t.accessories.filter((a) => !t.accessoriesReturned.includes(a)).join(", ")}.</p>
+          )}
           <p className="mt-1">Thank you for your business.</p>
         </footer>
       </article>

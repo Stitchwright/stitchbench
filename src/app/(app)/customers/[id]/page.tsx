@@ -15,16 +15,22 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     where: { id, shopId: user.shopId },
     include: {
       machines: { orderBy: { createdAt: "desc" } },
-      tickets: { orderBy: { intakeAt: "desc" }, include: { machine: true, lines: true, payments: true } },
-      viaTickets: { orderBy: { intakeAt: "desc" }, include: { machine: true, customer: true, lines: true, payments: true } },
+      tickets: { where: { shopId: user.shopId }, orderBy: { intakeAt: "desc" }, include: { machine: true, lines: true, payments: true } },
+      viaTickets: { where: { shopId: user.shopId }, orderBy: { intakeAt: "desc" }, include: { machine: true, customer: true, lines: true, payments: true } },
     },
   });
   if (!c) notFound();
+  // Machines from a partner sewing shop earn it the partnership's commission (as billed on the statement).
+  const partnerCommission = new Map(
+    (await db.repairJob.findMany({ where: { shopId: user.shopId, side: "repair", ticketId: { in: c.viaTickets.map((t) => t.id) } }, select: { ticketId: true, commissionCents: true } })).map(
+      (j) => [j.ticketId!, j.commissionCents],
+    ),
+  );
   const tickets = c.kind === "TRADE" ? c.viaTickets : c.tickets;
   const owed = tickets.reduce((s, t) => s + Math.max(0, ticketTotals(t.lines, t.payments, t.taxRatePct).balance), 0);
   const commission =
     c.kind === "TRADE"
-      ? c.viaTickets.filter((t) => t.status === "COLLECTED").reduce((s, t) => s + ticketTotals(t.lines, t.payments, t.taxRatePct, c.commissionPct).commission, 0)
+      ? c.viaTickets.filter((t) => t.status === "COLLECTED").reduce((s, t) => s + ticketTotals(t.lines, t.payments, t.taxRatePct, c.commissionPct, partnerCommission.get(t.id)).commission, 0)
       : 0;
 
   return (

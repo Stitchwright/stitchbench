@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
-import { hubFetch, saveListing, saveOrder, syncHub, type HubListing, type HubOrder } from "@/lib/hub";
+import { hubFetch, hubId, saveListing, saveOrder, syncHub, type HubListing, type HubOrder } from "@/lib/hub";
 import { numberKey } from "@/lib/parts";
 
 const CONDITIONS = ["NEW", "USED", "REFURB"];
@@ -53,7 +53,8 @@ export const createListing = safe(async function createListing(formData: FormDat
     qty,
     shippingCents: toCents(formData.get("shipping")),
     shippingNote: str(formData.get("shippingNote")),
-    shipsFrom: str(formData.get("shipsFrom")) ?? shop.address?.split("\n").slice(-1)[0] ?? null,
+    // Only what the seller typed: never the shop's street address, which every hub member would see.
+    shipsFrom: str(formData.get("shipsFrom")),
   };
   const photos = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 8);
   for (const f of photos) {
@@ -65,12 +66,26 @@ export const createListing = safe(async function createListing(formData: FormDat
   for (const f of photos) fd.append("photo", f, f.name || "photo.jpg");
   const l = (await (await hubFetch("/v1/listings", { method: "POST", body: fd })).json()) as HubListing;
   await saveListing(l);
+  await db.listing.update({ where: { id: l.id }, data: { shopId: user.shopId } });
   refresh();
   redirect(`/market/${l.id}`);
 });
 
+/** A listing this company made (other companies on the same install can't change it). */
+async function ownListing(shopId: string, id: string) {
+  const l = await db.listing.findUnique({ where: { id }, select: { shopId: true, mine: true } });
+  if (!l || !l.mine || l.shopId !== shopId) throw new UserError("That listing isn't one of yours.");
+}
+
+/** An order this company is the buyer or the seller on. */
+async function ownOrder(shopId: string, id: string) {
+  const o = await db.marketOrder.findUnique({ where: { id }, select: { shopId: true } });
+  if (!o || o.shopId !== shopId) throw new UserError("That order isn't one of yours.");
+}
+
 export const updateListing = safe(async function updateListing(id: string, formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
+  await ownListing(user.shopId, id);
   const body: Record<string, unknown> = {};
   const price = toCents(formData.get("price"));
   if (price != null) body.priceCents = price;
@@ -82,14 +97,15 @@ export const updateListing = safe(async function updateListing(id: string, formD
   if (condition && CONDITIONS.includes(condition)) body.condition = condition;
   const status = str(formData.get("status"));
   if (status === "ACTIVE" || status === "PAUSED") body.status = status;
-  const l = (await (await hubFetch(`/v1/listings/${id}`, { method: "PUT", json: body })).json()) as HubListing;
+  const l = (await (await hubFetch(`/v1/listings/${hubId(id)}`, { method: "PUT", json: body })).json()) as HubListing;
   await saveListing(l);
   refresh();
 });
 
 export const removeListing = safe(async function removeListing(id: string) {
-  await requireUser();
-  await hubFetch(`/v1/listings/${id}`, { method: "DELETE" });
+  const user = await requireUser();
+  await ownListing(user.shopId, id);
+  await hubFetch(`/v1/listings/${hubId(id)}`, { method: "DELETE" });
   await db.listing.deleteMany({ where: { id } });
   refresh();
   redirect("/market/mine");
@@ -116,7 +132,7 @@ export const placeOrder = safe(async function placeOrder(listingId: string, form
       },
     })
   ).json()) as HubOrder;
-  await saveOrder(o);
+  await saveOrder(o, user.shopId);
   refresh();
   redirect(`/market/orders/${o.id}`);
 });
@@ -125,21 +141,25 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
   const key = o.item.partNumber ? numberKey(o.item.partNumber) : null;
   const note = `Marketplace order ${o.number} from ${o.sellerShop}`;
   const unitCost = o.qty ? Math.round(o.totalCents / o.qty) : null;
-  const part = key ? await db.part.findFirst({ where: { shopId, numberKeys: { has: key } } }) : null;
+  // This shop's own stock of it (never a partner's consigned item): the exact number, then any number it's sold under.
+  const partNumber = o.item.partNumber ?? o.number;
+  const part =
+    (await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: { equals: partNumber, mode: "insensitive" } } })) ??
+    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, numberKeys: { has: key } } }) : null);
   if (part) {
     await db.$transaction([
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: o.qty }, ...(unitCost ? { costCents: unitCost } : {}) } }),
       db.stockMove.create({ data: { shopId, partId: part.id, qty: o.qty, reason: "RECEIVED", userId, note } }),
     ]);
   } else {
-    const partNumber = o.item.partNumber ?? o.number;
-    const exists = await db.part.findFirst({ where: { shopId, partNumber } });
-    if (exists) return;
+    // The number may be a partner's consigned item here: this shop's own stock gets its own entry.
+    const taken = await db.part.findFirst({ where: { shopId, partNumber } });
     await db.part.create({
       data: {
         shopId,
-        partNumber,
-        numberKeys: [numberKey(partNumber)],
+        partNumber: taken ? `${partNumber} (own)` : partNumber,
+        altNumbers: taken ? [partNumber] : [],
+        numberKeys: [numberKey(partNumber)].filter((k) => k.length >= 3),
         description: o.item.title,
         brand: o.item.brand,
         qtyOnHand: o.qty,
@@ -153,7 +173,9 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
 
 async function takeFromStock(o: HubOrder, userId: string, shopId: string) {
   const key = o.item.partNumber ? numberKey(o.item.partNumber) : null;
-  const part = key ? await db.part.findFirst({ where: { shopId, numberKeys: { has: key } } }) : null;
+  const part =
+    (o.item.partNumber ? await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: { equals: o.item.partNumber, mode: "insensitive" } } }) : null) ??
+    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, numberKeys: { has: key } } }) : null);
   if (!part) return;
   await db.$transaction([
     db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: o.qty } } }),
@@ -167,6 +189,7 @@ type OrderAction = (typeof ACTIONS)[number];
 export const orderAction = safe(async function orderAction(orderId: string, action: OrderAction, formData: FormData) {
   const user = await requireUser();
   if (!ACTIONS.includes(action)) throw new UserError("Unknown order step.");
+  await ownOrder(user.shopId, orderId);
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId } });
   let body: Record<string, unknown> = {};
   switch (action) {
@@ -209,7 +232,7 @@ export const orderAction = safe(async function orderAction(orderId: string, acti
       break;
     }
   }
-  const o = (await (await hubFetch(`/v1/orders/${orderId}/${action}`, { method: "POST", json: body })).json()) as HubOrder;
+  const o = (await (await hubFetch(`/v1/orders/${hubId(orderId)}/${action}`, { method: "POST", json: body })).json()) as HubOrder;
   await saveOrder(o);
   if (action === "received" && formData.get("addToStock") === "on") await receiveIntoStock(o, user.id, user.shopId);
   if (action === "ship" && formData.get("takeFromStock") === "on") await takeFromStock(o, user.id, user.shopId);

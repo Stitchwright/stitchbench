@@ -22,6 +22,7 @@ export const authConfig = {
         token.id = user.id ?? token.id;
         if ("role" in user && user.role) token.role = user.role;
         if ("shopId" in user && user.shopId) token.shopId = user.shopId;
+        if ("sv" in user && typeof user.sv === "number") token.sv = user.sv;
       }
       return token;
     },
@@ -30,6 +31,7 @@ export const authConfig = {
         if (token.id) session.user.id = token.id as string;
         if (token.role) session.user.role = token.role;
         if (token.shopId) session.user.shopId = token.shopId as string;
+        session.user.sv = typeof token.sv === "number" ? token.sv : 0;
       }
       return session;
     },

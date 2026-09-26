@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { sessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { PHOTO_KINDS } from "@/lib/constants";
 import type { PhotoKind } from "@/generated/prisma/enums";
@@ -6,9 +6,10 @@ import type { PhotoKind } from "@/generated/prisma/enums";
 const MAX_BYTES = 3 * 1024 * 1024; // photos are resized in the browser first; this is a backstop
 
 export async function POST(req: Request) {
-  const session = await auth();
-  const shopId = session?.user?.shopId;
-  if (!shopId) return new Response("Sign in first.", { status: 401 });
+  const user = await sessionUser();
+  if (!user) return new Response("Sign in first.", { status: 401 });
+  const shopId = user.shopId;
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES + 100_000) return new Response("Photo is too large (3 MB max).", { status: 413 });
 
   const form = await req.formData();
   const machineId = String(form.get("machineId") ?? "");

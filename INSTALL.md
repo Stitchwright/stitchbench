@@ -28,9 +28,11 @@ Both can join the community hub, StitchHub (see [Joining the community hub](#joi
    it outright, the installer has to be code-signed (see [Building the installer](#building-the-windows-installer)).
 2. Start **StitchBench** from the desktop icon. The first start creates its database, which takes about a minute.
 3. The first screen asks for your company name, your name, your email and a password. That creates the company
-   and your owner login. Sign-up then closes by itself.
-4. When Windows asks whether StitchBench may use the network, click **Allow** with both *Private* and *Public*
-   ticked, so other devices can connect.
+   and your owner login. Sign-up then closes by itself. It only works in the program's own window on this PC,
+   so nobody else on the network can create the company first.
+4. When Windows asks whether StitchBench may use the network, tick **Private** only and click **Allow**. Set the
+   shop's own Wi-Fi to *Private* in Windows (Settings → Network → Wi-Fi → the network → Private). Leave *Public*
+   unticked, so a laptop running StitchBench on café or campground Wi-Fi doesn't serve it to strangers.
 
 StitchBench starts with Windows and keeps running in the tray, next to the clock. Closing the window doesn't
 stop it; **Quit StitchBench** in the tray menu does.
@@ -41,6 +43,12 @@ The tray icon's **Address for other devices** lists the addresses. Click one to 
 - **On the road:** install [Tailscale](https://tailscale.com) (free) on the shop PC and on each laptop or phone,
   signed in to the same account, and use the *Tailscale* address from the tray.
 
+The Wi-Fi addresses are plain `http://`: sign-ins cross the network unencrypted, so anyone who can listen on that
+Wi-Fi could read them. Use them only on a network just for the shop's own devices, with its own password. When
+customers share the shop's Wi-Fi (no separate guest network), use the *Tailscale* address on every device instead;
+Tailscale encrypts everything, even inside the shop. After 10 wrong passwords for one email (or 50 from one
+device) in 15 minutes, sign-in pauses for that email or device.
+
 Add each person under **Settings → People**. Everyone signs in with their own email and password.
 
 ### Manuals
@@ -49,15 +57,24 @@ StitchBench, and scans made on any device are saved to `C:\Manuals\_inbox`.
 
 ### Backups and restore
 - A backup runs every night after 1 am, and at start-up if the last one is more than a day old. The last 30 are
-  kept in `Documents\StitchBench Backups`.
-- From the tray: **Back up now**, **Open backups folder**, and **Restore a backup…**. A restore first backs up
-  the current data.
-- A backup holds the shop's own data: customers, machines, tickets, photos, parts, people, prices and shared
-  notes. Factory specs come with the program.
+  kept in `Documents\StitchBench Backups`, in folders named `stitchbench-<date>-<time>` (StitchShop's are
+  `stitchshop-…`, so both programs can share one backups folder).
+- From the tray: **Back up now**, **Open backups folder**, and **Restore a backup…**. A restore stops StitchBench,
+  backs up the current data, and only then replaces it. If that safety backup can't be made (the folder is on a
+  drive that isn't connected, or the disk is full), nothing is restored.
+- A backup holds the shop's data: customers, machines, tickets, photos, parts, people, prices and shared notes,
+  plus the tension specs, factory settings, manual list and machine pictures. So a backup restored onto a new PC
+  brings all of it back. The community hub's shared notes, parts and listings aren't in it; they sync again.
+- The tension specs, factory settings and manual list also come with the program: a new install loads them on its
+  first start, and an update brings in new ones.
 - Now and then, copy the backups folder to another drive or a NAS. You can also set `backupDir` to a NAS folder.
 
 ### Settings file
 Tray → **Settings file** opens `%APPDATA%\StitchBench\config.json`. Restart StitchBench after changing it.
+Windows paths need double backslashes in this file: `"libraryDir": "D:\\Manuals"`. If the file has a mistake,
+StitchBench says so at start and offers to open it, or to start with the last settings that worked
+(`config.json.bak`). The database password and sign-in secret are kept separately in `secrets.json`: don't edit
+or delete that file, and include it if you ever copy `%APPDATA%\StitchBench` to another PC.
 
 | Setting | Meaning |
 |---|---|
@@ -173,8 +190,9 @@ StitchHub, so neither needs to reach the other's computer.
 2. Start **StitchShop**. The first screen asks for the shop's name, the owner's name, email and a password; *What
    kind of shop* is already set to **Sewing / quilt shop**. Paste the **partner code** from the repair shop in the
    last box, and the two shops are connected as soon as the shop is created.
-3. Allow it on the network when Windows asks (both *Private* and *Public*), so the counter tablet or a second PC can
-   use it.
+3. Allow it on the network when Windows asks (*Private* only, with the shop's Wi-Fi set to Private), so the counter
+   tablet or a second PC can use it. The same Wi-Fi advice as StitchBench applies: if customers share the shop's
+   Wi-Fi, have the counter devices use the Tailscale address.
 
 It runs in the tray like StitchBench, keeps its own data in `%APPDATA%\StitchShop`, backs up nightly to
 `Documents\StitchShop Backups`, and uses port 3110 (database 5449), so StitchBench and StitchShop can share a PC.
@@ -268,19 +286,23 @@ electron-builder's `win` signing options).
 
 ### Updating an installed program without a new installer
 Stop StitchBench (tray → Quit). Copy `desktop/server` over
-`%LOCALAPPDATA%\Programs\StitchBench\resources\server`, then start StitchBench again. It applies any database
-updates by itself.
+`%LOCALAPPDATA%\Programs\StitchBench\resources\server`, and `main.mjs`, `migrate.mjs`, `backup.mjs` and
+`reference.mjs` into `%LOCALAPPDATA%\Programs\StitchBench\resources\app`, then start StitchBench again. It applies
+any database updates and new reference data by itself.
 
 ### Tools in `desktop/`
 | Script | |
 |---|---|
 | `backup-now.mjs` | back up the running program's shop data |
+| (all of them) | act on StitchBench; set `SB_FLAVOR=stitchshop` to act on StitchShop |
 | `join-hub.mjs <hub url> <join key>` | join a community hub from the command line |
 | `push-figures.mjs` | upload this program's figure snapshots to the hub |
 | `import-from-dev.mjs <database url>` | copy shop data from another StitchBench database into the program |
 
 ### Reloading factory specs into a program
-Take the program's database address from `%APPDATA%\StitchBench\config.json`
+The program loads the specs, factory settings and manual list that ship with it by itself. To load a newer set
+from the repo without a new version, take the program's database address from `dbPort` in
+`%APPDATA%\StitchBench\config.json` and `dbPassword` in `%APPDATA%\StitchBench\secrets.json`
 (`postgresql://stitchbench:<dbPassword>@127.0.0.1:<dbPort>/stitchbench`), then run:
 ```bash
 DATABASE_URL=<that address> npx tsx prisma/seed.ts

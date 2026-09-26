@@ -6,9 +6,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
-import { requireAdmin, requireUser } from "@/lib/session";
+import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { termsFromForm } from "@/lib/partner-terms";
+import { hubJoined } from "@/lib/hub";
 import { createShopWithOwner, isPlatformAdmin } from "@/lib/shops";
 import {
   acceptTerms,
@@ -18,6 +19,7 @@ import {
   partnerLink,
   proposeTerms,
   redeemPartnerCode,
+  kickPartnerSync,
   saveLinkFromHub,
   sendToPartner,
   statementFor,
@@ -49,6 +51,8 @@ export const enterPartnerCode = safe(async function enterPartnerCode(formData: F
   const admin = await requireAdmin();
   const code = str(formData.get("code"));
   if (!code) throw new UserError("Type or paste the partner code.");
+  // Not on a hub yet: the code would connect the whole install to one, which is the install administrator's call.
+  if (!(await hubJoined())) await requireInstallAdmin();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
   const r = await redeemPartnerCode(shop.id, shop.name, shop.email ?? admin.email, code);
   refresh();
@@ -86,14 +90,15 @@ export const syncPartnersNow = safe(async function syncPartnersNow() {
 /** Record the payment that settles a month's statement; both shops see it. */
 export const recordSettlement = safe(async function recordSettlement(linkId: string, formData: FormData) {
   const admin = await requireAdmin();
-  const { from, to } = monthPeriod(str(formData.get("month")));
+  const shopTz = (await db.shop.findUniqueOrThrow({ where: { id: admin.shopId }, select: { timeZone: true } })).timeZone;
+  const { from, to } = monthPeriod(str(formData.get("month")), shopTz);
   const link = await partnerLink(admin.shopId, linkId);
   const st = await statementFor(admin.shopId, linkId, from, to);
   const amount = toCents(formData.get("amount"));
-  if (amount == null || amount <= 0) throw new UserError("Enter the amount paid.");
-  // Who paid whom, from the sewing shop's point of view: + it paid the repair shop.
-  const direction = str(formData.get("direction"));
-  const net = direction === "repair-paid" ? -amount : amount;
+  if (amount == null || amount <= 0 || amount > 10_000_000) throw new UserError("Enter the amount paid.");
+  // The shop that pays records it (the other shop sees it arrive), so one payment is never entered twice. From the
+  // sewing shop's point of view: + it paid the repair shop.
+  const net = link.side === "retail" ? amount : -amount;
   const id = crypto.randomUUID();
   const summary = { ...st.totals, balanceBefore: st.balanceCents, method: str(formData.get("method")) };
   const at = new Date();
@@ -146,4 +151,14 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
   await saveLinkFromHub(repair.id, "repair", r.link);
   refresh();
   revalidatePath("/companies");
+});
+
+/** A message the hub refused goes back in the queue (after the cause is fixed, e.g. a partnership restored). */
+export const resendPartnerMessage = safe(async function resendPartnerMessage(outboxId: string) {
+  const admin = await requireAdmin();
+  const m = await db.partnerOutbox.findFirst({ where: { id: outboxId, shopId: admin.shopId, sentAt: null } });
+  if (!m) throw new UserError("That message isn't waiting any more.");
+  await db.partnerOutbox.update({ where: { id: m.id }, data: { deadAt: null, nextTryAt: null, tries: 0 } });
+  kickPartnerSync();
+  refresh();
 });

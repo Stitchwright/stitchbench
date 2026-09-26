@@ -15,8 +15,8 @@ export default async function StatementPage({ params, searchParams }: { params: 
   const { id } = await params;
   const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id } } });
   if (!link) notFound();
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true } });
-  const p = monthPeriod((await searchParams).month);
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, timeZone: true } });
+  const p = monthPeriod((await searchParams).month, shop.timeZone);
   const st = await statementFor(user.shopId, id, p.from, p.to);
   const repairName = link.side === "repair" ? shop.name : link.partnerName;
   const sewingName = link.side === "retail" ? shop.name : link.partnerName;
@@ -164,23 +164,21 @@ export default async function StatementPage({ params, searchParams }: { params: 
       </Section>
 
       {user.role !== "TECH" && (
-        <Section title="Record a payment">
+        <Section title={`Record a payment you made to ${link.partnerName}`}>
+          <p className="muted mb-2 text-sm">The shop that pays records it; {link.partnerName} sees it on their statement. (When they pay you, they record it.)</p>
           <ActionForm action={recordSettlement.bind(null, id)} className="no-print flex flex-wrap items-end gap-2" success="Payment recorded" reset>
             <input type="hidden" name="month" value={p.month} />
-            <div className="field">
-              <label htmlFor="direction" className="label">
-                Who paid
-              </label>
-              <select id="direction" name="direction" className="select" defaultValue={st.balanceCents >= 0 ? "shop-paid" : "repair-paid"}>
-                <option value="shop-paid">{sewingName} paid {repairName}</option>
-                <option value="repair-paid">{repairName} paid {sewingName}</option>
-              </select>
-            </div>
             <div className="field w-32">
               <label htmlFor="amount" className="label">
-                Amount
+                Amount paid
               </label>
-              <input id="amount" name="amount" inputMode="decimal" defaultValue={(Math.abs(st.balanceCents) / 100).toFixed(2)} className="input num" />
+              <input
+                id="amount"
+                name="amount"
+                inputMode="decimal"
+                defaultValue={(link.side === "retail" ? st.balanceCents > 0 : st.balanceCents < 0) ? (Math.abs(st.balanceCents) / 100).toFixed(2) : ""}
+                className="input num"
+              />
             </div>
             <div className="field w-40">
               <label htmlFor="method" className="label">

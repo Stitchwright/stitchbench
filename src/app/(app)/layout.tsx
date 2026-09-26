@@ -38,7 +38,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           sellsRetail={shop?.sellsRetail ?? false}
           retailPartners={retailPartners > 0}
         />
-        <div className="hidden px-4 py-4 text-xs md:block">
+        {/* On phones too: a shared counter tablet or a tech's phone must be able to sign out. */}
+        <div className="px-4 py-2 text-xs md:py-4">
           <div className="muted">Signed in as {user.name}</div>
           <form
             action={async () => {

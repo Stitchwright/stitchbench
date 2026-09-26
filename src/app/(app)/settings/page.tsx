@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { isInstallAdmin, requireUser } from "@/lib/session";
 import { money } from "@/lib/format";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { PageHeader, Section } from "@/components/ui";
@@ -83,7 +83,10 @@ async function CommunityHub({ admin }: { admin: boolean }) {
           <Submit>Join</Submit>
         </ActionForm>
       ) : (
-        <p className="muted text-sm">Not connected to a community hub. The shop owner or an admin can join one here.</p>
+        <p className="muted text-sm">
+          Not connected to a community hub. The shop owner or an admin can join one here (when several companies share this StitchBench, its
+          administrator does).
+        </p>
       )}
     </Section>
   );
@@ -105,7 +108,7 @@ export default async function SettingsPage() {
       <PageHeader title="Settings" />
 
       <div id="hub">
-        <CommunityHub admin={admin} />
+        <CommunityHub admin={await isInstallAdmin(user)} />
       </div>
 
       {admin && (
@@ -172,6 +175,7 @@ export default async function SettingsPage() {
                 ["storageFee", "Storage fee ($)", d(shop.storageFeeCents)],
                 ["nextTicketNumber", "Next ticket number", String(shop.nextTicketNumber)],
                 ["libraryRoot", "Manual library folder (same on every PC)", shop.libraryRoot],
+                ["timeZone", "Time zone (days and months start here), e.g. America/Chicago", shop.timeZone],
                 ["payInstructions", "Marketplace: how other shops pay you (PayPal, Zelle, check to...)", shop.payInstructions ?? ""],
               ] as const
             ).map(([k, label, v]) => (

@@ -7,20 +7,24 @@ import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
 import { numberKey } from "@/lib/parts";
 
-export type ScannedPart = { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; location: string | null; priceCents: number | null };
+export type ScannedPart = { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; location: string | null; priceCents: number | null; unit: string | null };
 export type ScanResult =
   | { ok: true; part: ScannedPart; message: string }
   | { ok: false; code: string; message: string; xpart?: { id: string; name: string } | null };
 
+/** The item a code means: the exact number first, and the shop's own stock before a partner's consigned stock. */
 async function findPart(shopId: string, code: string) {
   const key = numberKey(code);
-  return (
-    (await db.part.findFirst({ where: { shopId, partNumber: { equals: code, mode: "insensitive" } } })) ??
-    (key.length >= 3 ? await db.part.findFirst({ where: { shopId, numberKeys: { has: key } } }) : null)
-  );
+  const matches = await db.part.findMany({
+    where: { shopId, OR: [{ partNumber: { equals: code, mode: "insensitive" } }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
+    take: 20,
+  });
+  const rank = (p: (typeof matches)[number]) => (p.consignLinkId ? 2 : 0) + (p.partNumber.toLowerCase() === code.toLowerCase() ? 0 : 1);
+  return matches.sort((a, b) => rank(a) - rank(b))[0] ?? null;
 }
 
-const view = (p: { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; location: string | null; priceCents: number | null }): ScannedPart => ({
+const view = (p: { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; location: string | null; priceCents: number | null; unit: string | null }): ScannedPart => ({
+  unit: p.unit,
   id: p.id,
   partNumber: p.partNumber,
   description: p.description,
@@ -40,7 +44,11 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
     const xpart = key.length >= 3 ? await db.xPart.findFirst({ where: { numberKeys: { has: key } }, select: { id: true, name: true } }) : null;
     return { ok: false, code: c, xpart, message: xpart ? `Not in your parts, but the cross-reference knows it: ${xpart.name}` : `${c} isn't in your parts.` };
   }
-  const n = Math.max(1, Math.min(999, Math.round(qty) || 1));
+  // Whole pieces, or yards to the eighth for fabric.
+  const n = part.unit === "yd" ? Math.max(0.125, Math.min(999, Math.round((Number(qty) || 1) * 1000) / 1000)) : Math.max(1, Math.min(999, Math.round(qty) || 1));
+  if (part.consignLinkId && mode !== "lookup") {
+    return { ok: false, code: c, message: `${part.partNumber} is a partner's consigned stock: sell it at the register (it isn't received or used here).` };
+  }
   if (mode === "receive") {
     const [p] = await db.$transaction([
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: n } } }),
@@ -72,9 +80,11 @@ export async function saveCounts(counts: { partId: string; qty: number }[]): Pro
   const user = await requireUser();
   let saved = 0;
   for (const c of counts.slice(0, 2000)) {
-    const n = Math.max(0, Math.round(c.qty));
     const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId } });
-    if (!p || p.qtyOnHand === n) continue;
+    // Fabric isn't counted by scanning bolts.
+    if (!p || p.unit === "yd") continue;
+    const n = Math.max(0, Math.round(c.qty));
+    if (p.qtyOnHand === n) continue;
     await db.$transaction([
       db.part.update({ where: { id: p.id }, data: { qtyOnHand: n } }),
       db.stockMove.create({ data: { shopId: user.shopId, partId: p.id, qty: n - p.qtyOnHand, reason: "ADJUSTED", userId: user.id, note: "Scanned shelf count" } }),

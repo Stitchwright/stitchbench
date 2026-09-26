@@ -1,13 +1,9 @@
 // A company's own records as CSV (Settings -> Your data): customers, inventory, register sales, repairs sent out.
 // Owner or admin only. This is what a shop takes with it if it moves to its own install or another system.
-import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { sessionUser } from "@/lib/session";
+import { csvCell as csv } from "@/lib/csv";
 import { lineNet, type Tender } from "@/lib/register-math";
-
-function csv(v: unknown): string {
-  const s = v == null ? "" : v instanceof Date ? v.toISOString() : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 const dollars = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
 
@@ -82,10 +78,10 @@ async function rows(shopId: string, what: string): Promise<unknown[][] | null> {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ what: string }> }) {
-  const session = await auth();
-  const shopId = session?.user?.shopId;
-  if (!shopId) return new Response("Sign in first.", { status: 401 });
-  if (session.user.role === "TECH") return new Response("Only the owner or an admin can download the shop's records.", { status: 403 });
+  const user = await sessionUser();
+  if (!user) return new Response("Sign in first.", { status: 401 });
+  const shopId = user.shopId;
+  if (user.role === "TECH") return new Response("Only the owner or an admin can download the shop's records.", { status: 403 });
   const { what } = await params;
   const data = await rows(shopId, what);
   if (!data) return new Response("Unknown export.", { status: 404 });

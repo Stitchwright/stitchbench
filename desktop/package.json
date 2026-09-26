@@ -36,6 +36,7 @@
       "main.mjs",
       "migrate.mjs",
       "backup.mjs",
+      "reference.mjs",
       "icon.png",
       "package.json",
       "node_modules/**/*"

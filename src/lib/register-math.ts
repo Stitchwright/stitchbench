@@ -5,20 +5,29 @@ export type Tender = { method: TenderMethod; amountCents: number; note?: string 
 export const TENDER_METHODS: TenderMethod[] = ["CASH", "CARD", "CHECK", "GIFT", "OTHER"];
 export const TENDER_LABEL: Record<TenderMethod, string> = { CASH: "Cash", CARD: "Card", CHECK: "Check", GIFT: "Gift card", OTHER: "Other" };
 
-type Line = { qty: number; unitPriceCents: number; discountCents?: number; taxable: boolean };
+type Line = { qty: number; unitPriceCents: number; discountCents?: number; taxable: boolean; discountable?: boolean };
 
 export const lineNet = (l: Line) => Math.round(l.qty * l.unitPriceCents) - (l.qty < 0 ? -1 : 1) * (l.discountCents ?? 0);
 
+/** What a whole-sale discount can come off: items being bought (not returns, not a partner's repair bill). */
+export function discountBase(lines: Line[]) {
+  return lines.filter((l) => l.discountable !== false && lineNet(l) > 0).reduce((a, l) => a + lineNet(l), 0);
+}
+
 /**
  * Subtotal of the lines after their own discounts, less a whole-sale discount, plus tax on the taxable part. The
- * whole-sale discount lowers the taxable amount in proportion. Negative quantities are returns.
+ * whole-sale discount comes off the items being bought and lowers their taxable amount in proportion; returns and
+ * repair bills are left as they are. Negative quantities are returns.
  */
 export function saleTotals(lines: Line[], orderDiscountCents: number, taxRatePct: number, tenders: Tender[] = []) {
   const subtotal = lines.reduce((a, l) => a + lineNet(l), 0);
   const taxableNet = lines.filter((l) => l.taxable).reduce((a, l) => a + lineNet(l), 0);
-  const orderDiscount = subtotal > 0 ? Math.min(orderDiscountCents, subtotal) : 0;
-  const taxBase = subtotal > 0 ? taxableNet - Math.round((orderDiscount * taxableNet) / subtotal) : taxableNet;
-  const tax = Math.round((taxBase * taxRatePct) / 100);
+  const eligible = lines.filter((l) => l.discountable !== false && lineNet(l) > 0);
+  const base = eligible.reduce((a, l) => a + lineNet(l), 0);
+  const orderDiscount = Math.max(0, Math.min(Math.round(orderDiscountCents), base));
+  const eligibleTaxable = eligible.filter((l) => l.taxable).reduce((a, l) => a + lineNet(l), 0);
+  const taxReduction = base > 0 ? Math.min(eligibleTaxable, Math.round((orderDiscount * eligibleTaxable) / base)) : 0;
+  const tax = Math.round(((taxableNet - taxReduction) * taxRatePct) / 100);
   const total = subtotal - orderDiscount + tax;
   const paid = tenders.reduce((a, t) => a + t.amountCents, 0);
   const change = total >= 0 ? Math.max(0, paid - total) : 0;

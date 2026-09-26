@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
-import { requireUser } from "@/lib/session";
+import { requireAdmin, requireUser } from "@/lib/session";
+import { numberKey } from "@/lib/parts";
 import { modelKey, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -79,6 +80,9 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   }
 
   const viaAccountId = str(formData.get("viaAccountId"));
+  if (viaAccountId && !(await db.customer.findFirst({ where: { id: viaAccountId, shopId, kind: "TRADE" }, select: { id: true } }))) {
+    throw new UserError("Trade account not found.");
+  }
   const accessories = formData.getAll("accessories").map(String).filter(Boolean);
   const otherAcc = str(formData.get("accessoriesOther"));
   if (otherAcc) accessories.push(...otherAcc.split(",").map((s) => s.trim()).filter(Boolean));
@@ -90,9 +94,17 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
 
   const ticket = await db.$transaction(async (tx) => {
-    const number = Number.isInteger(typedNumber) && typedNumber > 0 ? typedNumber : shop.nextTicketNumber;
-    const clash = await tx.ticket.findFirst({ where: { shopId, number } });
-    if (clash) throw new UserError(`Ticket ${number} already exists. Leave the number blank to use the next one.`);
+    const typed = Number.isInteger(typedNumber) && typedNumber > 0 ? typedNumber : null;
+    let number: number;
+    if (typed) {
+      number = typed;
+      if (await tx.ticket.findFirst({ where: { shopId, number } })) throw new UserError(`Ticket ${number} already exists. Leave the number blank to use the next one.`);
+    } else {
+      // Taken atomically, skipping numbers already used (a partner job or a typed-in paper ticket may have them).
+      const next = async () => (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
+      number = await next();
+      while (await tx.ticket.findFirst({ where: { shopId, number }, select: { id: true } })) number = await next();
+    }
     const t = await tx.ticket.create({
       data: {
         shopId,
@@ -113,7 +125,8 @@ export const createTicket = safe(async function createTicket(formData: FormData)
           : undefined,
       },
     });
-    await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: Math.max(shop.nextTicketNumber, number + 1) } });
+    // A typed number ahead of the counter moves the counter past it (never back).
+    if (typed) await tx.$executeRaw`UPDATE "Shop" SET "nextTicketNumber" = GREATEST("nextTicketNumber", ${typed + 1}) WHERE id = ${shopId}`;
     return t;
   });
 
@@ -261,10 +274,17 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
     });
   } else if (kind === "PART") {
     const pn = str(formData.get("partNumber"))?.split(" | ")[0].trim();
-    const qty = Math.max(1, Math.round(Number(str(formData.get("qty")) ?? "1")));
-    const part = pn ? await db.part.findFirst({ where: { shopId: user.shopId, partNumber: pn } }) : null;
+    // The shop's own stock (not a partner's consigned items), by its number, any case, or another number it's sold under.
+    const key = pn ? numberKey(pn) : "";
+    const part = pn
+      ? ((await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, partNumber: { equals: pn, mode: "insensitive" } } })) ??
+        (key.length >= 3 ? await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, numberKeys: { has: key } } }) : null))
+      : null;
+    const rawQty = Number(str(formData.get("qty")) ?? "1");
+    const qty = part?.unit === "yd" ? Math.max(0.125, Math.round((rawQty || 1) * 1000) / 1000) : Math.max(1, Math.round(rawQty || 1));
     const desc = str(formData.get("description"));
     const price = toCents(formData.get("price"));
+    if (!part && price == null) throw new UserError(pn ? `${pn} isn't in your parts. Pick it from the list, or enter a price for a part you don't stock.` : "Pick a part from inventory, or describe it and enter a price.");
     if (part) {
       const unit = price ?? part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100));
       await db.$transaction([
@@ -301,10 +321,11 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
 
 export const removeLine = safe(async function removeLine(lineId: string) {
   const user = await requireUser();
-  const line = await db.ticketLine.findFirst({ where: { id: lineId, ticket: { shopId: user.shopId } } });
+  const line = await db.ticketLine.findFirst({ where: { id: lineId, ticket: { shopId: user.shopId } }, include: { ticket: { select: { closedAt: true } } } });
   if (!line) throw new UserError("Line not found.");
+  if (line.ticket.closedAt && user.role === "TECH") throw new UserError("The ticket is closed: only the owner or an admin can change its bill.");
   if (line.kind === "PART" && line.partId) {
-    const qty = Math.round(line.qty);
+    const qty = line.qty;
     await db.$transaction([
       db.ticketLine.delete({ where: { id: lineId } }),
       db.part.update({ where: { id: line.partId }, data: { qtyOnHand: { increment: qty } } }),
@@ -338,7 +359,8 @@ export const addPayment = safe(async function addPayment(ticketId: string, formD
 });
 
 export const removePayment = safe(async function removePayment(paymentId: string) {
-  const user = await requireUser();
+  // Taking a payment off a ticket is for the owner or an admin (like voiding a register sale).
+  const user = await requireAdmin();
   const p = await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } } });
   if (!p) throw new UserError("Payment not found.");
   await db.payment.delete({ where: { id: paymentId } });

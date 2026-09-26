@@ -8,13 +8,14 @@ import { money, toCents } from "@/lib/format";
 type Field = "partNumber" | "barcode" | "description" | "brand" | "cost" | "price" | "qty" | "location";
 
 const FIELDS: { key: Field; label: string; words: RegExp }[] = [
-  { key: "partNumber", label: "Item / style / SKU number", words: /^(sku|item|item ?(no|#|number)|style|part ?(no|#|number)?|product ?(code|no|#)|article|mfg ?(no|#)|number)$/i },
+  { key: "partNumber", label: "Item / style / SKU number", words: /^(sku|item|item ?(no|#|number)|style|part ?(no|#|number)?|product ?(code|no|#)|article|mfg ?(no|#)|stock ?(no|#|number)|number)$/i },
   { key: "barcode", label: "Barcode (UPC / EAN)", words: /(upc|ean|gtin|barcode|bar code)/i },
   { key: "description", label: "Description", words: /(desc|name|title|product$|color ?name)/i },
   { key: "brand", label: "Brand / maker", words: /(brand|manufacturer|maker|mfr|vendor|designer|company)/i },
   { key: "cost", label: "Your cost", words: /(cost|wholesale|net|dealer)/i },
   { key: "price", label: "Selling price", words: /(retail|msrp|price|srp|sell)/i },
-  { key: "qty", label: "Quantity", words: /(qty|quantity|on ?hand|stock|count|yards|yds)/i },
+  // Whole header words only: "Discount" isn't "count", "Stock #" is a number, not a quantity.
+  { key: "qty", label: "Quantity", words: /^(qty|quantity|on ?hand|in ?stock|stock ?(qty|on ?hand)|count|yards|yds|qty ?(on ?hand|ordered|shipped))$/i },
   { key: "location", label: "Bin / location", words: /(bin|location|shelf|aisle)/i },
 ];
 
@@ -50,6 +51,16 @@ function parseTable(text: string): string[][] {
   return rows;
 }
 
+/** "12", "2.5", "2 1/2", "3/4", "1,200", "12 yd" -> a number; anything else -> NaN (the row shows it and is skipped). */
+function parseQty(v: string): number {
+  const t = v.replace(/,/g, "").replace(/\s*(yds?|yards?|ea|each|pcs?)\.?$/i, "").trim();
+  const mixed = /^(\d+)\s+(\d+)\/(\d+)$/.exec(t);
+  if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+  const frac = /^(\d+)\/(\d+)$/.exec(t);
+  if (frac) return Number(frac[1]) / Number(frac[2]);
+  return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+}
+
 function guess(headers: string[]): Record<Field, number> {
   const used = new Set<number>();
   const map = {} as Record<Field, number>;
@@ -81,7 +92,7 @@ export function ImportItems() {
       brand: cell(r, "brand") || null,
       costCents: toCents(cell(r, "cost")),
       priceCents: toCents(cell(r, "price")),
-      qty: cell(r, "qty") === "" ? null : Number(cell(r, "qty").replace(/[^\d.-]/g, "")),
+      qty: cell(r, "qty") === "" ? null : parseQty(cell(r, "qty")),
       location: cell(r, "location") || null,
     };
   });
@@ -204,7 +215,7 @@ export function ImportItems() {
                     <td>{r.brand}</td>
                     <td className="num text-right">{money(r.costCents)}</td>
                     <td className="num text-right">{money(r.priceCents)}</td>
-                    <td className="num text-right">{r.qty ?? ""}</td>
+                    <td className="num text-right">{r.qty == null ? "" : Number.isNaN(r.qty) ? <span className="pill tone-bad">?</span> : r.qty}</td>
                   </tr>
                 ))}
               </tbody>

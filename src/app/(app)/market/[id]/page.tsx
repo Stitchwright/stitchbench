@@ -15,8 +15,11 @@ const d2 = (c: number | null) => (c == null ? "" : (c / 100).toFixed(2));
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
-  const l = await db.listing.findUnique({ where: { id } });
-  if (!l) notFound();
+  const found = await db.listing.findUnique({ where: { id } });
+  if (!found) notFound();
+  // "Mine" means this company's: another company on the same install sees it like any other shop's listing.
+  const l = { ...found, mine: found.mine && found.shopId === user.shopId };
+  const sameInstall = found.mine && !l.mine;
   const [shop, xpart] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { address: true, name: true } }),
     l.xpartId ? db.xPart.findUnique({ where: { id: l.xpartId }, select: { id: true, name: true } }) : null,
@@ -126,6 +129,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                 </ActionButton>
               </div>
             </Section>
+          ) : sameInstall ? (
+            <p className="muted text-sm">Listed by another company on this same StitchBench, so it can&apos;t be ordered through the hub from here.</p>
           ) : l.status === "ACTIVE" && l.qty > 0 ? (
             <Section title="Order from this shop">
               <ActionForm action={placeOrder.bind(null, l.id)} className="space-y-3">

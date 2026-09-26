@@ -47,9 +47,11 @@ function partData(formData: FormData) {
 export const createPart = safe(async function createPart(formData: FormData) {
   const user = await requireUser();
   const data = partData(formData);
-  const exists = await db.part.findFirst({ where: { shopId: user.shopId, partNumber: data.partNumber } });
-  if (exists) redirect(`/parts/${exists.id}`);
+  // The same number in another case is the same part (the scanner treats them as one).
+  const exists = await db.part.findFirst({ where: { shopId: user.shopId, partNumber: { equals: data.partNumber, mode: "insensitive" } } });
   const qty = qtyValue(formData.get("qtyOnHand"));
+  if (exists && qty) throw new UserError(`${exists.partNumber} is already in inventory. Open it and use Receive stock to add ${qty}.`);
+  if (exists) redirect(`/parts/${exists.id}`);
   const p = await db.part.create({
     data: {
       ...data,
@@ -66,7 +68,10 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   const user = await requireUser();
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
   if (!p) throw new UserError("Part not found.");
-  await db.part.update({ where: { id: partId }, data: partData(formData) });
+  const data = partData(formData);
+  const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: { equals: data.partNumber, mode: "insensitive" } } });
+  if (clash) throw new UserError(`${clash.partNumber} is already another item in inventory.`);
+  await db.part.update({ where: { id: partId }, data });
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/parts");
 });

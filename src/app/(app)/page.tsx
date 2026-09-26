@@ -5,6 +5,7 @@ import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/con
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
+import { startOfToday } from "@/lib/sales";
 import { PartnerTodo } from "@/components/partner-todo";
 import { redirect } from "next/navigation";
 
@@ -15,6 +16,7 @@ function daysSince(d: Date) {
 export default async function Dashboard() {
   const user = await requireUser();
   const shopId = user.shopId;
+  const tz = (await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
   const [shop, open, lowStock, todayPay] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: shopId } }),
     db.ticket.findMany({
@@ -24,7 +26,7 @@ export default async function Dashboard() {
     }),
     db.part.findMany({ where: { shopId }, orderBy: { partNumber: "asc" } }).then((ps) => ps.filter((p) => p.qtyOnHand <= p.reorderAt)),
     db.payment.aggregate({
-      where: { ticket: { shopId }, paidAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+      where: { ticket: { shopId }, paidAt: { gte: startOfToday(tz) } },
       _sum: { amountCents: true },
     }),
   ]);
@@ -58,7 +60,7 @@ export default async function Dashboard() {
         ))}
       </div>
 
-      <MarketTodo />
+      <MarketTodo shopId={shopId} />
       <PartnerTodo shopId={shopId} />
 
       {overdue.length > 0 && (

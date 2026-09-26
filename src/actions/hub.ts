@@ -6,9 +6,11 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
-import { requireAdmin, requireUser } from "@/lib/session";
+import { requireInstallAdmin, requireUser } from "@/lib/session";
+import { isPlatformAdmin } from "@/lib/shops";
+import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
 import { str } from "@/lib/format";
-import { hubFetch, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, type HubLink, type LinkRevision } from "@/lib/hub";
+import { hubFetch, hubId, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, type HubLink, type LinkRevision } from "@/lib/hub";
 import { libraryDir } from "@/lib/library-dir";
 
 const UA = "StitchBench (manual download for a repair shop's own library)";
@@ -18,8 +20,10 @@ function refresh() {
   revalidatePath("/", "layout");
 }
 
+// The hub connection is shared by every company on this install: with several, only the StitchBench administrator
+// joins or leaves (requireInstallAdmin).
 export const joinCommunityHub = safe(async function joinCommunityHub(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireInstallAdmin();
   // Either the member invite (code or file contents) or the hub address + join key typed in.
   const invite = str(formData.get("invite"));
   const inv = invite ? parseInvite(invite) : { url: str(formData.get("url")), joinKey: str(formData.get("joinKey")), discord: null };
@@ -39,7 +43,7 @@ export const syncCommunityHub = safe(async function syncCommunityHub() {
 });
 
 export const leaveCommunityHub = safe(async function leaveCommunityHub() {
-  await requireAdmin();
+  await requireInstallAdmin();
   await leaveHub();
   refresh();
 });
@@ -64,21 +68,21 @@ export const addManualLink = safe(async function addManualLink(formData: FormDat
 
 export const editManualLink = safe(async function editManualLink(linkId: string, formData: FormData) {
   const user = await requireUser();
-  const link = (await (await hubFetch(`/v1/links/${linkId}`, { method: "PUT", json: { ...linkFields(formData), byName: user.name } })).json()) as HubLink;
+  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "PUT", json: { ...linkFields(formData), byName: user.name } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });
 
 export const revertManualLink = safe(async function revertManualLink(linkId: string, revisionId: string) {
   const user = await requireUser();
-  const link = (await (await hubFetch(`/v1/links/${linkId}/revert`, { method: "POST", json: { revisionId, byName: user.name } })).json()) as HubLink;
+  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}/revert`, { method: "POST", json: { revisionId, byName: user.name } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });
 
 export const removeManualLink = safe(async function removeManualLink(linkId: string) {
   const user = await requireUser();
-  const link = (await (await hubFetch(`/v1/links/${linkId}`, { method: "DELETE", json: { byName: user.name } })).json()) as HubLink;
+  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "DELETE", json: { byName: user.name } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });
@@ -87,7 +91,7 @@ export const removeManualLink = safe(async function removeManualLink(linkId: str
 export async function manualLinkHistory(linkId: string): Promise<{ revisions: LinkRevision[] } | { error: string }> {
   try {
     await requireUser();
-    return { revisions: (await (await hubFetch(`/v1/links/${linkId}/history`)).json()) as LinkRevision[] };
+    return { revisions: (await (await hubFetch(`/v1/links/${hubId(linkId)}/history`)).json()) as LinkRevision[] };
   } catch (e) {
     return { error: e instanceof UserError ? e.message : "Couldn't load the history from the hub." };
   }
@@ -100,44 +104,52 @@ function inboxName(dir: string, wanted: string) {
   return name;
 }
 
-/** Fetch a linked manual from where it's published into <library>\_inbox, to be identified and filed. */
+/**
+ * Fetch a linked manual from where it's published into <library>\_inbox, to be identified and filed. Links come from
+ * other shops through the hub, so only public web servers are fetched (never the shop's own network), and the
+ * download stops at the size limit.
+ */
 export const downloadManualLink = safe(async function downloadManualLink(linkId: string) {
   await requireUser();
   const root = libraryDir();
   if (!root) throw new UserError("Downloading into the manual library works in the StitchBench program on the shop PC.");
   const l = await db.manualLink.findUnique({ where: { id: linkId } });
   if (!l) throw new UserError("That link is gone. Sync with the hub and try again.");
-  const report = () => hubFetch(`/v1/links/${linkId}/report`, { method: "POST", json: { ok: false } }).catch(() => {});
-  let r: Response;
+  const report = () => hubFetch(`/v1/links/${hubId(linkId)}/report`, { method: "POST", json: { ok: false } }).catch(() => {});
+  let got: Awaited<ReturnType<typeof fetchPublic>>;
   try {
-    r = await fetch(l.url, { redirect: "follow", headers: { "User-Agent": UA, Accept: "application/pdf,*/*" }, signal: AbortSignal.timeout(180_000) });
-  } catch {
+    got = await fetchPublic(l.url, { headers: { "User-Agent": UA, Accept: "application/pdf,*/*" }, timeoutMs: 180_000, maxBytes: MAX_PDF });
+  } catch (e) {
+    if (e instanceof TooLarge) throw new UserError("That file is too large to download here.");
     await report();
-    throw new UserError("The site didn't answer. Open the link in a browser instead; if it's dead, fix the link for everyone.");
+    throw new UserError(e instanceof Error && /private network|login in it|Only web/.test(e.message) ? `${e.message} It can't be downloaded here.` : "The site didn't answer. Open the link in a browser instead; if it's dead, fix the link for everyone.");
   }
-  if (!r.ok) {
+  if (!got.response.ok || !got.body) {
     await report();
-    throw new UserError(`The site answered ${r.status}. Try the link in a browser; if it's dead, fix it for everyone.`);
+    throw new UserError(`The site answered ${got.response.status}. Try the link in a browser; if it's dead, fix it for everyone.`);
   }
-  if (Number(r.headers.get("content-length") ?? 0) > MAX_PDF) throw new UserError("That file is too large to download here.");
-  const data = Buffer.from(await r.arrayBuffer());
+  const data = got.body;
   if (data.subarray(0, 5).toString("latin1") !== "%PDF-") {
     throw new UserError("That link opens a web page, not the PDF itself. Open it in a browser and save the manual from there.");
   }
   const inbox = path.join(root, "_inbox");
   await fs.promises.mkdir(inbox, { recursive: true });
   const name = inboxName(inbox, l.fileName ?? `${l.brand}_${l.models.replace(/,\s*/g, "+")}_${l.docType ?? "Manual"}`);
-  await fs.promises.writeFile(path.join(inbox, name), data);
+  await fs.promises.writeFile(path.join(inbox, name), data, { flag: "wx" });
 });
 
 // ---------- shared notes ----------
 
 export const removeHubPost = safe(async function removeHubPost(postId: string) {
-  await requireUser();
+  const user = await requireUser();
   const p = await db.hubPost.findUnique({ where: { id: postId }, select: { mine: true } });
   if (!p?.mine) throw new UserError("Only the shop that shared a note can remove it.");
-  await hubFetch(`/v1/posts/${postId}`, { method: "DELETE" });
+  // Same rule as before it reached the hub: its author, their shop's owner or admin, or the StitchBench administrator.
+  const own = await db.sharedPost.findFirst({ where: { hubId: postId }, select: { shopId: true, authorId: true } });
+  const allowed = isPlatformAdmin(user.email) || (own != null && own.shopId === user.shopId && (own.authorId === user.id || user.role !== "TECH"));
+  if (!allowed) throw new UserError("Only whoever shared this note, or their shop's owner or admin, can remove it.");
+  await hubFetch(`/v1/posts/${hubId(postId)}`, { method: "DELETE" });
   await db.hubPost.delete({ where: { id: postId } });
-  await db.sharedPost.deleteMany({ where: { hubId: postId } });
+  await db.sharedPost.deleteMany({ where: { hubId: postId, shopId: own?.shopId ?? user.shopId } });
   refresh();
 });

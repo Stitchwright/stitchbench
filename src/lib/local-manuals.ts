@@ -230,6 +230,10 @@ export async function saveToLibrary(blob: Blob, brand: string, filename: string)
   if (root && (await ensurePermission(root, "readwrite"))) {
     const folder = brand.replace(/[^\w\- ]+/g, "").trim() || "Unsorted";
     const dir = await root.getDirectoryHandle(folder, { create: true });
+    // Never write over a manual already there (the scan takes the next free name, as on the shop PC).
+    const exists = async (name: string) => dir.getFileHandle(name).then(() => true, () => false);
+    const stem = filename.replace(/\.pdf$/i, "");
+    for (let i = 2; await exists(filename); i++) filename = `${stem} (${i}).pdf`;
     const fh = await dir.getFileHandle(filename, { create: true });
     const w = await (fh as FileSystemFileHandle & { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
     await w.write(blob);

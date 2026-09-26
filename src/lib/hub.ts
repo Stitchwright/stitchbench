@@ -63,11 +63,48 @@ export async function hubJoined() {
   return Boolean(s?.url && s.installKey);
 }
 
+/** An id from the hub or a page, safe to put in a hub path (no "/", "..", "?" or "#" can steer the request). */
+export function hubId(id: unknown): string {
+  const s = String(id ?? "");
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(s)) throw new UserError("That isn't a valid id.");
+  return s;
+}
+
+/** Picture types the app will store and serve from the hub; anything else is treated as a JPEG. */
+export function safeImageType(mime: string | null | undefined): string {
+  const m = String(mime ?? "").split(";")[0].trim().toLowerCase();
+  return m === "image/png" || m === "image/webp" || m === "image/jpeg" ? m : "image/jpeg";
+}
+
+/** A hub address: https, or http only for this computer (a test hub). */
+export function checkHubUrl(url: string) {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new UserError("The hub address starts with https://");
+  }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) throw new UserError("The hub address starts with https://");
+  if (u.username || u.password || u.search || u.hash) throw new UserError("That hub address doesn't look right.");
+  return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+}
+
 async function reach(url: string, init: RequestInit) {
   try {
     return await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(30_000) });
   } catch {
     throw new UserError("Couldn't reach the community hub. Check the internet connection and try again.");
+  }
+}
+
+/** The hub said no; status tells a refusal for good (most 4xx) from a busy or broken moment (429, 5xx). */
+export class HubError extends UserError {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
   }
 }
 
@@ -79,12 +116,17 @@ async function failure(r: Response) {
   } catch {
     /* not JSON */
   }
-  return new UserError(msg);
+  return new HubError(msg, r.status);
 }
 
 export async function hubFetch(path: string, init: RequestInit & { json?: unknown } = {}) {
   const s = await hubState();
   if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → Community hub).");
+  // Only API paths, and nothing in them that could climb out of the path (ids are checked by hubId too).
+  const route = path.split("?")[0];
+  if (!route.startsWith("/v1/") || /(^|\/)\.\.?(\/|$)|%2e|%2f|%5c|\\|#/i.test(route) || path.includes("#")) {
+    throw new UserError("That hub request isn't allowed.");
+  }
   const { json, ...rest } = init;
   const r = await reach(s.url + path, {
     ...rest,
@@ -120,8 +162,7 @@ export function parseInvite(text: string): Invite {
 }
 
 export async function joinHub(url: string, joinKey: string, shopName: string, contact?: string | null) {
-  const base = url.trim().replace(/\/+$/, "");
-  if (!/^https?:\/\/[^/]+/.test(base)) throw new UserError("The hub address starts with https://");
+  const base = checkHubUrl(url.trim());
   // Already on this hub for partner shops only: the join key makes the same install a full member (partner links stay).
   const cur = await hubState();
   if (cur?.url === base && cur.installKey && cur.scope === "partner") {
@@ -139,7 +180,19 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
   });
   if (!r.ok) throw await failure(r);
   const j = (await r.json()) as { installId: string; installKey: string; hubName: string };
-  const data = { url: base, hubName: j.hubName, installId: j.installId, installKey: j.installKey, joinedAt: new Date(), cursor: "0", lastError: null, scope: "member" };
+  // A different hub numbers its changes, orders and partner messages its own way: start every cursor over.
+  const data = {
+    url: base,
+    hubName: j.hubName,
+    installId: j.installId,
+    installKey: j.installKey,
+    joinedAt: new Date(),
+    cursor: "0",
+    orderCursor: null,
+    partnerCursor: null,
+    lastError: null,
+    scope: "member",
+  };
   await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
   return j;
 }
@@ -151,7 +204,7 @@ export async function leaveHub() {
   }
   await db.hubState.updateMany({
     where: { id: 1 },
-    data: { url: null, installId: null, installKey: null, cursor: null, discordUrl: null, scope: "member", partnerCursor: null },
+    data: { url: null, installId: null, installKey: null, cursor: null, orderCursor: null, discordUrl: null, scope: "member", partnerCursor: null },
   });
 }
 
@@ -202,7 +255,7 @@ async function savePost(p: HubPostIn) {
   await db.hubPost.upsert({ where: { id: p.id }, create: { id: p.id, ...row }, update: row });
   await db.hubPhoto.deleteMany({ where: { postId: p.id, id: { notIn: p.photos.map((ph) => ph.id) } } });
   for (const ph of p.photos) {
-    const meta = { kind: ph.kind, caption: ph.caption, mime: ph.mime, sortOrder: ph.sortOrder };
+    const meta = { kind: ph.kind, caption: ph.caption, mime: safeImageType(ph.mime), sortOrder: ph.sortOrder };
     await db.hubPhoto.upsert({ where: { id: ph.id }, create: { id: ph.id, postId: p.id, ...meta }, update: meta });
   }
 }
@@ -380,12 +433,29 @@ export async function saveListing(l: HubListing) {
     sellerAvg: l.sellerRating?.avg ?? null,
     sellerCount: l.sellerRating?.count ?? 0,
   };
-  await db.listing.upsert({ where: { id: l.id }, create: { id: l.id, ...row }, update: row });
+  // A listing of this install's that arrives from the hub (e.g. after a restore onto a new PC) belongs to the only
+  // company when there is just one; with several, it stays unassigned (the company that made it set it on creation).
+  const shopId = l.mine ? await soleShopId() : null;
+  await db.listing.upsert({ where: { id: l.id }, create: { id: l.id, ...row, shopId }, update: row });
 }
 
-export async function saveOrder(o: HubOrder) {
+/** The company's id when the install has exactly one (a single-shop desktop install); otherwise null. */
+async function soleShopId() {
+  const shops = await db.shop.findMany({ select: { id: true }, take: 2 });
+  return shops.length === 1 ? shops[0].id : null;
+}
+
+/**
+ * Keep the local copy of an order. shopId says which company on this install it belongs to: given when this install
+ * places it, and for a sale, taken from the company that listed the item. It is never changed once set.
+ */
+export async function saveOrder(o: HubOrder, shopId?: string) {
   const row = { number: o.number, role: o.role, status: o.status, data: o, updatedAt: new Date(o.updatedAt) };
-  await db.marketOrder.upsert({ where: { id: o.id }, create: { id: o.id, ...row }, update: row });
+  const have = await db.marketOrder.findUnique({ where: { id: o.id }, select: { shopId: true } });
+  let owner = have?.shopId ?? shopId ?? null;
+  if (!owner && o.role === "seller") owner = (await db.listing.findUnique({ where: { id: o.listingId }, select: { shopId: true } }))?.shopId ?? null;
+  owner ??= await soleShopId();
+  await db.marketOrder.upsert({ where: { id: o.id }, create: { id: o.id, ...row, shopId: owner }, update: { ...row, shopId: owner } });
 }
 
 async function pullOrders(cursor: string | null) {
@@ -429,7 +499,10 @@ async function pushUsage() {
   lastUsagePush = Date.now();
 }
 
-/** Send notes this shop shared that the hub doesn't have yet. */
+/**
+ * Send notes this shop shared that the hub doesn't have yet. Each carries its own id, so a note the hub stored just as
+ * the connection dropped isn't stored twice when it's sent again.
+ */
 async function pushPending() {
   const pending = await db.sharedPost.findMany({
     where: { hubId: null },
@@ -447,11 +520,13 @@ async function pushPending() {
         title: p.title,
         body: p.body,
         authorName: p.author?.name ?? null,
+        clientId: p.id,
         photos: p.photos.map((ph) => ({ kind: ph.kind, caption: ph.caption })),
       }),
     );
     for (const ph of p.photos) fd.append("photo", new Blob([new Uint8Array(ph.data)], { type: ph.mime }), "photo.jpg");
-    const { id } = (await (await hubFetch("/v1/posts", { method: "POST", body: fd })).json()) as { id: string };
+    // Photos take a while on a slow connection.
+    const { id } = (await (await hubFetch("/v1/posts", { method: "POST", body: fd, signal: AbortSignal.timeout(180_000) })).json()) as { id: string };
     await db.sharedPost.update({ where: { id: p.id }, data: { hubId: id } });
   }
   return pending.length;
@@ -475,7 +550,11 @@ async function doSync(): Promise<SyncResult> {
       await db.hubState.update({ where: { id: 1 }, data: { lastSyncAt: new Date(), lastError: null } });
       return { skipped: true };
     }
-    const pushed = await pushPending();
+    // A note that won't upload mustn't stop everything else from syncing; it's tried again next time.
+    const pushed = await pushPending().catch((e) => {
+      console.error("community hub: sending shared notes:", e instanceof Error ? e.message : e);
+      return 0;
+    });
     const n = { pushed, links: 0, posts: 0, figures: 0 };
     let since = s.cursor ?? "0";
     for (let page = 0; page < 500; page++) {
@@ -523,11 +602,12 @@ export function syncHub(): Promise<SyncResult> {
 
 /** A picture from the hub (note photo, figure snapshot or listing photo), kept locally after the first look. */
 export async function hubPicture(kind: "photo" | "figure" | "listing", id: string): Promise<{ mime: string; data: Uint8Array } | null> {
+  id = hubId(id);
   if (kind === "listing") {
     const have = await db.listingPhoto.findUnique({ where: { id } });
-    if (have) return { mime: have.mime, data: have.data };
+    if (have) return { mime: safeImageType(have.mime), data: have.data };
     const r = await hubFetch(`/v1/listing-photos/${id}`);
-    const mime = r.headers.get("content-type") ?? "image/jpeg";
+    const mime = safeImageType(r.headers.get("content-type"));
     const data = new Uint8Array(await r.arrayBuffer());
     await db.listingPhoto.upsert({ where: { id }, create: { id, mime, data }, update: {} });
     return { mime, data };
@@ -535,17 +615,17 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
   if (kind === "photo") {
     const p = await db.hubPhoto.findUnique({ where: { id }, select: { mime: true, data: true } });
     if (!p) return null;
-    if (p.data) return { mime: p.mime, data: p.data };
+    if (p.data) return { mime: safeImageType(p.mime), data: p.data };
     const r = await hubFetch(`/v1/photos/${id}`);
     const data = new Uint8Array(await r.arrayBuffer());
     await db.hubPhoto.update({ where: { id }, data: { data } });
-    return { mime: p.mime, data };
+    return { mime: safeImageType(p.mime), data };
   }
   const f = await db.hubFigure.findUnique({ where: { id } });
   if (!f) return null;
-  if (f.data && f.mime) return { mime: f.mime, data: f.data };
+  if (f.data && f.mime) return { mime: safeImageType(f.mime), data: f.data };
   const r = await hubFetch(`/v1/figures/${id}`);
-  const mime = r.headers.get("content-type") ?? "image/jpeg";
+  const mime = safeImageType(r.headers.get("content-type"));
   const data = new Uint8Array(await r.arrayBuffer());
   await db.hubFigure.update({ where: { id }, data: { mime, data } });
   return { mime, data };
@@ -555,6 +635,6 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
 export async function shareFigure(id: string, mime: string, data: Uint8Array, width?: number, height?: number) {
   if (!(await hubJoined())) return;
   const bytes = new Uint8Array(data);
-  await hubFetch(`/v1/figures/${id}?w=${width ?? ""}&h=${height ?? ""}`, { method: "PUT", body: new Blob([bytes], { type: mime }), headers: { "Content-Type": mime } });
+  await hubFetch(`/v1/figures/${hubId(id)}?w=${Math.round(width ?? 0) || ""}&h=${Math.round(height ?? 0) || ""}`, { method: "PUT", body: new Blob([bytes], { type: mime }), headers: { "Content-Type": mime } });
   await db.hubFigure.upsert({ where: { id }, create: { id, mime, data: bytes }, update: {} });
 }

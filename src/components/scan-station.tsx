@@ -34,12 +34,15 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   async function handle(raw: string) {
     const code = raw.trim();
     if (!code) return;
-    // A camera sees the same code many times a second; count it once.
-    if (code === last.current.code && Date.now() - last.current.at < 1500) return;
-    last.current = { code, at: Date.now() };
     setBusy(true);
     try {
       const r: ScanResult = await scanCode(code, mode === "count" ? "lookup" : mode, qty, ticketId);
+      if (r.ok && mode === "count" && r.part.unit === "yd") {
+        // Fabric is counted in yards, not bolts: this scan doesn't count.
+        setLog((l) => [{ at: Date.now(), ok: false, text: `${r.part.partNumber} is sold by the yard: enter its yardage on the item page (Count)`, code, partId: r.part.id }, ...l].slice(0, 50));
+        beep(false);
+        return;
+      }
       if (r.ok && mode === "count") {
         setCounts((prev) => {
           const next = new Map(prev);
@@ -60,7 +63,17 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
     }
   }
 
-  const cam = useBarcodeCamera((code) => handle(code));
+  // Scans are handled one after another, in order: a handheld scanner can fire them faster than the server answers.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const enqueue = (code: string) => {
+    queue.current = queue.current.then(() => handle(code));
+  };
+  // A camera sees the same code many times a second: count it once. Every handheld scan counts.
+  const cam = useBarcodeCamera((code) => {
+    if (code === last.current.code && Date.now() - last.current.at < 1500) return;
+    last.current = { code, at: Date.now() };
+    enqueue(code);
+  });
 
   async function save() {
     const r = await saveCounts([...counts.values()].map((c) => ({ partId: c.part.id, qty: c.n })));
@@ -95,14 +108,14 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
           e.preventDefault();
           const v = input.current!.value;
           input.current!.value = "";
-          handle(v);
+          enqueue(v);
         }}
       >
         <div className="field min-w-64 flex-1">
           <label htmlFor="scan-code" className="label">
             Scan or type a part number
           </label>
-          <input id="scan-code" ref={input} autoComplete="off" autoFocus className="input mono text-lg" placeholder="Scan here" disabled={busy} />
+          <input id="scan-code" ref={input} autoComplete="off" autoFocus className="input mono text-lg" placeholder="Scan here" aria-busy={busy} />
         </div>
         {(mode === "receive" || mode === "ticket") && (
           <div className="field w-24">

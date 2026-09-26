@@ -7,7 +7,7 @@ import { Camera, CameraOff, Trash2, Undo2, Wrench, Plus } from "lucide-react";
 import { completeSale, findCustomers, findItems, itemByCode, pickupJobs, type CustomerHit, type PickupJob, type RegisterItem } from "@/actions/register";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 import { money, toCents } from "@/lib/format";
-import { lineNet, qtyText, saleTotals, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
+import { discountBase, lineNet, qtyText, saleTotals, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
 
 type CartLine = {
   key: string;
@@ -45,10 +45,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
 
-  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l) })), [cart]);
-  const pre = saleTotals(lines, 0, taxRatePct);
+  // A partner's repair bill is paid as billed: a whole-sale discount doesn't come off it.
+  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId })), [cart]);
+  const base = discountBase(lines);
   const orderDiscountCents =
-    orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((Math.max(0, pre.subtotal) * Math.min(100, Number(orderDisc.value) || 0)) / 100) : (toCents(orderDisc.value) ?? 0);
+    orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
   const t = saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
 
   useEffect(() => code.current?.focus(), []);
@@ -82,8 +83,6 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   async function lookup(raw: string) {
     const c = raw.trim();
     if (!c) return;
-    if (c === last.current.code && Date.now() - last.current.at < 1500) return;
-    last.current = { code: c, at: Date.now() };
     const it = await itemByCode(c);
     if (it) {
       beep(true);
@@ -98,7 +97,12 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
     setMissing(hits.length ? null : c);
   }
 
-  const cam = useBarcodeCamera((c) => lookup(c));
+  // A camera sees the same code many times a second: count it once. A handheld scanner's every scan counts.
+  const cam = useBarcodeCamera((c) => {
+    if (c === last.current.code && Date.now() - last.current.at < 1500) return;
+    last.current = { code: c, at: Date.now() };
+    lookup(c);
+  });
 
   function setLine(key: string, patch: Partial<CartLine>) {
     setCart((c) => c.map((l) => (l.key === key ? { ...l, ...patch } : l)));

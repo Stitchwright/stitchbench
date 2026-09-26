@@ -1,18 +1,16 @@
-import { auth } from "@/auth";
+import { sessionUser } from "@/lib/session";
+import { csvCell as csv } from "@/lib/csv";
+import { db } from "@/lib/db";
 import { monthRange, paymentsBetween } from "@/lib/sales";
 import { PAYMENT_LABEL } from "@/lib/constants";
 
-function csv(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 export async function GET(req: Request) {
-  const session = await auth();
-  const shopId = session?.user?.shopId;
-  if (!shopId) return new Response("Sign in first.", { status: 401 });
+  const user = await sessionUser();
+  if (!user) return new Response("Sign in first.", { status: 401 });
+  const shopId = user.shopId;
   const url = new URL(req.url);
-  const { start, end, fromStr, toStr } = monthRange(url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined);
+  const tz = (await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
+  const { start, end, fromStr, toStr } = monthRange(url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined, tz);
   const rows = await paymentsBetween(shopId, start, end);
   const lines = [
     ["date", "ticket", "customer", "via_account", "brand", "model", "serial", "method", "amount", "note"].join(","),

@@ -7,7 +7,7 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, ActionButton, Submit } from "@/components/action-form";
 import { PartnerCodeForm } from "@/components/partner-code-form";
 import { TermsFields } from "@/components/terms-fields";
-import { enterPartnerCode, setUpSewingShop, syncPartnersNow } from "@/actions/partners";
+import { enterPartnerCode, resendPartnerMessage, setUpSewingShop, syncPartnersNow } from "@/actions/partners";
 import { isPlatformAdmin } from "@/lib/shops";
 
 /** Partner shops: the sewing / quilt shops that take machines in for this repair shop, or the repair shop this sewing shop uses. */
@@ -28,6 +28,12 @@ export default async function Partners({ searchParams }: { searchParams: Promise
   const orders = await db.partnerOrder.groupBy({ by: ["linkId"], where: { shopId: user.shopId, status: { in: ["PLACED", "ACCEPTED", "DELIVERED"] } }, _count: true });
   const openOrders = new Map(orders.map((c) => [c.linkId, c._count]));
   const admin = user.role !== "TECH";
+  // What didn't get through, either way: shown so nothing is lost quietly.
+  const [failures, stuck] = await Promise.all([
+    db.partnerFailure.findMany({ where: { shopId: user.shopId }, orderBy: { at: "desc" }, take: 30 }),
+    db.partnerOutbox.findMany({ where: { shopId: user.shopId, sentAt: null, OR: [{ deadAt: { not: null } }, { tries: { gte: 3 } }] }, orderBy: { createdAt: "asc" }, take: 30 }),
+  ]);
+  const nameOf = new Map(links.map((l) => [l.id, l.partnerName]));
 
   return (
     <div className="space-y-6">
@@ -92,6 +98,33 @@ export default async function Partners({ searchParams }: { searchParams: Promise
           </div>
         )}
       </Section>
+
+      {(failures.length > 0 || stuck.length > 0) && (
+        <Section title="Messages that didn't get through">
+          <ul className="space-y-2 text-sm">
+            {stuck.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  To {nameOf.get(m.linkId) ?? "a partner"}: <span className="mono">{m.type}</span> from {fmtDate(m.createdAt)} —{" "}
+                  {m.deadAt ? "refused by the hub" : `still trying (${m.tries} tries)`}: {m.error}
+                </span>
+                {m.deadAt && admin && (
+                  <ActionButton action={resendPartnerMessage.bind(null, m.id)} success="Queued again">
+                    Send again
+                  </ActionButton>
+                )}
+              </li>
+            ))}
+            {failures.map((f) => (
+              <li key={f.key}>
+                From {nameOf.get(f.linkId) ?? "a partner"}: <span className="mono">{f.type}</span> on {fmtDate(f.at)} —{" "}
+                {f.skipped ? "set aside, not applied" : `failing (${f.tries} tries)`}: {f.error}
+              </li>
+            ))}
+          </ul>
+          <p className="muted mt-2 text-xs">Set-aside messages came with data that couldn&apos;t be used. Ask the partner shop what they meant to send.</p>
+        </Section>
+      )}
 
       {admin && (
         <div className="grid gap-6 xl:grid-cols-2">

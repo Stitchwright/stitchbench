@@ -15,8 +15,8 @@ function todo(o: HubOrder): string | null {
   return null;
 }
 
-export async function MarketTodo() {
-  const rows = await db.marketOrder.findMany({ where: { status: { in: ["REQUESTED", "ACCEPTED", "PAID", "SHIPPED"] } }, orderBy: { updatedAt: "desc" }, take: 50 });
+export async function MarketTodo({ shopId }: { shopId: string }) {
+  const rows = await db.marketOrder.findMany({ where: { shopId, status: { in: ["REQUESTED", "ACCEPTED", "PAID", "SHIPPED"] } }, orderBy: { updatedAt: "desc" }, take: 50 });
   const items = rows.map((r) => r.data as unknown as HubOrder).map((o) => ({ o, what: todo(o) })).filter((x) => x.what);
   if (!items.length) return null;
   return (

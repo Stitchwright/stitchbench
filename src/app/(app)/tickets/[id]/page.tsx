@@ -78,7 +78,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const measurable = settings.filter((x) => (x.valueMin != null || x.valueMax != null) && (x.unit === "mm" || x.unit === "deg"));
   const meas = (t.measurements ?? {}) as Record<string, { found?: number; left?: number }>;
   const spec = specs.find((s) => s.upperMinG != null || s.bobbinMinG != null);
-  const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct);
+  const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct, job?.commissionCents);
   const checklistItems = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
   const checklist = (t.checklist ?? {}) as Record<string, { done: boolean; by?: string; at?: string }>;
   const m = t.machine;

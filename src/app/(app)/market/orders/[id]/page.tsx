@@ -28,7 +28,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const user = await requireUser();
   const { id } = await params;
   const row = await db.marketOrder.findUnique({ where: { id } });
-  if (!row) notFound();
+  if (!row || row.shopId !== user.shopId) notFound();
   const o = row.data as unknown as HubOrder;
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { payInstructions: true } });
   const seller = o.role === "seller";

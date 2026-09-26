@@ -10,7 +10,7 @@ export default async function MyListings() {
   const user = await requireUser();
   const [joined, listings, shop] = await Promise.all([
     hubJoined(),
-    db.listing.findMany({ where: { mine: true }, orderBy: { createdAt: "desc" } }),
+    db.listing.findMany({ where: { mine: true, shopId: user.shopId }, orderBy: { createdAt: "desc" } }),
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { payInstructions: true } }),
   ]);
   return (

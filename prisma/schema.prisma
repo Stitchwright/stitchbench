@@ -51,6 +51,8 @@ model Shop {
   nextOrderNumber    Int      @default(1001)
   // Line at the bottom of register receipts (returns policy, hours)
   receiptNote        String?
+  // The shop's own time zone: where days and months start for reports and statements
+  timeZone           String   @default("America/New_York")
   createdAt          DateTime @default(now())
 
   users         User[]
@@ -74,15 +76,17 @@ model Shop {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  shopId       String
-  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  email        String   @unique
-  name         String
-  passwordHash String
-  role         Role     @default(TECH)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           Role     @default(TECH)
+  active         Boolean  @default(true)
+  // Bumped when the password changes or access is removed: sessions signed in before that stop working
+  sessionVersion Int      @default(0)
+  createdAt      DateTime @default(now())
 
   notes         ModelNote[]
   ticketsOpened Ticket[]     @relation("TicketOpenedBy")
@@ -644,22 +648,24 @@ model HubFigure {
 
 // This install's connection to the hub (set in Settings → Community hub).
 model HubState {
-  id            Int       @id @default(1)
-  url           String?
-  hubName       String?
-  discordUrl    String? // the community's Discord invite (menu: Community chat)
-  installId     String?
-  installKey    String?
-  joinedAt      DateTime?
-  cursor        String? // the hub's "changes since" marker
-  orderCursor   String? // same for marketplace orders
-  lastSyncAt    DateTime?
-  lastError     String?
+  id               Int       @id @default(1)
+  url              String?
+  hubName          String?
+  discordUrl       String? // the community's Discord invite (menu: Community chat)
+  installId        String?
+  installKey       String?
+  joinedAt         DateTime?
+  cursor           String? // the hub's "changes since" marker
+  orderCursor      String? // same for marketplace orders
+  lastSyncAt       DateTime?
+  lastError        String?
   // member = joined the community; partner = joined with a partner shop's code only (partner channel only)
-  scope         String    @default("member")
-  partnerCursor String?
-  partnerSyncAt DateTime?
-  partnerError  String?
+  scope            String    @default("member")
+  partnerCursor    String?
+  partnerSyncAt    DateTime?
+  partnerError     String?
+  // One partner sync at a time across every server process on this install
+  partnerLockUntil DateTime?
 }
 
 // The community parts cross-reference (synced copy): one physical part, every number it goes by, what it fits.
@@ -709,6 +715,8 @@ model Listing {
   sellerId      String?
   sellerAvg     Float?
   sellerCount   Int      @default(0)
+  // The company on this install that listed it (mine listings only; several companies can share one install)
+  shopId        String?
 
   @@index([status])
   @@index([numberKey])
@@ -730,7 +738,11 @@ model MarketOrder {
   data      Json // the whole order as the hub sent it
   updatedAt DateTime
 
+  // The company on this install that placed it (buyer) or whose listing it is (seller)
+  shopId String?
+
   @@index([role, status])
+  @@index([shopId])
 }
 
 // ============================================================
@@ -830,6 +842,10 @@ model PartnerOutbox {
   sentAt    DateTime?
   tries     Int       @default(0)
   error     String?
+  // Not before this time (backs off while the hub or the internet is down)
+  nextTryAt DateTime?
+  // The hub refused it for good (bad data, unknown link): kept and shown, never retried
+  deadAt    DateTime?
 
   @@index([sentAt, createdAt])
 }
@@ -872,7 +888,9 @@ model RepairJob {
   // Payment: at the sewing shop's counter, or straight to the repair shop
   paidCents        Int?
   paidAt           DateTime?
-  paidWhere        String? // shop | repair
+  paidWhere        String? // shop | repair | split
+  // Paid straight to the repair shop (deposits and full payments); paidCents is what the sewing shop collected
+  repairPaidCents  Int?
   pickedUpAt       DateTime?
   events           Json      @default("[]") // [{ at, status, note }]
   sentHash         String? // repair side: what the sewing shop last heard
@@ -934,15 +952,17 @@ model ConsignItem {
 
 // Each consigned item sold at the sewing shop's counter (id = its sale line id, the same on both sides).
 model ConsignSale {
-  id         String
-  shopId     String
-  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  linkId     String
-  itemKey    String
-  qty        Float
-  priceCents Int // unit price it sold for
-  saleNumber Int?
-  soldAt     DateTime
+  id             String
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId         String
+  itemKey        String
+  qty            Float
+  priceCents     Int // unit price it sold for
+  saleNumber     Int?
+  soldAt         DateTime
+  // The sewing shop's share, fixed when the sale happened (later terms don't reprice it)
+  shopKeepsCents Int?
 
   @@id([shopId, id])
   @@index([shopId, linkId, soldAt])
@@ -971,6 +991,22 @@ model PartnerSeen {
   shopId String
   key    String
   at     DateTime @default(now())
+
+  @@id([shopId, key])
+}
+
+// Partner messages that couldn't be applied: bad data from the partner, or a failure that kept repeating. Set aside so
+// one message can't stop every later one; shown on the Partners page.
+model PartnerFailure {
+  shopId  String
+  key     String
+  linkId  String
+  type    String
+  data    Json
+  error   String
+  tries   Int      @default(1)
+  skipped Boolean  @default(false)
+  at      DateTime @default(now())
 
   @@id([shopId, key])
 }

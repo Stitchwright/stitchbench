@@ -29,22 +29,36 @@ export function shopModes(kind: string | null | undefined) {
  * A new company with its owner login. Repair shops start with the service menu names but no prices; they set their own.
  * A sewing / quilt shop (kind "retail") gets the StitchShop register instead of the repair bench.
  */
-export async function createShopWithOwner(input: { shopName: string; name: string; email: string; password: string; kind?: ShopKind }) {
+/**
+ * A new company and its owner login. With firstOnly (the Windows program's first-run sign-up) it is made only when the
+ * install has no company yet, checked and created under one lock.
+ */
+export async function createShopWithOwner(
+  input: { shopName: string; name: string; email: string; password: string; kind?: ShopKind },
+  opts: { firstOnly?: boolean } = {},
+) {
   const email = input.email.trim().toLowerCase();
   if (!input.shopName.trim() || !input.name.trim() || !email || input.password.length < 8) {
     throw new UserError("Fill in every field; password 8+ characters.");
   }
   if (await db.user.findUnique({ where: { email } })) throw new UserError("That email already has an account.");
   const modes = shopModes(input.kind);
-  return db.shop.create({
-    data: {
-      name: input.shopName.trim(),
-      ...modes,
-      checklistItems: DEFAULT_CHECKLIST,
-      users: { create: { email, name: input.name.trim(), role: "OWNER", passwordHash: await bcrypt.hash(input.password, 10) } },
-      serviceItems: modes.doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i })) } : undefined,
-    },
-    select: { id: true, name: true },
+  const passwordHash = await bcrypt.hash(input.password, 10);
+  return db.$transaction(async (tx) => {
+    if (opts.firstOnly) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(7710001)`;
+      if (await tx.shop.count()) throw new UserError("This program already has its company. Sign in instead.");
+    }
+    return tx.shop.create({
+      data: {
+        name: input.shopName.trim(),
+        ...modes,
+        checklistItems: DEFAULT_CHECKLIST,
+        users: { create: { email, name: input.name.trim(), role: "OWNER", passwordHash } },
+        serviceItems: modes.doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i })) } : undefined,
+      },
+      select: { id: true, name: true },
+    });
   });
 }
 

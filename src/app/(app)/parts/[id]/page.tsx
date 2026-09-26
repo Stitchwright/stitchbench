@@ -39,7 +39,7 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
   const [joined, xrefs, myListings] = await Promise.all([
     hubJoined(),
     xrefForKeys(p.numberKeys),
-    db.listing.findMany({ where: { mine: true, numberKey: { in: p.numberKeys } }, orderBy: { createdAt: "desc" } }),
+    db.listing.findMany({ where: { mine: true, shopId: user.shopId, numberKey: { in: p.numberKeys } }, orderBy: { createdAt: "desc" } }),
   ]);
   const ticketIds = [...new Set(p.moves.map((m) => m.ticketId).filter(Boolean))] as string[];
   const tickets = await db.ticket.findMany({ where: { id: { in: ticketIds }, shopId: user.shopId }, select: { id: true, number: true } });

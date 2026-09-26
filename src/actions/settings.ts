@@ -6,7 +6,19 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
+import { isPlatformAdmin } from "@/lib/shops";
 import type { Role } from "@/generated/prisma/enums";
+
+/** An IANA time zone this server knows (America/New_York...), or null. */
+function validTimeZone(tz: string | null) {
+  if (!tz) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    throw new UserError(`"${tz}" isn't a time zone. Use a name like America/New_York or America/Chicago.`);
+  }
+}
 
 export const saveShop = safe(async function saveShop(formData: FormData) {
   const user = await requireAdmin();
@@ -30,6 +42,7 @@ export const saveShop = safe(async function saveShop(formData: FormData) {
       storageFeeCents: toCents(formData.get("storageFee")) ?? shop.storageFeeCents,
       nextTicketNumber: Math.max(1, Math.round(num("nextTicketNumber", shop.nextTicketNumber))),
       libraryRoot: str(formData.get("libraryRoot")) ?? shop.libraryRoot,
+      timeZone: validTimeZone(str(formData.get("timeZone"))) ?? shop.timeZone,
       payInstructions: str(formData.get("payInstructions")),
     },
   });
@@ -78,7 +91,8 @@ export const resetUserPassword = safe(async function resetUserPassword(userId: s
   const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
   if (!u) throw new UserError("User not found.");
   if (u.role === "OWNER" && u.id !== admin.id) throw new UserError("Only the owner can change the owner's password.");
-  await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10) } });
+  // Signed-in devices of that person have to sign in again with the new password.
+  await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } });
 });
 
 export const addUser = safe(async function addUser(formData: FormData) {
@@ -88,8 +102,10 @@ export const addUser = safe(async function addUser(formData: FormData) {
   const password = str(formData.get("password"));
   if (!email || !name || !password || password.length < 8) throw new UserError("Enter a name, email and a temporary password of 8+ characters.");
   if (await db.user.findUnique({ where: { email } })) throw new UserError("That email already has an account.");
+  // The StitchBench administrator's address carries install-wide rights: nobody else may take it for a login.
+  if (isPlatformAdmin(email) && !isPlatformAdmin(admin.email)) throw new UserError("That email is reserved on this StitchBench.");
   const role = (str(formData.get("role")) ?? "TECH") as Role;
-  if (role === "OWNER") throw new UserError("There is one owner per shop.");
+  if (role !== "ADMIN" && role !== "TECH") throw new UserError("Pick admin or tech.");
   await db.user.create({
     data: { shopId: admin.shopId, email, name, role, passwordHash: await bcrypt.hash(password, 10) },
   });
@@ -101,7 +117,8 @@ export const setUserActive = safe(async function setUserActive(userId: string, a
   const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
   if (!u) throw new UserError("User not found.");
   if (u.role === "OWNER") throw new UserError("The owner account can't be switched off.");
-  await db.user.update({ where: { id: userId }, data: { active } });
+  // Switching someone off also signs them out everywhere, at once.
+  await db.user.update({ where: { id: userId }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });
   revalidatePath("/settings");
 });
 
@@ -112,5 +129,6 @@ export const changePassword = safe(async function changePassword(formData: FormD
   if (next.length < 8) throw new UserError("Use at least 8 characters.");
   const u = await db.user.findUniqueOrThrow({ where: { id: user.id } });
   if (!(await bcrypt.compare(current, u.passwordHash))) throw new UserError("Current password is wrong.");
-  await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10) } });
+  // Every device signed in with the old password (this one too) signs in again.
+  await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10), sessionVersion: { increment: 1 } } });
 });

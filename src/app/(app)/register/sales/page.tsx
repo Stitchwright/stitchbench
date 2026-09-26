@@ -2,7 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
-import { monthRange } from "@/lib/sales";
+import { monthRange, todayIn } from "@/lib/sales";
 import { TENDER_LABEL, type Tender } from "@/lib/register-math";
 import { KIND_LABEL } from "@/lib/parts";
 import { PageHeader, Section, Empty } from "@/components/ui";
@@ -11,10 +11,10 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 export default async function RegisterSales({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  // Default: today.
-  const today = new Date();
-  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const { start, end, fromStr, toStr } = monthRange(sp.from ?? iso, sp.to ?? sp.from ?? iso);
+  // Default: today, in the shop's time zone.
+  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
+  const iso = todayIn(tz);
+  const { start, end, fromStr, toStr } = monthRange(sp.from ?? iso, sp.to ?? sp.from ?? iso, tz);
   const sales = await db.sale.findMany({
     where: { shopId: user.shopId, createdAt: { gte: start, lt: end } },
     include: { lines: { include: { part: { select: { kind: true } } } }, customer: { select: { name: true } }, user: { select: { name: true } } },

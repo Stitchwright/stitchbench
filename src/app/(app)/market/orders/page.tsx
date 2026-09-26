@@ -11,9 +11,9 @@ import { refreshOrders } from "@/actions/market";
 const OPEN = ["REQUESTED", "ACCEPTED", "PAID", "SHIPPED"];
 
 export default async function Orders({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
-  await requireUser();
+  const user = await requireUser();
   const role = (await searchParams).role === "seller" ? "seller" : "buyer";
-  const rows = await db.marketOrder.findMany({ where: { role }, orderBy: { updatedAt: "desc" }, take: 300 });
+  const rows = await db.marketOrder.findMany({ where: { role, shopId: user.shopId }, orderBy: { updatedAt: "desc" }, take: 300 });
   const orders = rows.map((r) => r.data as unknown as HubOrder);
   const open = orders.filter((o) => OPEN.includes(o.status)).length;
 

@@ -1,10 +1,9 @@
 // Upload this StitchBench's manual figure snapshots to the community hub (skips ones the hub already has).
 // usage: node push-figures.mjs      (the program must have joined a hub)
-import fs from "node:fs";
-import path from "node:path";
 import pg from "pg";
+import { programConfig } from "./cli-config.mjs";
 
-const cfg = JSON.parse(fs.readFileSync(path.join(process.env.APPDATA, "StitchBench", "config.json"), "utf8"));
+const cfg = programConfig();
 const db = new pg.Pool({ host: "127.0.0.1", port: cfg.dbPort, user: "stitchbench", password: cfg.dbPassword, database: "stitchbench", max: 3 });
 const hub = (await db.query(`SELECT url, "installKey" FROM "HubState" WHERE id = 1`)).rows[0];
 if (!hub?.url || !hub.installKey) throw new Error("Join a hub first.");

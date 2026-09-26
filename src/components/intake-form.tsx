@@ -20,7 +20,11 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
   return (
     <form
       className="space-y-6"
-      action={async (fd) => {
+      // Submitted by hand (not a React form action) so what was typed stays when the server says what's missing.
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (busy) return;
+        const fd = new FormData(e.currentTarget);
         setBusy(true);
         try {
           fd.delete("photoPick");
@@ -32,6 +36,8 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
             toast.success("Taken in. Print the claim tag.");
             router.push(`/repairs/${r.id}`);
           }
+        } catch {
+          toast.error("That didn't save. Check the connection (and try fewer photos), then try again.");
         } finally {
           setBusy(false);
         }

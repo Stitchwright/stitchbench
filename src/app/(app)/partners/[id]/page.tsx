@@ -19,7 +19,8 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
   const agreed = acceptedBoth(accepted, link.termsVersion);
   const iAccepted = accepted[link.side as "repair" | "retail"]?.version === link.termsVersion;
   const repairSide = link.side === "repair";
-  const { from, to, month } = monthPeriod(null);
+  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
+  const { from, to, month } = monthPeriod(null, tz);
   const [jobs, orders, consign, st] = await Promise.all([
     db.repairJob.findMany({ where: { shopId: user.shopId, linkId: id }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.partnerOrder.findMany({ where: { shopId: user.shopId, linkId: id }, orderBy: { createdAt: "desc" }, take: 30 }),

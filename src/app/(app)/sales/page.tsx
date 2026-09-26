@@ -10,7 +10,8 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 export default async function Sales({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const { start, end, fromStr, toStr } = monthRange(sp.from, sp.to);
+  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
+  const { start, end, fromStr, toStr } = monthRange(sp.from, sp.to, tz);
   const [payments, closed] = await Promise.all([
     paymentsBetween(user.shopId, start, end),
     db.ticket.findMany({
@@ -18,6 +19,12 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
       include: { lines: true, payments: true, viaAccount: true },
     }),
   ]);
+  // Machines from a partner sewing shop earn it the partnership's commission (as billed on the statement).
+  const partnerCommission = new Map(
+    (await db.repairJob.findMany({ where: { shopId: user.shopId, side: "repair", ticketId: { in: closed.map((t) => t.id) } }, select: { ticketId: true, commissionCents: true } })).map(
+      (j) => [j.ticketId!, j.commissionCents],
+    ),
+  );
   const byMethod = new Map<string, number>();
   for (const p of payments) byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amountCents);
   const taken = payments.reduce((s, p) => s + p.amountCents, 0);
@@ -27,7 +34,7 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
     tax = 0,
     commission = 0;
   for (const t of closed) {
-    const x = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct);
+    const x = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct, partnerCommission.get(t.id));
     service += x.service;
     labor += x.labor;
     parts += x.parts;

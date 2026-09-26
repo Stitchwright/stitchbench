@@ -57,10 +57,14 @@ export async function importItems(rows: ImportRow[], opts: ImportOptions): Promi
       }
       const barcode = r.barcode ? String(r.barcode).trim().slice(0, 40) : null;
       const alt = barcode && barcode !== partNumber ? [barcode] : [];
-      const qty = opts.addQty && r.qty != null && Number.isFinite(Number(r.qty)) && Number(r.qty) > 0 ? (unit ? Number(r.qty) : Math.round(Number(r.qty))) : 0;
       const cost = r.costCents != null && Number.isFinite(r.costCents) ? Math.round(r.costCents) : null;
       const price = r.priceCents != null && Number.isFinite(r.priceCents) ? Math.round(r.priceCents) : null;
-      const existing = await db.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber } } });
+      // The same number in any case is the same item; a partner's consigned stock is never imported into.
+      const existing = await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: { equals: partNumber, mode: "insensitive" } } });
+      // Yards to the thousandth for fabric (the item's own unit when it exists), whole pieces for everything else.
+      const rowUnit = existing ? existing.unit : unit;
+      const raw = opts.addQty && r.qty != null && Number.isFinite(Number(r.qty)) && Number(r.qty) > 0 ? Number(r.qty) : 0;
+      const qty = rowUnit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
       if (existing) {
         if (!opts.updateExisting && !qty) {
           skipped++;

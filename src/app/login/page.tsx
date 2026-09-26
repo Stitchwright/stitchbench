@@ -4,8 +4,8 @@ import Link from "next/link";
 import { signIn } from "@/auth";
 import { appName } from "@/lib/shops";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; ended?: string }> }) {
+  const { error, ended } = await searchParams;
   const shopApp = appName() === "StitchShop";
 
   async function login(formData: FormData) {
@@ -33,7 +33,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
         {error && (
           <p className="pill tone-bad" role="alert">
-            Email or password is wrong.
+            Email or password is wrong (or too many tries: wait 15 minutes).
+          </p>
+        )}
+        {ended && !error && (
+          <p className="pill tone-wait" role="status">
+            Please sign in again: your password or your access changed.
           </p>
         )}
         <div className="field">
@@ -49,7 +54,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <input id="password" name="password" type="password" autoComplete="current-password" required className="input" />
         </div>
         <button className="btn btn-primary w-full">Sign in</button>
-        {process.env.ALLOW_SIGNUP === "true" && (
+        {/* The Windows program's first-run sign-up (SETUP_TOKEN) is only for its own window, which opens it directly. */}
+        {process.env.ALLOW_SIGNUP === "true" && !process.env.SETUP_TOKEN && (
           <p className="muted text-center text-sm">
             New shop?{" "}
             <Link href="/signup" className="link">

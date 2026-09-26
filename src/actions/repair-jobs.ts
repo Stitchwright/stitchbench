@@ -72,6 +72,8 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
       photos.push({ mime: f.type, data: Buffer.from(await f.arrayBuffer()) });
     }
     if (photos.length > 6) throw new UserError("Six photos at most.");
+    // They travel to the repair shop inside one hub message (4 MB at most, and base64 grows them by a third).
+    if (photos.reduce((a, p) => a + p.data.length, 0) > 2_600_000) throw new UserError("The photos are too large together. Take fewer, or smaller ones.");
 
     const terms = normalizeTerms(link.terms);
     const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
@@ -144,8 +146,11 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
 /** The customer's answer to the repair shop's estimate. */
 export const answerEstimate = safe(async function answerEstimate(jobId: string, approval: "APPROVED" | "DECLINED", formData: FormData) {
   const user = await requireUser();
+  if (approval !== "APPROVED" && approval !== "DECLINED") throw new UserError("Approve or decline.");
   const job = await retailJob(user.shopId, jobId);
+  if (job.status !== "WAITING_CUSTOMER_OK") throw new UserError("The repair shop isn't waiting for an answer on this one.");
   const approvedCents = approval === "APPROVED" ? (toCents(formData.get("approved")) ?? job.totalCents) : null;
+  if (approvedCents != null && (approvedCents < 0 || approvedCents > 10_000_000)) throw new UserError("Check the approved amount.");
   const note = str(formData.get("note"));
   const at = new Date();
   const events = [...((job.events as JobEvent[]) ?? []), { at: at.toISOString(), note: `Customer ${approval === "APPROVED" ? "approved" : "declined"}${note ? `: ${note}` : ""} (${user.name})` }];
@@ -161,6 +166,7 @@ export const markPickedUp = safe(async function markPickedUp(jobId: string) {
   const user = await requireUser();
   const job = await retailJob(user.shopId, jobId);
   if (job.pickedUpAt) return;
+  if (!["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"].includes(job.status)) throw new UserError("It isn't back from the repair shop yet.");
   const at = new Date();
   const events = [...((job.events as JobEvent[]) ?? []), { at: at.toISOString(), status: "COLLECTED", note: `Handed back by ${user.name}` }];
   await db.$transaction(async (tx) => {

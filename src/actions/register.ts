@@ -8,6 +8,7 @@ import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { sendToPartner } from "@/lib/partners";
+import { normalizeTerms } from "@/lib/partner-terms";
 import { lineNet, saleTotals, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -42,16 +43,28 @@ const view = (p: {
   consigned: Boolean(p.consignLinkId),
 });
 
-/** A scanned barcode or typed number: the exact item, or null. */
+/**
+ * A scanned barcode or typed number: the item, or null. When the shop stocks the number itself and also holds a
+ * partner's consigned stock of it, its own stock sells first; consigned stock sells once its own runs out.
+ */
 export async function itemByCode(code: string): Promise<RegisterItem | null> {
   const user = await requireUser();
   const c = code.trim();
   if (!c) return null;
   const key = numberKey(c);
-  const p =
-    (await db.part.findFirst({ where: { shopId: user.shopId, partNumber: { equals: c, mode: "insensitive" } } })) ??
-    (key.length >= 3 ? await db.part.findFirst({ where: { shopId: user.shopId, numberKeys: { has: key } } }) : null);
-  return p ? view(p) : null;
+  const matches = await db.part.findMany({
+    where: { shopId: user.shopId, OR: [{ partNumber: { equals: c, mode: "insensitive" } }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
+    take: 20,
+  });
+  const exact = (p: { partNumber: string }) => p.partNumber.toLowerCase() === c.toLowerCase();
+  const rank = (p: (typeof matches)[number]) => (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
+  matches.sort((a, b) => rank(a) - rank(b));
+  return matches[0] ? view(matches[0]) : null;
+}
+
+/** What the customer still owes on a repair: the bill, less anything already paid to either shop. */
+function repairDue(j: { totalCents: number | null; repairPaidCents: number | null; paidCents: number | null }) {
+  return Math.max(0, (j.totalCents ?? 0) - (j.repairPaidCents ?? 0) - (j.paidCents ?? 0));
 }
 
 /** Items whose number or description matches, for the search box. */
@@ -84,15 +97,17 @@ export async function pickupJobs(): Promise<PickupJob[]> {
     where: { shopId: user.shopId, side: "retail", paidAt: null, totalCents: { not: null }, status: { in: ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"] } },
     orderBy: { updatedAt: "desc" },
   });
-  return jobs.map((j) => ({
-    id: j.id,
-    tag: j.tag,
-    customerName: j.customerName,
-    machine: `${j.brand} ${j.model}`,
-    dueCents: j.totalCents ?? 0,
-    status: j.status,
-    customerId: j.customerId,
-  }));
+  return jobs
+    .map((j) => ({
+      id: j.id,
+      tag: j.tag,
+      customerName: j.customerName,
+      machine: `${j.brand} ${j.model}`,
+      dueCents: repairDue(j),
+      status: j.status,
+      customerId: j.customerId,
+    }))
+    .filter((j) => j.dueCents > 0);
 }
 
 export type CustomerHit = { id: string; name: string; phone: string | null };
@@ -159,12 +174,24 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     const lines = input.lines.map((l) => {
       const qty = Number(l.qty);
       if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 10000) throw new UserError("Each line needs a quantity.");
-      const unit = Math.round(Number(l.unitPriceCents));
+      let unit = Math.round(Number(l.unitPriceCents));
       if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, use Return mode (negative quantity).");
-      const disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
+      let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
       const part = l.partId ? parts.get(l.partId)! : null;
       const job = l.repairJobId ? jobs.get(l.repairJobId)! : null;
-      if (job && qty !== 1) throw new UserError("A repair is one line of 1.");
+      if (job) {
+        if (qty !== 1) throw new UserError("A repair is one line of 1.");
+        if (disc) throw new UserError("A repair is paid as the repair shop billed it; it can't be discounted here.");
+        // The balance as we know it now, not what the page had when it was opened.
+        unit = repairDue(job);
+        if (unit <= 0) throw new UserError(`Repair tag ${job.tag} has nothing left to pay.`);
+      }
+      if (part) {
+        if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
+        if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+      }
+      // A discount can take a line to zero, never below.
+      disc = Math.min(disc, Math.abs(Math.round(qty * unit)));
       return {
         partId: part?.id ?? null,
         repairJobId: job?.id ?? null,
@@ -176,6 +203,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         unitPriceCents: unit,
         discountCents: disc,
         taxable: job ? false : Boolean(l.taxable),
+        discountable: !job,
         costCents: part?.costCents ?? null,
         consignLinkId: part?.consignLinkId ?? null,
         consignItemKey: part?.consignItemKey ?? null,
@@ -188,7 +216,17 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     const totals = saleTotals(lines, Math.max(0, Math.round(input.orderDiscountCents ?? 0)), shop.taxRatePct, tenders);
     if (totals.total >= 0 && totals.paid < totals.total) throw new UserError(`Still due: $${((totals.total - totals.paid) / 100).toFixed(2)}.`);
     if (totals.total < 0 && totals.paid !== totals.total) throw new UserError(`Refund the full $${(-totals.total / 100).toFixed(2)} (a negative payment).`);
-    if (totals.change > 0 && !tenders.some((t) => t.method === "CASH")) throw new UserError("Only cash gives change. Take the exact amount on the card or check.");
+    if (tenders.some((t) => (totals.total >= 0 ? t.amountCents < 0 : t.amountCents > 0))) throw new UserError(totals.total >= 0 ? "Payments are positive amounts on a sale." : "A refund is paid out as negative amounts.");
+    const cash = tenders.filter((t) => t.method === "CASH").reduce((a, t) => a + t.amountCents, 0);
+    if (totals.total >= 0 && totals.paid - cash > totals.total) throw new UserError("Card, check and gift amounts can't be more than the total. Only cash gives change.");
+    if (totals.change > cash) throw new UserError("Only cash gives change. Take the exact amount on the card or check.");
+
+    // The sewing shop's share of consigned sales, as the partnership stands today (kept with each sale).
+    const shares = new Map<string, number>();
+    for (const linkId of new Set(lines.map((l) => l.consignLinkId).filter(Boolean) as string[])) {
+      const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } }, select: { terms: true } });
+      shares.set(linkId, normalizeTerms(link?.terms).consignSharePct);
+    }
 
     const at = new Date();
     const sale = await db.$transaction(async (tx) => {
@@ -212,7 +250,8 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         },
       });
       for (const l of lines) {
-        const { pickedUp, ...row } = l;
+        const { pickedUp, discountable, ...row } = l;
+        void discountable;
         const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
         if (l.partId) {
           await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
@@ -223,8 +262,19 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         if (l.consignLinkId && l.consignItemKey) {
           // Consigned stock: the owner hears about every sale; the net price after the line discount is what counts.
           const net = Math.round(lineNet(l) / l.qty);
+          const gross = Math.round(l.qty * net);
           await tx.consignSale.create({
-            data: { id: line.id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, soldAt: at },
+            data: {
+              id: line.id,
+              shopId,
+              linkId: l.consignLinkId,
+              itemKey: l.consignItemKey,
+              qty: l.qty,
+              priceCents: net,
+              saleNumber: number,
+              soldAt: at,
+              shopKeepsCents: Math.round((gross * (shares.get(l.consignLinkId) ?? 0)) / 100),
+            },
           });
           await tx.consignItem.updateMany({ where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey }, data: { sold: { increment: l.qty } } });
           await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx);
@@ -232,17 +282,19 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         if (l.repairJobId) {
           const job = jobs.get(l.repairJobId)!;
           const amount = lineNet(l);
-          const events = [...((job.events as { at: string; note?: string; status?: string }[]) ?? []), { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` }];
-          await tx.repairJob.update({
-            where: { shopId_id: { shopId, id: job.id } },
+          const events = [...((job.events as { at: string; note?: string; status?: string }[]) ?? []), { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` }].slice(-200);
+          // Only if nobody paid it meanwhile (another register, or a second click).
+          const paid = await tx.repairJob.updateMany({
+            where: { shopId, id: job.id, paidAt: null },
             data: {
               paidCents: amount,
               paidAt: at,
-              paidWhere: "shop",
+              paidWhere: job.repairPaidCents ? "split" : "shop",
               ...(pickedUp ? { pickedUpAt: at, status: "COLLECTED" } : {}),
               events: (pickedUp ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
             },
           });
+          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid. Take it off this sale.`);
           await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, saleNumber: number, at: at.toISOString() }, tx);
           if (pickedUp) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx);
         }
@@ -272,7 +324,12 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
   }
   const at = new Date();
   await db.$transaction(async (tx) => {
-    await tx.sale.update({ where: { id: sale.id }, data: { status: "VOIDED", voidedAt: at, note: [sale.note, `Void: ${reason || "no reason given"} (${user.name})`].filter(Boolean).join("\n") } });
+    // Only a sale that is still complete (two voids at once must not put the stock back twice).
+    const done = await tx.sale.updateMany({
+      where: { id: sale.id, shopId, status: "COMPLETED" },
+      data: { status: "VOIDED", voidedAt: at, note: [sale.note, `Void: ${reason || "no reason given"} (${user.name})`].filter(Boolean).join("\n") },
+    });
+    if (!done.count) throw new UserError("That sale is already void.");
     for (const l of sale.lines) {
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
@@ -284,7 +341,10 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
       if (l.consignLinkId && l.consignItemKey) {
         const net = Math.round(lineNet(l) / l.qty);
         const id = `${l.id}-void`;
-        await tx.consignSale.create({ data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at } });
+        const original = await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id: l.id } }, select: { shopKeepsCents: true } });
+        await tx.consignSale.create({
+          data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at, shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null },
+        });
         await tx.consignItem.updateMany({ where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey }, data: { sold: { decrement: l.qty } } });
         await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, at: at.toISOString() }, tx);
       }
