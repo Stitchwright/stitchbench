@@ -109,6 +109,14 @@ copied into `public/` (the eslint config should ignore `public/`).
    QuickBooks export, audit log; then layaway/special orders, block-of-the-month clubs, kits, purchase orders,
    loaners, per-ticket time clock, warranty claims, drop-off signature. Needs owner decisions first: card
    reader (Square or Stripe), Shopify sync, online sign-up/booking pages, two-way texting inbox.
+7. **Split StitchBench and StitchShop into separate repositories** (owner request, 27 Sep 2026). Today StitchShop
+   is a build flavor of this one codebase (desktop/package.json `flavor`, APP_NAME/DEFAULT_SHOP_KIND), so the
+   register, inventory, partners and hub client are shared code. Decide the shape first, then do it:
+   (a) two repos with a shared core package (register, partners, hub client, Prisma schema) published or
+   vendored into each; (b) one monorepo with two apps and a shared package (npm workspaces), one repo on
+   GitHub; (c) two repos by copying, accepting that shared fixes must be made twice. Keep the installers,
+   the Railway services, the hub protocol and both migration histories working through the move, and update
+   INSTALL.md, the GitHub Actions installer workflow and the memory/handoff notes.
 
 ## 4. Owner decisions already made (don't re-ask)
 
