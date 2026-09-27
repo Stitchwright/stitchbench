@@ -166,6 +166,22 @@ copied into `public/` (the eslint config should ignore `public/`).
    the link id with the file (index + a sidecar or the LibraryDoc row) so re-downloads and dedupe work.
    (c) Per model, show which doc types exist (service, parts, operator, error codes, wiring) and which are missing,
    so members know what to look for. Links already carry the doc type; the model page groups by it.
+13. **Look into what AI to add** (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
+   with the best return. Candidates that fit what the program already holds:
+   - Bench assistant on a ticket: from the model and the problem reported, suggest likely causes and the checks to
+     make, drawing on this shop's own tickets and notes, the community's gotchas, and the factory specs already in
+     the database; cite where each suggestion came from.
+   - Ask the manuals: questions answered from the PDFs in this shop's own library with page references ("where is
+     the hook timing procedure for the MC6700P"); the manuals stay on the shop PC, so the indexing runs there.
+   - Intake helper: read brand, model and serial from a photo of the plate; pre-fill the ticket.
+   - Write-ups: turn a tech's shorthand into the invoice's "work done" and the note to the sewing shop; draft the
+     customer text/email for ready-for-pickup and estimates (ties into the messaging design).
+   - Parts: suggest cross-reference matches and likely-needed parts for a job; flag duplicate xparts on the hub.
+   - Counter: smarter spreadsheet column matching on import; product details from a barcode beyond the free lookup.
+   Constraints to design around: customer names/contact never leave the shop without an explicit choice (same rule
+   as sharing); the Windows program must keep working offline, so AI features degrade to "unavailable" cleanly (or
+   use a small local model for the simple tasks); per-call cost belongs in the paid-modules plan (an "Assistant"
+   module) rather than in the $25 base price; log what was sent and answered so a tech can check it.
 
 ## 4. Owner decisions already made (don't re-ask)
 
