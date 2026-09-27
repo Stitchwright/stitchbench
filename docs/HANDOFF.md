@@ -4,6 +4,28 @@ Read this first in a new Claude Code session. It picks up work started in a clou
 review, fixes, and the design of several new features. Everything below is on the branch
 `claude/code-qa-security-review-agqf4z` in both repos (bwattendorf/stitchbench and bwattendorf/stitchhub).
 
+## 0. First steps on the owner's PC (do these before anything else)
+
+The PC may have work that was never committed. Save it before switching branches. Run in the StitchBench
+folder, then the same in the StitchHub folder:
+
+1. See what's uncommitted: `git status` and `git branch --show-current`.
+2. If anything is modified or untracked, put it on its own branch (check `.env` and other secrets are NOT listed):
+   ```
+   git switch -c my-pc-work
+   git add -A
+   git commit -m "Work from my PC before merging the review branch"
+   git push -u origin my-pc-work
+   ```
+3. Get the review branch: `git fetch origin` then `git switch claude/code-qa-security-review-agqf4z`.
+4. If step 2 saved anything: `git merge my-pc-work`. On conflicts (likely in register.ts, tickets.ts,
+   settings.ts), resolve them keeping both the PC work and the round-3 fixes, and ask the owner what the PC
+   work was for if unclear.
+5. `npm install` (not `npm ci`), `docker compose up -d` if the dev DB runs in Docker, `npx prisma migrate deploy`,
+   `npm run dev`.
+6. Don't merge into `main` until the build and tests pass (section 3.2). Before installing a new Windows program
+   build, make a backup from the tray menu.
+
 ## 1. Get set up on the PC
 
 ```
