@@ -151,6 +151,11 @@ copied into `public/` (the eslint config should ignore `public/`).
    three; same hub, same partner links). Missing piece: a per-company export/import so one company can leave the
    shared instance for a PC or its own server, or join it from one, keeping its ids (partner records are keyed by
    them) and its hub/partner state. The Windows backup covers a whole install, not one company.
+11. **HTTPS for the Windows program on the shop network** so tablets and phones can use the camera barcode scanner
+   and copy buttons (browsers allow those only on secure pages; plain http://<pc>:3100 can't). Preferred: Tailscale
+   (`tailscale serve` / a Tailscale certificate gives the shop PC an https://...ts.net address on every device on the
+   tailnet); document it in INSTALL.md and have the tray list that address first. A locally installed certificate
+   is the fallback for shops without Tailscale. Until then the app shows a clear message on non-secure pages.
 
 ## 4. Owner decisions already made (don't re-ask)
 
