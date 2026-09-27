@@ -26,6 +26,16 @@ folder, then the same in the StitchHub folder:
 6. Don't merge into `main` until the build and tests pass (section 3.2). Before installing a new Windows program
    build, make a backup from the tray menu.
 
+## 0b. Where things run (27 Sep 2026)
+
+- Hub: https://stitchhub-production.up.railway.app (Railway project `stitchhub`; deploy with `railway up --ci` in the
+  stitchhub folder).
+- Hosted StitchShop: https://stitchshop-production.up.railway.app (project `stitchshop`, service `stitchshop`).
+- Hosted StitchBench: https://stitchbench-production-e554.up.railway.app (project `stitchbench`, service `stitchbench`;
+  owner login bwattendorf@gmail.com, password file in the owner's Documents folder).
+- StitchBench 1.5.0 installed on the owner's PC; installers for both programs build with the GitHub Actions workflow
+  `installers.yml` (unsigned).
+
 ## 1. Get set up on the PC
 
 ```
