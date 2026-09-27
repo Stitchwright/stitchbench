@@ -124,6 +124,18 @@ copied into `public/` (the eslint config should ignore `public/`).
    `stitch-protocol` package can come later if wanted). Four repos (a core shared by all three plus one per
    program) only if access or licensing must differ between StitchBench and StitchShop.
 
+8. **Hosted = one shared instance for every shop** (owner decision, 27 Sep 2026): partner quilt shops and hosted
+   bench customers are companies on the one StitchShop/StitchBench instance, not one instance each. That makes the
+   per-company hub identity (round-2/3 finding: every company posts, lists and is rated under the install's one
+   name) the first hub job: send `shopRef` + `shopName` on marketplace, note and usage calls, and store/show them
+   per company on the hub, as the partner channel already does. A dedicated instance stays an option for a shop
+   that asks for it (template it: one command per shop).
+9. **Sharing is chosen per item, never automatic** (owner decision, 27 Sep 2026). From a machine or ticket:
+   "Share a hint about this model" sends that hint only, with nothing private from the ticket pre-filled (fixes
+   the "Share with other techs" pre-fill finding). From a part: "Sell this on the marketplace" lists that part
+   only. "Offer to partner shops" on a part already works this way. The monthly most-used-parts report to the hub
+   is the one automatic share today: make it a per-company setting, off unless turned on.
+
 ## 4. Owner decisions already made (don't re-ask)
 
 - Scheduling (StitchShop): classes/workshops (seats, waitlist, fee at the register), customer appointments
@@ -131,6 +143,8 @@ copied into `public/` (the eslint config should ignore `public/`).
   staff shifts.
 - Email through each shop's own SMTP; texts through Twilio. Campaigns plus automatic reminders, ready-for-pickup
   notices, estimate approval by link, service-due reminders, review requests, dated abandoned-machine notices.
+- Hosting: one shared instance for all companies (per-company identity on the hub to follow); sharing to the hub is
+  a per-item choice (hint about a model, a part for sale), never automatic; usage reporting becomes an opt-in setting.
 - Paid modules: Vac Shop (repair bench, bag/belt/filter finder shared via the hub, sales + warranty + trade-ins,
   central vac installs), Small Appliance Repair (KitchenAid-type mixers, 3D printers, other), Scheduling,
   Marketing. Unlocked by license keys the owner signs (checked offline) plus an admin switch on hosted.
