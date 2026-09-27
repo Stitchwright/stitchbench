@@ -3,19 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera } from "lucide-react";
+import { Camera, X } from "lucide-react";
 import { takeInMachine } from "@/actions/repair-jobs";
 import { findCustomers, type CustomerHit } from "@/actions/register";
 import { shrinkImage } from "@/components/photo-upload";
 import { ACCESSORIES, MACHINE_TYPES } from "@/lib/constants";
 
+type Photo = { blob: Blob; url: string };
+
+// The same caps takeInMachine enforces: checked here too, so hitting one never means starting the intake over.
+const MAX_PHOTOS = 6;
+const MAX_PHOTO_BYTES = 2_600_000;
+
 /** Taking a customer's machine in at the sewing shop counter, for the partner repair shop. */
 export function IntakeForm({ partners }: { partners: { id: string; name: string }[] }) {
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   const [hits, setHits] = useState<CustomerHit[]>([]);
-  const [photos, setPhotos] = useState<{ blob: Blob; url: string }[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+  const photoBytes = photos.reduce((n, p) => n + p.blob.size, 0);
+  const tooBig = photoBytes > MAX_PHOTO_BYTES;
 
   return (
     <form
@@ -24,6 +32,10 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
       onSubmit={async (e) => {
         e.preventDefault();
         if (busy) return;
+        if (tooBig || photos.length > MAX_PHOTOS) {
+          toast.error("The photos are too large together. Remove a photo or two, then try again.");
+          return;
+        }
         const fd = new FormData(e.currentTarget);
         setBusy(true);
         try {
@@ -184,7 +196,7 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
 
       <section className="card card-pad space-y-2">
         <div className="label">Photos of its condition (scratches, cracks, what&apos;s missing)</div>
-        <label className="btn w-fit">
+        <label className={`btn w-fit ${photos.length >= MAX_PHOTOS ? "opacity-60" : ""}`}>
           <Camera size={14} aria-hidden /> Add photos
           <input
             name="photoPick"
@@ -193,10 +205,13 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
             capture="environment"
             multiple
             className="sr-only"
+            disabled={photos.length >= MAX_PHOTOS}
             onChange={async (e) => {
               const files = Array.from(e.target.files ?? []);
-              const next: { blob: Blob; url: string }[] = [];
-              for (const f of files.slice(0, 6 - photos.length)) {
+              e.target.value = "";
+              if (photos.length + files.length > MAX_PHOTOS) toast.error(`${MAX_PHOTOS} photos at most: the extra ones were left out.`);
+              const next: Photo[] = [];
+              for (const f of files.slice(0, Math.max(0, MAX_PHOTOS - photos.length))) {
                 try {
                   const blob = await shrinkImage(f, 1280, 0.8);
                   next.push({ blob, url: URL.createObjectURL(blob) });
@@ -204,18 +219,41 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
                   toast.error(`Couldn't read ${f.name}.`);
                 }
               }
-              setPhotos((p) => [...p, ...next]);
-              e.target.value = "";
+              // Counted against the photos there now, not when the picker opened: two quick picks can't get past the cap.
+              setPhotos((p) => {
+                const keep = next.slice(0, Math.max(0, MAX_PHOTOS - p.length));
+                next.slice(keep.length).forEach((x) => URL.revokeObjectURL(x.url));
+                return [...p, ...keep];
+              });
             }}
           />
         </label>
         {photos.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {photos.map((p, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={p.url} src={p.url} alt={`Intake photo ${i + 1}`} className="h-24 w-24 rounded border border-line object-cover" />
-            ))}
-          </div>
+          <>
+            <div className="flex flex-wrap gap-2">
+              {photos.map((p, i) => (
+                <div key={p.url} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={`Intake photo ${i + 1}`} className="h-24 w-24 rounded border border-line object-cover" />
+                  <button
+                    type="button"
+                    className="btn btn-sm absolute right-1 top-1"
+                    aria-label={`Remove photo ${i + 1}`}
+                    onClick={() => {
+                      URL.revokeObjectURL(p.url);
+                      setPhotos((ps) => ps.filter((x) => x.url !== p.url));
+                    }}
+                  >
+                    <X size={12} aria-hidden />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className={`text-xs ${tooBig ? "text-[var(--bad)]" : "muted"}`}>
+              {photos.length} of {MAX_PHOTOS} photos, {(photoBytes / 1e6).toFixed(1)} MB of {(MAX_PHOTO_BYTES / 1e6).toFixed(1)} MB together
+              {tooBig ? ": remove a photo or two before taking it in." : "."}
+            </p>
+          </>
         )}
       </section>
 

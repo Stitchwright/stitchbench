@@ -1,6 +1,13 @@
 import "server-only";
+import type { PaymentMethod } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import { zonedMidnight, zonedParts } from "@/lib/partners";
+
+/**
+ * Ways a ticket gets paid that put nothing in this shop's drawer or card reader: a partner sewing shop took it at its
+ * counter (it comes on the monthly statement, less commission), or it's billed on account and not paid yet.
+ */
+export const PAID_ELSEWHERE: PaymentMethod[] = ["SHOP_COLLECTED", "INVOICE"];
 
 const ymd = (v: string | undefined) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v ?? "");
@@ -29,7 +36,12 @@ export function startOfToday(timeZone = "America/New_York") {
 
 /** Today's date in the shop's time zone, as YYYY-MM-DD. */
 export function todayIn(timeZone = "America/New_York") {
-  return iso(zonedParts(new Date(), timeZone));
+  return dateIn(new Date(), timeZone);
+}
+
+/** The calendar date of a moment in the shop's time zone, as YYYY-MM-DD (for CSV rows; toISOString would give the UTC day). */
+export function dateIn(d: Date, timeZone = "America/New_York") {
+  return iso(zonedParts(d, timeZone));
 }
 
 /**

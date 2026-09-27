@@ -39,6 +39,7 @@ let signupOpen = false;
 let setupToken = "";
 let stopping = false; // stopServer asked the server to exit
 let starting = false; // startServer is waiting for it to answer
+let dbOwned = false; // the postgres this program started is running (not one it only connected to, nor one that died)
 let maintenance = false; // a restore is replacing the data
 let backingUp = false;
 let status = null; // shown in the tray when the server isn't running normally
@@ -205,8 +206,17 @@ async function startDatabase() {
   }
   try {
     await db.start();
+    dbOwned = true;
+    // Once it has gone, forget it: db.stop() waits forever for a process that has already exited, and would taskkill a
+    // PID that Windows may have handed to something else since.
+    db.process?.once("exit", (code) => {
+      dbOwned = false;
+      db.process = undefined;
+      log("postgres stopped", code);
+    });
   } catch (e) {
-    // Still running from last time (e.g. after a crash)? Use it if the password works.
+    // Still running from last time (e.g. after a crash), or the port is taken? Use the one there if the password works.
+    db.process = undefined; // start fails when the process it spawned exits: same as above
     log("postgres start failed, trying the running one:", e);
   }
   const admin = new pg.Client({ host: "127.0.0.1", port: cfg.dbPort, user: "stitchbench", password: cfg.dbPassword, database: "postgres" });
@@ -275,6 +285,9 @@ async function startServer() {
       DATABASE_URL: databaseUrl(),
       AUTH_SECRET: cfg.authSecret,
       AUTH_TRUST_HOST: "true",
+      // Browsers share cookies across ports: a device that opens both programs on one PC would otherwise sign out of
+      // the other each time. Each program names its sign-in cookies after itself.
+      AUTH_COOKIE_PREFIX: FLAVOR,
       LIBRARY_DIR: cfg.libraryDir,
       PLATFORM_ADMIN_EMAILS: cfg.platformAdminEmails,
       ALLOW_SIGNUP: signupOpen ? "true" : "false",
@@ -345,7 +358,7 @@ function serverDown(why) {
     try {
       await startServer();
       log("server running again");
-      win?.reload();
+      reloadWindow();
     } catch (e) {
       log("server restart failed:", e);
       serverDown("won't start");
@@ -353,14 +366,21 @@ function serverDown(why) {
   }, wait * 1000);
 }
 
-// Close sign-up as soon as the first company exists. The server keeps running: restarting it here could cut the new
-// owner's sign-up off halfway (not signed in, a partner code used up). The sign-up page itself already refuses a second
-// company (under a lock) and sends the window to sign-in, and the next start runs with sign-up off.
+/** The window's page again once the server is back. The first-run sign-up page can't be: the new server has a new token. */
+function reloadWindow() {
+  if (!win) return;
+  if (win.webContents.getURL().startsWith(`${base()}/signup`)) win.loadURL(home());
+  else win.reload();
+}
+
+// Once the first company exists, the window goes to the normal pages. The server needs no restart to close sign-up: it
+// refuses a second company itself (createShopWithOwner's lock), and ALLOW_SIGNUP is dropped at the next start. A restart
+// here would cut off the sign-up still finishing (its partner code spent on the hub, the install key never saved).
 setInterval(async () => {
   if (!signupOpen || !pool || quitting || maintenance || starting || stopping) return;
   const shops = Number((await pool.query(`SELECT count(*) AS n FROM "Shop"`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n);
   if (shops > 0) {
-    log("first company created; sign-up closed");
+    log("first company created; sign-up is closed");
     signupOpen = false;
   }
 }, 15_000);
@@ -487,7 +507,9 @@ function home() {
 function isApp(url) {
   try {
     const u = new URL(url.startsWith("blob:") ? url.slice(5) : url);
-    return (u.origin === base() || u.origin === `http://127.0.0.1:${cfg.port}`) && !u.username && !u.password;
+    // Both sides as URL origins: with "port": 80 the origin is plain http://localhost, without the port.
+    const own = [base(), `http://127.0.0.1:${cfg.port}`].map((a) => new URL(a).origin);
+    return own.includes(u.origin) && !u.username && !u.password;
   } catch {
     return false;
   }
@@ -588,7 +610,7 @@ function buildTray() {
       { type: "separator" },
       {
         label: backingUp ? "Backing up..." : "Back up now",
-        enabled: !backingUp && !!pool,
+        enabled: !backingUp && !maintenance && !!pool, // a restore takes its own safety copy first
         click: async () => (await runBackup("manual")) && notify(NAME, "Backup saved."),
       },
       { label: "Open backups folder", click: () => (fs.mkdirSync(cfg.backupDir, { recursive: true }), shell.openPath(cfg.backupDir)) },
@@ -625,9 +647,12 @@ async function quit() {
   if (quitting) return;
   quitting = true;
   log("quitting");
+  // Last resort: whatever won't stop (a stuck connection, a postgres that won't die), the program still exits.
+  setTimeout(() => app.exit(0), 30_000);
   await stopServer();
   await pool?.end().catch(() => {});
-  await db?.stop().catch((e) => log("postgres stop:", e));
+  // Only a postgres this program started and that still runs: stopping one that has already gone never returns.
+  if (dbOwned) await db.stop().catch((e) => log("postgres stop:", e));
   app.exit(0);
 }
 
@@ -669,6 +694,7 @@ if (!app.requestSingleInstanceLock()) {
     buildTray(); // addresses can change while starting (Tailscale comes up late)
     setInterval(buildTray, 5 * 60_000);
     if (!process.argv.includes("--hidden") || signupOpen) showWindow();
-    if (Date.now() - lastBackupTime() > 26 * 3600_000) setTimeout(() => runBackup("startup"), 60_000);
+    // Unless a restore has begun by then (on a new PC that's often the first thing done): it makes its own safety copy.
+    if (Date.now() - lastBackupTime() > 26 * 3600_000) setTimeout(() => maintenance || runBackup("startup"), 60_000);
   });
 }

@@ -5,7 +5,7 @@ import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/con
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
-import { startOfToday } from "@/lib/sales";
+import { PAID_ELSEWHERE, startOfToday } from "@/lib/sales";
 import { PartnerTodo } from "@/components/partner-todo";
 import { redirect } from "next/navigation";
 
@@ -25,8 +25,9 @@ export default async function Dashboard() {
       orderBy: { intakeAt: "asc" },
     }),
     db.part.findMany({ where: { shopId }, orderBy: { partNumber: "asc" } }).then((ps) => ps.filter((p) => p.qtyOnHand <= p.reorderAt)),
+    // "Taken today" is the drawer and card reader: not what a partner shop collected at its counter or billed on account.
     db.payment.aggregate({
-      where: { ticket: { shopId }, paidAt: { gte: startOfToday(tz) } },
+      where: { ticket: { shopId }, paidAt: { gte: startOfToday(tz) }, method: { notIn: PAID_ELSEWHERE } },
       _sum: { amountCents: true },
     }),
   ]);
@@ -113,7 +114,7 @@ export default async function Dashboard() {
                         <td>
                           <StatusPill status={t.status} />
                         </td>
-                        <td className="num whitespace-nowrap">{fmtDate(t.intakeAt)}</td>
+                        <td className="num whitespace-nowrap">{fmtDate(t.intakeAt, tz)}</td>
                       </tr>
                     ))}
                   </tbody>

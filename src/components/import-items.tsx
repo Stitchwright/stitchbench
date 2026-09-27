@@ -51,7 +51,7 @@ function parseTable(text: string): string[][] {
   return rows;
 }
 
-/** "12", "2.5", "2 1/2", "3/4", "1,200", "12 yd" -> a number; anything else -> NaN (the row shows it and is skipped). */
+/** "12", "2.5", "2 1/2", "3/4", "1,200", "12 yd" -> a number; anything else -> NaN (the row shows "?" and isn't sent). */
 function parseQty(v: string): number {
   const t = v.replace(/,/g, "").replace(/\s*(yds?|yards?|ea|each|pcs?)\.?$/i, "").trim();
   const mixed = /^(\d+)\s+(\d+)\/(\d+)$/.exec(t);
@@ -59,6 +59,12 @@ function parseQty(v: string): number {
   const frac = /^(\d+)\/(\d+)$/.exec(t);
   if (frac) return Number(frac[1]) / Number(frac[2]);
   return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+}
+
+/** A price or cost in cents. A minus sign in a price column is a discount or a typo, never a price: left unset. */
+function cents(v: string): number | null {
+  const c = toCents(v);
+  return c != null && c >= 0 ? c : null;
 }
 
 function guess(headers: string[]): Record<Field, number> {
@@ -90,12 +96,16 @@ export function ImportItems() {
       barcode,
       description: cell(r, "description") || null,
       brand: cell(r, "brand") || null,
-      costCents: toCents(cell(r, "cost")),
-      priceCents: toCents(cell(r, "price")),
+      costCents: cents(cell(r, "cost")),
+      priceCents: cents(cell(r, "price")),
       qty: cell(r, "qty") === "" ? null : parseQty(cell(r, "qty")),
       location: cell(r, "location") || null,
     };
   });
+  // A quantity that can't be read ("TBD", "2 bolts") must not turn into stock quietly not received: those rows stay
+  // here, and the user is told which ones (sheet row numbers, the header being row 1).
+  const unreadable = rows.flatMap((r, i) => (Number.isNaN(r.qty) ? [i + 2] : []));
+  const toImport = rows.filter((r) => !Number.isNaN(r.qty));
 
   return (
     <div className="space-y-4">
@@ -221,20 +231,33 @@ export function ImportItems() {
               </tbody>
             </table>
             <p className="muted card-pad text-xs">
-              {rows.length} rows{rows.length > 8 ? " (first 8 shown)" : ""}. Rows without a number or a description are skipped.
+              {rows.length} rows{rows.length > 8 ? " (first 8 shown)" : ""}. Rows without a number, or with neither a description nor a barcode, are skipped.
+              {unreadable.length > 0 && (
+                <>
+                  {" "}
+                  <span className="text-[var(--bad)]">
+                    {unreadable.length} row{unreadable.length === 1 ? " has" : "s have"} a quantity that can&apos;t be read (row
+                    {unreadable.length === 1 ? "" : "s"} {unreadable.slice(0, 10).join(", ")}
+                    {unreadable.length > 10 ? ` and ${unreadable.length - 10} more` : ""}): {unreadable.length === 1 ? "it" : "they"} won&apos;t be
+                    imported.
+                  </span>{" "}
+                  Fix those cells, or set Quantity to (none) to bring the items in without stock.
+                </>
+              )}
             </p>
           </div>
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy || !rows.length || m.partNumber < 0 && m.barcode < 0}
+            disabled={busy || !toImport.length || m.partNumber < 0 && m.barcode < 0}
             onClick={async () => {
               setBusy(true);
               try {
-                const r = await importItems(rows, { ...opts, unit: opts.unit || null, supplier: opts.supplier || null });
+                const r = await importItems(toImport, { ...opts, unit: opts.unit || null, supplier: opts.supplier || null });
                 if ("error" in r) toast.error(r.error);
                 else {
-                  const msg = `Imported: ${r.added} added, ${r.updated} updated, ${r.skipped} skipped`;
+                  const skipped = r.skipped + unreadable.length;
+                  const msg = `Imported: ${r.added} added, ${r.updated} updated, ${skipped} skipped${unreadable.length ? ` (${unreadable.length} with a quantity that couldn't be read)` : ""}`;
                   setResult(msg);
                   toast.success(msg);
                 }
@@ -245,7 +268,7 @@ export function ImportItems() {
               }
             }}
           >
-            {busy ? "Importing..." : `Import ${rows.length} items`}
+            {busy ? "Importing..." : `Import ${toImport.length} items`}
           </button>
           {result && (
             <p role="status" className="text-sm">

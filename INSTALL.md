@@ -68,15 +68,17 @@ StitchBench, and scans made on any device are saved to `C:\Manuals\_inbox`.
 ### Backups and restore
 - A backup runs every night after 1 am, and at start-up if the last one is more than a day old. The last 30 are
   kept in `Documents\StitchBench Backups`, in folders named `stitchbench-<date>-<time>` (StitchShop's are
-  `stitchshop-…`, so both programs can share one backups folder).
+  `stitchshop-…`, so both programs can share one backups folder; backups from before 1.4.2 are named `stitchbench-…`
+  by both programs, and each program restores the ones in its own folder). `backupsToKeep` in the settings file
+  changes how many are kept; `0` keeps them all.
 - From the tray: **Back up now**, **Open backups folder**, and **Restore a backup…**. A restore stops StitchBench,
   backs up the current data, and only then replaces it. If that safety backup can't be made (the folder is on a
   drive that isn't connected, or the disk is full), nothing is restored.
-- A backup holds the shop's data: customers, machines, tickets, photos, parts, people, prices and shared notes,
-  plus the tension specs, factory settings, manual list and machine pictures. So a backup restored onto a new PC
-  brings all of it back. The community hub's shared notes, parts and listings aren't in it; they sync again.
-- The tension specs, factory settings and manual list also come with the program: a new install loads them on its
-  first start, and an update brings in new ones.
+- A backup holds the shop's data: customers, machines, tickets, photos, parts, people, prices, shared notes and
+  marketplace listings and orders, plus the manual figures and machine pictures. So a backup restored onto a new
+  PC brings all of it back. The community hub's shared notes, parts and photos aren't in it; they sync again.
+- The tension specs, factory settings and manual list come with the program, not from a backup: a new install
+  loads them on its first start, and an update brings in new ones. A restore leaves them as they are.
 - Now and then, copy the backups folder to another drive or a NAS. You can also set `backupDir` to a NAS folder.
 
 ### Settings file
@@ -90,7 +92,7 @@ or delete that file, and include it if you ever copy `%APPDATA%\StitchBench` to 
 |---|---|
 | `libraryDir` | manuals folder (default `C:\Manuals`) |
 | `port` | web port for other devices (default 3100) |
-| `backupDir`, `backupsToKeep` | where backups go and how many are kept |
+| `backupDir`, `backupsToKeep` | where backups go and how many are kept (default 30; `0` keeps them all) |
 | `platformAdminEmails` | emails that see the Companies page (only for hosting several companies) |
 | `openAtLogin` | start with Windows |
 
