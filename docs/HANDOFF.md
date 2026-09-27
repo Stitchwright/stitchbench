@@ -136,6 +136,11 @@ copied into `public/` (the eslint config should ignore `public/`).
    where the shop picks where it goes: to its partner shops (partner price; today's "Offer to partner shops"
    checkbox), on the marketplace, or both. Nothing reaches the hub unless chosen. The monthly most-used-parts
    report is the one automatic share today: make it a per-company setting, off unless turned on.
+10. **A shop chooses where it runs, and can change its mind** (owner decision, 27 Sep 2026): on the owner's shared
+   hosted instance, as the Windows program on its own PC, or self-hosted on its own Railway (INSTALL.md covers all
+   three; same hub, same partner links). Missing piece: a per-company export/import so one company can leave the
+   shared instance for a PC or its own server, or join it from one, keeping its ids (partner records are keyed by
+   them) and its hub/partner state. The Windows backup covers a whole install, not one company.
 
 ## 4. Owner decisions already made (don't re-ask)
 
@@ -145,7 +150,7 @@ copied into `public/` (the eslint config should ignore `public/`).
 - Email through each shop's own SMTP; texts through Twilio. Campaigns plus automatic reminders, ready-for-pickup
   notices, estimate approval by link, service-due reminders, review requests, dated abandoned-machine notices.
 - Hosting: one shared instance for all companies (per-company identity on the hub to follow); sharing to the hub is
-  a per-item choice worded "offer" (offer a hint about a model; offer a part to partners and/or the marketplace), never automatic; usage reporting becomes an opt-in setting.
+  a shop runs on the shared instance, its own PC or its own server, its choice; a per-item choice worded "offer" (offer a hint about a model; offer a part to partners and/or the marketplace), never automatic; usage reporting becomes an opt-in setting.
 - Paid modules: Vac Shop (repair bench, bag/belt/filter finder shared via the hub, sales + warranty + trade-ins,
   central vac installs), Small Appliance Repair (KitchenAid-type mixers, 3D printers, other), Scheduling,
   Marketing. Unlocked by license keys the owner signs (checked offline) plus an admin switch on hosted.
