@@ -117,6 +117,12 @@ copied into `public/` (the eslint config should ignore `public/`).
    GitHub; (c) two repos by copying, accepting that shared fixes must be made twice. Keep the installers,
    the Railway services, the hub protocol and both migration histories working through the move, and update
    INSTALL.md, the GitHub Actions installer workflow and the memory/handoff notes.
+   Recommendation given to the owner (27 Sep): shape (b), one repo for the two programs laid out as
+   `packages/core` (register, inventory, partners, hub client, schema + migrations, tests) plus
+   `apps/stitchbench` and `apps/stitchshop` (branding, defaults, installer config, own version and release tag,
+   own Railway service); StitchHub stays its own repo (it shares only the message contract; a tiny
+   `stitch-protocol` package can come later if wanted). Four repos (a core shared by all three plus one per
+   program) only if access or licensing must differ between StitchBench and StitchShop.
 
 ## 4. Owner decisions already made (don't re-ask)
 
