@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
+import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { appName, createShopWithOwner, defaultShopKind, type ShopKind } from "@/lib/shops";
 import { redeemPartnerCode } from "@/lib/partners";
 import { UserError, isUserError } from "@/lib/action";
@@ -22,6 +24,9 @@ function setupOk(given: unknown) {
 export default async function Signup({ searchParams }: { searchParams: Promise<{ error?: string; setup?: string }> }) {
   const { error, setup } = await searchParams; // read first so the page renders per request, not at build time
   if (process.env.ALLOW_SIGNUP !== "true" || !setupOk(setup)) notFound();
+  // The Windows program's first run: once the company exists, its window signs in instead (the program no longer
+  // restarts the server to close sign-up, which could cut the new owner's sign-up off halfway).
+  if (process.env.SETUP_TOKEN && (await db.shop.count())) redirect("/login");
 
   async function create(fd: FormData) {
     "use server";
@@ -30,9 +35,10 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     const back = (e: string) => `/signup?error=${e}${firstOnly ? `&setup=${encodeURIComponent(String(fd.get("setup")))}` : ""}`;
     const shopName = String(fd.get("shop") ?? "").trim();
     const name = String(fd.get("name") ?? "").trim();
-    const email = String(fd.get("email") ?? "").trim().toLowerCase();
+    const email = normalizeEmail(fd.get("email"));
     const password = String(fd.get("password") ?? "");
     if (!shopName || !name || !email || password.length < 8) redirect(back("missing"));
+    if (!isValidEmail(email)) redirect(back("email"));
     if (await db.user.findUnique({ where: { email } })) redirect(back("taken"));
     const kind = (String(fd.get("kind") ?? "repair") || "repair") as ShopKind;
     let shop: { id: string; name: string };
@@ -54,7 +60,13 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         next = `/partners?error=${encodeURIComponent(e instanceof Error ? e.message : "That partner code didn't work.")}`;
       }
     }
-    await signIn("credentials", { email, password, redirectTo: next });
+    try {
+      await signIn("credentials", { email, password, redirectTo: next });
+    } catch (e) {
+      // The company and login exist either way: sign in by hand rather than land on an error page.
+      if (e instanceof AuthError) redirect("/login");
+      throw e;
+    }
   }
 
   return (
@@ -66,7 +78,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         </div>
         {error && (
           <p className="pill tone-bad" role="alert">
-            {error === "taken" ? "That email already has an account." : "Fill in every field; password 8+ characters."}
+            {error === "taken" ? "That email already has an account." : error === "email" ? EMAIL_HELP : "Fill in every field; password 8+ characters."}
           </p>
         )}
         {[

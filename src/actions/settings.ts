@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
+import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { isPlatformAdmin } from "@/lib/shops";
 import type { Role } from "@/generated/prisma/enums";
 
@@ -97,11 +98,15 @@ export const resetUserPassword = safe(async function resetUserPassword(userId: s
 
 export const addUser = safe(async function addUser(formData: FormData) {
   const admin = await requireAdmin();
-  const email = str(formData.get("email"))?.toLowerCase();
+  const email = normalizeEmail(formData.get("email"));
   const name = str(formData.get("name"));
-  const password = str(formData.get("password"));
-  if (!email || !name || !password || password.length < 8) throw new UserError("Enter a name, email and a temporary password of 8+ characters.");
-  if (await db.user.findUnique({ where: { email } })) throw new UserError("That email already has an account.");
+  // Kept exactly as typed: sign-in compares it untrimmed.
+  const password = String(formData.get("password") ?? "");
+  if (!email || !name || password.length < 8) throw new UserError("Enter a name, email and a temporary password of 8+ characters.");
+  if (!isValidEmail(email)) throw new UserError(EMAIL_HELP);
+  const existing = await db.user.findUnique({ where: { email } });
+  if (existing?.shopId === admin.shopId && !existing.active) throw new UserError(`${existing.name} is already in People with access removed: use Restore access.`);
+  if (existing) throw new UserError("That email already has an account.");
   // The StitchBench administrator's address carries install-wide rights: nobody else may take it for a login.
   if (isPlatformAdmin(email) && !isPlatformAdmin(admin.email)) throw new UserError("That email is reserved on this StitchBench.");
   const role = (str(formData.get("role")) ?? "TECH") as Role;

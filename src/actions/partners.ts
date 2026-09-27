@@ -11,6 +11,7 @@ import { str, toCents } from "@/lib/format";
 import { termsFromForm } from "@/lib/partner-terms";
 import { hubJoined } from "@/lib/hub";
 import { createShopWithOwner, isPlatformAdmin } from "@/lib/shops";
+import { normalizeEmail } from "@/lib/email";
 import {
   acceptTerms,
   createPartnerInvite,
@@ -147,7 +148,7 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
     kind: "retail",
   });
   const invite = await createPartnerInvite(repair.id, repair.name, "repair", termsFromForm(formData));
-  const r = await redeemPartnerCode(created.id, created.name, str(formData.get("email")), invite.code);
+  const r = await redeemPartnerCode(created.id, created.name, normalizeEmail(formData.get("email")), invite.code);
   // Our side of the link now too, rather than on the next sync.
   await saveLinkFromHub(repair.id, "repair", r.link);
   refresh();

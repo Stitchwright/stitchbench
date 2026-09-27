@@ -353,25 +353,15 @@ function serverDown(why) {
   }, wait * 1000);
 }
 
-async function restartServer() {
-  await stopServer();
-  try {
-    await startServer();
-  } catch (e) {
-    log("server restart failed:", e);
-    serverDown("won't start");
-    return;
-  }
-  win?.reload();
-}
-
-// Close sign-up as soon as the first company exists.
+// Close sign-up as soon as the first company exists. The server keeps running: restarting it here could cut the new
+// owner's sign-up off halfway (not signed in, a partner code used up). The sign-up page itself already refuses a second
+// company (under a lock) and sends the window to sign-in, and the next start runs with sign-up off.
 setInterval(async () => {
   if (!signupOpen || !pool || quitting || maintenance || starting || stopping) return;
   const shops = Number((await pool.query(`SELECT count(*) AS n FROM "Shop"`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n);
   if (shops > 0) {
-    log("first company created; closing sign-up");
-    await restartServer();
+    log("first company created; sign-up closed");
+    signupOpen = false;
   }
 }, 15_000);
 
