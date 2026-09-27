@@ -149,6 +149,13 @@ copied into `public/` (the eslint config should ignore `public/`).
   staff shifts.
 - Email through each shop's own SMTP; texts through Twilio. Campaigns plus automatic reminders, ready-for-pickup
   notices, estimate approval by link, service-due reminders, review requests, dated abandoned-machine notices.
+- Pricing (26 Sep 2026): one rule for all three products, $25/month per shop, free while partnered (a repair shop or
+  bench tech pays; a sewing shop pays only if it isn't sending anyone repairs; a shop may license directly and the fee
+  is waived once it connects to a repair shop; $250/year alongside). StitchShop is free when a repair shop sets it up
+  for its quilt shops; hosted copies at cost; the hub free to everyone. Recurring (subscription) revenue preferred.
+  Not charging until: signed installer, a month of real use in one or two shops, terms/privacy page and Stripe billing.
+  Prerequisites to build first: code signing, a per-shop license key checked against the hub. Idea kept for later: a
+  "software fee" line on the partner statement, waived on activity. Community first: keep the hub free.
 - Hosting: one shared instance for all companies (per-company identity on the hub to follow); sharing to the hub is
   a shop runs on the shared instance, its own PC or its own server, its choice; a per-item choice worded "offer" (offer a hint about a model; offer a part to partners and/or the marketplace), never automatic; usage reporting becomes an opt-in setting.
 - Paid modules: Vac Shop (repair bench, bag/belt/filter finder shared via the hub, sales + warranty + trade-ins,
