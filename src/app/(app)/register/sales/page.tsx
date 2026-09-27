@@ -26,6 +26,14 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
     for (const t of s.tenders as Tender[]) byTender.set(t.method, (byTender.get(t.method) ?? 0) + t.amountCents);
     if (s.changeCents) byTender.set("CASH", (byTender.get("CASH") ?? 0) - s.changeCents);
   }
+  // Consigned stock at what the partner's statement counts: after any whole-sale discount, as recorded with each sale.
+  const consignedLines = done.flatMap((s) => s.lines.filter((l) => l.consignLinkId && !l.repairJobId).map((l) => l.id));
+  const consignSales = new Map(
+    (await db.consignSale.findMany({ where: { shopId: user.shopId, id: { in: consignedLines } }, select: { id: true, qty: true, priceCents: true } })).map((c) => [
+      c.id,
+      Math.round(c.qty * c.priceCents),
+    ]),
+  );
   const byKind = new Map<string, number>();
   let consigned = 0;
   let repairs = 0;
@@ -33,7 +41,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
     for (const l of s.lines) {
       const amt = Math.round(l.qty * l.unitPriceCents) - (l.qty < 0 ? -1 : 1) * l.discountCents;
       if (l.repairJobId) repairs += amt;
-      else if (l.consignLinkId) consigned += amt;
+      else if (l.consignLinkId) consigned += consignSales.get(l.id) ?? amt;
       const k = l.repairJobId ? "Repairs" : l.part ? (KIND_LABEL[l.part.kind] ?? l.part.kind) : "Misc";
       byKind.set(k, (byKind.get(k) ?? 0) + amt);
     }

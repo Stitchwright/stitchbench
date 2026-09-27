@@ -93,14 +93,17 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           )}
           <dt className="font-semibold">Total</dt>
           <dd className="text-right font-semibold">{money(tot.total)}</dd>
-          {t.payments.map((p) => (
-            <div key={p.id} className="contents">
-              <dt>
-                Paid {fmtDate(p.paidAt)} ({PAYMENT_LABEL[p.method]})
-              </dt>
-              <dd className="text-right">-{money(p.amountCents)}</dd>
-            </div>
-          ))}
+          {/* A bill put on the account isn't a payment: it stays in the balance due. Money given back adds to it. */}
+          {t.payments
+            .filter((p) => p.method !== "INVOICE")
+            .map((p) => (
+              <div key={p.id} className="contents">
+                <dt>
+                  {p.amountCents < 0 ? "Refunded" : "Paid"} {fmtDate(p.paidAt)} ({PAYMENT_LABEL[p.method]})
+                </dt>
+                <dd className="text-right">{money(-p.amountCents)}</dd>
+              </div>
+            ))}
           <dt className="border-t border-line pt-1 font-semibold">Balance due</dt>
           <dd className="border-t border-line pt-1 text-right font-semibold">{money(tot.balance)}</dd>
         </dl>

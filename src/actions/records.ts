@@ -93,7 +93,13 @@ export const saveCustomer = safe(async function saveCustomer(customerId: string 
   const name = str(formData.get("name"));
   if (!name) throw new UserError("Enter a name.");
   const kind = (str(formData.get("kind")) ?? "RETAIL") as CustomerKind;
-  const commission = str(formData.get("commissionPct"));
+  if (kind !== "RETAIL" && kind !== "TRADE") throw new UserError("Pick retail customer or quilt shop / dealer account.");
+  // "10" or "10%": a share of the service price. Anything else would quietly pay no commission.
+  const commission = str(String(formData.get("commissionPct") ?? "").replace("%", ""));
+  const commissionPct = kind === "TRADE" && commission != null ? Number(commission) : null;
+  if (commissionPct != null && !(Number.isFinite(commissionPct) && commissionPct >= 0 && commissionPct <= 100)) {
+    throw new UserError("Commission is a percent from 0 to 100, e.g. 10.");
+  }
   const data = {
     name,
     kind,
@@ -101,7 +107,7 @@ export const saveCustomer = safe(async function saveCustomer(customerId: string 
     email: str(formData.get("email")),
     address: str(formData.get("address")),
     code: kind === "TRADE" ? str(formData.get("code")) : null,
-    commissionPct: kind === "TRADE" && commission != null ? Number(commission) : null,
+    commissionPct,
     routeDay: kind === "TRADE" ? str(formData.get("routeDay")) : null,
     notes: str(formData.get("notes")),
   };

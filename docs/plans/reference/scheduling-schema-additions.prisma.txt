@@ -1,0 +1,440 @@
+// ============================================================
+// Scheduling and messages (design.md). Times are instants; each shop shows them in its own Shop.timeZone.
+// ============================================================
+
+// A pickup / drop-off run between partner shops: machines going to the repair shop and fixed ones coming back. Same id
+// on both sides. The side that scheduled it (ownerSide) changes the plan; the other side can OK it or cancel it. Each
+// side records only what it received: the repair side `collected` (the driver took these), the retail side
+// `delivered` (these reached our counter). src/lib/partner-runs.ts
+model PartnerRun {
+  id          String
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId      String
+  status      String    @default("SCHEDULED") // SCHEDULED | CANCELLED | DONE
+  ownerSide   String // repair | retail: the side that scheduled it and changes the plan
+  rev         Int       @default(1) // plan revision; only ownerSide raises it
+  startsAt    DateTime
+  endsAt      DateTime?
+  driver      String    @default("repair") // which shop drives: repair | retail
+  collect     String[] // planned: RepairJob ids going to the repair shop
+  deliver     String[] // planned: RepairJob ids coming back
+  collected   String[] // recorded by the repair side: what the driver took
+  collectedAt DateTime?
+  delivered   String[] // recorded by the retail side: what reached its counter
+  deliveredAt DateTime?
+  note        String?
+  okRev       Int? // the plan revision the other side OK'd
+  okAt        DateTime?
+  cancelledAt DateTime?
+  events      Json      @default("[]") // [{ at, side, what, name?, note? }]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@id([shopId, id])
+  @@index([shopId, linkId, startsAt])
+  @@index([shopId, startsAt])
+}
+
+// A company's message settings (Settings -> Messages). The mail password and the Twilio token / API key secret are
+// sealed with the server's key (src/lib/messaging/secrets.ts) and never sent to the browser.
+model MessagingSettings {
+  shopId             String    @id
+  shop               Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // Email: the shop's own mailbox (Gmail / Outlook app password) or a relay (SES, SendGrid, Mailgun, Brevo)
+  emailOn            Boolean   @default(false)
+  smtpPreset         String? // gmail | outlook | m365 | yahoo | sendgrid | mailgun | brevo | ses | other
+  smtpHost           String?
+  smtpPort           Int       @default(587)
+  smtpSecurity       String    @default("starttls") // starttls | tls | none (a mail server on the shop's own network; Windows program only)
+  smtpUser           String?
+  smtpPassSealed     String?
+  smtpPassSavedAt    DateTime?
+  fromName           String?
+  fromEmail          String?
+  replyTo            String?
+  replyWatchedAt     DateTime? // an admin said someone reads replyTo at least weekly (needed for marketing email)
+  replyWatchedBy     String?
+  emailDailyCap      Int       @default(300) // marketing emails a shop-day at most (a Gmail account allows about 500)
+  // Texts: Twilio. The Account SID, and either the Auth Token or an API key (SK...) and its secret
+  smsOn              Boolean   @default(false)
+  twilioSid          String? // AC...
+  twilioKeySid       String? // SK... when an API key is used (recommended); its secret is in twilioTokenSealed
+  twilioTokenSealed  String?
+  twilioTokenSavedAt DateTime?
+  twilioFrom         String? // the shop's Twilio number, +15551234567
+  smsDailyCap        Int       @default(300) // marketing texts a shop-day at most
+  smsPartMills       Int       @default(11) // what Twilio charges per text part, in tenths of a cent (cost hints only)
+  // Test texts go only to numbers an admin proved they hold (a code was texted to the number)
+  testPhones         String[]  @default([])
+  testPhonePending   String?
+  testCodeHash       String?
+  testCodeUntil      DateTime?
+  // Text replies (STOP, START, HELP) are read up to here; a read that didn't finish starts again from here
+  inboundAt          DateTime?
+  inboundIncomplete  Int       @default(0)
+  // How sending is going. A channel pauses on a wrong password or token, a daily quota, or a server refusing mail
+  emailOkAt          DateTime?
+  emailError         String?
+  emailPausedAt      DateTime?
+  emailPausedUntil   DateTime? // set: resumes by itself then (a quota); null: when saved again or the hourly check passes
+  emailCheckAt       DateTime? // next automatic check of a paused channel
+  smsOkAt            DateTime?
+  smsError           String?
+  smsPausedAt        DateTime?
+  smsPausedUntil     DateTime?
+  smsCheckAt         DateTime?
+  // Marketing held until an admin has looked: every marketing message after a restore; marketing texts when replies
+  // (STOP) couldn't all be read
+  marketingHoldAt    DateTime?
+  textHoldAt         DateTime?
+  textHoldWhy        String?
+  // The law's parts
+  postalAddress      String?
+  tzConfirmedAt      DateTime? // an admin confirmed Shop.timeZone (needed before any text goes out)
+  tzConfirmedBy      String?
+  quietStart         Int       @default(540) // 9:00, minutes after midnight, shop time
+  quietEnd           Int       @default(1200) // 20:00
+  noSundayMarketing  Boolean   @default(true)
+  smsConsentText     String? // the words customers agree to for marketing texts (a default when empty)
+  consentTexts       Json      @default("[]") // earlier wordings [{ code, text, from, to }] for signed paper forms
+  // Automatic messages
+  readyNotice        Boolean   @default(true)
+  reminders          Boolean   @default(true)
+  reminderHour       Int       @default(10) // reminders go out from this hour the day before, shop time
+  abandonNotices     Boolean   @default(false)
+  abandonDays        Int[]     @default([7, 30]) // days after ready; the final notice goes finalNoticeDays before the abandon date
+  finalNoticeDays    Int       @default(7)
+  serviceDue         Boolean   @default(false)
+  serviceDueMonths   Int       @default(12)
+  serviceDueSince    DateTime? // when it was switched on: machines due before then go through a campaign instead
+  serviceDueDay      String? // the shop day ("2026-10-07") it last ran
+  reviewRequest      Boolean   @default(false)
+  reviewUrl          String?
+  reviewDelayHours   Int       @default(24)
+  reviewEveryDays    Int       @default(180)
+  reviewAfterSales   Boolean   @default(false)
+  estimateLinkDays   Int       @default(7)
+  // Wording of the automatic messages, { "<key>.sms" | "<key>.email" | "<key>.subject": text }; missing = default
+  templates          Json      @default("{}")
+  updatedAt          DateTime  @updatedAt
+}
+
+// Every email and text: waiting, sent, or not sent and why. Also the proof a notice went out (date, channel, words).
+model OutMessage {
+  id             String    @id @default(cuid())
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  channel        String // email | sms (sent from here); letter | certified_mail | phone (a notice given by hand, recorded as proof: status SENT)
+  purpose        String // notice | marketing
+  kind           String // MESSAGE_KIND_LABEL in src/lib/constants.ts
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  address        String // the email address or +1 number, fixed when queued ("by hand" for a letter without one)
+  subject        String?
+  body           String // what goes out; an estimate link is kept masked here and put in by the worker at send time
+  status         String    @default("QUEUED") // QUEUED | SENDING | SENT | FAILED | SKIPPED | CANCELLED | EXPIRED
+  dedupeKey      String? // the same key is queued once per shop
+  sendAfter      DateTime  @default(now())
+  notAfter       DateTime? // never sent after this (a reminder two hours before the class)
+  tries          Int       @default(0) // times claimed for sending
+  retryTries     Int       @default(0) // failures that count toward giving up ("offline" doesn't)
+  nextTryAt      DateTime?
+  claimedAt      DateTime?
+  sentAt         DateTime? // when it went (given by hand: the date it was given)
+  providerId     String? // Twilio SID, the email's Message-ID, or a certified-mail tracking number
+  deliveryStatus String? // texts: Twilio's final word (delivered | undelivered | failed)
+  deliveryError  String?
+  error          String?
+  optOutToken    String?   @unique // random token in a marketing email's unsubscribe link (it can only unsubscribe that address)
+  // What it's about (plain ids)
+  ticketId       String?
+  repairJobId    String?
+  campaignId     String?
+  campaign       Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  refType        String? // meeting | appointment | enrollment | estimate | machine | stage | class
+  refId          String?
+  byUserId       String? // who sent or recorded it by hand; null = automatic
+  cancelledById  String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([shopId, dedupeKey])
+  @@index([status, sendAfter])
+  @@index([shopId, status, sendAfter])
+  @@index([shopId, createdAt])
+  @@index([shopId, customerId])
+  @@index([shopId, ticketId])
+  @@index([shopId, repairJobId])
+  @@index([shopId, address, sentAt])
+  @@index([campaignId, status])
+}
+
+// Addresses that get no messages: a text STOP (nothing at all, not even reminders) or an email unsubscribe (no
+// marketing). Kept by address so it holds for a customer entered twice or with a changed record. Never purged.
+model Suppression {
+  shopId  String
+  shop    Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  channel String // email | sms
+  address String // lower-case email, or +1 number
+  scope   String // marketing | all
+  source  String // CONSENT_SOURCE_LABEL
+  at      DateTime @default(now())
+
+  @@id([shopId, channel, address])
+}
+
+// The consent record the law asks a shop to keep: every opt-in, opt-out and preference change, never edited or purged.
+model ConsentEvent {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  channel    String // email | sms; any for notify_pref
+  event      String // CONSENT_EVENT_LABEL: marketing_yes | marketing_no | notify_pref | optout | optin | help
+  address    String? // the email or number it applies to
+  source     String // CONSENT_SOURCE_LABEL
+  detail     String? // the words agreed to, the reply as sent, the new preference
+  byUserId   String?
+  at         DateTime  @default(now())
+
+  @@index([shopId, customerId, at])
+  @@index([shopId, at])
+}
+
+// Texts customers sent to the shop's Twilio number, read every few minutes. STOP / START / HELP are acted on; the
+// rest wait for someone to read them (and hold marketing texts to that number until they have).
+model InboundText {
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  sid        String // Twilio's message SID
+  fromNumber String
+  body       String
+  receivedAt DateTime
+  customerId String? // plain id: a customer with this number, when there is one
+  keyword    String? // STOP | START | HELP | STOPLIKE (a stop in other words)
+  handledAt  DateTime?
+  handledBy  String?
+
+  @@id([shopId, sid])
+  @@index([shopId, receivedAt])
+  @@index([shopId, fromNumber, receivedAt])
+}
+
+// A marketing message to a group of customers (sent now; the worker turns members into messages in batches).
+model Campaign {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  channel     String // email | sms
+  subject     String?
+  body        String
+  audience    Json // Audience in src/lib/messaging/audiences.ts
+  status      String       @default("DRAFT") // DRAFT | QUEUING | SENDING | SENT | CANCELLED
+  members     Json         @default("[]") // customer ids picked when it was sent
+  built       Int          @default(0) // how many members have been turned into messages
+  queuedAt    DateTime?
+  finishedAt  DateTime?
+  recipients  Int          @default(0) // messages queued
+  skipped     Json         @default("{}") // { reason: count }
+  createdById String?
+  queuedById  String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  messages    OutMessage[]
+
+  @@index([shopId, createdAt])
+  @@index([status])
+}
+
+// A link a customer opens to see an estimate and approve or decline it. Only the token's hash is kept for lookups; the
+// token itself stays sealed only until the messages carrying it have gone out.
+model EstimateLink {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  tokenSealed String?
+  maskedUrl   String // how the link appears in stored message bodies, e.g. https://.../e/•••Xk3q
+  ticketId    String? // a StitchBench ticket (plain id, always checked with shopId)
+  repairJobId String? // or a partner repair job, the sewing shop's side
+  customerId  String?
+  totalCents  Int // the estimate as shown; a changed bill needs a new link
+  lines       Json // [{ description, amountCents }] as shown
+  note        String? // what the shop wrote with it
+  expiresAt   DateTime
+  answer      String? // APPROVED | DECLINED
+  answerNote  String?
+  answeredAt  DateTime?
+  answerFrom  String? // the client address when a trusted proxy reports it, and the browser
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([shopId, ticketId])
+  @@index([shopId, repairJobId])
+  @@index([shopId, answeredAt])
+}
+
+// One copy of a background job at a time across every server process on this install (src/lib/lease.ts).
+model JobLease {
+  name   String   @id
+  holder String // hostname:pid
+  until  DateTime
+}
+
+// A class, workshop or club: one or more meetings, a seat limit, a fee rung up at the register.
+model ShopClass {
+  id          String         @id @default(cuid())
+  shopId      String
+  shop        Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  teacher     String?
+  location    String?
+  supplies    String? // supply list: on the roster, the sign-up message and the reminder
+  feeCents    Int            @default(0)
+  taxable     Boolean        @default(false)
+  seats       Int
+  waitlist    Boolean        @default(true)
+  remind      String         @default("every") // day-before reminders: every | first (meeting only) | never
+  status      String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
+  firstAt     DateTime? // first and last meeting, kept in step by the actions (for lists)
+  lastAt      DateTime?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  meetings    ClassMeeting[]
+  enrollments Enrollment[]
+
+  @@index([shopId, firstAt])
+}
+
+model ClassMeeting {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  classId   String
+  shopClass ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  startsAt  DateTime
+  endsAt    DateTime
+  cancelled Boolean   @default(false)
+  note      String?
+
+  @@index([shopId, startsAt])
+  @@index([classId, startsAt])
+}
+
+// Someone signed up for a class (or waiting for a seat). One row per sign-up: signing up again after a cancel makes a
+// new row. Paid and refunded at the register.
+model Enrollment {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  classId       String
+  shopClass     ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name          String // the customer's name when they signed up (the roster keeps it)
+  attendee      String? // who's coming when it isn't the customer (a child, a friend)
+  status        String    @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
+  feeCents      Int // the price for this person
+  taxable       Boolean   @default(false)
+  paidCents     Int?
+  paidAt        DateTime?
+  paidLineId    String? // the register sale line that paid it
+  refundedCents Int?
+  refundedAt    DateTime?
+  refundLineId  String?
+  note          String?
+  cancelledAt   DateTime?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([classId, customerId])
+  @@index([shopId, customerId])
+  @@index([classId, status, createdAt])
+}
+
+// Something customers book a time for: a lesson, longarm rental, a machine drop-off or pickup.
+model AppointmentType {
+  id           String        @id @default(cuid())
+  shopId       String
+  shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  minutes      Int           @default(60)
+  feeCents     Int           @default(0)
+  taxable      Boolean       @default(false)
+  capacity     Int           @default(1) // bookings at the same time (two longarms: 2); shared by types with the same resource
+  resource     String? // what it uses up, e.g. "Longarm": types naming the same resource share its capacity
+  // When it can be booked: [{ day: 0-6 (Sunday 0), from: "10:00", to: "17:00" }]; empty = any time
+  hours        Json          @default("[]")
+  location     String?
+  active       Boolean       @default(true)
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  appointments Appointment[]
+
+  @@index([shopId, sortOrder])
+}
+
+model Appointment {
+  id            String           @id @default(cuid())
+  shopId        String
+  shop          Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  typeId        String?
+  type          AppointmentType? @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  resource      String? // the type's resource when booked (capacity is counted per resource)
+  blocked       Boolean          @default(false) // "Block this time": no customer, holds the resource
+  customerId    String?
+  customer      Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name          String // who it's for, as booked ("" when blocked)
+  title         String // the type's name when booked, or the reason for a block
+  startsAt      DateTime
+  endsAt        DateTime
+  status        String           @default("BOOKED") // BOOKED | DONE | NO_SHOW | CANCELLED
+  staffId       String?
+  staff         User?            @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  ticketId      String? // a machine drop-off or pickup: the StitchBench ticket (plain id)
+  repairJobId   String? // or the partner repair job, the sewing shop's side (plain id)
+  feeCents      Int              @default(0)
+  taxable       Boolean          @default(false)
+  paidCents     Int?
+  paidAt        DateTime?
+  paidLineId    String?
+  refundedCents Int?
+  refundedAt    DateTime?
+  refundLineId  String?
+  note          String?
+  cancelledAt   DateTime?
+  createdById   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([shopId, startsAt])
+  @@index([shopId, customerId])
+  @@index([typeId, startsAt])
+  @@index([shopId, resource, startsAt])
+}
+
+// Who works the counter when. The person may have no login: name is always set (a snapshot for users).
+model Shift {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name        String
+  startsAt    DateTime
+  endsAt      DateTime
+  role        String? // Counter, Classroom, Longarm... (free text)
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shopId, startsAt])
+  @@index([userId, startsAt])
+}

@@ -1,24 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Camera, CameraOff, Trash2, Undo2, Wrench, Plus } from "lucide-react";
 import { completeSale, findCustomers, findItems, itemByCode, pickupJobs, type CustomerHit, type PickupJob, type RegisterItem } from "@/actions/register";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 import { money, toCents } from "@/lib/format";
-import { discountBase, lineNet, qtyText, saleTotals, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
+import { discountBase, inEighths, lineNet, qtyText, saleTotals, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
 
 type CartLine = {
   key: string;
   partId?: string;
   repairJobId?: string;
   pickedUp?: boolean;
+  /** A repair's machine that already went home (this line pays the rest of its bill). */
+  handedOver?: boolean;
   description: string;
   partNumber?: string;
   unit: string | null;
   qty: number;
   unitPriceCents: number;
+  /** The item has a price in inventory: only an owner or admin changes it. */
+  priced?: boolean;
   discountPct: number;
   taxable: boolean;
   consigned?: boolean;
@@ -26,6 +30,20 @@ type CartLine = {
 
 const discountOf = (l: CartLine) => Math.round((Math.abs(Math.round(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
+// Names a sale for the server, so one sent twice is made once. getRandomValues works on the shop's plain-http network.
+const saleKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+// A handheld scanner types a code much faster than anyone can, then presses Enter.
+const SCAN_MIN_CHARS = 4;
+const SCAN_MAX_GAP_MS = 60;
+const SCAN_AVG_GAP_MS = 35;
+
+/** Puts text back in a field the way typing would, so the page's own state follows. */
+function setFieldText(el: HTMLInputElement | HTMLTextAreaElement, text: string) {
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, text);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
 
 export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: number; hasPartners: boolean; canSell: boolean }) {
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -44,6 +62,8 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   const [missing, setMissing] = useState<string | null>(null);
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
+  // The sale as last sent and the key it went with: sent again unchanged (after a lost answer), it keeps the key.
+  const pending = useRef<{ key: string; sent: string } | null>(null);
 
   // A partner's repair bill is paid as billed: a whole-sale discount doesn't come off it.
   const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId })), [cart]);
@@ -53,6 +73,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   const t = saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
 
   useEffect(() => code.current?.focus(), []);
+
+  // Enter in a line's Qty, Price or Disc % field: back to the scan box for the next item.
+  const backToScan = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") code.current?.focus();
+  };
 
   function addItem(it: RegisterItem) {
     const sign = returnMode ? -1 : 1;
@@ -71,6 +96,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
           unit: it.unit,
           qty: sign * (it.unit === "yd" ? 1 : 1),
           unitPriceCents: it.priceCents ?? 0,
+          priced: it.priceCents != null,
           discountPct: 0,
           taxable: true,
           consigned: it.consigned,
@@ -83,18 +109,23 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   async function lookup(raw: string) {
     const c = raw.trim();
     if (!c) return;
-    const it = await itemByCode(c);
-    if (it) {
-      beep(true);
-      setResults([]);
-      setMissing(null);
-      addItem(it);
-      return;
+    try {
+      const it = await itemByCode(c);
+      if (it) {
+        beep(true);
+        setResults([]);
+        setMissing(null);
+        addItem(it);
+        return;
+      }
+      const hits = await findItems(c);
+      beep(hits.length > 0);
+      setResults(hits);
+      setMissing(hits.length ? null : c);
+    } catch {
+      beep(false);
+      toast.error(`Couldn't look up ${c.slice(0, 40)}. Check the connection, then scan it again.`);
     }
-    const hits = await findItems(c);
-    beep(hits.length > 0);
-    setResults(hits);
-    setMissing(hits.length ? null : c);
   }
 
   // A camera sees the same code many times a second: count it once. A handheld scanner's every scan counts.
@@ -103,6 +134,47 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
     last.current = { code: c, at: Date.now() };
     lookup(c);
   });
+
+  // A scanner types into whatever has focus: a Qty or Disc % field just typed in, a payment button just clicked. A scan
+  // that lands anywhere but the scan box is taken back out of that field and rung up.
+  const onScan = useEffectEvent((scanned: string) => {
+    code.current?.focus();
+    lookup(scanned);
+  });
+  useEffect(() => {
+    let burst = { text: "", start: 0, last: 0, target: null as EventTarget | null, before: null as string | null };
+    function onKey(e: KeyboardEvent) {
+      if (e.target === code.current || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) {
+        burst.text = "";
+        return;
+      }
+      if (e.key.length === 1) {
+        if (!burst.text || e.target !== burst.target || e.timeStamp - burst.last > SCAN_MAX_GAP_MS) {
+          // What the field held before this burst of keys, to put back if it turns out to be a scan.
+          const field = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement ? e.target : null;
+          burst = { text: "", start: e.timeStamp, last: e.timeStamp, target: e.target, before: field ? field.value : null };
+        }
+        burst.text += e.key;
+        burst.last = e.timeStamp;
+        return;
+      }
+      const scanned =
+        e.key === "Enter" &&
+        burst.text.length >= SCAN_MIN_CHARS &&
+        e.timeStamp - burst.last <= SCAN_MAX_GAP_MS &&
+        (burst.last - burst.start) / (burst.text.length - 1) <= SCAN_AVG_GAP_MS;
+      if (scanned) {
+        e.preventDefault();
+        e.stopPropagation();
+        const { text, target, before } = burst;
+        if (before != null && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) setFieldText(target, before);
+        onScan(text);
+      }
+      if (e.key !== "Shift") burst.text = "";
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   function setLine(key: string, patch: Partial<CartLine>) {
     setCart((c) => c.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -114,30 +186,37 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
     if (!amount) return;
     setTenders((x) => [...x, { method, amountCents: t.total < 0 ? -Math.abs(amount) : amount }]);
     setTenderAmt("");
+    // Ready for the next scan (a scanner's Enter on this button would take the payment again).
+    code.current?.focus();
   }
 
   async function finish() {
     setBusy(true);
+    setDone(null);
+    const sale = {
+      customerId: customer?.id ?? null,
+      lines: lines.map((l) => ({
+        partId: l.partId ?? null,
+        repairJobId: l.repairJobId ?? null,
+        pickedUp: l.pickedUp,
+        description: l.description,
+        qty: l.qty,
+        unitPriceCents: l.unitPriceCents,
+        discountCents: l.discountCents,
+        taxable: l.taxable,
+      })),
+      orderDiscountCents,
+      tenders,
+    };
+    const sent = JSON.stringify(sale);
+    if (pending.current?.sent !== sent) pending.current = { key: saleKey(), sent };
     try {
-      const r = await completeSale({
-        customerId: customer?.id ?? null,
-        lines: lines.map((l) => ({
-          partId: l.partId ?? null,
-          repairJobId: l.repairJobId ?? null,
-          pickedUp: l.pickedUp,
-          description: l.description,
-          qty: l.qty,
-          unitPriceCents: l.unitPriceCents,
-          discountCents: l.discountCents,
-          taxable: l.taxable,
-        })),
-        orderDiscountCents,
-        tenders,
-      });
+      const r = await completeSale({ ...sale, clientKey: pending.current.key });
       if ("error" in r) {
         toast.error(r.error);
         return;
       }
+      pending.current = null;
       setDone({ id: r.saleId, number: r.number, change: r.changeCents });
       toast.success(`Sale #${r.number} done${r.changeCents ? `. Change: ${money(r.changeCents)}` : ""}`);
       setCart([]);
@@ -147,6 +226,8 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
       setReturnMode(false);
       setJobs(null);
       code.current?.focus();
+    } catch {
+      toast.error("The sale didn't go through (no connection, or a problem on the server). Press Complete sale again: a sale that did save won't be saved twice.");
     } finally {
       setBusy(false);
     }
@@ -182,7 +263,17 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
             <Plus size={14} aria-hidden /> Misc item
           </button>
           {hasPartners && (
-            <button type="button" className="btn btn-sm" onClick={async () => setJobs(await pickupJobs())}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={async () => {
+                try {
+                  setJobs(await pickupJobs());
+                } catch {
+                  toast.error("Couldn't load the repairs. Check the connection, then try again.");
+                }
+              }}
+            >
               <Wrench size={14} aria-hidden /> Repair pickup
             </button>
           )}
@@ -278,6 +369,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                   <li key={j.id} className="flex items-center justify-between gap-2 py-1.5">
                     <span>
                       Tag <strong>{j.tag}</strong> · {j.customerName} · {j.machine}
+                      {j.paidCents > 0 && <span className="muted"> · paid {money(j.paidCents)} here before the repair shop added to the bill</span>}
                     </span>
                     <button
                       type="button"
@@ -286,7 +378,18 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       onClick={() => {
                         setCart((c) => [
                           ...c,
-                          { key: newKey(), repairJobId: j.id, pickedUp: true, description: `Repair, tag ${j.tag}: ${j.machine}`, unit: null, qty: 1, unitPriceCents: j.dueCents, discountPct: 0, taxable: false },
+                          {
+                            key: newKey(),
+                            repairJobId: j.id,
+                            pickedUp: !j.pickedUp,
+                            handedOver: j.pickedUp,
+                            description: `Repair, tag ${j.tag}: ${j.machine}${j.paidCents > 0 ? " (rest of the bill)" : ""}`,
+                            unit: null,
+                            qty: 1,
+                            unitPriceCents: j.dueCents,
+                            discountPct: 0,
+                            taxable: false,
+                          },
                         ]);
                         setJobs(null);
                       }}
@@ -326,7 +429,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                     {l.partNumber && <span className="mono mr-1">{l.partNumber}</span>}
                     {l.description}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
-                    {l.repairJobId && (
+                    {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">
                         <input type="checkbox" checked={l.pickedUp !== false} onChange={(e) => setLine(l.key, { pickedUp: e.target.checked })} /> taking the machine home
                       </label>
@@ -342,17 +445,21 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       disabled={Boolean(l.repairJobId)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
+                      onKeyDown={backToScan}
                     />
-                    {l.unit === "yd" && <div className="muted text-xs">{qtyText(l.qty, "yd")}</div>}
+                    {l.unit === "yd" &&
+                      (inEighths(l.qty) ? <div className="muted text-xs">{qtyText(l.qty, "yd")}</div> : <div className="text-xs text-[var(--bad)]">Use 1/8 yd steps</div>)}
                   </td>
                   <td>
                     <input
                       aria-label={`Price for ${l.description}`}
                       inputMode="decimal"
                       className="input num"
-                      disabled={!canSell || Boolean(l.repairJobId)}
+                      // A tech can type the price of an item that has none, not change one that has.
+                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId)}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => setLine(l.key, { unitPriceCents: toCents(e.target.value) ?? l.unitPriceCents })}
+                      onKeyDown={backToScan}
                     />
                   </td>
                   <td>
@@ -362,9 +469,10 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       className="input num"
                       min={0}
                       max={100}
-                      disabled={Boolean(l.repairJobId)}
+                      disabled={!canSell || Boolean(l.repairJobId)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                      onKeyDown={backToScan}
                     />
                   </td>
                   <td className="num text-right">{money(lineNet(l))}</td>
@@ -438,10 +546,17 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                 aria-label="Discount on the whole sale"
                 inputMode="decimal"
                 className="input num w-20"
+                disabled={!canSell}
                 value={orderDisc.value}
                 onChange={(e) => setOrderDisc({ ...orderDisc, value: e.target.value })}
               />
-              <select aria-label="Discount type" className="select w-16" value={orderDisc.kind} onChange={(e) => setOrderDisc({ ...orderDisc, kind: e.target.value as "%" | "$" })}>
+              <select
+                aria-label="Discount type"
+                className="select w-16"
+                disabled={!canSell}
+                value={orderDisc.kind}
+                onChange={(e) => setOrderDisc({ ...orderDisc, kind: e.target.value as "%" | "$" })}
+              >
                 <option>%</option>
                 <option>$</option>
               </select>

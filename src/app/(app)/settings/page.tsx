@@ -161,6 +161,8 @@ export default async function SettingsPage() {
       {admin && (
         <Section title="Shop">
           <ActionForm action={saveShop} success="Saved" className="grid-form">
+            {/* The ticket counter as this page showed it: saving other settings leaves the counter alone. */}
+            <input type="hidden" name="was:nextTicketNumber" value={String(shop.nextTicketNumber)} />
             {(
               [
                 ["name", "Shop name", shop.name],

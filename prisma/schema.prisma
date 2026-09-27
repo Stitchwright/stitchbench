@@ -772,11 +772,14 @@ model Sale {
   status        String    @default("COMPLETED") // COMPLETED | VOIDED
   voidedAt      DateTime?
   note          String?
+  // The register's own name for the sale, the same on every try: a sale sent again isn't made twice
+  clientKey     String?
   createdAt     DateTime  @default(now())
 
   lines SaleLine[]
 
   @@unique([shopId, number])
+  @@unique([shopId, clientKey])
   @@index([shopId, createdAt])
 }
 

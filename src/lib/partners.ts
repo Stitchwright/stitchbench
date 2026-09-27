@@ -817,15 +817,19 @@ async function applyMessage(m: HubMessage) {
     case "job.paid": {
       const job = await repairSideJob(shopId, link.id, d.id);
       if (!job?.ticketId) return;
-      // Paid at the counter once; a repeat (or a changed amount) is recorded as a note, not as more money.
-      if (job.paidWhere === "shop" || job.paidWhere === "split") return;
+      // Paid at the counter once; a repeat is not more money. The rest of a bill that went up after it was paid there
+      // comes with everything paid there so far (paidCents): only what's new is added.
+      const paidBefore = job.paidWhere === "shop" || job.paidWhere === "split" ? (job.paidCents ?? 0) : null;
       const amount = int(d.amountCents, 0, MAX_MONEY, "amount");
+      const paidThere = d.paidCents == null ? null : int(d.paidCents, 0, MAX_MONEY, "paid");
+      const adds = paidBefore == null ? amount : paidThere == null ? 0 : paidThere - paidBefore;
+      if (adds <= 0) return;
       const saleNumber = optInt(d.saleNumber, 0, 100_000_000, "sale number");
       await db.$transaction([
         db.payment.create({
-          data: { ticketId: job.ticketId, method: "SHOP_COLLECTED", amountCents: amount, paidAt: at, note: `Paid at ${link.partnerName}${saleNumber ? `, sale #${saleNumber}` : ""}` },
+          data: { ticketId: job.ticketId, method: "SHOP_COLLECTED", amountCents: adds, paidAt: at, note: `Paid at ${link.partnerName}${saleNumber ? `, sale #${saleNumber}` : ""}` },
         }),
-        db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { paidCents: amount, paidAt: job.paidAt ?? at, paidWhere: job.repairPaidCents ? "split" : "shop" } }),
+        db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { paidCents: (paidBefore ?? 0) + adds, paidAt: job.paidAt ?? at, paidWhere: job.repairPaidCents ? "split" : "shop" } }),
       ]);
       return;
     }

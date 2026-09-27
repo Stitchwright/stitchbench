@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { str, toCents } from "@/lib/format";
+import { str, ticketNo, toCents } from "@/lib/format";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { isPlatformAdmin } from "@/lib/shops";
 import type { Role } from "@/generated/prisma/enums";
@@ -21,13 +21,39 @@ function validTimeZone(tz: string | null) {
   }
 }
 
+// $100,000 in cents: far above any real rate or fee, and well inside what the books' whole numbers hold.
+const MAX_MONEY = 10_000_000;
+
 export const saveShop = safe(async function saveShop(formData: FormData) {
   const user = await requireAdmin();
-  const num = (k: string, d: number) => {
-    const v = Number(str(formData.get(k)) ?? "");
-    return Number.isFinite(v) ? v : d;
+  // Numbers: blank keeps what's there and a typed "%" or "$" is fine; anything else is refused by name rather than
+  // saved as 0 or quietly ignored behind a "Saved".
+  const num = (k: string, label: string, d: number, min: number, max: number) => {
+    const s = str(String(formData.get(k) ?? "").replace(/[%,]/g, ""));
+    if (s == null) return d;
+    const v = Number(s);
+    if (!Number.isFinite(v) || v < min || v > max) throw new UserError(`${label}: enter a number from ${min} to ${max}.`);
+    return v;
+  };
+  const cents = (k: string, label: string, d: number) => {
+    const s = str(formData.get(k));
+    if (s == null) return d;
+    const c = toCents(s);
+    if (c == null || c < 0 || c > MAX_MONEY) throw new UserError(`${label}: enter an amount from $0 to $100,000.`);
+    return c;
   };
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId } });
+  // The ticket counter moves only when it was changed on this page (a Settings tab left open from before, saved for
+  // the phone number, mustn't wind it back), and never back onto numbers tickets already have.
+  let nextTicketNumber: number | undefined;
+  const typedNext = str(formData.get("nextTicketNumber"));
+  if (typedNext != null && typedNext !== str(formData.get("was:nextTicketNumber")) && Number(typedNext) !== shop.nextTicketNumber) {
+    const n = Number(typedNext.replace(/^#/, ""));
+    if (!Number.isInteger(n) || n < 1 || n > 99_999_999) throw new UserError("Next ticket number: enter a whole number, e.g. 1051.");
+    const top = (await db.ticket.aggregate({ where: { shopId: user.shopId }, _max: { number: true } }))._max.number ?? 0;
+    if (n <= top) throw new UserError(`Ticket #${ticketNo(top)} is already in use, so the next ticket number has to be ${top + 1} or more.`);
+    nextTicketNumber = n;
+  }
   await db.shop.update({
     where: { id: user.shopId },
     data: {
@@ -35,13 +61,13 @@ export const saveShop = safe(async function saveShop(formData: FormData) {
       phone: str(formData.get("phone")),
       email: str(formData.get("email")),
       address: str(formData.get("address")),
-      laborRateCents: toCents(formData.get("laborRate")) ?? shop.laborRateCents,
-      taxRatePct: num("taxRatePct", shop.taxRatePct),
-      partsMarkupPct: num("partsMarkupPct", shop.partsMarkupPct),
-      warrantyDays: Math.round(num("warrantyDays", shop.warrantyDays)),
-      abandonedAfterDays: Math.round(num("abandonedAfterDays", shop.abandonedAfterDays)),
-      storageFeeCents: toCents(formData.get("storageFee")) ?? shop.storageFeeCents,
-      nextTicketNumber: Math.max(1, Math.round(num("nextTicketNumber", shop.nextTicketNumber))),
+      laborRateCents: cents("laborRate", "Labor rate", shop.laborRateCents),
+      taxRatePct: num("taxRatePct", "Sales tax", shop.taxRatePct, 0, 30),
+      partsMarkupPct: num("partsMarkupPct", "Parts markup", shop.partsMarkupPct, 0, 1000),
+      warrantyDays: Math.round(num("warrantyDays", "Warranty (days)", shop.warrantyDays, 0, 3650)),
+      abandonedAfterDays: Math.round(num("abandonedAfterDays", "Abandoned after (days)", shop.abandonedAfterDays, 1, 3650)),
+      storageFeeCents: cents("storageFee", "Storage fee", shop.storageFeeCents),
+      nextTicketNumber,
       libraryRoot: str(formData.get("libraryRoot")) ?? shop.libraryRoot,
       timeZone: validTimeZone(str(formData.get("timeZone"))) ?? shop.timeZone,
       payInstructions: str(formData.get("payInstructions")),
