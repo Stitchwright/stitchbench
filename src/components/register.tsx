@@ -22,6 +22,8 @@ type CartLine = {
   discountPct: number;
   taxable: boolean;
   consigned?: boolean;
+  // The item came with a stored price (a tech rings it up as priced; an unpriced item is priced on the line)
+  priced?: boolean;
 };
 
 const discountOf = (l: CartLine) => Math.round((Math.abs(Math.round(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
@@ -74,6 +76,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
           discountPct: 0,
           taxable: true,
           consigned: it.consigned,
+          priced: it.priceCents != null,
         },
       ];
     });
@@ -178,7 +181,13 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
         <video ref={cam.video} className={cam.on ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={!canSell && returnMode}
+            title={!canSell && returnMode ? "Only an owner or admin can refund a misc item" : undefined}
+            onClick={() => setMisc({ description: "", price: "", taxable: true })}
+          >
             <Plus size={14} aria-hidden /> Misc item
           </button>
           {hasPartners && (
@@ -350,7 +359,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       aria-label={`Price for ${l.description}`}
                       inputMode="decimal"
                       className="input num"
-                      disabled={!canSell || Boolean(l.repairJobId)}
+                      disabled={Boolean(l.repairJobId) || (!canSell && l.priced)}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => setLine(l.key, { unitPriceCents: toCents(e.target.value) ?? l.unitPriceCents })}
                     />
@@ -362,7 +371,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       className="input num"
                       min={0}
                       max={100}
-                      disabled={Boolean(l.repairJobId)}
+                      disabled={!canSell || Boolean(l.repairJobId)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                     />
@@ -438,10 +447,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                 aria-label="Discount on the whole sale"
                 inputMode="decimal"
                 className="input num w-20"
+                disabled={!canSell}
                 value={orderDisc.value}
                 onChange={(e) => setOrderDisc({ ...orderDisc, value: e.target.value })}
               />
-              <select aria-label="Discount type" className="select w-16" value={orderDisc.kind} onChange={(e) => setOrderDisc({ ...orderDisc, kind: e.target.value as "%" | "$" })}>
+              <select aria-label="Discount type" className="select w-16" disabled={!canSell} value={orderDisc.kind} onChange={(e) => setOrderDisc({ ...orderDisc, kind: e.target.value as "%" | "$" })}>
                 <option>%</option>
                 <option>$</option>
               </select>

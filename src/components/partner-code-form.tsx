@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy } from "lucide-react";
 import { makePartnerCode, type InviteResult } from "@/actions/partners";
@@ -9,6 +9,7 @@ import { makePartnerCode, type InviteResult } from "@/actions/partners";
 export function PartnerCodeForm({ defaultSide, children }: { defaultSide: "repair" | "retail"; children: React.ReactNode }) {
   const [result, setResult] = useState<Extract<InviteResult, { code: string }> | null>(null);
   const [busy, setBusy] = useState(false);
+  const longCode = useRef<HTMLInputElement>(null);
   return (
     <div className="space-y-4">
       <form
@@ -51,11 +52,20 @@ export function PartnerCodeForm({ defaultSide, children }: { defaultSide: "repai
             version instead:
           </p>
           <div className="flex gap-2">
-            <input readOnly value={result.long} className="input mono text-xs" aria-label="Long partner code" onFocus={(e) => e.currentTarget.select()} />
+            <input ref={longCode} readOnly value={result.long} className="input mono text-xs" aria-label="Long partner code" onFocus={(e) => e.currentTarget.select()} />
             <button
               type="button"
               className="btn btn-sm"
-              onClick={() => navigator.clipboard.writeText(result.long).then(() => toast.success("Copied"))}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(result.long);
+                  toast.success("Copied");
+                } catch {
+                  // No clipboard on a plain http address (a phone on the shop network): select the code to copy by hand.
+                  longCode.current?.select();
+                  toast.error("Couldn't copy here. The code is selected: copy it by hand.");
+                }
+              }}
               aria-label="Copy the long code"
             >
               <Copy size={14} aria-hidden />

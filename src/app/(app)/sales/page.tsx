@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/session";
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PAYMENT_LABEL } from "@/lib/constants";
 import { ticketTotals } from "@/lib/ticket-math";
-import { monthRange, paymentsBetween } from "@/lib/sales";
+import { monthRange, paymentsBetween, PAID_ELSEWHERE } from "@/lib/sales";
 import { PageHeader, Section, Empty } from "@/components/ui";
 
 export default async function Sales({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
@@ -27,7 +27,10 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
   );
   const byMethod = new Map<string, number>();
   for (const p of payments) byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amountCents);
-  const taken = payments.reduce((s, p) => s + p.amountCents, 0);
+  // "Money taken" is what reached the drawer and card reader. A partner shop's counter takings and invoices on account
+  // are revenue too, but they arrive later (statement, invoice payment), so they get their own figure.
+  const taken = payments.filter((p) => !PAID_ELSEWHERE.includes(p.method)).reduce((s, p) => s + p.amountCents, 0);
+  const elsewhere = payments.filter((p) => PAID_ELSEWHERE.includes(p.method)).reduce((s, p) => s + p.amountCents, 0);
   let service = 0,
     labor = 0,
     parts = 0,
@@ -46,7 +49,7 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
     <div className="space-y-6">
       <PageHeader
         title="Sales log"
-        sub={`${fmtDate(start)} to ${fmtDate(new Date(end.getTime() - 1))}`}
+        sub={`${fmtDate(start, tz)} to ${fmtDate(new Date(end.getTime() - 1), tz)}`}
         actions={
           <a className="btn" href={`/api/sales?from=${fromStr}&to=${toStr}`}>
             Download CSV
@@ -69,9 +72,10 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
         <button className="btn">Show</button>
       </form>
 
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
         {[
           ["Money taken", taken],
+          ["Paid at a partner shop / on account", elsewhere],
           ["Service (collected)", service],
           ["Labor (collected)", labor],
           ["Parts (collected)", parts],
@@ -119,7 +123,7 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
               <tbody>
                 {payments.map((p) => (
                   <tr key={p.id}>
-                    <td className="num whitespace-nowrap">{fmtDate(p.paidAt)}</td>
+                    <td className="num whitespace-nowrap">{fmtDate(p.paidAt, tz)}</td>
                     <td className="mono">
                       <Link href={`/tickets/${p.ticketId}`} className="link">
                         {ticketNo(p.ticket.number)}

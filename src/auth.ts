@@ -19,10 +19,23 @@ const credentialsSchema = z.object({
 const WINDOW = 15 * 60_000;
 const MAX_KEYS = 50_000;
 const failures = new Map<string, { n: number; since: number }>();
+// Tries still being checked (the password compare takes a moment). They count from the moment they start, so a burst
+// sent all at once can't slip past the limits together before the first one has been written down as wrong.
+const underWay = new Map<string, number>();
 
 function count(key: string) {
   const f = failures.get(key);
-  return !f || Date.now() - f.since > WINDOW ? 0 : f.n;
+  return (!f || Date.now() - f.since > WINDOW ? 0 : f.n) + (underWay.get(key) ?? 0);
+}
+
+function begin(key: string) {
+  underWay.set(key, (underWay.get(key) ?? 0) + 1);
+}
+
+function end(key: string) {
+  const n = (underWay.get(key) ?? 1) - 1;
+  if (n > 0) underWay.set(key, n);
+  else underWay.delete(key);
 }
 
 function fail(key: string) {
@@ -45,9 +58,8 @@ function clientAddress(request?: Request) {
 
 const waiting = new Map<string, { tail: Promise<unknown>; n: number }>();
 
-/** Once an account is being guessed at, its tries run one at a time, each after a growing wait. */
-async function paced<T>(email: string, fn: () => Promise<T>): Promise<T | null> {
-  const n = count(`e:${email}`);
+/** Once an account is being guessed at (`n` tries wrong or under way), its tries run one at a time, each after a growing wait. */
+async function paced<T>(email: string, n: number, fn: () => Promise<T>): Promise<T | null> {
   if (n < 5) return fn();
   const q = waiting.get(email) ?? { tail: Promise.resolve(), n: 0 };
   if (q.n >= 20) return null; // a flood: the queue is already long enough
@@ -77,17 +89,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = parsed.data.email.toLowerCase();
         const ip = clientAddress(request);
         if (ip && count(`i:${ip}`) >= 50) return null;
-        return paced(email, async () => {
-          const user = await db.user.findUnique({ where: { email } });
-          const ok = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
-          if (!user || !user.active || !ok) {
-            fail(`e:${email}`);
-            if (ip) fail(`i:${ip}`);
-            return null;
-          }
-          failures.delete(`e:${email}`);
-          return { id: user.id, email: user.email, name: user.name, role: user.role, shopId: user.shopId, sv: user.sessionVersion };
-        });
+        // Counted, and this try marked as under way, before anything is awaited: no other try can slip in between.
+        const n = count(`e:${email}`);
+        const keys = ip ? [`e:${email}`, `i:${ip}`] : [`e:${email}`];
+        for (const k of keys) begin(k);
+        try {
+          return await paced(email, n, async () => {
+            const user = await db.user.findUnique({ where: { email } });
+            const ok = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
+            if (!user || !user.active || !ok) {
+              fail(`e:${email}`);
+              if (ip) fail(`i:${ip}`);
+              return null;
+            }
+            failures.delete(`e:${email}`);
+            return { id: user.id, email: user.email, name: user.name, role: user.role, shopId: user.shopId, sv: user.sessionVersion };
+          });
+        } finally {
+          for (const k of keys) end(k);
+        }
       },
     }),
   ],

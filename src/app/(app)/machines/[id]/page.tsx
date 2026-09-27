@@ -82,12 +82,8 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
             <PhotoStrip machineId={m.id} ticketId={current && OPEN_STATUSES.includes(current.status) ? current.id : undefined} photos={m.photos} />
           </Section>
 
-          <ShareForm
-            machineId={m.id}
-            model={`${m.brand} ${m.model}`}
-            photos={m.photos}
-            defaultBody={[current?.diagnosis, current?.workDone].filter(Boolean).join("\n\n") || undefined}
-          />
+          {/* Not pre-filled from the ticket: its notes are private and often name the customer or the serial. */}
+          <ShareForm machineId={m.id} model={`${m.brand} ${m.model}`} photos={m.photos} />
 
           <ModelPhotos shopId={user.shopId} brand={m.brand} model={m.model} excludeMachineId={m.id} title={`Inside & wiring photos from other ${m.model}s`} hideWhenEmpty />
 

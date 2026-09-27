@@ -1,7 +1,7 @@
 import { sessionUser } from "@/lib/session";
 import { csvCell as csv } from "@/lib/csv";
 import { db } from "@/lib/db";
-import { monthRange, paymentsBetween } from "@/lib/sales";
+import { dateIn, monthRange, paymentsBetween } from "@/lib/sales";
 import { PAYMENT_LABEL } from "@/lib/constants";
 
 export async function GET(req: Request) {
@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     ["date", "ticket", "customer", "via_account", "brand", "model", "serial", "method", "amount", "note"].join(","),
     ...rows.map((p) =>
       [
-        p.paidAt.toISOString().slice(0, 10),
+        // The shop's calendar day, the same one the range above was cut on (the server's UTC day can be tomorrow).
+        dateIn(p.paidAt, tz),
         p.ticket.number,
         p.ticket.customer?.name,
         p.ticket.viaAccount?.code ?? p.ticket.viaAccount?.name,

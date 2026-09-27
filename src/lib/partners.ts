@@ -31,6 +31,12 @@ const IMAGE = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_MONEY = 10_000_000; // $100,000 in cents: far above any real repair, order or statement
 const MAX_QTY = 100_000;
 const MAX_EVENTS = 200;
+// A partnership brings in a few machines a day and a shelf of consigned stock at a time. Far more than that within an
+// hour is a fault or an attack (each intake opens a ticket and can carry megabytes of photos, into the database every
+// company on this install shares): the rest are set aside and shown on the Partners page rather than applied.
+const MAX_INTAKES_PER_HOUR = 100;
+const MAX_CONSIGN_ITEMS_PER_HOUR = 2000;
+const MAX_INTAKE_PHOTO_CHARS = 3_600_000; // base64 of all photos in one intake; the sender keeps them under 2.6 MB raw
 
 type Json = Prisma.InputJsonValue;
 type Obj = Record<string, unknown>;
@@ -68,6 +74,16 @@ const qtyOf = (v: unknown, what: string) => {
 const dateOf = (v: unknown, what: string) => {
   const d = new Date(String(v ?? ""));
   return Number.isNaN(d.getTime()) ? bad(`${what} isn't a date`) : d;
+};
+/**
+ * A time the partner reports (when it sold, took payment, handed a machine over), as long as its clock is near the hub's:
+ * up to an hour ahead of when the hub got the message, or 30 days behind it (messages queued through an outage). A PC
+ * with a wrong clock, or a partner picking dates on purpose, would otherwise file money into the wrong month or year;
+ * then the hub's time is used instead.
+ */
+const nearHub = (t: Date, hubAt: Date) => {
+  const off = t.getTime() - hubAt.getTime();
+  return off > 3600_000 || off < -30 * 86400_000 ? hubAt : t;
 };
 const arr = (v: unknown, max: number, what: string): unknown[] => {
   if (v == null) return [];
@@ -302,7 +318,10 @@ type Proposal = { version: number; terms: PartnerTerms; by: { name: string; at: 
 
 export async function proposeTerms(shopId: string, linkId: string, terms: PartnerTerms, byName: string) {
   const l = await partnerLink(shopId, linkId);
-  const version = l.termsVersion + 1;
+  // One more than anything either shop has put forward, so an answer to the partner's proposal (a counter-offer)
+  // carries a higher number and isn't taken by the other side for the same proposal crossing in the post and dropped.
+  const pending = l.proposedTerms as Proposal | null;
+  const version = Math.max(l.termsVersion, pending?.version ?? 0) + 1;
   const at = new Date().toISOString();
   await db.$transaction(async (tx) => {
     await tx.partnerLink.update({
@@ -386,34 +405,40 @@ async function pushJobUpdates() {
     where: { side: "repair", ticketId: { not: null }, OR: [{ status: { notIn: FINAL } }, { updatedAt: { gte: since } }] },
   });
   for (const job of jobs) {
-    const t = await db.ticket.findUnique({ where: { id: job.ticketId! }, include: { lines: { orderBy: { createdAt: "asc" } }, payments: { orderBy: { paidAt: "asc" } } } });
-    const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId: job.shopId, id: job.linkId } } });
-    if (!t || !link) continue;
-    const snap = jobSnapshot(job, t, normalizeTerms(link.terms));
-    // The hash leaves out the paid date so a not-yet-sent "paid now" doesn't make every sync send again.
-    const h = hash({ ...snap, paidAt: snap.paidAt ? "paid" : null });
-    if (h === job.sentHash) continue;
-    const events = snap.status !== job.status ? withEvent(job.events, { at: new Date().toISOString(), status: snap.status }) : (job.events as Json);
-    await db.$transaction(async (tx) => {
-      await tx.repairJob.update({
-        where: { shopId_id: { shopId: job.shopId, id: job.id } },
-        data: {
-          status: snap.status,
-          ticketNumber: snap.ticketNumber,
-          totalCents: snap.totalCents,
-          taxCents: snap.taxCents,
-          lines: snap.lines as Json,
-          commissionPct: snap.commissionPct,
-          commissionCents: snap.commissionCents,
-          repairPaidCents: snap.repairPaidCents,
-          events,
-          sentHash: h,
-          ...(snap.paidAt && !job.paidAt ? { paidAt: new Date(snap.paidAt), paidWhere: job.paidCents ? "split" : "repair" } : {}),
-          ...(snap.status === "COLLECTED" && !job.pickedUpAt ? { pickedUpAt: new Date() } : {}),
-        },
+    try {
+      const t = await db.ticket.findUnique({ where: { id: job.ticketId! }, include: { lines: { orderBy: { createdAt: "asc" } }, payments: { orderBy: { paidAt: "asc" } } } });
+      const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId: job.shopId, id: job.linkId } } });
+      if (!t || !link) continue;
+      const snap = jobSnapshot(job, t, normalizeTerms(link.terms));
+      // The hash leaves out the paid date so a not-yet-sent "paid now" doesn't make every sync send again.
+      const h = hash({ ...snap, paidAt: snap.paidAt ? "paid" : null });
+      if (h === job.sentHash) continue;
+      const events = snap.status !== job.status ? withEvent(job.events, { at: new Date().toISOString(), status: snap.status }) : (job.events as Json);
+      await db.$transaction(async (tx) => {
+        await tx.repairJob.update({
+          where: { shopId_id: { shopId: job.shopId, id: job.id } },
+          data: {
+            status: snap.status,
+            ticketNumber: snap.ticketNumber,
+            totalCents: snap.totalCents,
+            taxCents: snap.taxCents,
+            lines: snap.lines as Json,
+            commissionPct: snap.commissionPct,
+            commissionCents: snap.commissionCents,
+            repairPaidCents: snap.repairPaidCents,
+            events,
+            sentHash: h,
+            ...(snap.paidAt && !job.paidAt ? { paidAt: new Date(snap.paidAt), paidWhere: job.paidCents ? "split" : "repair" } : {}),
+            ...(snap.status === "COLLECTED" && !job.pickedUpAt ? { pickedUpAt: new Date() } : {}),
+          },
+        });
+        await tx.partnerOutbox.create({ data: { shopId: job.shopId, linkId: job.linkId, type: "job.update", data: { ...snap, at: new Date().toISOString() } } });
       });
-      await tx.partnerOutbox.create({ data: { shopId: job.shopId, linkId: job.linkId, type: "job.update", data: { ...snap, at: new Date().toISOString() } } });
-    });
+    } catch (e) {
+      // One ticket that can't be written down (a bill total past what the columns hold, from a barcode typed into a
+      // qty box) mustn't stop every partner message on this install: it's skipped this time and noted in the log.
+      console.error(`partner sync: ticket #${job.ticketNumber ?? "?"} couldn't be sent to the partner shop:`, e instanceof Error ? e.message : e);
+    }
   }
 }
 
@@ -441,28 +466,34 @@ async function pushCatalogs() {
   const links = await db.partnerLink.findMany({ where: { side: "repair", status: "ACTIVE" } });
   const byShop = new Map<string, { items: CatalogItem[]; h: string }>();
   for (const l of links) {
-    if (!byShop.has(l.shopId)) {
-      const items = await catalogFor(l.shopId);
-      byShop.set(l.shopId, { items, h: hash(items) });
+    try {
+      if (!byShop.has(l.shopId)) {
+        const items = await catalogFor(l.shopId);
+        byShop.set(l.shopId, { items, h: hash(items) });
+      }
+      const c = byShop.get(l.shopId)!;
+      if (c.h === l.catalogHash) continue;
+      // Stock counts change with every sale; send at most every 10 minutes unless it's the first time.
+      if (l.catalogHash && l.catalogAt && Date.now() - l.catalogAt.getTime() < 10 * 60_000) continue;
+      await db.$transaction([
+        db.partnerOutbox.create({ data: { shopId: l.shopId, linkId: l.id, type: "catalog", data: { items: c.items, at: new Date().toISOString() } as Json } }),
+        db.partnerLink.update({ where: { shopId_id: { shopId: l.shopId, id: l.id } }, data: { catalogHash: c.h, catalogAt: new Date() } }),
+      ]);
+    } catch (e) {
+      // One shop's catalog that won't queue mustn't stop the other partnerships' messages.
+      console.error(`partner sync: the catalog for ${l.partnerName} couldn't be queued:`, e instanceof Error ? e.message : e);
     }
-    const c = byShop.get(l.shopId)!;
-    if (c.h === l.catalogHash) continue;
-    // Stock counts change with every sale; send at most every 10 minutes unless it's the first time.
-    if (l.catalogHash && l.catalogAt && Date.now() - l.catalogAt.getTime() < 10 * 60_000) continue;
-    await db.$transaction([
-      db.partnerOutbox.create({ data: { shopId: l.shopId, linkId: l.id, type: "catalog", data: { items: c.items, at: new Date().toISOString() } as Json } }),
-      db.partnerLink.update({ where: { shopId_id: { shopId: l.shopId, id: l.id } }, data: { catalogHash: c.h, catalogAt: new Date() } }),
-    ]);
   }
 }
 
 // ---------- sync ----------
 
 /**
- * Send what's waiting, oldest first per partnership. A message the hub refuses for good (bad data, unknown link) is set
- * aside and shown; one that fails because the hub or the internet is down waits and is tried again, never dropped,
- * and holds back every later message of the same partnership until it goes (an update must not overtake its job),
- * across syncs: a partnership whose oldest waiting message isn't due yet sends nothing.
+ * Send what's waiting, oldest first per partnership. A message the hub refuses for good (bad data, too large) is set
+ * aside and shown; one that fails because the hub or the internet is down, or because the hub won't take anything from
+ * this install or this partnership right now, waits and is tried again, never dropped, and holds back every later
+ * message of the same partnership until it goes (an update must not overtake its job), across syncs: a partnership
+ * whose oldest waiting message isn't due yet sends nothing.
  */
 async function pushOutbox() {
   const now = Date.now();
@@ -486,13 +517,21 @@ async function pushOutbox() {
     if (++tried > 300) break; // the rest next time
     const m = await db.partnerOutbox.findUnique({ where: { id: w.id } });
     if (!m || m.sentAt || m.deadAt) continue;
+    const json = { id: m.id, shopRef: m.shopId, type: m.type, data: m.data };
     try {
-      await hubFetch(`/v1/partners/links/${hubId(m.linkId)}/messages`, { method: "POST", json: { id: m.id, shopRef: m.shopId, type: m.type, data: m.data } });
+      // A machine intake carries photos (a few MB); on a slow shop connection that takes longer than the usual 30 s,
+      // so the wait grows with the size: a minute more per MB, three minutes at most (as shared notes get).
+      const timeout = 30_000 + Math.min(150_000, Math.round((JSON.stringify(json).length / 1_000_000) * 60_000));
+      await hubFetch(`/v1/partners/links/${hubId(m.linkId)}/messages`, { method: "POST", json, signal: AbortSignal.timeout(timeout) });
       await db.partnerOutbox.update({ where: { id: m.id }, data: { sentAt: new Date(), error: null, nextTryAt: null } });
       sent++;
     } catch (e) {
       const status = hubStatus(e);
-      const forGood = status >= 400 && status < 500 && status !== 408 && status !== 429;
+      // 401 / 403: the hub takes nothing from this install right now (it doesn't know it, or its admin blocked it);
+      // 404: it doesn't know this partnership (restored from before it was made). Neither is this message's fault, so
+      // nothing is set aside: everything waits and goes out by itself once the hub takes it again.
+      const installRefused = status === 401 || status === 403;
+      const forGood = status >= 400 && status < 500 && status !== 408 && status !== 429 && status !== 404 && !installRefused;
       const tries = m.tries + 1;
       await db.partnerOutbox.update({
         where: { id: m.id },
@@ -503,9 +542,20 @@ async function pushOutbox() {
         },
       });
       if (!forGood) held.add(key);
+      if (installRefused) break; // every other partnership's messages would be refused the same way: next time
     }
   }
   return sent;
+}
+
+/** Every message the hub refused for a partnership (or for the whole shop) goes back in the queue, after the cause is fixed. */
+export async function resendPartnerMessages(shopId: string, linkId?: string) {
+  const r = await db.partnerOutbox.updateMany({
+    where: { shopId, ...(linkId ? { linkId } : {}), sentAt: null, deadAt: { not: null } },
+    data: { deadAt: null, nextTryAt: null, tries: 0 },
+  });
+  if (r.count) kickPartnerSync();
+  return r.count;
 }
 
 type HubMessage = {
@@ -542,6 +592,8 @@ async function pullMessages(cursor: string) {
           try {
             await applyMessage(m);
             await db.partnerSeen.create({ data: { shopId: shop.id, key } }).catch(() => {});
+            // An earlier try that failed is over with: it mustn't stay on the Partners page as still failing.
+            await db.partnerFailure.deleteMany({ where: { shopId: shop.id, key } }).catch(() => {});
             received++;
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -560,7 +612,9 @@ async function pullMessages(cursor: string) {
               await db.partnerSeen.create({ data: { shopId: shop.id, key } }).catch(() => {});
             } else {
               await db.hubState.update({ where: { id: 1 }, data: { partnerCursor: doneThrough } });
-              throw new Error(`partner message ${m.type} from ${m.fromSide}: ${msg}`);
+              // What went wrong is kept with the company it's for (PartnerFailure, on its Partners page); the sync
+              // status is one line for the whole install, which every company here sees.
+              throw new Error(`a message from a partner couldn't be applied yet (try ${tries} of 3); it's tried again next time. The company it's for sees it under "Messages that didn't get through".`);
             }
           }
         }
@@ -576,15 +630,34 @@ async function pullMessages(cursor: string) {
 
 export type PartnerSyncResult = { sent: number; received: number } | { skipped: true } | { busy: true };
 
-/** One partner sync at a time on this install, even with several server processes (a lease on the HubState row). */
+/**
+ * One partner sync at a time on this install, even with several server processes (a lease on the HubState row). The
+ * lease is short and renewed every half minute while the sync runs, so a long sync (a backlog, big intakes) keeps it
+ * and one that died mid-way (the server stopped) frees it within two minutes. The time it was set to is this run's
+ * token: it's renewed and given back only while the row still holds it, never one another run took over meanwhile.
+ */
 async function withSyncLease<T>(run: () => Promise<T>): Promise<T | null> {
-  const got = await db.$executeRaw`UPDATE "HubState" SET "partnerLockUntil" = now() + interval '5 minutes'
-    WHERE id = 1 AND ("partnerLockUntil" IS NULL OR "partnerLockUntil" < now())`;
-  if (!got) return null;
+  let token = (
+    await db.$queryRaw<{ lease: string }[]>`UPDATE "HubState" SET "partnerLockUntil" = now() + interval '2 minutes'
+      WHERE id = 1 AND ("partnerLockUntil" IS NULL OR "partnerLockUntil" < now()) RETURNING "partnerLockUntil"::text AS lease`
+  )[0]?.lease;
+  if (!token) return null;
+  let renewing: Promise<unknown> = Promise.resolve();
+  const heartbeat = setInterval(() => {
+    renewing = db.$queryRaw<{ lease: string }[]>`UPDATE "HubState" SET "partnerLockUntil" = now() + interval '2 minutes'
+      WHERE id = 1 AND "partnerLockUntil"::text = ${token} RETURNING "partnerLockUntil"::text AS lease`
+      .then((rows) => {
+        if (rows[0]) token = rows[0].lease;
+        else console.error("partner sync: the sync lease was lost to another server process; this run carries on without it");
+      })
+      .catch(() => {});
+  }, 30_000);
   try {
     return await run();
   } finally {
-    await db.$executeRaw`UPDATE "HubState" SET "partnerLockUntil" = NULL WHERE id = 1`.catch(() => {});
+    clearInterval(heartbeat);
+    await renewing; // a renewal still on its way would change the token under the release
+    await db.$executeRaw`UPDATE "HubState" SET "partnerLockUntil" = NULL WHERE id = 1 AND "partnerLockUntil"::text = ${token}`.catch(() => {});
   }
 }
 
@@ -602,11 +675,9 @@ async function doPartnerSync(): Promise<PartnerSyncResult> {
       // Anything the messages just caused (a new job's first update) goes out now rather than next time.
       await pushJobUpdates();
       const more = await pushOutbox();
-      const stuck = await db.partnerOutbox.count({ where: { sentAt: null, OR: [{ deadAt: { not: null } }, { tries: { gte: 5 } }] } });
-      await db.hubState.update({
-        where: { id: 1 },
-        data: { partnerSyncAt: new Date(), partnerError: stuck ? `${stuck} message${stuck === 1 ? "" : "s"} to partners couldn't be sent (see below).` : null },
-      });
+      // This status line is one for the whole install, so it only says what concerns every company here (the hub out
+      // of reach, a sync that broke off). Messages one company couldn't send are listed on that company's Partners page.
+      await db.hubState.update({ where: { id: 1 }, data: { partnerSyncAt: new Date(), partnerError: null } });
       return { sent: sent + more, received };
     } catch (e) {
       await db.hubState.update({ where: { id: 1 }, data: { partnerError: e instanceof Error ? e.message : String(e) } }).catch(() => {});
@@ -691,7 +762,8 @@ async function applyMessage(m: HubMessage) {
   if (allowed !== "either" && allowed !== partnerSide) return bad(`${m.type} can't come from the ${partnerSide === "repair" ? "repair shop" : "sewing shop"}`);
   if (link.status !== "ACTIVE" && NEW_WORK.has(m.type)) return; // ended: no new work
   const lk = { shopId_id: { shopId, id: link.id } };
-  const at = d.at != null ? dateOf(d.at, "at") : new Date(m.createdAt);
+  const hubAt = dateOf(m.createdAt, "createdAt"); // when the hub got it: the one clock both shops can trust
+  const at = d.at != null ? nearHub(dateOf(d.at, "at"), hubAt) : hubAt;
   const terms = normalizeTerms(link.terms);
 
   switch (m.type) {
@@ -712,7 +784,9 @@ async function applyMessage(m: HubMessage) {
       const version = int(d.version, 1, 100_000, "version");
       const who = { name: text(d.name, 120) ?? "", at: at.toISOString(), version };
       const prop = link.proposedTerms as Proposal | null;
-      const key = text(d.key, 4000);
+      // The key is the JSON of every term, "also agreed" text included (up to 4,000 characters, escaped): read whole.
+      // Cut short, a long clause could never be accepted, and the two shops would run on different terms.
+      const key = text(d.key, 50_000);
       if (prop && prop.version === version && link.proposedBy === link.side) {
         // They accepted the change we offered, if it is the same change.
         if (key && key !== termsKey(normalizeTerms(prop.terms))) return bad("the partner accepted different terms from the ones offered; propose them again");
@@ -766,7 +840,7 @@ async function applyMessage(m: HubMessage) {
       if (status !== job.status) events = withEvent(events, { at: at.toISOString(), status });
       if (note && note !== job.repairNote) events = withEvent(events, { at: at.toISOString(), note });
       const repairPaid = optInt(d.repairPaidCents, 0, MAX_MONEY, "paid");
-      const paidAt = d.paidAt ? dateOf(d.paidAt, "paidAt") : null;
+      const paidAt = d.paidAt ? nearHub(dateOf(d.paidAt, "paidAt"), hubAt) : null;
       // The commission is worked out here from the bill and our copy of the terms, not taken from the partner; once the
       // job is paid it stays as it was.
       const commission = job.paidAt && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms);
@@ -842,7 +916,8 @@ async function applyMessage(m: HubMessage) {
           data: {
             status: t.status === "RETURNED_UNREPAIRED" ? t.status : "COLLECTED",
             closedAt: t.closedAt ?? at,
-            warrantyUntil: t.status === "RETURNED_UNREPAIRED" ? t.warrantyUntil : (t.warrantyUntil ?? new Date(at.getTime() + shop.warrantyDays * 86400000)),
+            // The warranty runs from the hub's time, never the partner's clock: the ticket and invoice show it.
+            warrantyUntil: t.status === "RETURNED_UNREPAIRED" ? t.warrantyUntil : (t.warrantyUntil ?? new Date(hubAt.getTime() + shop.warrantyDays * 86400000)),
           },
         }),
         db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { pickedUpAt: at } }),
@@ -940,6 +1015,9 @@ async function applyMessage(m: HubMessage) {
 
     case "consign.place": {
       const items = arr(d.items, 500, "items").map((x) => obj(x, "item"));
+      // New shelf items from this partner in the last hour (each is an inventory entry here): a flood is set aside.
+      const lately = await db.part.count({ where: { shopId, consignLinkId: link.id, createdAt: { gte: new Date(Date.now() - 3600_000) } } });
+      if (lately + items.length > MAX_CONSIGN_ITEMS_PER_HOUR) return bad(`${link.partnerName} placed more than ${MAX_CONSIGN_ITEMS_PER_HOUR} consigned items within an hour`);
       for (const it of items) await receiveConsigned(shopId, link, it, at);
       return;
     }
@@ -1006,6 +1084,10 @@ async function applyMessage(m: HubMessage) {
     case "settle.paid": {
       const id = idOf(d.id, "payment");
       if (await db.settlement.findUnique({ where: { shopId_id: { shopId, id } } })) return;
+      // A shop records only the payments it made (+ the sewing shop paid the repair shop, - the other way round); a
+      // settlement claiming the other shop paid can't come from it.
+      const netCents = int(d.netCents, -MAX_MONEY, MAX_MONEY, "amount");
+      if (m.fromSide === "retail" ? netCents <= 0 : netCents >= 0) return bad("a settlement can only record a payment the shop sending it made");
       await db.settlement.create({
         data: {
           id,
@@ -1013,7 +1095,7 @@ async function applyMessage(m: HubMessage) {
           linkId: link.id,
           periodFrom: dateOf(d.periodFrom, "periodFrom"),
           periodTo: dateOf(d.periodTo, "periodTo"),
-          netCents: int(d.netCents, -MAX_MONEY, MAX_MONEY, "amount"),
+          netCents,
           summary: storable(d.summary && typeof d.summary === "object" ? d.summary : {}, 5000),
           note: text(d.note, 500),
           byName: text(d.name, 80),
@@ -1055,6 +1137,13 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
   const tag = text(d.tag, 20) ?? "?";
   const customerName = text(d.customerName, 80) ?? "Customer";
   const photos = arr(d.photos, 8, "photos").map((x) => obj(x, "photo"));
+  // Machines this partner sent in the last hour, counted by when the ticket was opened here (not by the partner's
+  // clock): past the limit, the intake is set aside and shown, and the shop can ask the partner what's going on.
+  const hourAgo = new Date(Date.now() - 3600_000);
+  const lately = link.accountId
+    ? await db.ticket.count({ where: { shopId, viaAccountId: link.accountId, createdAt: { gte: hourAgo } } })
+    : await db.repairJob.count({ where: { shopId, linkId: link.id, side: "repair", createdAt: { gte: hourAgo } } });
+  if (lately >= MAX_INTAKES_PER_HOUR) return bad(`${link.partnerName} sent more than ${MAX_INTAKES_PER_HOUR} machines within an hour`);
   const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
   const machine = existing ?? (await db.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
   await db.$transaction(async (tx) => {
@@ -1104,10 +1193,13 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
         createdAt: at,
       },
     });
+    // Photos that don't fit the intake's budget together are left out, the way an odd one is; the ticket still opens.
+    let budget = MAX_INTAKE_PHOTO_CHARS;
     for (const p of photos) {
       const mime = String(p.mime ?? "");
       const b64 = String(p.data ?? "");
-      if (!IMAGE.has(mime) || !b64 || b64.length > 3_000_000) continue;
+      if (!IMAGE.has(mime) || !b64 || b64.length > 3_000_000 || b64.length > budget) continue;
+      budget -= b64.length;
       await tx.machinePhoto.create({
         data: { shopId, machineId: machine.id, ticketId: t.id, kind: "CONDITION", caption: text(p.caption, 200) ?? `At intake, ${link.partnerName}`, mime, data: Buffer.from(b64, "base64") },
       });

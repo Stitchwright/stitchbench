@@ -10,6 +10,10 @@ import { createPart } from "@/actions/parts";
 import { KIND_LABEL } from "@/lib/parts";
 import { qtyText } from "@/lib/register-math";
 import type { PartKind } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
+
+// The list stops here; the count and the shelf value still cover every matching item.
+const PAGE = 1000;
 
 const KINDS = [
   { key: "", label: "All" },
@@ -40,27 +44,29 @@ export default async function Parts({
   const kind = KINDS.some((x) => x.key && x.key === k)
     ? (k as PartKind)
     : undefined;
-  let parts = await db.part.findMany({
-    where: {
-      shopId: user.shopId,
-      ...(kind ? { kind } : {}),
-      ...(term
-        ? {
-            OR: [
-              { partNumber: { contains: term, mode: "insensitive" } },
-              { description: { contains: term, mode: "insensitive" } },
-              { fits: { contains: term, mode: "insensitive" } },
-              { brand: { contains: term, mode: "insensitive" } },
-              { altNumbers: { has: term } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { partNumber: "asc" },
-    take: 1000,
-  });
-  if (low === "1") parts = parts.filter((p) => p.qtyOnHand <= p.reorderAt);
-  const value = parts.reduce(
+  // "Low stock" is decided in the query, not after the list is cut off, so an item past the first PAGE part numbers
+  // still shows when it's at or below its reorder point.
+  const where: Prisma.PartWhereInput = {
+    shopId: user.shopId,
+    ...(kind ? { kind } : {}),
+    ...(term
+      ? {
+          OR: [
+            { partNumber: { contains: term, mode: "insensitive" } },
+            { description: { contains: term, mode: "insensitive" } },
+            { fits: { contains: term, mode: "insensitive" } },
+            { brand: { contains: term, mode: "insensitive" } },
+            { altNumbers: { has: term } },
+          ],
+        }
+      : {}),
+    ...(low === "1" ? { qtyOnHand: { lte: db.part.fields.reorderAt } } : {}),
+  };
+  const [parts, all] = await Promise.all([
+    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: PAGE }),
+    db.part.findMany({ where, select: { costCents: true, qtyOnHand: true } }),
+  ]);
+  const value = all.reduce(
     (s, p) => s + (p.costCents ?? 0) * Math.max(0, p.qtyOnHand),
     0,
   );
@@ -69,7 +75,7 @@ export default async function Parts({
     <div className="space-y-6">
       <PageHeader
         title={shop.doesRepair ? "Parts and accessories" : "Inventory"}
-        sub={`${parts.length} items · ${money(value)} on the shelf at cost`}
+        sub={`${all.length} items · ${money(value)} on the shelf at cost`}
         actions={
           <>
             <Link href="/parts/import" className="btn">
@@ -127,7 +133,7 @@ export default async function Parts({
         {parts.length === 0 ? (
           <div className="card-pad">
             <Empty>
-              No parts yet. Add the wear parts you keep on the shelf below.
+              {low === "1" ? "Nothing is at or below its reorder point." : "No parts yet. Add the wear parts you keep on the shelf below."}
             </Empty>
           </div>
         ) : (
@@ -236,6 +242,11 @@ export default async function Parts({
                 ))}
               </tbody>
             </table>
+            {all.length > parts.length && (
+              <p className="card-pad muted border-t border-line py-2 text-sm">
+                Showing the first {parts.length} of {all.length} by part number. Search to find the rest.
+              </p>
+            )}
           </form>
         )}
       </div>

@@ -40,11 +40,32 @@ async function rows(shopId: string, what: string): Promise<unknown[][] | null> {
     }
     case "register-sales": {
       const sales = await db.sale.findMany({ where: { shopId }, include: { lines: true, customer: { select: { name: true } } }, orderBy: { createdAt: "asc" } });
-      const out: unknown[][] = [["sale", "date", "status", "customer", "item_number", "description", "qty", "unit_price", "line_discount", "line_total", "taxable", "sale_tax", "sale_total", "paid_by"]];
+      // One row per line; the sale-level columns (sale_discount = a "Discount on sale" on top of the line discounts, sale_tax,
+      // sale_total, paid_by, change) repeat on each of its rows, so sum(line_total) - sale_discount + sale_tax = sale_total.
+      const out: unknown[][] = [
+        ["sale", "date", "status", "customer", "item_number", "description", "qty", "unit_price", "line_discount", "line_total", "taxable", "sale_discount", "sale_tax", "sale_total", "paid_by", "change"],
+      ];
       for (const s of sales) {
         const paid = (s.tenders as Tender[]).map((t) => `${t.method} ${dollars(t.amountCents)}`).join(" + ");
         for (const l of s.lines) {
-          out.push([s.number, s.createdAt, s.status, s.customer?.name, l.partNumber, l.description, l.qty, dollars(l.unitPriceCents), dollars(l.discountCents), dollars(lineNet(l)), l.taxable ? "yes" : "no", dollars(s.taxCents), dollars(s.totalCents), paid]);
+          out.push([
+            s.number,
+            s.createdAt,
+            s.status,
+            s.customer?.name,
+            l.partNumber,
+            l.description,
+            l.qty,
+            dollars(l.unitPriceCents),
+            dollars(l.discountCents),
+            dollars(lineNet(l)),
+            l.taxable ? "yes" : "no",
+            dollars(s.discountCents),
+            dollars(s.taxCents),
+            dollars(s.totalCents),
+            paid,
+            dollars(s.changeCents),
+          ]);
         }
       }
       return out;

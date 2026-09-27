@@ -14,7 +14,7 @@ type LogEntry = { at: number; ok: boolean; text: string; partId?: string; code: 
 const MODES: { key: Mode; label: string; hint: string }[] = [
   { key: "lookup", label: "Look up", hint: "Scan to see stock and bin." },
   { key: "receive", label: "Receive", hint: "Each scan adds stock." },
-  { key: "count", label: "Count shelf", hint: "Scan every item on the shelf, then save the counts." },
+  { key: "count", label: "Count shelf", hint: "Scan every item on the shelf, then save the counts. With the camera, point away for a moment between two of the same item." },
   { key: "ticket", label: "Use on ticket", hint: "Each scan puts the part on the ticket and takes it from stock." },
 ];
 
@@ -27,7 +27,6 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   const [counts, setCounts] = useState<Map<string, { part: ScannedPart; n: number }>>(new Map());
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const last = useRef({ code: "", at: 0 });
 
   useEffect(() => input.current?.focus(), [mode]);
 
@@ -68,12 +67,9 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   const enqueue = (code: string) => {
     queue.current = queue.current.then(() => handle(code));
   };
-  // A camera sees the same code many times a second: count it once. Every handheld scan counts.
-  const cam = useBarcodeCamera((code) => {
-    if (code === last.current.code && Date.now() - last.current.at < 1500) return;
-    last.current = { code, at: Date.now() };
-    enqueue(code);
-  });
+  // The camera reports a code once while it's in view (see useBarcodeCamera), so every code that arrives counts, as
+  // does every handheld scan.
+  const cam = useBarcodeCamera(enqueue);
 
   async function save() {
     const r = await saveCounts([...counts.values()].map((c) => ({ partId: c.part.id, qty: c.n })));

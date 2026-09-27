@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
 import { monthRange, todayIn } from "@/lib/sales";
-import { TENDER_LABEL, type Tender } from "@/lib/register-math";
+import { lineNet, TENDER_LABEL, type Tender } from "@/lib/register-math";
 import { KIND_LABEL } from "@/lib/parts";
 import { PageHeader, Section, Empty } from "@/components/ui";
 
@@ -30,8 +30,20 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
   let consigned = 0;
   let repairs = 0;
   for (const s of done) {
+    // A "Discount on sale" came off the items being bought (not returns, not a partner's repair bill), in proportion,
+    // the way the sale was totalled. Spread it back over those lines so the breakdowns below add up to the totals.
+    const eligible = s.lines.filter((l) => !l.repairJobId && lineNet(l) > 0);
+    const base = eligible.reduce((a, l) => a + lineNet(l), 0);
+    const orderDiscount = Math.min(s.discountCents, base);
+    let left = orderDiscount;
     for (const l of s.lines) {
-      const amt = Math.round(l.qty * l.unitPriceCents) - (l.qty < 0 ? -1 : 1) * l.discountCents;
+      let amt = lineNet(l);
+      if (orderDiscount > 0 && eligible.includes(l)) {
+        // The last eligible line takes whatever rounding left over, so the shares add up to the discount exactly.
+        const share = l === eligible[eligible.length - 1] ? left : Math.min(left, Math.round((orderDiscount * amt) / base));
+        left -= share;
+        amt -= share;
+      }
       if (l.repairJobId) repairs += amt;
       else if (l.consignLinkId) consigned += amt;
       const k = l.repairJobId ? "Repairs" : l.part ? (KIND_LABEL[l.part.kind] ?? l.part.kind) : "Misc";
@@ -46,7 +58,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
       <PageHeader
         back={{ href: "/register", label: "Register" }}
         title="Register sales"
-        sub={`${fmtDate(start)}${fromStr !== toStr ? ` to ${fmtDate(new Date(end.getTime() - 86400000))}` : ""} · ${done.length} sales · ${money(total)}`}
+        sub={`${fmtDate(start, tz)}${fromStr !== toStr ? ` to ${fmtDate(new Date(end.getTime() - 1), tz)}` : ""} · ${done.length} sales · ${money(total)}`}
       />
       <form className="flex flex-wrap items-end gap-2 no-print">
         <div className="field">
@@ -129,7 +141,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
                         {s.number}
                       </Link>
                     </td>
-                    <td>{s.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
+                    <td>{s.createdAt.toLocaleString("en-US", { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
                     <td>{s.customer?.name}</td>
                     <td className="text-xs">{s.lines.map((l) => l.description).join(", ").slice(0, 80)}</td>
                     <td className="text-xs">{(s.tenders as Tender[]).map((t) => TENDER_LABEL[t.method] ?? t.method).join(" + ")}</td>

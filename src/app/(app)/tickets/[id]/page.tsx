@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { LINE_LABEL, PAYMENT_LABEL } from "@/lib/constants";
+import { PAID_ELSEWHERE } from "@/lib/sales";
+import type { PaymentMethod } from "@/generated/prisma/enums";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { specsFor, settingsFor, gRange } from "@/lib/model-info";
 import { valueRange } from "@/lib/adjustments";
@@ -82,6 +84,17 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const checklistItems = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
   const checklist = (t.checklist ?? {}) as Record<string, { done: boolean; by?: string; at?: string }>;
   const m = t.machine;
+  // What each box held when the page was drawn: the save writes only the boxes that changed (see saveTicketText).
+  const was = {
+    serviceRequested: t.serviceRequested ?? "",
+    techId: t.techId ?? "",
+    problem: t.problem ?? "",
+    diagnosis: t.diagnosis ?? "",
+    workDone: t.workDone ?? "",
+    preApproved: t.preApprovedCents != null ? (t.preApprovedCents / 100).toFixed(2) : "",
+    approved: t.approvedCents != null ? (t.approvedCents / 100).toFixed(2) : "",
+    notes: t.notes ?? "",
+  };
 
   return (
     <div className="space-y-6">
@@ -162,18 +175,21 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil) : null} />
             </div>
             <ActionForm action={saveTicketText.bind(null, t.id)} success="Saved" className="space-y-3">
+              {Object.entries(was).map(([k, v]) => (
+                <input key={k} type="hidden" name={`was:${k}`} value={v} />
+              ))}
               <div className="grid-form">
                 <div className="field">
                   <label htmlFor="serviceRequested" className="label">
                     Service requested
                   </label>
-                  <input id="serviceRequested" name="serviceRequested" defaultValue={t.serviceRequested ?? ""} className="input" />
+                  <input id="serviceRequested" name="serviceRequested" defaultValue={was.serviceRequested} className="input" />
                 </div>
                 <div className="field">
                   <label htmlFor="techId" className="label">
                     Tech
                   </label>
-                  <select id="techId" name="techId" defaultValue={t.techId ?? ""} className="select">
+                  <select id="techId" name="techId" defaultValue={was.techId} className="select">
                     <option value="">-</option>
                     {techs.map((u) => (
                       <option key={u.id} value={u.id}>
@@ -186,37 +202,37 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <label htmlFor="problem" className="label">
                     Problem reported
                   </label>
-                  <textarea id="problem" name="problem" rows={2} defaultValue={t.problem ?? ""} className="textarea" />
+                  <textarea id="problem" name="problem" rows={2} defaultValue={was.problem} className="textarea" />
                 </div>
                 <div className="field sm:col-span-2">
                   <label htmlFor="diagnosis" className="label">
                     What we found
                   </label>
-                  <textarea id="diagnosis" name="diagnosis" rows={3} defaultValue={t.diagnosis ?? ""} className="textarea" />
+                  <textarea id="diagnosis" name="diagnosis" rows={3} defaultValue={was.diagnosis} className="textarea" />
                 </div>
                 <div className="field sm:col-span-2">
                   <label htmlFor="workDone" className="label">
                     Work done (prints on the invoice)
                   </label>
-                  <textarea id="workDone" name="workDone" rows={3} defaultValue={t.workDone ?? ""} className="textarea" />
+                  <textarea id="workDone" name="workDone" rows={3} defaultValue={was.workDone} className="textarea" />
                 </div>
                 <div className="field">
                   <label htmlFor="preApproved" className="label">
                     Pre-approved over service ($)
                   </label>
-                  <input id="preApproved" name="preApproved" defaultValue={t.preApprovedCents != null ? (t.preApprovedCents / 100).toFixed(2) : ""} className="input num" />
+                  <input id="preApproved" name="preApproved" defaultValue={was.preApproved} className="input num" />
                 </div>
                 <div className="field">
                   <label htmlFor="approved" className="label">
                     Customer approved ($)
                   </label>
-                  <input id="approved" name="approved" defaultValue={t.approvedCents != null ? (t.approvedCents / 100).toFixed(2) : ""} className="input num" />
+                  <input id="approved" name="approved" defaultValue={was.approved} className="input num" />
                 </div>
                 <div className="field sm:col-span-2">
                   <label htmlFor="notes" className="label">
                     Internal notes
                   </label>
-                  <textarea id="notes" name="notes" rows={2} defaultValue={t.notes ?? ""} className="textarea" />
+                  <textarea id="notes" name="notes" rows={2} defaultValue={was.notes} className="textarea" />
                 </div>
               </div>
               <div className="flex justify-end">
@@ -469,11 +485,14 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   Method
                 </label>
                 <select id="method" name="method" className="select" defaultValue="CARD">
-                  {Object.entries(PAYMENT_LABEL).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
+                  {Object.entries(PAYMENT_LABEL)
+                    // Money a partner sewing shop collects comes from their register, not from this box.
+                    .filter(([k]) => !job || !PAID_ELSEWHERE.includes(k as PaymentMethod))
+                    .map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div className="field min-w-40 flex-1">
@@ -484,6 +503,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               </div>
               <Submit>Record payment</Submit>
             </ActionForm>
+            {job && <p className="muted mt-2 text-xs">Paid at {jobLink?.partnerName ?? "the partner shop"}? Their register sends it here on its own.</p>}
           </Section>
         </div>
 

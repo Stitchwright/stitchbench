@@ -11,6 +11,7 @@ import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/e
 import type { Prisma } from "@/generated/prisma/client";
 import { STATUS_ORDER } from "@/lib/constants";
 import { kickPartnerSync } from "@/lib/partners";
+import { PAID_ELSEWHERE } from "@/lib/sales";
 
 async function ownTicket(shopId: string, ticketId: string) {
   const t = await db.ticket.findFirst({ where: { id: ticketId, shopId }, include: { shop: true } });
@@ -50,7 +51,9 @@ export const createTicket = safe(async function createTicket(formData: FormData)
     if (!ok) throw new UserError("Customer not found.");
   }
 
-  // Machine: pick an existing one, or brand + model (+ serial). An existing serial is reused.
+  // Machine: pick an existing one, or brand + model (+ serial). The same serial and make again is the same machine:
+  // its history follows it, and it's owned by whoever brought it in this time (a traded-in machine sold on comes
+  // back with a new owner).
   let machineId = str(formData.get("machineId"));
   if (machineId) {
     const ok = await db.machine.findFirst({ where: { id: machineId, shopId } });
@@ -61,7 +64,9 @@ export const createTicket = safe(async function createTicket(formData: FormData)
     if (!brand || !model) throw new UserError("Enter the machine's brand and model.");
     const serial = str(formData.get("serial"));
     const existing = serial
-      ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } })
+      ? await db.machine.findFirst({
+          where: { shopId, serial: { equals: serial, mode: "insensitive" }, brand: { equals: brand, mode: "insensitive" }, modelKey: modelKey(model) },
+        })
       : null;
     const m =
       existing ??
@@ -76,6 +81,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
           customerId,
         },
       }));
+    if (existing && customerId && existing.customerId !== customerId) await db.machine.update({ where: { id: existing.id }, data: { customerId } });
     machineId = m.id;
   }
 
@@ -156,22 +162,39 @@ export const setStatus = safe(async function setStatus(ticketId: string, status:
 
 export const saveTicketText = safe(async function saveTicketText(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  await ownTicket(user.shopId, ticketId);
-  const techId = str(formData.get("techId"));
+  const t = await ownTicket(user.shopId, ticketId);
+  // Only the boxes the tech changed are written. The form carries each box's value as the page drew it ("was:"
+  // fields): a partner sewing shop's reply may have set the approved amount and added a line to the notes while the
+  // page was open, and a save from that page mustn't put the old values back. A form without "was:" fields writes all.
+  const changed = (name: string) => {
+    const now = str(formData.get(name));
+    return formData.has(`was:${name}`) && now === str(formData.get(`was:${name}`)) ? undefined : now;
+  };
+  const cents = (name: string) => {
+    const v = changed(name);
+    return v === undefined ? undefined : toCents(v);
+  };
+  const techId = changed("techId");
   if (techId) {
     const ok = await db.user.findFirst({ where: { id: techId, shopId: user.shopId } });
     if (!ok) throw new UserError("Tech not found.");
   }
+  let notes = changed("notes");
+  const wasNotes = str(formData.get("was:notes"));
+  // The tech rewrote the notes while the partner added a line under the old ones: keep the tech's text and that line.
+  if (notes !== undefined && t.notes && t.notes !== wasNotes && (wasNotes == null || t.notes.startsWith(wasNotes))) {
+    notes = [notes, t.notes.slice(wasNotes?.length ?? 0).trim()].filter(Boolean).join("\n").slice(-20_000) || null;
+  }
   await db.ticket.update({
     where: { id: ticketId },
     data: {
-      serviceRequested: str(formData.get("serviceRequested")),
-      problem: str(formData.get("problem")),
-      diagnosis: str(formData.get("diagnosis")),
-      workDone: str(formData.get("workDone")),
-      notes: str(formData.get("notes")),
-      preApprovedCents: toCents(formData.get("preApproved")),
-      approvedCents: toCents(formData.get("approved")),
+      serviceRequested: changed("serviceRequested"),
+      problem: changed("problem"),
+      diagnosis: changed("diagnosis"),
+      workDone: changed("workDone"),
+      notes,
+      preApprovedCents: cents("preApproved"),
+      approvedCents: cents("approved"),
       techId,
     },
   });
@@ -355,10 +378,17 @@ export const addPayment = safe(async function addPayment(ticketId: string, formD
   await ownTicket(user.shopId, ticketId);
   const amount = toCents(formData.get("amount"));
   if (amount == null || amount === 0) throw new UserError("Enter the amount paid.");
+  const method = (str(formData.get("method")) ?? "CARD") as PaymentMethod;
+  // A machine from a partner sewing shop: what they take at their counter arrives from their register and goes on the
+  // statement, less their commission. Typed in here as "Shop collected" or "Invoice" it would count as paid to us,
+  // and the statement would owe them the commission instead of billing them for what they collected.
+  if (PAID_ELSEWHERE.includes(method) && (await db.repairJob.findFirst({ where: { shopId: user.shopId, ticketId, side: "repair" }, select: { id: true } }))) {
+    throw new UserError("This machine came through a partner shop. What they collect is rung up on their register and shows up here on its own; record here only what the customer paid us.");
+  }
   await db.payment.create({
     data: {
       ticketId,
-      method: (str(formData.get("method")) ?? "CARD") as PaymentMethod,
+      method,
       amountCents: amount,
       note: str(formData.get("note")),
     },

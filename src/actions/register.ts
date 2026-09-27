@@ -9,7 +9,7 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
-import { lineNet, saleTotals, TENDER_METHODS, type Tender } from "@/lib/register-math";
+import { lineNet, orderDiscountShares, saleTotals, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type RegisterItem = {
@@ -171,12 +171,15 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     }
     if (input.customerId && !(await db.customer.findFirst({ where: { id: input.customerId, shopId } }))) throw new UserError("Customer not found.");
 
+    // Prices and discounts are the owner's call: a tech rings items up as they're priced, with no money off.
+    const tech = user.role === "TECH";
     const lines = input.lines.map((l) => {
       const qty = Number(l.qty);
       if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 10000) throw new UserError("Each line needs a quantity.");
       let unit = Math.round(Number(l.unitPriceCents));
       if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, use Return mode (negative quantity).");
       let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
+      if (tech && disc > 0) throw new UserError("Only an owner or admin can discount a line.");
       const part = l.partId ? parts.get(l.partId)! : null;
       const job = l.repairJobId ? jobs.get(l.repairJobId)! : null;
       if (job) {
@@ -188,7 +191,12 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
       }
       if (part) {
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
-        if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+        if (tech && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+        // An item nobody has priced yet is priced on the line, not given away.
+        if (tech && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
+      } else if (tech && !job && qty < 0) {
+        // A misc refund pays out cash for something that was never in stock: an owner or admin does that.
+        throw new UserError("Only an owner or admin can refund a misc item.");
       }
       // A discount can take a line to zero, never below.
       disc = Math.min(disc, Math.abs(Math.round(qty * unit)));
@@ -213,7 +221,11 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     const tenders = (input.tenders ?? [])
       .map((t) => ({ method: TENDER_METHODS.includes(t.method) ? t.method : "OTHER", amountCents: Math.round(Number(t.amountCents) || 0), note: t.note?.slice(0, 100) || null }))
       .filter((t) => t.amountCents !== 0);
-    const totals = saleTotals(lines, Math.max(0, Math.round(input.orderDiscountCents ?? 0)), shop.taxRatePct, tenders);
+    const orderDiscountCents = Math.max(0, Math.round(Number(input.orderDiscountCents) || 0));
+    if (tech && orderDiscountCents > 0) throw new UserError("Only an owner or admin can discount the sale.");
+    const totals = saleTotals(lines, orderDiscountCents, shop.taxRatePct, tenders);
+    // Each line's share of the whole-sale discount, so a consigned item is reported at the price it really fetched.
+    const offEachLine = orderDiscountShares(lines, orderDiscountCents);
     if (totals.total >= 0 && totals.paid < totals.total) throw new UserError(`Still due: $${((totals.total - totals.paid) / 100).toFixed(2)}.`);
     if (totals.total < 0 && totals.paid !== totals.total) throw new UserError(`Refund the full $${(-totals.total / 100).toFixed(2)} (a negative payment).`);
     if (tenders.some((t) => (totals.total >= 0 ? t.amountCents < 0 : t.amountCents > 0))) throw new UserError(totals.total >= 0 ? "Payments are positive amounts on a sale." : "A refund is paid out as negative amounts.");
@@ -249,7 +261,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           createdAt: at,
         },
       });
-      for (const l of lines) {
+      for (const [i, l] of lines.entries()) {
         const { pickedUp, discountable, ...row } = l;
         void discountable;
         const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
@@ -260,8 +272,9 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           });
         }
         if (l.consignLinkId && l.consignItemKey) {
-          // Consigned stock: the owner hears about every sale; the net price after the line discount is what counts.
-          const net = Math.round(lineNet(l) / l.qty);
+          // Consigned stock: the owner hears about every sale at the price it really fetched, after the line discount
+          // and this line's share of any discount on the whole sale (both boxes cost the owner the same).
+          const net = Math.round((lineNet(l) - offEachLine[i]) / l.qty);
           const gross = Math.round(l.qty * net);
           await tx.consignSale.create({
             data: {
@@ -288,18 +301,26 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           const job = jobs.get(l.repairJobId)!;
           const amount = lineNet(l);
           const events = [...((job.events as { at: string; note?: string; status?: string }[]) ?? []), { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` }].slice(-200);
-          // Only if nobody paid it meanwhile (another register, or a second click).
+          // Only if nobody paid it meanwhile (another register, or a second click) and the bill is still the one the
+          // amount was worked out from: a repair shop update that landed since changes what's due.
           const paid = await tx.repairJob.updateMany({
-            where: { shopId, id: job.id, paidAt: null },
+            where: { shopId, id: job.id, paidAt: null, totalCents: job.totalCents, repairPaidCents: job.repairPaidCents, paidCents: job.paidCents },
             data: {
-              paidCents: amount,
+              paidCents: (job.paidCents ?? 0) + amount,
               paidAt: at,
               paidWhere: job.repairPaidCents ? "split" : "shop",
               ...(pickedUp ? { pickedUpAt: at, status: "COLLECTED" } : {}),
               events: (pickedUp ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
             },
           });
-          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid. Take it off this sale.`);
+          if (!paid.count) {
+            const now = await tx.repairJob.findUnique({ where: { shopId_id: { shopId, id: job.id } }, select: { paidAt: true } });
+            throw new UserError(
+              now?.paidAt
+                ? `Repair tag ${job.tag} was just paid. Take it off this sale.`
+                : `The bill for repair tag ${job.tag} changed while you were ringing it up. Take it off this sale and add it again for the new amount.`,
+            );
+          }
           await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, saleNumber: number, at: at.toISOString() }, tx);
           if (pickedUp) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx);
         }
@@ -344,9 +365,11 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
         }
       }
       if (l.consignLinkId && l.consignItemKey) {
-        const net = Math.round(lineNet(l) / l.qty);
         const id = `${l.id}-void`;
-        const original = await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id: l.id } }, select: { shopKeepsCents: true } });
+        // Reverse exactly what was recorded when it sold: the same net price (which carried its share of any discount
+        // on the whole sale) and the same share kept, so the owner's books net to zero whatever the terms are today.
+        const original = await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id: l.id } }, select: { priceCents: true, shopKeepsCents: true } });
+        const net = original?.priceCents ?? Math.round(lineNet(l) / l.qty);
         await tx.consignSale.create({
           data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at, shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null },
         });

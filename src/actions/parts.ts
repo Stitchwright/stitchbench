@@ -11,10 +11,17 @@ import type { PartKind } from "@/generated/prisma/enums";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 
-/** Whole numbers for most things; fabric by the yard to the eighth. */
-function qtyValue(v: FormDataEntryValue | null) {
-  const n = Number(str(v) ?? "0");
-  return Number.isFinite(n) ? Math.max(0, Math.round(n * 1000) / 1000) : 0;
+/**
+ * A quantity as typed. Whole pieces for most things; fabric by the yard to the thousandth (it's cut to the eighth).
+ * Blank is 0. Negative, or a fraction of something sold each, is a typo: the register could never sell that off.
+ */
+function qtyValue(v: FormDataEntryValue | null, unit: string | null) {
+  const s = str(v);
+  const n = s == null ? 0 : Number(s);
+  if (!Number.isFinite(n) || n < 0) throw new UserError("Enter a quantity of 0 or more.");
+  if (unit === "yd") return Math.round(n * 1000) / 1000;
+  if (!Number.isInteger(n)) throw new UserError("This item is sold each: use a whole number.");
+  return n;
 }
 
 function partData(formData: FormData) {
@@ -24,6 +31,7 @@ function partData(formData: FormData) {
   const kind = (str(formData.get("kind")) ?? "PART") as PartKind;
   if (!KINDS.includes(kind)) throw new UserError("Pick what kind of item it is.");
   const altNumbers = splitList(str(formData.get("altNumbers"))).filter((n) => n !== partNumber);
+  const unit = str(formData.get("unit")) === "yd" ? "yd" : null;
   return {
     partNumber,
     description,
@@ -33,8 +41,8 @@ function partData(formData: FormData) {
     brand: str(formData.get("brand")),
     fits: str(formData.get("fits")),
     location: str(formData.get("location")),
-    reorderAt: qtyValue(formData.get("reorderAt")),
-    unit: str(formData.get("unit")) === "yd" ? "yd" : null,
+    reorderAt: qtyValue(formData.get("reorderAt"), unit),
+    unit,
     wholesaleCents: toCents(formData.get("wholesale")),
     offerToPartners: formData.get("offerToPartners") === "on",
     costCents: toCents(formData.get("cost")),
@@ -49,7 +57,7 @@ export const createPart = safe(async function createPart(formData: FormData) {
   const data = partData(formData);
   // The same number in another case is the same part (the scanner treats them as one).
   const exists = await db.part.findFirst({ where: { shopId: user.shopId, partNumber: { equals: data.partNumber, mode: "insensitive" } } });
-  const qty = qtyValue(formData.get("qtyOnHand"));
+  const qty = qtyValue(formData.get("qtyOnHand"), data.unit);
   if (exists && qty) throw new UserError(`${exists.partNumber} is already in inventory. Open it and use Receive stock to add ${qty}.`);
   if (exists) redirect(`/parts/${exists.id}`);
   const p = await db.part.create({
@@ -82,10 +90,10 @@ export const moveStock = safe(async function moveStock(partId: string, formData:
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
   if (!p) throw new UserError("Part not found.");
   const mode = str(formData.get("mode"));
-  const raw = Number(str(formData.get("qty")) ?? "NaN");
-  if (!Number.isFinite(raw)) throw new UserError("Enter a quantity.");
-  // Fabric is counted in yards (to the eighth); everything else in whole pieces.
-  const n = p.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
+  const typed = str(formData.get("qty"));
+  if (typed == null) throw new UserError("Enter a quantity.");
+  // Fabric is counted in yards (to the eighth); everything else in whole pieces, and a shelf count is never below zero.
+  const n = qtyValue(typed, p.unit);
   const note = str(formData.get("note"));
   if (mode === "count") {
     const delta = n - p.qtyOnHand;

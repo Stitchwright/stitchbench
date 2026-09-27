@@ -90,7 +90,10 @@ export const resetUserPassword = safe(async function resetUserPassword(userId: s
   if (password.length < 8) throw new UserError("Use at least 8 characters.");
   const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
   if (!u) throw new UserError("User not found.");
-  if (u.role === "OWNER" && u.id !== admin.id) throw new UserError("Only the owner can change the owner's password.");
+  // Your own password is changed under "My password", which asks for the current one first: a signed-in PC left
+  // unattended can't be used to take the account over. And nobody else gets to reset the owner's.
+  if (u.id === admin.id) throw new UserError("Change your own password under My password.");
+  if (u.role === "OWNER") throw new UserError("Only the owner can change the owner's password, under My password.");
   // Signed-in devices of that person have to sign in again with the new password.
   await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } });
 });

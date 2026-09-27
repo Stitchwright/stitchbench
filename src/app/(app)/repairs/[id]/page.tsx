@@ -23,6 +23,10 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
   const lines = (j.lines as JobLine[] | null) ?? [];
   const events = (j.events as JobEvent[]) ?? [];
   const ready = ["READY_FOR_PICKUP", "READY_IN_TRUCK", "RETURNED_UNREPAIRED"].includes(j.status);
+  const repairShop = link?.partnerName ?? "the repair shop";
+  // What the customer still owes: the bill less anything paid to either shop (a deposit at the repair shop counts).
+  // The same figure the register charges on a Repair pickup.
+  const due = Math.max(0, (j.totalCents ?? 0) - (j.repairPaidCents ?? 0) - (j.paidCents ?? 0));
 
   return (
     <div className="space-y-6">
@@ -90,10 +94,12 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
       {ready && !j.pickedUpAt && (
         <Section title="Handing it back">
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            {!j.paidAt && j.totalCents != null && j.totalCents > 0 ? (
+            {!j.paidAt && due > 0 ? (
               <>
                 <span>
-                  The customer owes <strong>{money(j.totalCents)}</strong>. Ring it up on the register (Repair pickup).
+                  The customer owes <strong>{money(due)}</strong>
+                  {j.repairPaidCents ? ` (the ${money(j.totalCents)} bill less ${money(j.repairPaidCents)} paid to ${repairShop})` : ""}. Ring it up on the
+                  register (Repair pickup).
                 </span>
                 <Link href="/register" className="btn btn-primary">
                   Register
@@ -141,6 +147,18 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
                 <span>Customer pays</span>
                 <span className="num">{money(j.totalCents)}</span>
               </li>
+              {!j.paidAt && j.repairPaidCents ? (
+                <>
+                  <li className="flex justify-between">
+                    <span>Paid to {repairShop}</span>
+                    <span className="num">-{money(j.repairPaidCents)}</span>
+                  </li>
+                  <li className="flex justify-between font-semibold">
+                    <span>Still to pay at pickup</span>
+                    <span className="num">{money(due)}</span>
+                  </li>
+                </>
+              ) : null}
               <li className="muted flex justify-between">
                 <span>Your commission ({j.commissionPct}%)</span>
                 <span className="num">{money(j.commissionCents ?? 0)}</span>

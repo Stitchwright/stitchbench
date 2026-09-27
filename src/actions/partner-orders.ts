@@ -9,7 +9,7 @@ import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { numberKey, partKeys } from "@/lib/parts";
-import { consignReturned, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
+import { orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
 
@@ -19,6 +19,17 @@ const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PAT
 function refresh(linkId: string) {
   revalidatePath(`/partners/${linkId}`, "layout");
   revalidatePath("/parts", "layout");
+}
+
+/**
+ * A quantity as typed, or null when it isn't one: whole pieces for most things, yards to the thousandth for fabric,
+ * never negative. A fraction of something sold each could never be sold off, on either shop's shelf.
+ */
+function qtyFor(raw: string | null, unit: string | null | undefined) {
+  const n = Number(raw ?? "NaN");
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (unit === "yd") return Math.round(n * 1000) / 1000;
+  return Number.isInteger(n) ? n : null;
 }
 
 // ---------- orders ----------
@@ -178,9 +189,8 @@ export const placeConsignment = safe(async function placeConsignment(linkId: str
     ? ((await db.part.findFirst({ where: { shopId, partNumber: pn } })) ?? (await db.part.findFirst({ where: { shopId, numberKeys: { has: numberKey(pn) } } })))
     : null;
   if (!part) throw new UserError("Pick an item from your inventory.");
-  const raw = Number(str(formData.get("qty")) ?? "0");
-  const qty = part.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
-  if (!(qty > 0)) throw new UserError("Enter how many you're leaving there.");
+  const qty = qtyFor(str(formData.get("qty")), part.unit);
+  if (!qty) throw new UserError(part.unit === "yd" ? "Enter how many yards you're leaving there." : "Enter how many you're leaving there, in whole pieces.");
   const price = toCents(formData.get("price")) ?? part.priceCents;
   if (!price) throw new UserError("Set the shelf price (what the customer pays).");
   const at = new Date();
@@ -207,21 +217,42 @@ export const placeConsignment = safe(async function placeConsignment(linkId: str
   refresh(linkId);
 });
 
-/** Consigned stock going back to the repair shop (either shop records it; the other hears about it). */
+/**
+ * Consigned stock going back to the repair shop. The sewing shop records it (it hands the stock over), so one hand-off
+ * is never counted by both shops; the repair shop hears about it. Once the partnership has ended there's no one there
+ * to record it, so the owner takes what's still out back into its own stock.
+ */
 export const returnConsigned = safe(async function returnConsigned(linkId: string, itemKey: string, formData: FormData) {
   const user = await requireUser();
-  const link = await partnerLink(user.shopId, linkId);
-  // The sewing shop records a return (it hands the stock over), so one hand-off is never counted by both shops.
-  if (link.side !== "retail") throw new UserError(`${link.partnerName} records stock going back when they hand it to you.`);
-  const item = await db.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId: user.shopId, linkId, itemKey } } });
+  const shopId = user.shopId;
+  const link = await partnerLink(shopId, linkId);
+  if (link.side !== "retail" && link.status === "ACTIVE") throw new UserError(`${link.partnerName} records stock going back when they hand it to you.`);
+  const item = await db.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId, itemKey } } });
   if (!item) throw new UserError("That item isn't on consignment here.");
   const onShelf = item.placed - item.sold - item.returned;
-  const qty = Number(str(formData.get("qty")) ?? "0");
-  if (!(qty > 0) || qty > onShelf + 1e-9) throw new UserError(`Between 1 and ${onShelf} can go back.`);
+  // This shop's inventory entry for it: the owner's own part, or the sewing shop's copy of it.
+  const partId = link.side === "repair" ? itemKey : item.partId;
+  const part = partId ? await db.part.findFirst({ where: { id: partId, shopId } }) : null;
+  const qty = qtyFor(str(formData.get("qty")), part?.unit);
+  if (!qty || qty > onShelf + 1e-9) throw new UserError(part?.unit === "yd" ? `Up to ${onShelf} yards can go back.` : `Between 1 and ${onShelf} whole pieces can go back.`);
   const at = new Date();
-  const back = await consignReturned(user.shopId, link, itemKey, qty, at);
+  // The shelf record, this shop's stock and the word to the partner move together or not at all: a return the
+  // partner never hears of would leave its shelf count high and its stock short for good.
+  const back = await db.$transaction(async (tx) => {
+    // Only counts if the shelf still had it when this ran (two returns at once can't both take the same units).
+    const took = await tx.consignItem.updateMany({ where: { id: item.id, returned: item.returned }, data: { returned: { increment: qty } } });
+    if (!took.count) return 0;
+    const sign = link.side === "repair" ? 1 : -1; // back on the repair shop's shelf; off the sewing shop's
+    if (part) {
+      await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: sign * qty } } });
+      await tx.stockMove.create({
+        data: { shopId, partId: part.id, qty: sign * qty, reason: "CONSIGNED", userId: user.id, note: link.side === "repair" ? `Back from ${link.partnerName}` : `Returned to ${link.partnerName}`, createdAt: at },
+      });
+    }
+    if (link.side === "retail") await sendToPartner(shopId, linkId, "consign.return", { id: crypto.randomUUID(), items: [{ itemKey, qty }], at: at.toISOString() }, tx);
+    return qty;
+  });
   if (!back) throw new UserError("Nothing went back: the shelf count changed meanwhile. Reload and try again.");
-  await sendToPartner(user.shopId, linkId, "consign.return", { id: crypto.randomUUID(), items: [{ itemKey, qty: back }], at: at.toISOString() });
   refresh(linkId);
 });
 
@@ -238,11 +269,11 @@ export const countConsigned = safe(async function countConsigned(linkId: string,
     for (const it of items) {
       const v = str(formData.get(`count_${it.itemKey}`));
       if (v == null) continue;
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) throw new UserError(`Check the count for ${it.partNumber}.`);
+      const part = it.partId ? await tx.part.findFirst({ where: { id: it.partId, shopId } }) : null;
+      const n = qtyFor(v, part?.unit);
+      if (n == null) throw new UserError(`Check the count for ${it.partNumber}${part?.unit === "yd" ? "" : ": whole pieces, 0 or more"}.`);
       counted.push({ itemKey: it.itemKey, onHand: n });
       await tx.consignItem.update({ where: { id: it.id }, data: { countedQty: n, countedAt: at } });
-      const part = it.partId ? await tx.part.findFirst({ where: { id: it.partId, shopId } }) : null;
       if (part && part.qtyOnHand !== n) {
         await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: n } });
         await tx.stockMove.create({ data: { shopId, partId: part.id, qty: n - part.qtyOnHand, reason: "ADJUSTED", userId: user.id, note: "Consignment shelf count", createdAt: at } });

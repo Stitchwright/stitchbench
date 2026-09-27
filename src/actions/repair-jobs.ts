@@ -76,7 +76,11 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     if (photos.reduce((a, p) => a + p.data.length, 0) > 2_600_000) throw new UserError("The photos are too large together. Take fewer, or smaller ones.");
 
     const terms = normalizeTerms(link.terms);
-    const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
+    // The same serial and make again is the same machine: its history follows it, and it's owned by whoever brought it
+    // in this time (a traded-in machine sold on comes back with a new owner).
+    const existing = serial
+      ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, brand: { equals: brand, mode: "insensitive" }, modelKey: modelKey(model) } })
+      : null;
     const id = crypto.randomUUID();
     const at = new Date();
     const machineType = str(formData.get("machineType"));
@@ -84,6 +88,7 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     const preApprovedCents = toCents(formData.get("preApproved"));
     await db.$transaction(async (tx) => {
       const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType, customerId } }));
+      if (existing && existing.customerId !== customerId) await tx.machine.update({ where: { id: existing.id }, data: { customerId } });
       const sh = await tx.shop.update({ where: { id: shopId }, data: { nextTagNumber: { increment: 1 } }, select: { nextTagNumber: true } });
       const tag = String(sh.nextTagNumber - 1);
       await tx.repairJob.create({

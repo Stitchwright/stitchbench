@@ -15,6 +15,28 @@ export function discountBase(lines: Line[]) {
 }
 
 /**
+ * How much of a whole-sale discount each line carries: split across the lines it can come off, in proportion to what
+ * they net (the same split saleTotals uses for tax). One entry per line, zero for lines it can't come off. Rounding is
+ * carried from line to line so the shares add up to the discount exactly. A consigned item is reported to its owner
+ * at the price it really fetched, so its share counts the same as a discount typed on the line.
+ */
+export function orderDiscountShares(lines: Line[], orderDiscountCents: number): number[] {
+  const eligible = (l: Line) => l.discountable !== false && lineNet(l) > 0;
+  const base = lines.filter(eligible).reduce((a, l) => a + lineNet(l), 0);
+  const discount = base > 0 ? Math.max(0, Math.min(Math.round(orderDiscountCents), base)) : 0;
+  let seen = 0;
+  let given = 0;
+  return lines.map((l) => {
+    if (!discount || !eligible(l)) return 0;
+    seen += lineNet(l);
+    const upTo = Math.round((discount * seen) / base);
+    const share = upTo - given;
+    given = upTo;
+    return share;
+  });
+}
+
+/**
  * Subtotal of the lines after their own discounts, less a whole-sale discount, plus tax on the taxable part. The
  * whole-sale discount comes off the items being bought and lowers their taxable amount in proportion; returns and
  * repair bills are left as they are. Negative quantities are returns.

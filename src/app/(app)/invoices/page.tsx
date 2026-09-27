@@ -18,8 +18,11 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
   const show: Tab = TABS.some((t) => t.key === sp.show) ? (sp.show as Tab) : "unpaid";
   const term = sp.q?.trim() ?? "";
   const num = /^\d+$/.test(term) ? Number(term) : null;
+  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
 
-  // An invoice is a ticket with something billed on it.
+  // An invoice is a ticket with something billed on it. All of them, not the newest few hundred: a balance is only known
+  // once the lines and payments are added up here, so a cap would quietly drop an old unpaid ticket from Unpaid and
+  // from "Still owed". Only what the table needs from each line and payment is fetched; the list itself is cut below.
   const tickets = await db.ticket.findMany({
     where: {
       shopId: user.shopId,
@@ -35,15 +38,20 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
           }
         : {}),
     },
-    include: { lines: true, payments: true, customer: { select: { id: true, name: true } }, machine: { select: { brand: true, model: true, serial: true } } },
+    include: {
+      lines: { select: { kind: true, qty: true, unitPriceCents: true, taxable: true } },
+      payments: { select: { amountCents: true } },
+      customer: { select: { id: true, name: true } },
+      machine: { select: { brand: true, model: true, serial: true } },
+    },
     orderBy: { number: "desc" },
-    take: 500,
   });
   const rows = tickets
     .map((t) => ({ t, tot: ticketTotals(t.lines, t.payments, t.taxRatePct) }))
     .filter(({ tot }) => (show === "unpaid" ? tot.balance > 0 : show === "paid" ? tot.balance <= 0 : true));
   const owed = rows.reduce((s, r) => s + Math.max(0, r.tot.balance), 0);
   const billed = rows.reduce((s, r) => s + r.tot.total, 0);
+  const shown = rows.slice(0, 500);
 
   return (
     <div className="space-y-6">
@@ -72,7 +80,7 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="card card-pad">
-          <div className="label">Invoices shown</div>
+          <div className="label">Invoices</div>
           <div className="num text-2xl font-semibold">{rows.length}</div>
         </div>
         <div className="card card-pad">
@@ -105,14 +113,14 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ t, tot }) => (
+                {shown.map(({ t, tot }) => (
                   <tr key={t.id}>
                     <td>
                       <Link href={`/tickets/${t.id}/invoice`} className="link mono font-semibold">
                         #{ticketNo(t.number)}
                       </Link>
                     </td>
-                    <td className="num whitespace-nowrap">{fmtDate(t.closedAt ?? t.readyAt ?? t.intakeAt)}</td>
+                    <td className="num whitespace-nowrap">{fmtDate(t.closedAt ?? t.readyAt ?? t.intakeAt, tz)}</td>
                     <td>{t.customer ? <Link href={`/customers/${t.customer.id}`} className="link">{t.customer.name}</Link> : "-"}</td>
                     <td>
                       {t.machine.brand} {t.machine.model}
@@ -128,6 +136,11 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
                 ))}
               </tbody>
             </table>
+            {rows.length > shown.length && (
+              <p className="muted card-pad text-xs">
+                Showing {shown.length} of {rows.length}. Search to narrow it down; the totals above cover all of them.
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -19,10 +19,14 @@ export function ticketNo(n: number): string {
   return String(n).padStart(4, "0");
 }
 
-export function fmtDate(d: Date | string | null | undefined): string {
+/**
+ * "Sep 30, 2026". Pass the shop's time zone on the server: a hosted install runs on UTC, so without it an evening sale
+ * prints as the next day's date.
+ */
+export function fmtDate(d: Date | string | null | undefined, timeZone?: string): string {
   if (!d) return "";
   const x = typeof d === "string" ? new Date(d) : d;
-  return x.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return x.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" });
 }
 
 /**
