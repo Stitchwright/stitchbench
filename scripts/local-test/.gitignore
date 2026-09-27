@@ -1,0 +1,3 @@
+.run/
+fixtures/manualdir/*.pdf
+fixtures/pdfsrv/*.pdf
