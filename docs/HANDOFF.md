@@ -130,11 +130,12 @@ copied into `public/` (the eslint config should ignore `public/`).
    name) the first hub job: send `shopRef` + `shopName` on marketplace, note and usage calls, and store/show them
    per company on the hub, as the partner channel already does. A dedicated instance stays an option for a shop
    that asks for it (template it: one command per shop).
-9. **Sharing is chosen per item, never automatic** (owner decision, 27 Sep 2026). From a machine or ticket:
-   "Share a hint about this model" sends that hint only, with nothing private from the ticket pre-filled (fixes
-   the "Share with other techs" pre-fill finding). From a part: "Sell this on the marketplace" lists that part
-   only. "Offer to partner shops" on a part already works this way. The monthly most-used-parts report to the hub
-   is the one automatic share today: make it a per-company setting, off unless turned on.
+9. **Sharing is chosen per item, never automatic** (owner decision, 27 Sep 2026; wording is "offer"). From a
+   machine or ticket: "Offer a hint about this model" sends that hint only, with nothing private from the ticket
+   pre-filled (fixes the "Share with other techs" pre-fill finding). From a part: one "Offer this part" action
+   where the shop picks where it goes: to its partner shops (partner price; today's "Offer to partner shops"
+   checkbox), on the marketplace, or both. Nothing reaches the hub unless chosen. The monthly most-used-parts
+   report is the one automatic share today: make it a per-company setting, off unless turned on.
 
 ## 4. Owner decisions already made (don't re-ask)
 
@@ -144,7 +145,7 @@ copied into `public/` (the eslint config should ignore `public/`).
 - Email through each shop's own SMTP; texts through Twilio. Campaigns plus automatic reminders, ready-for-pickup
   notices, estimate approval by link, service-due reminders, review requests, dated abandoned-machine notices.
 - Hosting: one shared instance for all companies (per-company identity on the hub to follow); sharing to the hub is
-  a per-item choice (hint about a model, a part for sale), never automatic; usage reporting becomes an opt-in setting.
+  a per-item choice worded "offer" (offer a hint about a model; offer a part to partners and/or the marketplace), never automatic; usage reporting becomes an opt-in setting.
 - Paid modules: Vac Shop (repair bench, bag/belt/filter finder shared via the hub, sales + warranty + trade-ins,
   central vac installs), Small Appliance Repair (KitchenAid-type mixers, 3D printers, other), Scheduling,
   Marketing. Unlocked by license keys the owner signs (checked offline) plus an admin switch on hosted.
