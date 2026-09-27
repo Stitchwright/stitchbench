@@ -156,6 +156,16 @@ copied into `public/` (the eslint config should ignore `public/`).
    (`tailscale serve` / a Tailscale certificate gives the shop PC an https://...ts.net address on every device on the
    tailnet); document it in INSTALL.md and have the tray list that address first. A locally installed certificate
    is the fallback for shops without Tailscale. Until then the app shows a clear message on non-secure pages.
+12. **Manual links: download all, file on download, what's missing** (owner request, 27 Sep 2026). The hub is the
+   community's catalog of links (the hub never hosts OEM manuals; each shop downloads into its own library).
+   (a) "Download everything" for a model, a brand, or every link not yet in this library: a queued job, one file
+   at a time with a pause between, skipping links the checker marks dead, with progress and resume.
+   (b) File on download: when a link has category, brand, model and doc type, save straight to
+   Category/Brand/Brand_Model_DocType.pdf (the library's naming) and add the LibraryDoc row so the model page shows
+   it at once; only links missing that data, or downloads that aren't PDFs, go to _inbox. Keep the source URL and
+   the link id with the file (index + a sidecar or the LibraryDoc row) so re-downloads and dedupe work.
+   (c) Per model, show which doc types exist (service, parts, operator, error codes, wiring) and which are missing,
+   so members know what to look for. Links already carry the doc type; the model page groups by it.
 
 ## 4. Owner decisions already made (don't re-ask)
 
