@@ -34,6 +34,41 @@ export function saleTotals(lines: Line[], orderDiscountCents: number, taxRatePct
   return { subtotal, orderDiscount, tax, total, paid, change, due: Math.max(0, total - paid) };
 }
 
+/**
+ * Each line's part of the whole-sale discount, in line order: shared over the items being bought in proportion to
+ * their price, so what each one sold for is known (a partner's consigned item is paid out on that). Adds up to the
+ * discount exactly; returns and repair bills get 0.
+ */
+export function orderDiscountShares(lines: Line[], orderDiscountCents: number) {
+  const nets = lines.map((l) => (l.discountable !== false && lineNet(l) > 0 ? lineNet(l) : 0));
+  let rest = nets.reduce((a, n) => a + n, 0);
+  let left = Math.max(0, Math.min(Math.round(orderDiscountCents), rest));
+  return nets.map((n) => {
+    if (!n) return 0;
+    const share = Math.round((left * n) / rest);
+    left -= share;
+    rest -= n;
+    return share;
+  });
+}
+
+/**
+ * Why the payments can't settle this sale, or null when they do. A sale is paid in full with positive amounts, and only
+ * cash gives change; a refund is paid out in full as negative amounts, in any way.
+ */
+export function tenderProblem(totals: { total: number; paid: number }, tenders: Tender[]): string | null {
+  const refund = totals.total < 0;
+  if (!refund && totals.paid < totals.total) return `Still due: $${((totals.total - totals.paid) / 100).toFixed(2)}.`;
+  if (refund && totals.paid !== totals.total) return `Refund the full $${(-totals.total / 100).toFixed(2)} (a negative payment).`;
+  if (tenders.some((t) => (refund ? t.amountCents > 0 : t.amountCents < 0))) return refund ? "A refund is paid out as negative amounts." : "Payments are positive amounts on a sale.";
+  const cash = tenders.filter((t) => t.method === "CASH").reduce((a, t) => a + t.amountCents, 0);
+  if (!refund && totals.paid - cash > totals.total) return "Card, check and gift amounts can't be more than the total. Only cash gives change.";
+  return null;
+}
+
+/** Fabric is cut in eighths of a yard: 2.375 is, 2.3751 isn't. */
+export const inEighths = (q: number) => Math.abs(q * 8 - Math.round(q * 8)) < 1e-6;
+
 /** "2.375" -> "2 3/8" for fabric cut in eighths of a yard. */
 export function yards(q: number): string {
   if (q < 0) return `-${yards(-q)}`;

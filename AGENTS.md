@@ -12,3 +12,4 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Manuals are local-only by design. Never add manual upload/storage to the server.
 - Tension specs come from Bruce's manual library (C:\Manuals\_business-notes\Thread_Tension_Specs.xlsx); regenerate `prisma/seed-data/tension_specs.json` from that sheet, then `npm run db:seed`.
 - Mirror the paper Machine Log's statuses and lists (`src/lib/constants.ts`).
+- Work in progress (review fixes, new features): read `docs/HANDOFF.md` before starting.

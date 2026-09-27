@@ -14,8 +14,10 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
   const { start, end, fromStr, toStr } = monthRange(sp.from, sp.to, tz);
   const [payments, closed] = await Promise.all([
     paymentsBetween(user.shopId, start, end),
+    // Machines handed back in the period, repaired or not (a declined estimate's diagnosis fee is taxed too). An
+    // abandoned machine's bill was never collected, so it isn't counted.
     db.ticket.findMany({
-      where: { shopId: user.shopId, status: "COLLECTED", closedAt: { gte: start, lt: end } },
+      where: { shopId: user.shopId, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
       include: { lines: true, payments: true, viaAccount: true },
     }),
   ]);

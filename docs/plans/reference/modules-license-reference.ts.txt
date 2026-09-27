@@ -1,0 +1,214 @@
+// Reference implementation of src/lib/license.ts (pure: no "server-only", no database). Checked by license-check.ts.
+import crypto from "node:crypto";
+
+export const MODULE_IDS = ["vac", "appliance", "scheduling", "marketing"] as const;
+export type ModuleId = (typeof MODULE_IDS)[number];
+export type KeyScope = "any" | "hosted" | "dev";
+/** A retired signing key: its keys count only up to `lastDay`, and (after a leak) only the genuine ones listed in `allow`. */
+export type Retired = { lastDay: string; allow?: string[] };
+export type PublicKeys = Record<string, { x: string; scope: KeyScope; retired?: Retired }>;
+/** m monthly, y yearly, a administrator switch, t trial; any other short word is a plan a newer version knows. */
+export type Plan = string;
+export type LicensePayload = { v: 1; k: string; id: string; s: string; n: string; m: string[]; p: Plan; f: string; u: string; g: number; t: string };
+export type Verified = { ok: true; payload: LicensePayload; scope: KeyScope; kid: string } | { ok: false; reason: string };
+
+export const NO_END = "2099-12-31";
+export const TRIAL_DAYS = 14;
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+export const validYmd = (s: unknown): s is string => typeof s === "string" && YMD.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
+/** Email programs wrap long lines: every space and line break goes. */
+export const cleanKeyText = (text: string) => String(text ?? "").replace(/\s+/g, "");
+/** The key inside whatever was pasted (the whole email is fine): the first SB1 key in the text without its spaces. */
+export function extractKey(text: string): string | null {
+  return /SB1\.[A-Za-z0-9_-]{20,3000}\.[A-Za-z0-9_-]{86}/.exec(cleanKeyText(text))?.[0] ?? null;
+}
+/** What a retired kid's `allow` list holds for one genuine key: the first 16 hex characters of sha256(payload part). */
+export const payloadHash = (payloadPart: string) => crypto.createHash("sha256").update(payloadPart).digest("hex").slice(0, 16);
+
+const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+export function newKeyId() {
+  return [...crypto.randomBytes(8)].map((b) => CROCKFORD[b % 32]).join("");
+}
+
+export function encodeLicense(payload: LicensePayload, privateKey: crypto.KeyObject) {
+  const bytes = Buffer.from(JSON.stringify(payload), "utf8");
+  return `SB1.${bytes.toString("base64url")}.${crypto.sign(null, bytes, privateKey).toString("base64url")}`;
+}
+
+const pubCache = new Map<string, crypto.KeyObject>();
+function publicKey(x: string) {
+  let k = pubCache.get(x);
+  if (!k) pubCache.set(x, (k = crypto.createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x }, format: "jwk" })));
+  return k;
+}
+
+const NOT_A_KEY = "That doesn't look like a StitchBench license key. Copy the whole key: it starts with SB1.";
+const DAMAGED = "That key is damaged or was changed. Copy the whole key again from the email.";
+const NEWER = "This key needs a newer version of StitchBench. Update the program, then paste it again.";
+const REPLACED = "This key was replaced. Ask StitchBench for a new key.";
+
+export function verifyLicense(text: string, keys: PublicKeys): Verified {
+  const m = /^SB1\.([A-Za-z0-9_-]{20,3000})\.([A-Za-z0-9_-]{86})$/.exec(cleanKeyText(text));
+  if (!m) return { ok: false, reason: NOT_A_KEY };
+  const bytes = Buffer.from(m[1], "base64url");
+  let p: LicensePayload;
+  try {
+    p = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    return { ok: false, reason: DAMAGED };
+  }
+  if (!p || typeof p !== "object") return { ok: false, reason: DAMAGED };
+  // A later format: say so before anything else (only the message depends on this unsigned field).
+  if (p.v !== 1) return { ok: false, reason: NEWER };
+  const pk = typeof p.k === "string" && Object.hasOwn(keys, p.k) ? keys[p.k] : undefined;
+  if (!pk) return { ok: false, reason: NEWER };
+  let good = false;
+  try {
+    good = crypto.verify(null, bytes, publicKey(pk.x), Buffer.from(m[2], "base64url"));
+  } catch {
+    good = false;
+  }
+  if (!good) return { ok: false, reason: DAMAGED };
+  const shapeOk =
+    typeof p.id === "string" && /^[0-9A-Z]{6,20}$/.test(p.id) && typeof p.s === "string" && p.s.length > 0 && p.s.length <= 64 &&
+    typeof p.n === "string" && Array.isArray(p.m) && p.m.length > 0 && p.m.every((x) => typeof x === "string") &&
+    typeof p.p === "string" && /^[a-z]{1,8}$/.test(p.p) && validYmd(p.f) && validYmd(p.u) && p.u >= p.f &&
+    Number.isInteger(p.g) && p.g >= 0 && p.g <= 90 && typeof p.t === "string" && !Number.isNaN(Date.parse(p.t));
+  if (!shapeOk) return { ok: false, reason: DAMAGED };
+  if (pk.retired && (p.u > pk.retired.lastDay || (pk.retired.allow && !pk.retired.allow.includes(payloadHash(m[1]))))) {
+    return { ok: false, reason: REPLACED };
+  }
+  return { ok: true, payload: p, scope: pk.scope, kid: p.k };
+}
+
+/**
+ * Which verified keys count where. Pasted keys: "any" (and "dev" on a development server). Admin switch rows: "hosted",
+ * only on a server that holds a genuine hosting key itself (hostedSigner() matched its compiled public half), so a copy
+ * of the hosted database on any other server switches nothing on; "dev" on a development server.
+ */
+export function acceptScope(scope: KeyScope, use: "pasted" | "grant", ctx: { devAllowed: boolean; hostedHeld: boolean }) {
+  if (scope === "dev") return ctx.devAllowed;
+  if (scope === "hosted") return use === "grant" && ctx.hostedHeld;
+  return use === "pasted";
+}
+
+/** The instant a calendar day starts in `timeZone` (same method as zonedMidnight in src/lib/partners.ts). */
+export function dayStartIn(ymd: string, timeZone: string) {
+  const [y, mo, d] = ymd.split("-").map(Number);
+  const guess = Date.UTC(y, mo - 1, d);
+  let t = guess;
+  for (let i = 0; i < 2; i++) {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(t));
+    const get = (k: string) => Number(parts.find((x) => x.type === k)?.value);
+    t = guess - (Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second")) - t);
+  }
+  return new Date(t);
+}
+export const addDaysYmd = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+/**
+ * Last day of a plan that starts on `from`: the day before the next period starts. Monthly and yearly periods start on
+ * the anchor day (the first key's day of the month; clamped to short months), so renewals don't drift. Trial: 14 days.
+ */
+export function planLastDay(from: string, plan: "m" | "y" | "t", anchorDay?: number) {
+  if (plan === "t") return addDaysYmd(from, TRIAL_DAYS - 1);
+  const [y, m, d] = from.split("-").map(Number);
+  const months = plan === "y" ? 12 : 1;
+  const days = new Date(Date.UTC(y, m - 1 + months + 1, 0)).getUTCDate();
+  const next = new Date(Date.UTC(y, m - 1 + months, Math.min(anchorDay ?? d, days))).toISOString().slice(0, 10);
+  return addDaysYmd(next, -1);
+}
+
+export type Window = { module: string; from: Date; until: Date; graceUntil: Date; plan: Plan; keyId: string; issuedAt: Date; lastDay: string; graceLastDay: string; source: "key" | "admin" };
+/** One window per module on a verified key: the start of `f` to the end of `u` in shop time, then `g` days of grace. */
+export function windows(p: LicensePayload, timeZone: string, source: "key" | "admin"): Window[] {
+  const from = dayStartIn(p.f, timeZone);
+  const until = dayStartIn(addDaysYmd(p.u, 1), timeZone);
+  const graceUntil = dayStartIn(addDaysYmd(p.u, 1 + p.g), timeZone);
+  const w = { from, until, graceUntil, plan: p.p, keyId: p.id, issuedAt: new Date(p.t), lastDay: p.u, graceLastDay: addDaysYmd(p.u, p.g), source };
+  return p.m.map((module) => ({ module, ...w }));
+}
+
+export type ModuleStatus = "off" | "on" | "renew" | "grace" | "lapsed";
+/** Days before the last day that the renewal reminder shows. Monthly payers get their next key by email: 3 days. */
+export const RENEW_NOTICE_DAYS: Record<string, number> = { m: 3, y: 30, a: 14, t: 3 };
+export const renewNoticeDays = (plan: Plan) => (Object.hasOwn(RENEW_NOTICE_DAYS, plan) ? RENEW_NOTICE_DAYS[plan] : 30);
+
+/**
+ * Where one module stands at `now`. `adminOffAt`: the administrator switched it off then, which ends (with no grace)
+ * every window of a key issued before that moment; keys issued later count as usual. `endedAt` (lapsed only): when the
+ * last window's grace ran out, or the switch-off; tickets opened before it can still be finished.
+ */
+export function statusAt(ws: Window[], now: Date, adminOffAt: Date | null = null): { status: ModuleStatus; best: Window | null; startsAt: Date | null; endedAt: Date | null } {
+  const all = ws
+    .map((w) => (adminOffAt && w.issuedAt <= adminOffAt && w.graceUntil > adminOffAt ? { ...w, until: new Date(Math.min(+w.until, +adminOffAt)), graceUntil: adminOffAt } : w))
+    .filter((w) => w.graceUntil > w.from);
+  const started = all.filter((w) => w.from <= now);
+  const future = all.filter((w) => w.from > now).sort((a, b) => +a.from - +b.from);
+  const startsAt = future[0]?.from ?? null;
+  const active = started.filter((w) => now < w.until).sort((a, b) => +b.until - +a.until)[0];
+  if (active) {
+    const daysLeft = (+active.until - +now) / 86_400_000;
+    const renewed = all.some((w) => w !== active && w.from <= active.until && w.until > active.until);
+    const endless = active.lastDay >= NO_END;
+    return { status: !endless && !renewed && daysLeft <= renewNoticeDays(active.plan) ? "renew" : "on", best: active, startsAt: null, endedAt: null };
+  }
+  const grace = started.filter((w) => now < w.graceUntil).sort((a, b) => +b.graceUntil - +a.graceUntil)[0];
+  if (grace) return { status: "grace", best: grace, startsAt, endedAt: null };
+  const last = started.sort((a, b) => +b.graceUntil - +a.graceUntil)[0];
+  if (last) return { status: "lapsed", best: last, startsAt, endedAt: last.graceUntil };
+  return { status: "off", best: null, startsAt, endedAt: null };
+}
+
+export type GrantRow = { id: string; mode: string; key: string | null; createdAt: Date };
+export type AdminPosition = { onKey: string | null; offAt: Date | null; hadAny: boolean; lastAt: Date | null };
+/**
+ * The administrator's switch for one company and module, from its ModuleGrant rows (any order; ties broken by id).
+ * Only rows newer than the newest "none" (Let keys decide) count. The newest "on" among them supplies the admin window
+ * (a newer "on" replaces an older one, so it can shorten as well as extend); the newest "off" among them ends every key
+ * issued before it, whatever "on" rows came after (a later "on" only adds its own window).
+ */
+export function adminPosition(rows: GrantRow[]): AdminPosition {
+  const sorted = [...rows].sort((a, b) => +b.createdAt - +a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  const none = sorted.findIndex((r) => r.mode === "none");
+  const live = none === -1 ? sorted : sorted.slice(0, none);
+  return {
+    onKey: live.find((r) => r.mode === "on" && r.key)?.key ?? null,
+    offAt: live.find((r) => r.mode === "off")?.createdAt ?? null,
+    hadAny: rows.length > 0,
+    lastAt: sorted[0]?.createdAt ?? null,
+  };
+}
+
+/**
+ * statusAt plus the switch. A company the administrator ever switched (on or off) that has no window now is "lapsed"
+ * rather than "off", so its records stay reachable. When it lapsed, new work stopped at the later of the last window's
+ * end and the switch's last change: "Let keys decide" after an admin "on" ends the module at that moment, so tickets
+ * opened under the admin's window can still be finished.
+ */
+export function resolveStatus(ws: Window[], now: Date, pos: AdminPosition | null) {
+  const r = statusAt(ws, now, pos?.offAt ?? null);
+  if (r.status === "off" && pos?.hadAny) return { ...r, status: "lapsed" as const, endedAt: pos.lastAt };
+  if (r.status === "lapsed" && pos?.lastAt && r.endedAt && pos.lastAt > r.endedAt && pos.lastAt <= now) return { ...r, endedAt: pos.lastAt };
+  return r;
+}
+
+/**
+ * The time modules are judged at. On the Windows program the clock never counts as earlier than 48 hours before the
+ * newest verified key was issued (a PC clock set far back); the hosted app uses the server's own clock.
+ */
+export function effectiveNow(real: Date, issuedAts: Date[], desktop: boolean): { now: Date; floor: Date | null; clockBehind: boolean } {
+  if (!desktop || !issuedAts.length) return { now: real, floor: null, clockBehind: false };
+  const floor = new Date(Math.max(...issuedAts.map((d) => +d)) - 48 * 3_600_000);
+  return { now: floor > real ? floor : real, floor, clockBehind: +floor - +real > 24 * 3_600_000 };
+}
+
+/**
+ * Whether a ticket (or install) of a module's equipment can still be worked on: always while the module is on (or in
+ * grace); once it has ended, only tickets opened before it ended (src/lib/equipment/gate.ts adds: and not closed yet).
+ * New check-ins, machines, units and installs need the module on.
+ */
+export function workable(s: { status: ModuleStatus; endedAt: Date | null }, openedAt: Date) {
+  if (s.status === "on" || s.status === "renew" || s.status === "grace") return true;
+  return s.status === "lapsed" && s.endedAt != null && openedAt < s.endedAt;
+}

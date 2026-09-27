@@ -638,6 +638,7 @@ async function doSync(): Promise<SyncResult> {
         links: HubLink[];
         posts: HubPostIn[];
         figures: string[];
+        removedFigures?: string[];
         xparts?: HubXPart[];
         listings?: HubListing[];
         next: string;
@@ -647,7 +648,12 @@ async function doSync(): Promise<SyncResult> {
       for (const p of ch.posts) await savePost(p);
       await saveXParts(ch.xparts ?? []);
       for (const l of ch.listings ?? []) await saveListing(l);
-      if (ch.figures.length) await db.hubFigure.createMany({ data: ch.figures.map((id) => ({ id })), skipDuplicates: true });
+      // A figure that comes again was redrawn: the copy kept here is fetched again. One the hub admin took down goes.
+      if (ch.figures.length) {
+        await db.hubFigure.updateMany({ where: { id: { in: ch.figures } }, data: { mime: null, data: null } });
+        await db.hubFigure.createMany({ data: ch.figures.map((id) => ({ id })), skipDuplicates: true });
+      }
+      if (ch.removedFigures?.length) await db.hubFigure.deleteMany({ where: { id: { in: ch.removedFigures } } });
       n.links += ch.links.length;
       n.posts += ch.posts.length;
       n.figures += ch.figures.length;

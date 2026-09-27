@@ -11,6 +11,7 @@ const TABS = [
   { key: "all", label: "All" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+const LIMIT = 500;
 
 export default async function Invoices({ searchParams }: { searchParams: Promise<{ show?: string; q?: string }> }) {
   const user = await requireUser();
@@ -19,8 +20,9 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
   const term = sp.q?.trim() ?? "";
   const num = /^\d+$/.test(term) ? Number(term) : null;
 
-  // An invoice is a ticket with something billed on it.
-  const tickets = await db.ticket.findMany({
+  // An invoice is a ticket with something billed on it. Every one's amounts are read (just the money columns), so
+  // Unpaid and the totals take in old debts too; the list itself shows the newest LIMIT of them.
+  const amounts = await db.ticket.findMany({
     where: {
       shopId: user.shopId,
       lines: { some: {} },
@@ -35,15 +37,41 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
           }
         : {}),
     },
-    include: { lines: true, payments: true, customer: { select: { id: true, name: true } }, machine: { select: { brand: true, model: true, serial: true } } },
+    select: {
+      id: true,
+      taxRatePct: true,
+      lines: { select: { kind: true, qty: true, unitPriceCents: true, taxable: true } },
+      payments: { select: { amountCents: true, method: true } },
+    },
     orderBy: { number: "desc" },
-    take: 500,
   });
-  const rows = tickets
-    .map((t) => ({ t, tot: ticketTotals(t.lines, t.payments, t.taxRatePct) }))
+  const matched = amounts
+    .map((t) => ({ id: t.id, tot: ticketTotals(t.lines, t.payments, t.taxRatePct) }))
     .filter(({ tot }) => (show === "unpaid" ? tot.balance > 0 : show === "paid" ? tot.balance <= 0 : true));
-  const owed = rows.reduce((s, r) => s + Math.max(0, r.tot.balance), 0);
-  const billed = rows.reduce((s, r) => s + r.tot.total, 0);
+  const owed = matched.reduce((s, r) => s + Math.max(0, r.tot.balance), 0);
+  const billed = matched.reduce((s, r) => s + r.tot.total, 0);
+  const listed = matched.slice(0, LIMIT);
+  const details = new Map(
+    (
+      await db.ticket.findMany({
+        where: { shopId: user.shopId, id: { in: listed.map((r) => r.id) } },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          intakeAt: true,
+          readyAt: true,
+          closedAt: true,
+          customer: { select: { id: true, name: true } },
+          machine: { select: { brand: true, model: true, serial: true } },
+        },
+      })
+    ).map((t) => [t.id, t]),
+  );
+  const rows = listed.flatMap((r) => {
+    const t = details.get(r.id);
+    return t ? [{ t, tot: r.tot }] : [];
+  });
 
   return (
     <div className="space-y-6">
@@ -72,8 +100,8 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="card card-pad">
-          <div className="label">Invoices shown</div>
-          <div className="num text-2xl font-semibold">{rows.length}</div>
+          <div className="label">Invoices</div>
+          <div className="num text-2xl font-semibold">{matched.length}</div>
         </div>
         <div className="card card-pad">
           <div className="label">Billed</div>
@@ -128,6 +156,12 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
                 ))}
               </tbody>
             </table>
+            {matched.length > rows.length && (
+              <p className="muted card-pad text-sm">
+                Showing the newest {rows.length} of {matched.length}; the totals above count them all. Search by invoice #, customer or serial to find an
+                older one.
+              </p>
+            )}
           </div>
         )}
       </div>

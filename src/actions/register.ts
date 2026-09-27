@@ -9,7 +9,7 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
-import { lineNet, saleTotals, TENDER_METHODS, type Tender } from "@/lib/register-math";
+import { inEighths, lineNet, orderDiscountShares, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type RegisterItem = {
@@ -44,8 +44,9 @@ const view = (p: {
 });
 
 /**
- * A scanned barcode or typed number: the item, or null. When the shop stocks the number itself and also holds a
- * partner's consigned stock of it, its own stock sells first; consigned stock sells once its own runs out.
+ * A scanned barcode or typed number: the item, or null. The item with that number comes first, then items that only
+ * list it as another number (cross-references). When the shop stocks the number itself and also holds a partner's
+ * consigned stock of it, its own stock sells first; consigned stock sells once its own runs out.
  */
 export async function itemByCode(code: string): Promise<RegisterItem | null> {
   const user = await requireUser();
@@ -56,8 +57,15 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
     where: { shopId: user.shopId, OR: [{ partNumber: { equals: c, mode: "insensitive" } }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
     take: 20,
   });
-  const exact = (p: { partNumber: string }) => p.partNumber.toLowerCase() === c.toLowerCase();
-  const rank = (p: (typeof matches)[number]) => (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
+  const lc = c.toLowerCase();
+  const exact = (p: { partNumber: string }) => p.partNumber.toLowerCase() === lc;
+  // The same item kept apart as a partner's consigned stock ("N (Their shop)"), or as this shop's own beside a
+  // partner's "N" ("N (own)"), counts as the number itself.
+  const twin = (p: (typeof matches)[number]) => {
+    const n = p.partNumber.toLowerCase();
+    return n.startsWith(`${lc} (`) && (Boolean(p.consignLinkId) || n.endsWith(" (own)"));
+  };
+  const rank = (p: (typeof matches)[number]) => (exact(p) || twin(p) ? 0 : 8) + (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
   matches.sort((a, b) => rank(a) - rank(b));
   return matches[0] ? view(matches[0]) : null;
 }
@@ -88,13 +96,35 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
   return parts.map(view);
 }
 
-export type PickupJob = { id: string; tag: string; customerName: string; machine: string; dueCents: number; status: string; customerId: string | null };
+export type PickupJob = {
+  id: string;
+  tag: string;
+  customerName: string;
+  machine: string;
+  dueCents: number;
+  /** Already paid at this counter: what's due now is the rest of a bill that went up afterwards. */
+  paidCents: number;
+  pickedUp: boolean;
+  status: string;
+  customerId: string | null;
+};
 
-/** Repairs back from the partner repair shop and not paid for yet: the customer pays for them at the register. */
+/**
+ * Repairs back from the partner repair shop and not paid for yet: the customer pays for them at the register. Also a
+ * repair paid here whose bill then went up (the repair shop added to it before its update arrived): the rest is due.
+ */
 export async function pickupJobs(): Promise<PickupJob[]> {
   const user = await requireUser();
   const jobs = await db.repairJob.findMany({
-    where: { shopId: user.shopId, side: "retail", paidAt: null, totalCents: { not: null }, status: { in: ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"] } },
+    where: {
+      shopId: user.shopId,
+      side: "retail",
+      totalCents: { not: null },
+      OR: [
+        { paidAt: null, status: { in: ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"] } },
+        { paidCents: { gt: 0 }, totalCents: { gt: db.repairJob.fields.paidCents } },
+      ],
+    },
     orderBy: { updatedAt: "desc" },
   });
   return jobs
@@ -104,6 +134,8 @@ export async function pickupJobs(): Promise<PickupJob[]> {
       customerName: j.customerName,
       machine: `${j.brand} ${j.model}`,
       dueCents: repairDue(j),
+      paidCents: j.paidCents ?? 0,
+      pickedUp: Boolean(j.pickedUpAt),
       status: j.status,
       customerId: j.customerId,
     }))
@@ -146,15 +178,31 @@ export type SaleInput = {
   orderDiscountCents?: number;
   tenders: Tender[];
   note?: string | null;
+  /** The register's own name for this sale, the same on every try: a sale sent again isn't made twice. */
+  clientKey?: string | null;
 };
+
+// $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
+const MAX_MONEY = 10_000_000;
+
+/** The sale already made under this key, if any. */
+function saleByKey(shopId: string, clientKey: string | null) {
+  return clientKey ? db.sale.findUnique({ where: { shopId_clientKey: { shopId, clientKey } }, select: { id: true, number: true, changeCents: true } }) : null;
+}
 
 export async function completeSale(input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number } | { error: string }> {
   try {
     const user = await requireUser();
     const shopId = user.shopId;
+    // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
+    const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
+    const made = await saleByKey(shopId, clientKey);
+    if (made) return { saleId: made.id, number: made.number, changeCents: made.changeCents };
     const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
     if (!input.lines.length) throw new UserError("Nothing to sell yet. Scan or search for an item.");
     if (input.lines.length > 300) throw new UserError("That's too many lines for one sale.");
+    const rawTenders = Array.isArray(input.tenders) ? input.tenders : [];
+    if (rawTenders.length > 20) throw new UserError("That's too many payments for one sale.");
 
     // Every item must be this shop's; repairs must be this shop's unpaid partner jobs.
     const partIds = [...new Set(input.lines.map((l) => l.partId).filter(Boolean) as string[])];
@@ -167,7 +215,8 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     for (const id of jobIds) {
       const j = jobs.get(id);
       if (!j) throw new UserError("That repair isn't one of this shop's.");
-      if (j.paidAt) throw new UserError(`Repair tag ${j.tag} is already paid.`);
+      // Paid, unless the bill went up after it was paid here: then the rest is paid the same way.
+      if (j.paidAt && repairDue(j) <= 0) throw new UserError(`Repair tag ${j.tag} is already paid.`);
     }
     if (input.customerId && !(await db.customer.findFirst({ where: { id: input.customerId, shopId } }))) throw new UserError("Customer not found.");
 
@@ -188,7 +237,13 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
       }
       if (part) {
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
+        if (part.unit === "yd" && !inEighths(qty)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
         if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+      }
+      // A discount is a price change too.
+      if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+      if (unit > MAX_MONEY || Math.abs(qty * unit) > MAX_MONEY) {
+        throw new UserError(`${part?.partNumber ?? (l.description || "A line")} comes to more than $100,000. Check the price and quantity.`);
       }
       // A discount can take a line to zero, never below.
       disc = Math.min(disc, Math.abs(Math.round(qty * unit)));
@@ -210,16 +265,20 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
       };
     });
 
-    const tenders = (input.tenders ?? [])
-      .map((t) => ({ method: TENDER_METHODS.includes(t.method) ? t.method : "OTHER", amountCents: Math.round(Number(t.amountCents) || 0), note: t.note?.slice(0, 100) || null }))
+    const tenders = rawTenders
+      .map((t) => ({
+        method: TENDER_METHODS.includes(t?.method) ? t.method : "OTHER",
+        amountCents: Math.round(Number(t?.amountCents) || 0),
+        note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
+      }))
       .filter((t) => t.amountCents !== 0);
-    const totals = saleTotals(lines, Math.max(0, Math.round(input.orderDiscountCents ?? 0)), shop.taxRatePct, tenders);
-    if (totals.total >= 0 && totals.paid < totals.total) throw new UserError(`Still due: $${((totals.total - totals.paid) / 100).toFixed(2)}.`);
-    if (totals.total < 0 && totals.paid !== totals.total) throw new UserError(`Refund the full $${(-totals.total / 100).toFixed(2)} (a negative payment).`);
-    if (tenders.some((t) => (totals.total >= 0 ? t.amountCents < 0 : t.amountCents > 0))) throw new UserError(totals.total >= 0 ? "Payments are positive amounts on a sale." : "A refund is paid out as negative amounts.");
-    const cash = tenders.filter((t) => t.method === "CASH").reduce((a, t) => a + t.amountCents, 0);
-    if (totals.total >= 0 && totals.paid - cash > totals.total) throw new UserError("Card, check and gift amounts can't be more than the total. Only cash gives change.");
-    if (totals.change > cash) throw new UserError("Only cash gives change. Take the exact amount on the card or check.");
+    if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
+    const orderDiscountCents = Math.max(0, Math.round(Number(input.orderDiscountCents) || 0));
+    if (user.role === "TECH" && orderDiscountCents) throw new UserError("Only an owner or admin can give a discount.");
+    const totals = saleTotals(lines, orderDiscountCents, shop.taxRatePct, tenders);
+    if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
+    const problem = tenderProblem(totals, tenders);
+    if (problem) throw new UserError(problem);
 
     // The sewing shop's share of consigned sales, as the partnership stands today (kept with each sale).
     const shares = new Map<string, number>();
@@ -227,6 +286,9 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
       const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } }, select: { terms: true } });
       shares.set(linkId, normalizeTerms(link?.terms).consignSharePct);
     }
+
+    // Each line's part of the whole-sale discount (what a consigned item really sold for).
+    const discountShares = orderDiscountShares(lines, totals.orderDiscount);
 
     const at = new Date();
     const sale = await db.$transaction(async (tx) => {
@@ -246,10 +308,11 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           tenders: tenders as Prisma.InputJsonValue,
           changeCents: totals.change,
           note: input.note?.slice(0, 500) || null,
+          clientKey,
           createdAt: at,
         },
       });
-      for (const l of lines) {
+      for (const [i, l] of lines.entries()) {
         const { pickedUp, discountable, ...row } = l;
         void discountable;
         const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
@@ -260,8 +323,9 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           });
         }
         if (l.consignLinkId && l.consignItemKey) {
-          // Consigned stock: the owner hears about every sale; the net price after the line discount is what counts.
-          const net = Math.round(lineNet(l) / l.qty);
+          // Consigned stock: the owner hears about every sale; the net price after the line discount and the line's part
+          // of any whole-sale discount is what counts.
+          const net = Math.round((lineNet(l) - discountShares[i]) / l.qty);
           const gross = Math.round(l.qty * net);
           await tx.consignSale.create({
             data: {
@@ -287,29 +351,39 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         if (l.repairJobId) {
           const job = jobs.get(l.repairJobId)!;
           const amount = lineNet(l);
+          // Adds to anything paid here before (the rest of a bill that went up after it was paid).
+          const paidHere = (job.paidCents ?? 0) + amount;
+          // A machine already handed over isn't handed over again.
+          const handOver = pickedUp && !job.pickedUpAt;
           const events = [...((job.events as { at: string; note?: string; status?: string }[]) ?? []), { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` }].slice(-200);
-          // Only if nobody paid it meanwhile (another register, or a second click).
+          // Only if nobody paid it and the bill didn't change meanwhile (another register, a second click, an update).
           const paid = await tx.repairJob.updateMany({
-            where: { shopId, id: job.id, paidAt: null },
+            where: { shopId, id: job.id, paidCents: job.paidCents, repairPaidCents: job.repairPaidCents, totalCents: job.totalCents },
             data: {
-              paidCents: amount,
-              paidAt: at,
+              paidCents: paidHere,
+              paidAt: job.paidAt ?? at,
               paidWhere: job.repairPaidCents ? "split" : "shop",
-              ...(pickedUp ? { pickedUpAt: at, status: "COLLECTED" } : {}),
-              events: (pickedUp ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
+              ...(handOver ? { pickedUpAt: at, status: "COLLECTED" } : {}),
+              events: (handOver ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
             },
           });
-          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid. Take it off this sale.`);
-          await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, saleNumber: number, at: at.toISOString() }, tx);
-          if (pickedUp) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx);
+          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid, or its bill changed. Take it off this sale and add it again.`);
+          // amountCents is this payment; paidCents is everything paid here so far (a repeat of a message adds nothing).
+          await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, paidCents: paidHere, saleNumber: number, at: at.toISOString() }, tx);
+          if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx);
         }
       }
       return sale;
+    }).catch(async (e: unknown) => {
+      // The same sale sent twice at once: the other try made it.
+      const made = (e as { code?: string })?.code === "P2002" ? await saleByKey(shopId, clientKey) : null;
+      if (made) return made;
+      throw e;
     });
     revalidatePath("/register", "layout");
     revalidatePath("/repairs", "layout");
     revalidatePath("/parts", "layout");
-    return { saleId: sale.id, number: sale.number, changeCents: totals.change };
+    return { saleId: sale.id, number: sale.number, changeCents: sale.changeCents };
   } catch (e) {
     if (isUserError(e)) return { error: e.message };
     throw e;
@@ -344,9 +418,10 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
         }
       }
       if (l.consignLinkId && l.consignItemKey) {
-        const net = Math.round(lineNet(l) / l.qty);
         const id = `${l.id}-void`;
-        const original = await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id: l.id } }, select: { shopKeepsCents: true } });
+        const original = await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id: l.id } }, select: { priceCents: true, shopKeepsCents: true } });
+        // Undone at the price it was paid out at (after any whole-sale discount).
+        const net = original?.priceCents ?? Math.round(lineNet(l) / l.qty);
         await tx.consignSale.create({
           data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at, shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null },
         });

@@ -1,0 +1,1177 @@
+// StitchBench — sewing / embroidery / longarm machine repair bench.
+// One Shop = one repair business. Every business row carries shopId; the
+// tension-spec reference table is shared by all shops (facts from OEM manuals).
+// Money is stored in integer cents.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Shops and users
+// ============================================================
+
+enum Role {
+  OWNER
+  ADMIN
+  TECH
+}
+
+model Shop {
+  id                 String   @id @default(cuid())
+  name               String
+  phone              String?
+  email              String?
+  address            String?
+  laborRateCents     Int      @default(9800)
+  taxRatePct         Float    @default(0)
+  partsMarkupPct     Float    @default(30)
+  warrantyDays       Int      @default(90)
+  abandonedAfterDays Int      @default(60)
+  storageFeeCents    Int      @default(4500)
+  nextTicketNumber   Int      @default(51)
+  // Where the shop keeps its manual library on every PC (links show this path)
+  libraryRoot        String   @default("C:\\Manuals")
+  // Service checklist template, one item per line of work (edited in Settings)
+  checklistItems     String[]
+  // Fine print at the bottom of the printed price list
+  priceListNote      String?
+  // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
+  payInstructions    String?
+  // What this company does: a repair bench (StitchBench), a sewing / quilt shop counter (StitchShop), or both
+  doesRepair         Boolean  @default(true)
+  sellsRetail        Boolean  @default(false)
+  nextSaleNumber     Int      @default(1001)
+  nextTagNumber      Int      @default(101)
+  nextOrderNumber    Int      @default(1001)
+  // Line at the bottom of register receipts (returns policy, hours)
+  receiptNote        String?
+  // The shop's own time zone: where days and months start for reports and statements
+  timeZone           String   @default("America/New_York")
+  // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
+  checkInKind        String   @default("sewing")
+  // Vac Shop "bags due": days between bag purchases
+  bagReminderDays    Int      @default(180)
+  // Set by the StitchBench administrator (Companies): this company can't write to the community hub
+  hubWritesOff       Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  users          User[]
+  customers      Customer[]
+  machines       Machine[]
+  tickets        Ticket[]
+  parts          Part[]
+  stockMoves     StockMove[]
+  notes          ModelNote[]
+  serviceItems   ServiceItem[]
+  photos         MachinePhoto[]
+  sharedPosts    SharedPost[]
+  sales          Sale[]
+  partnerLinks   PartnerLink[]
+  repairJobs     RepairJob[]
+  partnerOrders  PartnerOrder[]
+  consignItems   ConsignItem[]
+  consignSales   ConsignSale[]
+  settlements    Settlement[]
+  outbox         PartnerOutbox[]
+  // Paid modules
+  licenses       License[]
+  moduleGrants   ModuleGrant[]
+  equipmentKinds ShopEquipmentKind[]
+  ticketSites    TicketSite[]
+  stockUnits     StockUnit[]
+  vacCares       VacCare[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           Role     @default(TECH)
+  active         Boolean  @default(true)
+  // Bumped when the password changes or access is removed: sessions signed in before that stop working
+  sessionVersion Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  notes         ModelNote[]
+  ticketsOpened Ticket[]     @relation("TicketOpenedBy")
+  ticketsAsTech Ticket[]     @relation("TicketTech")
+  stockMoves    StockMove[]
+  sharedPosts   SharedPost[]
+  sales         Sale[]
+}
+
+// ============================================================
+// Customers: retail customers and trade accounts (quilt shops, dealers)
+// ============================================================
+
+enum CustomerKind {
+  RETAIL
+  TRADE
+}
+
+model Customer {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind          CustomerKind @default(RETAIL)
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  // Trade accounts only
+  code          String? // short code printed on route sheets, e.g. QS1
+  commissionPct Float?
+  routeDay      String?
+  notes         String?
+  createdAt     DateTime     @default(now())
+
+  machines   Machine[]
+  tickets    Ticket[]    @relation("TicketCustomer")
+  viaTickets Ticket[]    @relation("TicketViaAccount")
+  sales      Sale[]
+  repairJobs RepairJob[]
+
+  @@index([shopId, name])
+}
+
+// ============================================================
+// Machines (tracked by brand + model + serial)
+// ============================================================
+
+model Machine {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand       String
+  model       String
+  modelKey    String // normalized model for matching specs, notes and local manuals
+  serial      String?
+  machineType String?
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  notes       String?
+  // What it is (src/lib/equipment): SEWING (free) | VACUUM (Vac Shop module) | APPLIANCE (Small Appliance Repair module)
+  equipment   String    @default("SEWING")
+  // Its kind: sewing | vacuum | stand-mixer | 3d-printer | resin-printer | other | a shop kind's key (ShopEquipmentKind)
+  kind        String    @default("sewing")
+  // This unit's answers to its kind's intake fields that belong to the machine: { "<field key>": value }
+  details     Json      @default("{}")
+  createdAt   DateTime  @default(now())
+
+  tickets    Ticket[]
+  photos     MachinePhoto[]
+  repairJobs RepairJob[]
+  stock      StockUnit?
+  vacCare    VacCare?
+
+  @@index([shopId, serial])
+  @@index([shopId, brand, modelKey])
+  @@index([shopId, equipment])
+}
+
+// Important facts and gotchas, attached to a brand + model (not to one machine),
+// so every tech who opens that model sees them.
+enum NoteKind {
+  GOTCHA
+  FACT
+  TIP
+}
+
+enum PhotoKind {
+  CONDITION // how it came in
+  INSIDE // covers off: mechanism, boards
+  WIRING // connectors and wire routing, for putting it back together
+  PART // a worn or broken part
+  AFTER // finished work
+}
+
+model ModelNote {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand      String
+  modelKey   String
+  modelLabel String
+  kind       NoteKind @default(GOTCHA)
+  body       String
+  pinned     Boolean  @default(false)
+  authorId   String?
+  author     User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([shopId, brand, modelKey])
+}
+
+// ============================================================
+// Reference: factory thread-tension specs read out of OEM manuals.
+// Shared by all shops. Seeded from prisma/seed-data/tension_specs.json.
+// ============================================================
+
+model TensionSpec {
+  id               String   @id
+  category         String // Embroidery | Sewing | Longarm | Industrial-Sewing
+  brand            String
+  models           String // as printed / as filed, e.g. "BAS-411, BAS-415"
+  modelKeys        String[] // normalized model tokens for matching
+  machineType      String?
+  upperMinG        Float?
+  upperMaxG        Float?
+  bobbinMinG       Float?
+  bobbinMaxG       Float?
+  upperPrinted     String? // value and unit exactly as printed, e.g. "0.7-1.3 N"
+  bobbinPrinted    String?
+  upperText        String?
+  upperConditions  String?
+  bobbinText       String?
+  bobbinConditions String?
+  otherSpecs       String?
+  sourceFile       String // PDF file name, used to find the manual in a tech's local library
+  sourcePath       String? // where it sits in the reference library
+  pages            String?
+  docType          String?
+  confidence       String?
+  notes            String?
+
+  @@index([brand])
+}
+
+// ============================================================
+// Reference: factory timing and core adjustment standards read out of OEM service manuals.
+// Shared by all shops. Seeded from prisma/seed-data/factory_settings.json.
+// The manual's figure is drawn in each tech's browser from their own copy (figurePage + figureBox).
+// ============================================================
+
+model FactorySetting {
+  id          String   @id
+  category    String
+  brand       String
+  models      String
+  modelKeys   String[]
+  machineType String?
+  adjustment  String // hook_timing_rise, needle_bar_height, feed_dog_height ... (see src/lib/adjustments.ts)
+  label       String
+  valueMin    Float?
+  valueMax    Float?
+  unit        String? // mm | deg | g | N | other
+  valueText   String?
+  conditions  String?
+  reference   String?
+  tools       String?
+  sourceFile  String
+  sourcePath  String?
+  pages       String?
+  figurePage  Int?
+  figureBox   Float[] // [x0, y0, x1, y1] as fractions of the page; empty = whole page
+  docType     String?
+  confidence  String?
+  notes       String?
+
+  @@index([brand])
+  @@index([adjustment])
+}
+
+// ============================================================
+// Tickets / POS
+// ============================================================
+
+enum TicketStatus {
+  AT_SHOP_AWAITING_PICKUP
+  IN_TRUCK
+  ON_BENCH
+  WAITING_CUSTOMER_OK
+  WAITING_PARTS
+  READY_IN_TRUCK
+  READY_FOR_PICKUP
+  COLLECTED
+  ABANDONED
+  RETURNED_UNREPAIRED
+}
+
+model Ticket {
+  id                  String       @id @default(cuid())
+  shopId              String
+  shop                Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number              Int
+  status              TicketStatus @default(ON_BENCH)
+  machineId           String
+  machine             Machine      @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  customerId          String?
+  customer            Customer?    @relation("TicketCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  viaAccountId        String? // quilt shop / dealer the machine came through
+  viaAccount          Customer?    @relation("TicketViaAccount", fields: [viaAccountId], references: [id], onDelete: SetNull)
+  serviceRequested    String?
+  problem             String?
+  diagnosis           String?
+  workDone            String?
+  preApprovedCents    Int? // customer OK'd up to this much over the service price
+  approvedCents       Int?
+  accessories         String[] // what came in with the machine
+  accessoriesReturned String[] // the subset confirmed back with the customer
+  // Service checklist: { "<item text>": { done: true, by: "<user name>", at: "<iso>" } }
+  checklist           Json         @default("{}")
+  // Tension measured with gauges, grams-force
+  upperFoundG         Float?
+  upperLeftG          Float?
+  bobbinFoundG        Float?
+  bobbinLeftG         Float?
+  // Timing / adjustment readings: { "<factory setting id>": { "found": 2.4, "left": 3.1 } }
+  measurements        Json         @default("{}")
+  taxRatePct          Float        @default(0)
+  intakeAt            DateTime     @default(now())
+  readyAt             DateTime?
+  closedAt            DateTime?
+  warrantyUntil       DateTime?
+  openedById          String?
+  openedBy            User?        @relation("TicketOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  techId              String?
+  tech                User?        @relation("TicketTech", fields: [techId], references: [id], onDelete: SetNull)
+  notes               String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  // BENCH: brought to the shop (every ticket before modules). SITE: work at the customer's (central vac install)
+  jobType             String       @default("BENCH")
+  // The kind's intake answers for this visit { "<field key>": value }, and its readings { "<key>": { "found": x, "left": y } }
+  intake              Json         @default("{}")
+  readings            Json         @default("{}")
+
+  lines    TicketLine[]
+  payments Payment[]
+  photos   MachinePhoto[]
+  site     TicketSite?
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+}
+
+enum LineKind {
+  SERVICE
+  LABOR
+  PART
+  FEE
+  DISCOUNT
+}
+
+model TicketLine {
+  id             String   @id @default(cuid())
+  ticketId       String
+  ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  kind           LineKind
+  description    String
+  qty            Float    @default(1)
+  unitPriceCents Int
+  taxable        Boolean  @default(true)
+  partId         String?
+  part           Part?    @relation(fields: [partId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+}
+
+enum PaymentMethod {
+  CARD
+  CASH
+  CHECK
+  SHOP_COLLECTED
+  INVOICE
+  OTHER
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  ticketId    String
+  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  method      PaymentMethod
+  amountCents Int
+  paidAt      DateTime      @default(now())
+  note        String?
+}
+
+// Menu of standard services with a set price (clean/oil/time/adjust etc.)
+model ServiceItem {
+  id            String  @id @default(cuid())
+  shopId        String
+  shop          Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name          String
+  priceCents    Int
+  active        Boolean @default(true)
+  sortOrder     Int     @default(0)
+  // Price list grouping and the line under the name, e.g. "Domestic sewing" / "Clean, oil, adjust timing and tension"
+  category      String?
+  description   String?
+  // The kind it's offered for (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key); null = every kind
+  equipmentKind String?
+}
+
+// ============================================================
+// Parts inventory
+// ============================================================
+
+model Part {
+  id              String   @id @default(cuid())
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partNumber      String
+  description     String
+  brand           String?
+  fits            String? // models it fits, free text
+  location        String? // bin / drawer
+  qtyOnHand       Float    @default(0) // fabric sells in fractions of a yard
+  reorderAt       Float    @default(0)
+  costCents       Int?
+  priceCents      Int?
+  supplier        String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  kind            PartKind @default(PART)
+  // Other numbers it's sold under (other makers' numbers, generic numbers)
+  altNumbers      String[]
+  // partNumber + altNumbers, upper-case letters and digits only, for matching the cross-reference
+  numberKeys      String[]
+  // null = sold each; "yd" = by the yard (fabric)
+  unit            String?
+  // Offered to partner sewing shops at this price (their catalog from this shop)
+  wholesaleCents  Int?
+  offerToPartners Boolean  @default(false)
+  // A partner repair shop's stock held here on consignment: which partnership, and the owner's id for the item
+  consignLinkId   String?
+  consignItemKey  String?
+
+  moves     StockMove[]
+  lines     TicketLine[]
+  sources   PartSource[]
+  saleLines SaleLine[]
+
+  @@unique([shopId, partNumber])
+  @@index([numberKeys], type: Gin)
+}
+
+enum PartKind {
+  PART
+  ACCESSORY
+  SUPPLY
+  NOTION
+  FABRIC
+  THREAD
+  PATTERN
+}
+
+// Where this shop buys a part (its own list; the community's list is on the cross-reference).
+model PartSource {
+  id         String   @id @default(cuid())
+  partId     String
+  part       Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  vendor     String
+  url        String?
+  priceCents Int?
+  note       String?
+  preferred  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([partId])
+}
+
+enum MoveReason {
+  RECEIVED
+  USED
+  RETURNED
+  ADJUSTED
+  SOLD // over the counter (register) or to a partner shop
+  CONSIGNED // sent to, or taken back from, a partner shop's consignment shelf
+}
+
+model StockMove {
+  id        String     @id @default(cuid())
+  shopId    String
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId    String
+  part      Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
+  qty       Float // + in, - out
+  reason    MoveReason
+  ticketId  String?
+  note      String?
+  userId    String?
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+}
+
+// ============================================================
+// Machine photos (stored in Postgres; resized in the browser before upload)
+// ============================================================
+
+model MachinePhoto {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  machineId String
+  machine   Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  ticketId  String?
+  ticket    Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  caption   String?
+  kind      PhotoKind @default(CONDITION)
+  mime      String
+  data      Bytes
+  createdAt DateTime  @default(now())
+
+  @@index([machineId])
+  @@index([shopId, kind])
+}
+
+// ============================================================
+// In-house reference library (shared by the shop's techs)
+// ============================================================
+
+// Every manual in the shop library (C:\Manuals), so a model page can list them
+// with their path. Techs keep the library at the same path on every PC.
+model LibraryDoc {
+  id        String   @id
+  path      String   @unique // relative to the library root, backslashes, e.g. Sewing\Janome\ServiceManuals\X.pdf
+  category  String
+  brand     String
+  file      String
+  docType   String?
+  title     String?
+  pages     Int?
+  sizeBytes Int?
+  modelKeys String[]
+
+  @@index([brand])
+}
+
+// A picture of the machine, cut from its own manual (cover or front pages).
+model ModelImage {
+  id         String   @id
+  brand      String
+  models     String
+  modelKeys  String[]
+  sourcePath String
+  page       Int
+  mime       String
+  width      Int
+  height     Int
+  data       Bytes
+
+  @@index([brand])
+}
+
+// A figure cut from a manual page for a timing/adjustment setting, stored so it
+// shows on any device. Keyed by manual + page + crop box.
+model FigureImage {
+  id         String   @id // sha1(sourcePath|page|box)[:24]
+  sourcePath String
+  page       Int
+  box        Float[]
+  mime       String
+  width      Int
+  height     Int
+  data       Bytes
+  createdAt  DateTime @default(now())
+
+  @@index([sourcePath, page])
+}
+
+// A tech's write-up shared with every shop on StitchBench: an issue found, how it was fixed, with photos.
+// Photos are copied in, so the shop's own machine photos (and its customers and serials) stay private.
+model SharedPost {
+  id        String        @id @default(cuid())
+  shopId    String
+  shop      Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  brand     String
+  model     String
+  modelKey  String
+  kind      NoteKind      @default(GOTCHA)
+  title     String
+  body      String
+  createdAt DateTime      @default(now())
+  photos    SharedPhoto[]
+  // Set once it has been sent to the community hub (its HubPost id there).
+  hubId     String?       @unique
+
+  @@index([modelKey])
+  @@index([createdAt])
+}
+
+model SharedPhoto {
+  id        String     @id @default(cuid())
+  postId    String
+  post      SharedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind      PhotoKind
+  caption   String?
+  mime      String
+  data      Bytes
+  sortOrder Int        @default(0)
+
+  @@index([postId])
+}
+
+// ---------- community hub (the install's side) ----------
+// The community hub is a separate small server (the stitchbench-hub project). It holds what the StitchBench
+// community shares: manual LINKS (never the PDFs), shared tech notes and photos, and manual figure snapshots.
+// These tables are this install's synced copy of it.
+
+// Where a manual can be downloaded from. Anyone can fix a link on the hub; history and rollback live there.
+model ManualLink {
+  id         String    @id // the hub's id
+  category   String?
+  brand      String
+  models     String // as written, e.g. "PR650, PR655"
+  modelKeys  String[]
+  docType    String?
+  title      String
+  fileName   String? // the library file name it was filed as, when known
+  url        String
+  source     String? // site, e.g. janome.com
+  status     String    @default("unchecked") // ok | dead | blocked (site refuses automatic checks) | unchecked
+  httpStatus Int?
+  checkedAt  DateTime?
+  updatedAt  DateTime
+
+  @@index([modelKeys], type: Gin)
+  @@index([brand])
+}
+
+// Tech notes shared by every shop in the community.
+model HubPost {
+  id         String     @id // the hub's id
+  shopName   String
+  authorName String?
+  brand      String
+  model      String
+  modelKey   String
+  kind       NoteKind   @default(GOTCHA)
+  title      String
+  body       String
+  mine       Boolean    @default(false) // shared from this install
+  createdAt  DateTime
+  photos     HubPhoto[]
+
+  @@index([modelKey])
+}
+
+model HubPhoto {
+  id        String    @id // the hub's id
+  postId    String
+  post      HubPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind      PhotoKind
+  caption   String?
+  mime      String
+  data      Bytes? // fetched from the hub the first time someone looks at it
+  sortOrder Int       @default(0)
+
+  @@index([postId])
+}
+
+// Figure snapshots the hub has, so the app can show them without a local copy.
+model HubFigure {
+  id   String  @id
+  mime String?
+  data Bytes? // fetched from the hub the first time someone looks at it
+}
+
+// This install's connection to the hub (set in Settings → Community hub).
+model HubState {
+  id               Int       @id @default(1)
+  url              String?
+  hubName          String?
+  discordUrl       String? // the community's Discord invite (menu: Community chat)
+  installId        String?
+  installKey       String?
+  joinedAt         DateTime?
+  cursor           String? // the hub's "changes since" marker
+  orderCursor      String? // same for marketplace orders
+  lastSyncAt       DateTime?
+  lastError        String?
+  // member = joined the community; partner = joined with a partner shop's code only (partner channel only)
+  scope            String    @default("member")
+  partnerCursor    String?
+  partnerSyncAt    DateTime?
+  partnerError     String?
+  // One partner sync at a time across every server process on this install
+  partnerLockUntil DateTime?
+}
+
+// The community parts cross-reference (synced copy): one physical part, every number it goes by, what it fits.
+model XPart {
+  id         String   @id // the hub's id
+  name       String
+  kind       String   @default("PART")
+  category   String?
+  specs      String?
+  notes      String?
+  numbers    Json // [{ brand, number }]
+  numberKeys String[]
+  fits       Json // [{ brand, model, modelKey, evidence, source }]
+  fitKeys    String[]
+  sources    Json // [{ id, vendor, url, priceCents, currency, note, byShop, updatedAt }]
+  updatedAt  DateTime
+
+  @@index([numberKeys], type: Gin)
+  @@index([fitKeys], type: Gin)
+}
+
+// Marketplace listings from every shop on the hub (synced copy).
+model Listing {
+  id            String   @id // the hub's id
+  shopName      String
+  mine          Boolean  @default(false)
+  title         String
+  description   String?
+  kind          String   @default("PART")
+  condition     String   @default("NEW")
+  brand         String?
+  partNumber    String?
+  numberKey     String?
+  xpartId       String?
+  fits          String?
+  priceCents    Int
+  currency      String   @default("USD")
+  qty           Int
+  shippingCents Int?
+  shippingNote  String?
+  shipsFrom     String?
+  status        String
+  photoIds      String[]
+  createdAt     DateTime
+  updatedAt     DateTime
+  // The seller's install on the hub, and how buyers have rated them
+  sellerId      String?
+  sellerAvg     Float?
+  sellerCount   Int      @default(0)
+  // The company on this install that listed it (mine listings only; several companies can share one install)
+  shopId        String?
+
+  @@index([status])
+  @@index([numberKey])
+}
+
+// Listing photos, fetched from the hub the first time someone looks at them.
+model ListingPhoto {
+  id   String @id
+  mime String
+  data Bytes
+}
+
+// This shop's marketplace orders, as buyer or seller (synced copy of the hub's order).
+model MarketOrder {
+  id        String   @id // the hub's id
+  number    String
+  role      String // buyer | seller
+  status    String
+  data      Json // the whole order as the hub sent it
+  updatedAt DateTime
+
+  // The company on this install that placed it (buyer) or whose listing it is (seller)
+  shopId String?
+
+  @@index([role, status])
+  @@index([shopId])
+}
+
+// ============================================================
+// StitchShop: the sewing / quilt shop counter (register), and partnerships between a repair shop and the sewing
+// shops that take machines in for it, buy parts and notions from it and hold its stock on consignment.
+// Partner records exist on both sides with the same id and are kept in step through the hub (src/lib/partners.ts).
+// ============================================================
+
+// One register sale (or return: negative quantities).
+model Sale {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subtotalCents Int
+  discountCents Int       @default(0)
+  taxCents      Int
+  totalCents    Int
+  taxRatePct    Float
+  // [{ method: CASH | CARD | CHECK | GIFT | OTHER, amountCents, note }]; cards are run on the shop's own terminal
+  tenders       Json      @default("[]")
+  changeCents   Int       @default(0)
+  status        String    @default("COMPLETED") // COMPLETED | VOIDED
+  voidedAt      DateTime?
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  lines SaleLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, createdAt])
+}
+
+model SaleLine {
+  id             String  @id @default(cuid())
+  saleId         String
+  sale           Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  partId         String?
+  part           Part?   @relation(fields: [partId], references: [id], onDelete: SetNull)
+  description    String
+  partNumber     String?
+  qty            Float
+  unit           String?
+  unitPriceCents Int
+  discountCents  Int     @default(0) // off this line in total
+  taxable        Boolean @default(true)
+  costCents      Int? // unit cost when sold, for margins
+  // Sold for a partner repair shop (consignment): the partnership and the owner's id for the item
+  consignLinkId  String?
+  consignItemKey String?
+  // A customer paying for a machine the partner repair shop fixed
+  repairJobId    String?
+  // Vac Shop (plain ids, like repairJobId): a unit sold from stock (qty 1) or taken back (qty -1); a trade-in taken as
+  // credit (qty -1); the customer's vacuum a bag, belt or filter was bought for ("bags due")
+  stockUnitId    String?
+  tradeInUnitId  String?
+  machineId      String?
+
+  @@index([stockUnitId])
+  @@index([tradeInUnitId])
+  @@index([machineId])
+}
+
+// A partnership with another shop, from this shop's side (the id is the hub's link id).
+model PartnerLink {
+  id            String
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  side          String // this shop's side: repair | retail
+  partnerName   String
+  status        String    @default("ACTIVE") // ACTIVE | ENDED
+  // The agreed terms (PartnerTerms in src/lib/partner-terms.ts) and who accepted which version
+  terms         Json      @default("{}")
+  termsVersion  Int       @default(1)
+  accepted      Json      @default("{}") // { repair: { name, at, version }, retail: { ... } }
+  proposedTerms Json? // a change one side offered, waiting for the other
+  proposedBy    String?
+  // Repair side: the trade account machines from this shop come in under
+  accountId     String?
+  // Retail side: the repair shop's catalog (parts, notions, accessories at partner prices)
+  catalog       Json?
+  catalogAt     DateTime?
+  // Repair side: what was last sent, so an unchanged catalog isn't sent again
+  catalogHash   String?
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@id([shopId, id])
+  @@index([shopId])
+}
+
+// Messages waiting to go to a partner through the hub (sent on the next partner sync).
+model PartnerOutbox {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId    String
+  type      String
+  data      Json
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+  tries     Int       @default(0)
+  error     String?
+  // Not before this time (backs off while the hub or the internet is down)
+  nextTryAt DateTime?
+  // The hub refused it for good (bad data, unknown link): kept and shown, never retried
+  deadAt    DateTime?
+
+  @@index([sentAt, createdAt])
+}
+
+// A machine a sewing shop took in for its partner repair shop. Same id on both sides: the sewing shop's copy keeps
+// its customer; the repair shop's copy points at the ticket it opened.
+model RepairJob {
+  id               String
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId           String
+  side             String // retail (we took it in) | repair (we fix it)
+  tag              String // the sewing shop's claim-tag number
+  status           String    @default("AT_SHOP_AWAITING_PICKUP") // TicketStatus names
+  customerId       String? // retail side only; the customer's details never leave the sewing shop
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  machineId        String?
+  machine          Machine?  @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  customerName     String // what the repair shop sees: first name and last initial
+  brand            String
+  model            String
+  serial           String?
+  machineType      String?
+  problem          String?
+  serviceRequested String?
+  accessories      String[]
+  preApprovedCents Int? // customer OK'd up to this much without a call
+  // From the repair shop: its ticket, the bill so far, and a note for the sewing shop
+  ticketId         String?   @unique
+  ticketNumber     Int?
+  totalCents       Int?
+  taxCents         Int?
+  lines            Json? // [{ description, qty, amountCents }]
+  commissionPct    Float     @default(0)
+  commissionCents  Int? // the sewing shop's share of this repair
+  repairNote       String?
+  // The customer's answer to an estimate, relayed by the sewing shop
+  approval         String? // APPROVED | DECLINED
+  approvedCents    Int?
+  // Payment: at the sewing shop's counter, or straight to the repair shop
+  paidCents        Int?
+  paidAt           DateTime?
+  paidWhere        String? // shop | repair | split
+  // Paid straight to the repair shop (deposits and full payments); paidCents is what the sewing shop collected
+  repairPaidCents  Int?
+  pickedUpAt       DateTime?
+  events           Json      @default("[]") // [{ at, status, note }]
+  sentHash         String? // repair side: what the sewing shop last heard
+  snapshotAt       DateTime? // retail side: time of the repair shop's update last applied (older ones are ignored)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@id([shopId, id])
+  @@index([shopId, status])
+  @@index([shopId, linkId])
+}
+
+// A sewing shop's order of parts, notions or accessories from its partner repair shop. Same id on both sides.
+model PartnerOrder {
+  id          String
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId      String
+  side        String // buyer | seller
+  number      String
+  status      String    @default("PLACED") // PLACED | ACCEPTED | DELIVERED | RECEIVED | CANCELLED
+  lines       Json // [{ itemKey, partNumber, description, qty, unitCents }]
+  totalCents  Int
+  note        String?
+  sellerNote  String?
+  carrier     String?
+  tracking    String?
+  deliveredAt DateTime?
+  receivedAt  DateTime?
+  events      Json      @default("[]")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@id([shopId, id])
+  @@index([shopId, linkId])
+}
+
+// Consignment: the repair shop's stock on a sewing shop's shelf. Owner side = my stock out there; holder side = the
+// partner's stock I sell. itemKey is the owner's part id, the same on both sides.
+model ConsignItem {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId      String
+  side        String // owner | holder
+  itemKey     String
+  partId      String?
+  partNumber  String
+  description String
+  priceCents  Int // the shelf price
+  placed      Float     @default(0)
+  sold        Float     @default(0)
+  returned    Float     @default(0)
+  countedQty  Float?
+  countedAt   DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([shopId, linkId, itemKey])
+}
+
+// Each consigned item sold at the sewing shop's counter (id = its sale line id, the same on both sides).
+model ConsignSale {
+  id             String
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId         String
+  itemKey        String
+  qty            Float
+  priceCents     Int // unit price it sold for
+  saleNumber     Int?
+  soldAt         DateTime
+  // The sewing shop's share, fixed when the sale happened (later terms don't reprice it)
+  shopKeepsCents Int?
+
+  @@id([shopId, id])
+  @@index([shopId, linkId, soldAt])
+}
+
+// A payment that settled a statement between partners (same id on both sides).
+model Settlement {
+  id         String
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId     String
+  periodFrom DateTime
+  periodTo   DateTime
+  netCents   Int // + the sewing shop paid the repair shop; - the other way
+  summary    Json
+  note       String?
+  byName     String?
+  paidAt     DateTime @default(now())
+
+  @@id([shopId, id])
+  @@index([shopId, linkId])
+}
+
+// Partner messages already applied (link + sending side + message id), so a message delivered twice counts once.
+model PartnerSeen {
+  shopId String
+  key    String
+  at     DateTime @default(now())
+
+  @@id([shopId, key])
+}
+
+// Partner messages that couldn't be applied: bad data from the partner, or a failure that kept repeating. Set aside so
+// one message can't stop every later one; shown on the Partners page.
+model PartnerFailure {
+  shopId  String
+  key     String
+  linkId  String
+  type    String
+  data    Json
+  error   String
+  tries   Int      @default(1)
+  skipped Boolean  @default(false)
+  at      DateTime @default(now())
+
+  @@id([shopId, key])
+}
+
+// ============================================================
+// Paid modules (src/lib/modules.ts): Vac Shop, Small Appliance Repair, Scheduling, Marketing. A module is on while a
+// license key the company pasted (its signature checked again on every look) or the administrator's switch on the
+// hosted app says so. Switching off never deletes anything: records stay to look at and export; new work stops.
+// ============================================================
+
+// A license key pasted in Settings -> Modules. Only `key` counts: it is verified from its text every time it is read.
+model License {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  keyId     String // the key's own id (payload "id"), as in the StitchBench owner's sales log
+  key       String // the whole key as pasted: SB1.<payload>.<signature>
+  addedBy   String? // name of the person who pasted it
+  addedById String? // their User id
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, keyId])
+}
+
+// The StitchBench administrator's switch for one company's module (Companies screen, hosted app only). Rows are history;
+// only rows newer than the newest "none" (keys decide) count: the newest "on" (a key signed with the hosting key) adds
+// its dates, the newest "off" ends every key issued before it (src/lib/license.ts adminPosition). Ignored by the Windows
+// program.
+model ModuleGrant {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  module    String // vac | appliance | scheduling | marketing
+  mode      String // on | off | none
+  key       String? // mode on: SB1 key for this company and module, signed with the hosting key
+  byEmail   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([shopId, module, createdAt])
+}
+
+// A kind of appliance the shop added itself ("What you repair"), e.g. espresso machines. Built-in kinds are never here.
+model ShopEquipmentKind {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  equipment      String   @default("APPLIANCE") // APPLIANCE (the only one this version makes)
+  key            String // lower-case letters, digits and dashes, e.g. espresso-machine (never a built-in key)
+  label          String // "Espresso machine"
+  noun           String? // "espresso machine" (in sentences)
+  types          String[]
+  brands         String[]
+  accessories    String[]
+  defaultChecked String[]
+  checklist      String[]
+  intakeFields   Json     @default("[]") // FieldDef[] (src/lib/equipment/types.ts)
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([shopId, key])
+}
+
+// Where and when a SITE ticket's work happens (central vac installs). The ticket keeps the bill, status and power unit.
+model TicketSite {
+  ticketId     String    @id
+  ticket       Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  address      String
+  startsAt     DateTime?
+  endsAt       DateTime?
+  contactName  String?
+  contactPhone String?
+  accessNotes  String? // gate code, pets, where to park
+  updatedAt    DateTime  @updatedAt
+
+  @@index([shopId, startsAt])
+}
+
+// A vacuum the shop sells (new or used; a trade-in). One row per physical unit for good; brand, model, serial and
+// owner stay on its Machine. Never deleted: taking one off sale sets REMOVED.
+model StockUnit {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  machineId       String    @unique
+  machine         Machine   @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  status          String    @default("IN_STOCK") // IN_STOCK | SOLD | REMOVED
+  condition       String    @default("NEW") // NEW | OPEN_BOX | REFURB | USED
+  costCents       Int? // what it cost the shop (a trade-in: the credit given)
+  priceCents      Int? // asking price
+  warrantyMonths  Int?
+  warrantyBy      String? // who stands behind it: the maker's name, or the shop
+  soldLineId      String? // SaleLine that sold it (kept after a return, until it sells again)
+  soldAt          DateTime?
+  soldNetCents    Int? // what the buyer paid for it before tax (its share of a whole-sale discount taken off): the most a return refunds
+  returnLineId    String? // SaleLine that took it back from the buyer
+  tradeInLineId   String? // SaleLine that took it in as a trade-in
+  warrantyUntil   DateTime?
+  registeredAt    DateTime? // warranty registered with the maker
+  registrationRef String?
+  note            String?
+  events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([shopId, status])
+}
+
+// "Bags due" for a customer's vacuum: when someone last got in touch, snoozes and stops. Due dates come from sales.
+// Always written after checking the machine is this shop's (the id alone is the key).
+model VacCare {
+  machineId    String    @id
+  machine      Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  contactedAt  DateTime?
+  contactedBy  String? // email | text | the name of whoever called
+  contactNote  String?
+  snoozedUntil DateTime?
+  stopped      Boolean   @default(false)
+  updatedAt    DateTime  @updatedAt
+
+  @@index([shopId])
+}

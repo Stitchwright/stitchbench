@@ -162,6 +162,22 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil) : null} />
             </div>
             <ActionForm action={saveTicketText.bind(null, t.id)} success="Saved" className="space-y-3">
+              {/* What each field showed when the page loaded: only what's changed here is saved, so a change made
+                  meanwhile by someone else isn't put back. */}
+              {(
+                [
+                  ["serviceRequested", t.serviceRequested],
+                  ["techId", t.techId],
+                  ["problem", t.problem],
+                  ["diagnosis", t.diagnosis],
+                  ["workDone", t.workDone],
+                  ["preApproved", t.preApprovedCents != null ? (t.preApprovedCents / 100).toFixed(2) : null],
+                  ["approved", t.approvedCents != null ? (t.approvedCents / 100).toFixed(2) : null],
+                  ["notes", t.notes],
+                ] as const
+              ).map(([k, v]) => (
+                <input key={k} type="hidden" name={`was:${k}`} value={v ?? ""} />
+              ))}
               <div className="grid-form">
                 <div className="field">
                   <label htmlFor="serviceRequested" className="label">
@@ -431,6 +447,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                     <span>
                       {fmtDate(p.paidAt)} · {PAYMENT_LABEL[p.method]}
+                      {p.method === "INVOICE" && <span className="muted"> · billed to the account: owed until it&apos;s paid</span>}
                       {p.note && <span className="muted"> · {p.note}</span>}
                     </span>
                     <span className="flex items-center gap-2">

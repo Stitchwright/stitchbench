@@ -32,10 +32,13 @@ export function todayIn(timeZone = "America/New_York") {
   return iso(zonedParts(new Date(), timeZone));
 }
 
-/** Payments taken in [start, end) with their ticket, for the sales log. */
+/**
+ * Payments taken in [start, end) with their ticket, for the sales log. A bill put on a trade account ("Invoice (on
+ * account)") isn't money taken: it stays owed under Unpaid invoices until the account pays it.
+ */
 export async function paymentsBetween(shopId: string, start: Date, end: Date) {
   return db.payment.findMany({
-    where: { paidAt: { gte: start, lt: end }, ticket: { shopId } },
+    where: { paidAt: { gte: start, lt: end }, ticket: { shopId }, method: { not: "INVOICE" } },
     include: { ticket: { include: { customer: true, machine: true, viaAccount: true } } },
     orderBy: { paidAt: "asc" },
   });
