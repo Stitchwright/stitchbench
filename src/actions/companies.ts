@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { safe, UserError } from "@/lib/action";
 import { requirePlatformAdmin } from "@/lib/session";
 import { createShopWithOwner, type ShopKind } from "@/lib/shops";
+import { normalizeEmail } from "@/lib/email";
 import { redeemPartnerCode } from "@/lib/partners";
 
 /**
@@ -13,7 +14,7 @@ import { redeemPartnerCode } from "@/lib/partners";
  */
 export const createCompany = safe(async function createCompany(formData: FormData) {
   await requirePlatformAdmin();
-  const email = String(formData.get("email") ?? "");
+  const email = normalizeEmail(formData.get("email"));
   const shop = await createShopWithOwner({
     shopName: String(formData.get("shop") ?? ""),
     name: String(formData.get("name") ?? ""),

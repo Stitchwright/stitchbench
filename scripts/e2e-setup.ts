@@ -2,10 +2,11 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
+import { normalizeEmail } from "../src/lib/email";
 import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "../src/lib/service-menu";
 
 async function main() {
-  const email = process.env.E2E_EMAIL ?? "e2e@stitchbench.test";
+  const email = normalizeEmail(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
   const password = process.env.E2E_PASSWORD ?? "e2e-password-1";
   const hash = await bcrypt.hash(password, 10);
   const existing = await db.user.findUnique({ where: { email } });

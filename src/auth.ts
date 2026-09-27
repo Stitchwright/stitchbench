@@ -3,10 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { isValidEmail, normalizeEmail } from "@/lib/email";
 import { authConfig } from "@/auth.config";
 
+// The same email rule accounts are made with (lib/email): a stricter check here locked out logins like owner@myshop.
 const credentialsSchema = z.object({
-  email: z.string().email(),
+  email: z.string().transform(normalizeEmail).refine(isValidEmail),
   password: z.string().min(1),
 });
 
@@ -74,7 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials, request) {
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
-        const email = parsed.data.email.toLowerCase();
+        const email = parsed.data.email;
         const ip = clientAddress(request);
         if (ip && count(`i:${ip}`) >= 50) return null;
         return paced(email, async () => {

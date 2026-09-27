@@ -2,6 +2,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
+import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "@/lib/service-menu";
 
 export type ShopKind = "repair" | "retail" | "both";
@@ -37,10 +38,11 @@ export async function createShopWithOwner(
   input: { shopName: string; name: string; email: string; password: string; kind?: ShopKind },
   opts: { firstOnly?: boolean } = {},
 ) {
-  const email = input.email.trim().toLowerCase();
+  const email = normalizeEmail(input.email);
   if (!input.shopName.trim() || !input.name.trim() || !email || input.password.length < 8) {
     throw new UserError("Fill in every field; password 8+ characters.");
   }
+  if (!isValidEmail(email)) throw new UserError(EMAIL_HELP);
   if (await db.user.findUnique({ where: { email } })) throw new UserError("That email already has an account.");
   const modes = shopModes(input.kind);
   const passwordHash = await bcrypt.hash(input.password, 10);
