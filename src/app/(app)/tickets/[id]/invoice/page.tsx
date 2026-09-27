@@ -34,8 +34,8 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
             <div className="text-lg font-semibold">
               Invoice <span className="mono">#{ticketNo(t.number)}</span>
             </div>
-            <div>Received {fmtDate(t.intakeAt)}</div>
-            {t.closedAt && <div>Returned {fmtDate(t.closedAt)}</div>}
+            <div>Received {fmtDate(t.intakeAt, s.timeZone)}</div>
+            {t.closedAt && <div>Returned {fmtDate(t.closedAt, s.timeZone)}</div>}
           </div>
         </header>
 
@@ -99,7 +99,7 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
             .map((p) => (
               <div key={p.id} className="contents">
                 <dt>
-                  {p.amountCents < 0 ? "Refunded" : "Paid"} {fmtDate(p.paidAt)} ({PAYMENT_LABEL[p.method]})
+                  {p.amountCents < 0 ? "Refunded" : "Paid"} {fmtDate(p.paidAt, s.timeZone)} ({PAYMENT_LABEL[p.method]})
                 </dt>
                 <dd className="text-right">{money(-p.amountCents)}</dd>
               </div>
@@ -112,7 +112,7 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           {s.warrantyDays > 0 && (
             <p>
               {s.warrantyDays}-day warranty on our work
-              {t.warrantyUntil ? ` (through ${fmtDate(t.warrantyUntil)})` : ""}. Parts we didn&apos;t install are not covered.
+              {t.warrantyUntil ? ` (through ${fmtDate(t.warrantyUntil, s.timeZone)})` : ""}. Parts we didn&apos;t install are not covered.
             </p>
           )}
           {/* Only what was ticked as handed back; anything else is still with the shop. */}

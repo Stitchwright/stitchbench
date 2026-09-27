@@ -9,14 +9,16 @@ type Rep = { asSeller: Reputation; asBuyer: Reputation; recent: { stars: number;
 
 // A shop on the marketplace: how other shops rated it, and what it has for sale.
 export default async function ShopPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
-  const [listings, rep] = await Promise.all([
+  const [found, rep] = await Promise.all([
     db.listing.findMany({ where: { sellerId: id, status: "ACTIVE" }, orderBy: { createdAt: "desc" } }),
     hubFetch(`/v1/reputation/${id}`, { quick: true })
       .then((r) => r.json() as Promise<Rep>)
       .catch(() => null),
   ]);
+  // This install's own page: "mine" means this company's; another company here sees its listings like any shop's.
+  const listings = found.map((l) => ({ ...l, mine: l.mine && l.shopId === user.shopId }));
   const name = listings[0]?.shopName ?? (await db.listing.findFirst({ where: { sellerId: id }, select: { shopName: true } }))?.shopName ?? "Shop";
 
   return (

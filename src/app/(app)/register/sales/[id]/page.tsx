@@ -21,13 +21,15 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
   const shop = sale.shop;
   const svg = barcodeSvg(`S${sale.number}`, 7);
   const tenders = sale.tenders as Tender[];
+  // Clock times in the shop's zone: a hosted install's server runs on UTC, which would put an evening sale on tomorrow's date.
+  const when = (d: Date, opts: Intl.DateTimeFormatOptions = {}) => d.toLocaleString("en-US", { timeZone: shop.timeZone, ...opts });
 
   return (
     <div className="space-y-4">
       <PageHeader back={{ href: "/register/sales", label: "Sales" }} title={`Sale #${sale.number}`} actions={<PrintButton />} />
       {sale.status === "VOIDED" && (
         <p className="pill tone-bad" role="status">
-          Void{sale.voidedAt ? ` since ${sale.voidedAt.toLocaleString("en-US")}` : ""}
+          Void{sale.voidedAt ? ` since ${when(sale.voidedAt)}` : ""}
         </p>
       )}
       <div className="receipt card card-pad mx-auto max-w-sm font-mono text-sm">
@@ -39,7 +41,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
         <div className="my-2 border-t border-dashed border-line" />
         <div className="flex justify-between">
           <span>Sale #{sale.number}</span>
-          <span>{sale.createdAt.toLocaleString("en-US", { month: "numeric", day: "numeric", year: "2-digit", hour: "numeric", minute: "2-digit" })}</span>
+          <span>{when(sale.createdAt, { month: "numeric", day: "numeric", year: "2-digit", hour: "numeric", minute: "2-digit" })}</span>
         </div>
         {sale.customer && <div>Customer: {sale.customer.name}</div>}
         {sale.user && <div>Served by: {sale.user.name}</div>}

@@ -20,7 +20,9 @@ export default async function StatementPage({ params, searchParams }: { params: 
   const st = await statementFor(user.shopId, id, p.from, p.to);
   const repairName = link.side === "repair" ? shop.name : link.partnerName;
   const sewingName = link.side === "retail" ? shop.name : link.partnerName;
-  const monthName = p.from.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  // Dates in the shop's zone: p.from is the shop's midnight on the 1st, which on a UTC server can still read as last month.
+  const tz = shop.timeZone;
+  const monthName = p.from.toLocaleDateString("en-US", { timeZone: tz, month: "long", year: "numeric" });
   const who = (cents: number) => (cents > 0 ? `${sewingName} owes ${repairName}` : cents < 0 ? `${repairName} owes ${sewingName}` : "Nothing owed");
 
   return (
@@ -68,7 +70,7 @@ export default async function StatementPage({ params, searchParams }: { params: 
                     <td>{r.customerName}</td>
                     <td>{r.machine}</td>
                     <td>
-                      {fmtDate(r.paidAt)} at {r.paidWhere === "shop" ? "sewing shop" : "repair shop"}
+                      {fmtDate(r.paidAt, tz)} at {r.paidWhere === "shop" ? "sewing shop" : "repair shop"}
                     </td>
                     <td className="num text-right">{money(r.totalCents)}</td>
                     <td className="num text-right">{money(r.commissionCents)}</td>
@@ -101,7 +103,7 @@ export default async function StatementPage({ params, searchParams }: { params: 
               <tbody>
                 {st.consign.map((c) => (
                   <tr key={c.id}>
-                    <td>{fmtDate(c.soldAt)}</td>
+                    <td>{fmtDate(c.soldAt, tz)}</td>
                     <td>{c.item}</td>
                     <td className="num text-right">{qtyText(c.qty, null)}</td>
                     <td className="num text-right">{money(c.priceCents)}</td>
@@ -127,7 +129,7 @@ export default async function StatementPage({ params, searchParams }: { params: 
                   <Link href={`/partners/${id}/orders/${o.id}`} className="link mono">
                     {o.number}
                   </Link>{" "}
-                  delivered {fmtDate(o.deliveredAt)}
+                  delivered {fmtDate(o.deliveredAt, tz)}
                 </span>
                 <span className="num">{money(o.totalCents)}</span>
               </li>
@@ -148,7 +150,7 @@ export default async function StatementPage({ params, searchParams }: { params: 
           {st.settlements.map((x) => (
             <li key={x.id} className="flex justify-between">
               <span>
-                Paid {fmtDate(x.paidAt)} ({x.netCents > 0 ? `${sewingName} to ${repairName}` : `${repairName} to ${sewingName}`}){x.note ? ` · ${x.note}` : ""}
+                Paid {fmtDate(x.paidAt, tz)} ({x.netCents > 0 ? `${sewingName} to ${repairName}` : `${repairName} to ${sewingName}`}){x.note ? ` · ${x.note}` : ""}
               </span>
               <span className="num">{money(Math.abs(x.netCents))}</span>
             </li>

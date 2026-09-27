@@ -5,6 +5,7 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
+import type { Prisma } from "@/generated/prisma/client";
 import type { NoteKind, PhotoKind } from "@/generated/prisma/enums";
 
 export type HubLink = {
@@ -270,6 +271,10 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
     scope: "member",
   };
   await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+  // The notes this shop shared went to the old connection; another hub (or this one rebuilt) doesn't have them, so
+  // the first sync sends them again. The hub tells copies apart per install, so a hub that kept the old install's
+  // posts (one moved whole to a new address) would hold them twice; a re-join like that is rare.
+  await db.sharedPost.updateMany({ where: { hubId: { not: null } }, data: { hubId: null } });
   return j;
 }
 
@@ -534,16 +539,19 @@ export async function saveOrder(o: HubOrder, shopId?: string) {
   await db.marketOrder.upsert({ where: { id: o.id }, create: { id: o.id, ...row, shopId: owner }, update: { ...row, shopId: owner } });
 }
 
-async function pullOrders(cursor: string | null) {
+/** false when the install moved to another hub (or left) while this run was on: the rest of the run is dropped. */
+async function pullOrders(cursor: string | null, run: SyncRun) {
   let since = cursor ?? "0";
   for (let page = 0; page < 100; page++) {
     const r = (await (await hubFetch(`/v1/orders?since=${since}`)).json()) as { orders: HubOrder[]; next: string | number };
+    if (!(await sameHub(run))) return false;
     for (const o of r.orders) await saveOrder(o);
     const next = String(r.next);
-    if (next !== since) await db.hubState.update({ where: { id: 1 }, data: { orderCursor: next } });
+    if (next !== since && !(await writeState(run, { orderCursor: next }))) return false;
     if (!r.orders.length || next === since) break;
     since = next;
   }
+  return true;
 }
 
 let lastUsagePush = 0;
@@ -556,6 +564,8 @@ export function reportUsageNextSync() {
 /** Tell the hub how many of each part this shop used this month and last (counts only), for the community's most-used list. */
 async function pushUsage() {
   if (Date.now() - lastUsagePush < 3600_000) return;
+  // Once an hour whether or not the hub takes it: a report it refuses isn't tried again every ten minutes.
+  lastUsagePush = Date.now();
   const now = new Date();
   for (const back of [0, 1]) {
     const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
@@ -565,14 +575,15 @@ async function pushUsage() {
       FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
       WHERE sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${start} AND sm."createdAt" < ${end}
       GROUP BY p."partNumber", p.brand`;
+    // The hub counts by the letters and digits of a number; one with none ("-", a part named only in Chinese) would
+    // make it refuse the whole month, so those stay out.
     const items = rows
       .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Math.round(Number(r.qty)), tickets: Number(r.tickets) }))
-      .filter((i) => i.qty > 0)
+      .filter((i) => i.qty > 0 && key(i.number))
       .slice(0, 5000);
     const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
     await hubFetch("/v1/usage", { method: "POST", json: { month, items } });
   }
-  lastUsagePush = Date.now();
 }
 
 /**
@@ -610,20 +621,35 @@ async function pushPending() {
 
 export type SyncResult = { pushed: number; links: number; posts: number; figures: number } | { skipped: true };
 
+// A sync run belongs to the hub connection it started with. Joining another hub (or leaving) while it runs gives the
+// install a new id and starts the cursors over; a page that was fetched for the old hub must not put its rows or its
+// numbers into the new connection's copy. Every write checks the connection is still the run's (in the database, so
+// it holds across the server processes a hosted install runs); when it isn't, the run stops and the new connection's
+// own sync takes over.
+export type SyncRun = { installId: string | null };
+
+export async function sameHub(run: SyncRun) {
+  return (await db.hubState.count({ where: { id: 1, installId: run.installId } })) > 0;
+}
+
+/** Writes to this run's connection only; false (nothing written) once the install is on another hub or none. */
+export async function writeState(run: SyncRun, data: Prisma.HubStateUpdateManyMutationInput) {
+  return (await db.hubState.updateMany({ where: { id: 1, installId: run.installId }, data })).count > 0;
+}
+
 async function doSync(): Promise<SyncResult> {
   const s = await hubState();
   if (!s?.url || !s.installKey) return { skipped: true };
+  const run: SyncRun = { installId: s.installId };
   try {
     // The hub's name and Discord link can change; keep them current.
     const me = (await (await hubFetch("/v1/me")).json()) as { hubName?: string; discordInvite?: string | null; scope?: string };
     // The hub's Discord link wins when it has one; otherwise keep the one that came with the invite.
-    await db.hubState.update({
-      where: { id: 1 },
-      data: { hubName: me.hubName ?? null, scope: me.scope ?? "member", ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) },
-    });
+    const still = await writeState(run, { hubName: me.hubName ?? null, scope: me.scope ?? "member", ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) });
+    if (!still) return { skipped: true };
     // On the hub for partner shops only: nothing of the community's to sync.
     if (me.scope === "partner") {
-      await db.hubState.update({ where: { id: 1 }, data: { lastSyncAt: new Date(), lastError: null } });
+      await writeState(run, { lastSyncAt: new Date(), lastError: null });
       return { skipped: true };
     }
     // A note that won't upload mustn't stop everything else from syncing; it's tried again next time.
@@ -644,6 +670,7 @@ async function doSync(): Promise<SyncResult> {
         next: string;
         more: boolean;
       };
+      if (!(await sameHub(run))) return { skipped: true };
       await saveLinks(ch.links);
       for (const p of ch.posts) await savePost(p);
       await saveXParts(ch.xparts ?? []);
@@ -658,16 +685,21 @@ async function doSync(): Promise<SyncResult> {
       n.posts += ch.posts.length;
       n.figures += ch.figures.length;
       since = String(ch.next);
-      await db.hubState.update({ where: { id: 1 }, data: { cursor: since } });
+      if (!(await writeState(run, { cursor: since }))) return { skipped: true };
       if (!ch.more) break;
     }
-    await pullOrders(s.orderCursor);
-    // An older hub may not have usage yet; that mustn't stop the sync.
-    await pushUsage().catch((e) => console.error("community hub usage:", e instanceof Error ? e.message : e));
-    await db.hubState.update({ where: { id: 1 }, data: { lastSyncAt: new Date(), lastError: null } });
+    if (!(await pullOrders(s.orderCursor, run))) return { skipped: true };
+    // A refused usage report mustn't stop the sync, but it's shown with the sync status rather than lost; an older hub
+    // without usage at all (404) isn't worth reporting every time.
+    const usage = await pushUsage().then(
+      () => null,
+      (e: unknown) => (hubStatus(e) === 404 ? null : `Usage report: ${e instanceof Error ? e.message : String(e)}`),
+    );
+    if (usage) console.error("community hub usage:", usage);
+    await writeState(run, { lastSyncAt: new Date(), lastError: usage });
     return n;
   } catch (e) {
-    await db.hubState.update({ where: { id: 1 }, data: { lastError: e instanceof Error ? e.message : String(e) } }).catch(() => {});
+    await writeState(run, { lastError: e instanceof Error ? e.message : String(e) }).catch(() => {});
     throw e;
   }
 }

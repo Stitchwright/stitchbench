@@ -194,7 +194,12 @@ export const orderAction = safe(async function orderAction(orderId: string, acti
   let body: Record<string, unknown> = {};
   switch (action) {
     case "accept": {
-      const pay = str(formData.get("payInstructions")) ?? shop.payInstructions;
+      // Where the buyer's money goes is the owner's call (Settings → Shop, owner or admin only): a tech accepting an
+      // order sends the shop's saved instructions, never ones typed into the form.
+      if (user.role === "TECH" && !shop.payInstructions) {
+        throw new UserError("The shop hasn't said how buyers pay it yet. Ask the owner to add payment instructions in Settings → Shop.");
+      }
+      const pay = user.role === "TECH" ? shop.payInstructions : (str(formData.get("payInstructions")) ?? shop.payInstructions);
       if (!pay) throw new UserError("Say how the buyer should pay you (PayPal, Zelle, check to...). You can save it in Settings → Shop.");
       if (!shop.payInstructions) await db.shop.update({ where: { id: shop.id }, data: { payInstructions: pay } });
       body = {

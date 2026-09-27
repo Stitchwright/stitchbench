@@ -1,6 +1,7 @@
 // Backups of the shop's data: customers, machines, tickets, photos, parts, people, prices, shared notes, plus the
-// reference data the program can't reload by itself (tension specs, factory settings, the manual list, pictures).
-// The community hub's cached copies are left out: they're synced again from the hub after a restore.
+// pictures the program can't reload by itself (figures and machine pictures). The tension specs, factory settings and
+// manual list come with the program (reference.mjs loads them), so they're left out: a restore must not put an older
+// set back. The community hub's cached copies are left out too: they're synced again from the hub after a restore.
 // Each backup is a folder of gzipped COPY files plus manifest.json; restore replaces the shop data with it.
 import fs from "node:fs";
 import path from "node:path";
@@ -9,11 +10,14 @@ import { pipeline } from "node:stream/promises";
 import copyStreams from "pg-copy-streams";
 
 const { to: copyTo, from: copyFrom } = copyStreams;
-// Never in a backup: the migration record (the program's own) and the hub's cached data (re-synced from the hub).
-// The hub connection itself (HubState) and this shop's marketplace orders are kept.
-const SKIP = new Set(["_prisma_migrations", "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "Listing", "ListingPhoto"]);
-// Reference data: backed up, but restored only from a backup that has it, so an older backup leaves what's here alone.
-const REFERENCE = new Set(["TensionSpec", "FactorySetting", "LibraryDoc", "FigureImage", "ModelImage"]);
+// Never in a backup: the migration record (the program's own), the shipped reference sets (reference.mjs reloads them,
+// and skips a table whose comment says the shipped set is in, which a restore wouldn't change) and the hub's cached
+// data (re-synced from the hub). The hub connection itself (HubState), this shop's marketplace orders and its listings
+// are kept: which company on this install owns a listing (shopId) is known here only, not on the hub.
+const SKIP = new Set(["_prisma_migrations", "TensionSpec", "FactorySetting", "LibraryDoc", "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "ListingPhoto"]);
+// Backed up, but restored only from a backup that has it, so an older backup leaves what's here alone: the reference
+// pictures, and the listings (backups before 1.4.2 left them out; the ones here keep their owner, the hub refreshes the rest).
+const OPTIONAL = new Set(["FigureImage", "ModelImage", "Listing"]);
 // Pictures are already compressed: don't spend time gzipping them hard.
 const PICTURES = new Set(["FigureImage", "ModelImage", "MachinePhoto", "SharedPhoto"]);
 const q = (name) => `"${name.replace(/"/g, '""')}"`;
@@ -33,28 +37,62 @@ async function columns(client, table) {
 
 const NAME = /^(stitchbench|stitchshop)-\d{4}-\d\d-\d\d-\d\d-\d\d(-\d\d)?(-\d+)?$/;
 
+/**
+ * Backups from before 1.4.2 recorded no flavor, and both programs named theirs stitchbench-*. Those sitting in
+ * StitchShop's own "StitchShop Backups" folder are StitchShop's: it keeps counting and pruning them.
+ */
+function legacyOwn(root, name, flavor) {
+  if (flavor === "stitchbench" || !name.startsWith("stitchbench-") || !path.basename(root).startsWith("StitchShop")) return false;
+  try {
+    return !("flavor" in JSON.parse(fs.readFileSync(path.join(root, name, "manifest.json"), "utf8")));
+  } catch {
+    return false;
+  }
+}
+
 /** This program's backups in root, newest first. StitchBench and StitchShop keep theirs apart even in one folder. */
 export function listBackups(root, flavor = "stitchbench") {
   if (!fs.existsSync(root)) return [];
   return fs
     .readdirSync(root)
-    .filter((n) => NAME.test(n) && n.startsWith(`${flavor}-`) && fs.existsSync(path.join(root, n, "manifest.json")))
+    .filter((n) => NAME.test(n) && (n.startsWith(`${flavor}-`) || legacyOwn(root, n, flavor)) && fs.existsSync(path.join(root, n, "manifest.json")))
     .sort()
     .reverse()
     .map((n) => path.join(root, n));
 }
 
-// One backup at a time: a second "Back up now" (or the nightly timer landing on it) waits for the first.
-let running = Promise.resolve();
+// One at a time, backups and restores alike: a second "Back up now" (or the nightly timer landing on it) waits for the
+// first, and a backup never runs beside a restore. Its snapshot, taken while the restore's TRUNCATE is in flight, would
+// see every table empty and be saved as a complete backup.
+let chain = Promise.resolve();
+
+function oneAtATime(fn) {
+  const run = chain.then(fn);
+  chain = run.catch(() => {});
+  return run;
+}
 
 /**
  * Back up to a new folder in root. keep = how many of this program's backups to keep (older ones are removed unless
  * prune is false, as for the safety copy before a restore, which must never remove the backup being restored).
  */
 export function backup(pool, root, { keep = 30, flavor = "stitchbench", prune = true, version = null } = {}) {
-  const run = running.then(() => backupNow(pool, root, { keep, flavor, prune, version }));
-  running = run.catch(() => {});
-  return run;
+  return oneAtATime(() => backupNow(pool, root, { keep, flavor, prune, version }));
+}
+
+/** Leftovers of backups cut short (a power cut, an update or a Windows restart mid-backup): removed once an hour old. */
+function sweepPartials(root, flavor) {
+  for (const n of fs.readdirSync(root)) {
+    if (!n.startsWith(`.${flavor}-partial-`)) continue;
+    const p = path.join(root, n);
+    try {
+      // The newest write anywhere in it: a slow backup still running from a console (backup-now.mjs) keeps writing.
+      const newest = Math.max(fs.statSync(p).mtimeMs, ...fs.readdirSync(p).map((f) => fs.statSync(path.join(p, f)).mtimeMs));
+      if (Date.now() - newest > 3600_000) fs.rmSync(p, { recursive: true, force: true });
+    } catch {
+      /* in use, or gone already: next time */
+    }
+  }
 }
 
 async function backupNow(pool, root, { keep, flavor, prune, version }) {
@@ -64,6 +102,7 @@ async function backupNow(pool, root, { keep, flavor, prune, version }) {
   let dir = path.join(root, `${flavor}-${stamp}`);
   for (let i = 2; fs.existsSync(dir); i++) dir = path.join(root, `${flavor}-${stamp}-${i}`);
   fs.mkdirSync(root, { recursive: true });
+  sweepPartials(root, flavor);
   // A folder of its own for the work in progress (never shared with another run), renamed into place when complete.
   const tmp = fs.mkdtempSync(path.join(root, `.${flavor}-partial-`));
   const manifest = { created: d.toISOString(), flavor, version, lastMigration: null, shops: [], tables: [] };
@@ -90,12 +129,22 @@ async function backupNow(pool, root, { keep, flavor, prune, version }) {
     fs.renameSync(tmp, dir);
   } catch (e) {
     await client?.query("ROLLBACK").catch(() => {});
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      /* a file still held open (antivirus): the sweep gets it next time, and the real error is the one to report */
+    }
     throw e;
   } finally {
     client?.release();
   }
-  if (prune) for (const old of listBackups(root, flavor).slice(keep)) fs.rmSync(old, { recursive: true, force: true });
+  // keep comes from the settings file: a whole number of backups to hold on to, 0 for all of them. Blank or a word
+  // means the usual 30, never none (slice(0) would remove every backup). The one just made is never removed either.
+  let limit = Number.parseInt(keep, 10);
+  if (!(limit >= 0)) limit = 30;
+  if (prune && limit > 0) {
+    for (const old of listBackups(root, flavor).slice(limit)) if (old !== dir) fs.rmSync(old, { recursive: true, force: true });
+  }
   return dir;
 }
 
@@ -104,8 +153,9 @@ export function readManifest(dir, flavor = "stitchbench") {
   const file = path.join(dir, "manifest.json");
   if (!fs.existsSync(file)) return { error: `Pick a folder named like ${flavor}-2026-09-25-01-00-00 from the backups folder.` };
   const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
-  // Backups from before the flavor was recorded carry only the folder name (all were StitchBench's).
-  const from = manifest.flavor ?? (path.basename(dir).startsWith("stitchshop-") ? "stitchshop" : "stitchbench");
+  // Backups from before 1.4.2 recorded no flavor, and both programs named theirs stitchbench-*, so the name says
+  // nothing: either program restores one (its owner knows which folder it came from).
+  const from = manifest.flavor ?? flavor;
   if (from !== flavor) {
     const names = { stitchbench: "StitchBench", stitchshop: "StitchShop" };
     return { error: `That's a ${names[from] ?? from} backup. Restore it in ${names[from] ?? from}, not ${names[flavor]}.` };
@@ -124,7 +174,11 @@ const FIXUPS = [
 ];
 
 /** Replace all shop data with a backup. The database must already be at (or past) the backup's version. */
-export async function restore(pool, dir, flavor = "stitchbench") {
+export function restore(pool, dir, flavor = "stitchbench") {
+  return oneAtATime(() => restoreNow(pool, dir, flavor));
+}
+
+async function restoreNow(pool, dir, flavor) {
   const { manifest, error } = readManifest(dir, flavor);
   if (error) throw new Error(error);
   for (const t of manifest.tables) {
@@ -141,8 +195,9 @@ export async function restore(pool, dir, flavor = "stitchbench") {
     await client.query("SET LOCAL session_replication_role = replica");
     const here = await backedUpTables(client);
     const inBackup = new Set(manifest.tables.map((t) => t.name));
-    // All shop data is replaced; reference data only when the backup has it.
-    const replace = here.filter((t) => !REFERENCE.has(t) || inBackup.has(t));
+    // All shop data is replaced; the optional tables only when the backup has them. Tables an older backup has but
+    // this version no longer backs up (the shipped reference sets) are left as they are.
+    const replace = here.filter((t) => !OPTIONAL.has(t) || inBackup.has(t));
     if (replace.length) await client.query(`TRUNCATE ${replace.map(q).join(", ")}`);
     for (const t of manifest.tables) {
       if (!replace.includes(t.name)) continue;

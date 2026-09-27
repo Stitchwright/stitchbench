@@ -5,21 +5,42 @@ import { toast } from "sonner";
 
 type Detector = { detect(src: HTMLVideoElement): Promise<{ rawValue: string }[]> };
 
+/** How long a code has to be out of the camera's view before seeing it again counts as a new scan. */
+const REPEAT_GAP_MS = 1500;
+
 /**
  * Read barcodes with the phone / tablet / webcam camera. USB and Bluetooth scanners don't need this: they type the
  * code and press Enter. `onCode` always sees the latest state of the page (it isn't frozen when the camera starts).
+ * A code held in view is reported once, however long it stays there; it is reported again only after it has been out
+ * of view for a moment, so the next identical item on a shelf still counts.
  */
 export function useBarcodeCamera(onCode: (code: string) => void) {
   const video = useRef<HTMLVideoElement>(null);
   const [on, setOn] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
   const handler = useRef(onCode);
+  const seen = useRef({ code: "", at: 0 });
   useEffect(() => {
     handler.current = onCode;
   });
   useEffect(() => () => stopRef.current?.(), []);
 
+  // The decoders see the same code several times a second for as long as it's in front of the lens. The time of the
+  // last sighting is kept even when the sighting is dropped, so "still in view" never turns into "scanned again".
+  function report(code: string) {
+    const now = Date.now();
+    const stillInView = code === seen.current.code && now - seen.current.at < REPEAT_GAP_MS;
+    seen.current = { code, at: now };
+    if (!stillInView) handler.current(code);
+  }
+
   async function start() {
+    // Browsers only hand the camera to a secure page: https, or the shop PC's own window. A phone on the shop's plain
+    // http address gets told so, instead of a cryptic error.
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      toast.error("The camera only works on an https address or on the shop PC itself. Here, use a USB or Bluetooth scanner, or type the code.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       const v = video.current!;
@@ -34,7 +55,7 @@ export function useBarcodeCamera(onCode: (code: string) => void) {
           if (stopped) return;
           try {
             const found = await det.detect(v);
-            if (found[0]?.rawValue) handler.current(found[0].rawValue);
+            if (found[0]?.rawValue) report(found[0].rawValue);
           } catch {
             /* keep looking */
           }
@@ -51,7 +72,7 @@ export function useBarcodeCamera(onCode: (code: string) => void) {
         const { BrowserMultiFormatReader } = await import("@zxing/browser");
         const reader = new BrowserMultiFormatReader();
         const controls = await reader.decodeFromVideoElement(v, (res) => {
-          if (res && !stopped) handler.current(res.getText());
+          if (res && !stopped) report(res.getText());
         });
         stopRef.current = () => {
           stopped = true;

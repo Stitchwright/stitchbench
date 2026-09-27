@@ -11,12 +11,17 @@ export function libraryDir(): string | null {
   return fs.existsSync(abs) ? abs : null;
 }
 
-/** A PDF path inside the library, or null if it points anywhere else. */
+// Folders in the library that hold the shop's own business papers, not manuals: draft price sheets, forms, the notes
+// and guides the shop writes to sell (_own-notes, one per category). Never served to anyone, whoever is signed in.
+const PRIVATE_FOLDERS = new Set(["_business-notes", "_own-notes"]);
+
+/** A PDF path inside the library (and not in a private folder), or null if it points anywhere else. */
 export function resolveInLibrary(root: string, rel: string): string | null {
   if (!rel || rel.includes("\0")) return null;
   const full = path.resolve(root, rel.split(/[\\/]+/).join(path.sep));
   const inside = path.relative(root, full);
   if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) return null;
+  if (inside.split(path.sep).some((folder) => PRIVATE_FOLDERS.has(folder.toLowerCase()))) return null;
   if (!/\.pdf$/i.test(full)) return null;
   return full;
 }

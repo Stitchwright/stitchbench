@@ -18,6 +18,11 @@ export default async function MarketInvoice({ params }: { params: Promise<{ id: 
   const accepted = o.events.find((e) => e.action === "accepted")?.at ?? o.createdAt;
   const paid = ["PAID", "SHIPPED", "RECEIVED"].includes(o.status) && o.paidAt;
   const s = o.sellerContact;
+  // The hub names the seller and buyer after their StitchBench install, which on a hosted install several companies
+  // share. The contact details were written by the company that actually sold or bought, so its own name heads the
+  // invoice and goes on "Bill to" (the buyer's contact name is "person, company").
+  const sellerName = s?.name ?? o.sellerShop;
+  const buyerName = o.buyerContact?.name ?? o.buyerShop;
 
   return (
     <div>
@@ -27,7 +32,7 @@ export default async function MarketInvoice({ params }: { params: Promise<{ id: 
       <article className="card mx-auto max-w-3xl bg-white p-8 text-black print:border-0 print:p-0">
         <header className="flex flex-wrap justify-between gap-4 border-b border-line pb-4">
           <div>
-            <div className="text-xl font-bold">{o.sellerShop}</div>
+            <div className="text-xl font-bold">{sellerName}</div>
             {s?.address && <div className="text-sm whitespace-pre-line">{s.address}</div>}
             <div className="text-sm">{[s?.phone, s?.email].filter(Boolean).join(" · ")}</div>
           </div>
@@ -43,8 +48,7 @@ export default async function MarketInvoice({ params }: { params: Promise<{ id: 
         <section className="grid gap-4 border-b border-line py-4 text-sm sm:grid-cols-2">
           <div>
             <div className="label">Bill to</div>
-            <div className="font-semibold">{o.buyerShop}</div>
-            {o.buyerContact?.name && <div>{o.buyerContact.name}</div>}
+            <div className="font-semibold">{buyerName}</div>
             <div>{[o.buyerContact?.phone, o.buyerContact?.email].filter(Boolean).join(" · ")}</div>
           </div>
           <div>
