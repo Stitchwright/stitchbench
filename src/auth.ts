@@ -17,17 +17,19 @@ const credentialsSchema = z.object({
 //   the right password still works;
 // - per network address, only where a proxy we trust reports it (TRUST_PROXY=true on Railway; a shop PC has no proxy
 //   and a device could claim any address): 50 wrong in 15 minutes, then refused.
+// The count is kept until 15 minutes pass with no wrong try (not 15 minutes from the first), so steady guessing never
+// gets a fresh start.
 // In memory: a restart forgets, which is fine for a shop PC or one hosted server.
 const WINDOW = 15 * 60_000;
 const MAX_KEYS = 50_000;
-const failures = new Map<string, { n: number; since: number }>();
+const failures = new Map<string, { n: number; last: number }>();
 // Tries still being checked (the password compare takes a moment). They count from the moment they start, so a burst
 // sent all at once can't slip past the limits together before the first one has been written down as wrong.
 const underWay = new Map<string, number>();
 
 function count(key: string) {
   const f = failures.get(key);
-  return (!f || Date.now() - f.since > WINDOW ? 0 : f.n) + (underWay.get(key) ?? 0);
+  return (!f || Date.now() - f.last > WINDOW ? 0 : f.n) + (underWay.get(key) ?? 0);
 }
 
 function begin(key: string) {
@@ -42,9 +44,9 @@ function end(key: string) {
 
 function fail(key: string) {
   const f = failures.get(key);
-  const fresh = !f || Date.now() - f.since > WINDOW;
+  const fresh = !f || Date.now() - f.last > WINDOW;
   failures.delete(key); // re-added last: when the map is full, the keys that failed longest ago go first
-  failures.set(key, fresh ? { n: 1, since: Date.now() } : { n: f.n + 1, since: f.since });
+  failures.set(key, { n: fresh ? 1 : f.n + 1, last: Date.now() });
   for (const k of failures.keys()) {
     if (failures.size <= MAX_KEYS) break;
     failures.delete(k);

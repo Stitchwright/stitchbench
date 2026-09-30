@@ -21,7 +21,7 @@ export const createCompany = safe(async function createCompany(formData: FormDat
     email,
     password: String(formData.get("password") ?? ""),
     kind: (String(formData.get("kind") ?? "repair") as ShopKind) || "repair",
-  });
+  }, { allowReserved: true });
   revalidatePath("/companies");
   const code = String(formData.get("partnerCode") ?? "").trim();
   if (code) {
