@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
-import { str } from "@/lib/format";
+import { brandKey, str } from "@/lib/format";
 import { hubFetch, hubId, hubStatus, saveXPart, type HubXPart } from "@/lib/hub";
-import { numberKey, parseFits, parseNumbers, parseSources, partKeys, type XFit, type XSource } from "@/lib/parts";
+import { numberKey, parseFits, parseNumbers, parseSources, partKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 
 const KINDS = ["PART", "ACCESSORY", "SUPPLY"];
 
@@ -18,11 +18,20 @@ function refresh(id?: string) {
   revalidatePath("/parts", "layout");
 }
 
-/** Local entries that already use any of these numbers (besides `except`). */
-async function numberOwner(numbers: { number: string }[], except?: string) {
-  const keys = numbers.map((n) => numberKey(n.number)).filter(Boolean);
-  if (!keys.length) return null;
-  return db.xPart.findFirst({ where: { numberKeys: { hasSome: keys }, ...(except ? { id: { not: except } } : {}) }, select: { id: true, name: true } });
+/**
+ * The local entry that already has one of these numbers under the same brand (besides `except`): the hub's rule. The
+ * same number from another maker is another part ("Janome, 12345" and "Singer, 12345"), and a one- or two-character
+ * number says too little to tell parts apart.
+ */
+async function numberOwner(numbers: XNumber[], except?: string) {
+  const want = numbers.map((n) => ({ brand: brandKey(n.brand), key: numberKey(n.number) })).filter((w) => w.key.length >= 3);
+  if (!want.length) return null;
+  const near = await db.xPart.findMany({
+    where: { numberKeys: { hasSome: want.map((w) => w.key) }, ...(except ? { id: { not: except } } : {}) },
+    select: { id: true, name: true, numbers: true },
+    take: 200,
+  });
+  return near.find((x) => (x.numbers as XNumber[]).some((xn) => want.some((w) => w.key === numberKey(xn.number) && w.brand === brandKey(xn.brand)))) ?? null;
 }
 
 export const saveCrossRef = safe(async function saveCrossRef(id: string | null, formData: FormData) {
@@ -48,7 +57,7 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
   if (!body.name) throw new UserError("Give the part a name, e.g. \"Needle plate screw\".");
   if (!body.numbers.length) throw new UserError("Add at least one part number (one per line: Brand, number).");
   const clash = await numberOwner(body.numbers, id ?? undefined);
-  if (clash) throw new UserError(`One of those numbers is already on "${clash.name}". Open that part and merge the two instead.`);
+  if (clash) throw new UserError(`One of those numbers is already on "${clash.name}" (same brand). If it is the same part, open that one and merge the two instead.`);
   let x: HubXPart;
   try {
     x = (await (await hubFetch(id ? `/v1/xparts/${hubId(id)}` : "/v1/xparts", { method: id ? "PUT" : "POST", json: body })).json()) as HubXPart;

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { sessionUser } from "@/lib/session";
-import { libraryDir, resolveInLibrary } from "@/lib/library-dir";
+import { libraryDir, resolveInLibrary, writeUnusedPdf } from "@/lib/library-dir";
 import { formUpTo } from "@/lib/read-body";
 
 const MAX_UPLOAD = 150 * 1024 * 1024;
@@ -45,16 +45,15 @@ export async function POST(req: Request) {
   const file = form.get("file");
   if (!(file instanceof Blob) || file.size === 0) return new Response("No PDF received.", { status: 400 });
   if (file.size > MAX_UPLOAD) return new Response("That PDF is too large.", { status: 413 });
-  const base = String(form.get("filename") ?? "scan.pdf")
-    .replace(/[^\w\-+.() ]+/g, "_")
-    .replace(/\.pdf$/i, "")
-    .slice(0, 120);
+  const stem =
+    String(form.get("filename") ?? "scan.pdf")
+      .replace(/[^\w\-+.() ]+/g, "_")
+      .replace(/\.pdf$/i, "")
+      .slice(0, 120) || "scan";
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (Buffer.from(bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") return new Response("That isn't a PDF.", { status: 415 });
   const inbox = path.join(root, "_inbox");
   await fs.promises.mkdir(inbox, { recursive: true });
-  let name = `${base || "scan"}.pdf`;
-  for (let i = 2; fs.existsSync(path.join(inbox, name)); i++) name = `${base} (${i}).pdf`;
-  await fs.promises.writeFile(path.join(inbox, name), bytes, { flag: "wx" });
+  const name = await writeUnusedPdf(inbox, stem, bytes);
   return Response.json({ path: `_inbox\\${name}` });
 }

@@ -40,7 +40,7 @@ export function ShareForm({ machineId, model, photos, defaultBody }: { machineId
           <label htmlFor="share-body" className="label">
             What you found and how you fixed it
           </label>
-          <textarea id="share-body" name="body" required rows={4} className="textarea" defaultValue={defaultBody} />
+          <textarea id="share-body" name="body" required rows={4} maxLength={5000} className="textarea" defaultValue={defaultBody} />
         </div>
         {photos.length > 0 && (
           <fieldset>

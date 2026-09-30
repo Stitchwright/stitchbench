@@ -65,7 +65,7 @@ export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compa
                     <span className="max-w-full truncate" title={s.sourceFile}>
                       {s.sourceFile}
                     </span>
-                    <OpenSpecSource file={s.sourceFile} pages={s.pages} />
+                    <OpenSpecSource file={s.sourceFile} sourcePath={s.sourcePath} pages={s.pages} />
                   </div>
                 )}
                 {s.confidence && s.confidence !== "high" && (
@@ -79,7 +79,7 @@ export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compa
                   <div className="max-w-56 truncate" title={s.sourceFile}>
                     {s.sourceFile}
                   </div>
-                  <OpenSpecSource file={s.sourceFile} pages={s.pages} />
+                  <OpenSpecSource file={s.sourceFile} sourcePath={s.sourcePath} pages={s.pages} />
                 </td>
               )}
             </tr>

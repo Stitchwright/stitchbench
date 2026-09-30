@@ -1,10 +1,11 @@
 import "server-only";
 
 /**
- * The request body, or null once it runs past `max` bytes. A chunked upload has no Content-Length to check first, so
- * the bytes are counted as they arrive and the upload is dropped at the limit instead of being read whole into memory.
+ * The request body (or a response's: anything with headers and a body), or null once it runs past `max` bytes. A chunked
+ * upload has no Content-Length to check first, so the bytes are counted as they arrive and the upload is dropped at the
+ * limit instead of being read whole into memory.
  */
-export async function readUpTo(req: Request, max: number): Promise<Uint8Array<ArrayBuffer> | null> {
+export async function readUpTo(req: Pick<Request, "headers" | "body">, max: number): Promise<Uint8Array<ArrayBuffer> | null> {
   if (Number(req.headers.get("content-length") ?? 0) > max) return null;
   const chunks: Uint8Array[] = [];
   let size = 0;

@@ -2,7 +2,7 @@ import "server-only";
 // Parts, their numbers, and the community cross-reference (synced XPart rows).
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
-import { modelKey } from "@/lib/format";
+import { modelKey, str, toCents } from "@/lib/format";
 import { brandMatches } from "@/lib/model-info";
 
 export type XNumber = { brand: string; number: string };
@@ -44,6 +44,44 @@ export function codeKeys(code: string) {
 export function partKeys(partNumber: string, altNumbers: string[]) {
   return [...new Set([partNumber, ...altNumbers].flatMap(codeKeys))];
 }
+
+// The most a stock count or a price can be. A partner shop refuses a whole catalog that has stock over 100,000 or a
+// price over $100,000 (MAX_QTY and MAX_MONEY in partners.ts), so nothing above that is kept here.
+export const MAX_STOCK = 100_000;
+export const MAX_CENTS = 10_000_000;
+
+/** Dollars typed for a cost or price, as cents: blank is none; a minus sign, a word or a huge number is an error. */
+export function centsField(v: FormDataEntryValue | string | null | undefined, what: string): number | null {
+  if (str(v) == null) return null;
+  const c = toCents(v);
+  if (c == null) throw new UserError(`${what}: enter dollars and cents, like 12.50.`);
+  if (c < 0 || c > MAX_CENTS) throw new UserError(`${what} must be between $0 and $${(MAX_CENTS / 100).toLocaleString("en-US")}.`);
+  return c;
+}
+
+/**
+ * Set a part's stock to what was counted. The change written to the history is worked out from the stock at that
+ * moment (the row is locked), so a sale that lands while the count is being saved can't leave the history off.
+ * Returns the change (0 when the count matched).
+ */
+export async function countStock(shopId: string, partId: string, counted: number, userId: string, note: string): Promise<number> {
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ qtyOnHand: number }[]>`SELECT "qtyOnHand" FROM "Part" WHERE id = ${partId} AND "shopId" = ${shopId} FOR UPDATE`;
+    if (!rows.length) throw new UserError("Part not found.");
+    const change = Math.round((counted - rows[0].qtyOnHand) * 1000) / 1000;
+    if (change === 0) return 0;
+    await tx.part.update({ where: { id: partId }, data: { qtyOnHand: counted } });
+    await tx.stockMove.create({ data: { shopId, partId, qty: change, reason: "ADJUSTED", userId, note } });
+    return change;
+  });
+}
+
+/**
+ * The note on the stock move a marketplace order makes when it goes into (or out of) the parts stock. It is also how
+ * an order already in the stock is recognised, so it is never put in twice.
+ */
+export const orderStockNote = (o: { number: string; role: string; sellerShop: string; buyerShop: string }) =>
+  o.role === "seller" ? `Sold on the marketplace, order ${o.number} to ${o.buyerShop}` : `Marketplace order ${o.number} from ${o.sellerShop}`;
 
 /** A part number without the note this program adds to tell stock apart ("X (own)", "X (Partner name)"). */
 export const baseNumber = (n: string) => n.replace(/\s+\([^()]*\)$/, "").trim() || n;
