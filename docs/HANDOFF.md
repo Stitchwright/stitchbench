@@ -135,7 +135,16 @@ spec (smoke, auth, hub, inventory, market, partners, register), hub `npm run che
   merging customer/machine records (L126); reversing payments instead of deleting (L127); a single-writer lock on the
   hub (L95); signed partner invites/messages (L134, I27).
 
+## 2d. Parts: condition, who made it, shop numbers (30 Sep 2026, same branch)
+
+Built from `docs/plans/part-condition-origin.md` (owner's decisions are in it). Migrations
+`20260930200000_part_condition_origin` and hub `010_listing_origin.sql`. Every check and Playwright spec passes (new
+steps in smoke, inventory and market specs; hub smoke test covers a listing's origin, old-style listings too).
+Worth knowing: "compatible, not genuine <Brand>" uses the part's Brand field (the machine maker); a shop number isn't
+marked as one on the partner wire (the partner sees it as an ordinary number).
+
 ## 3. What to do next, in order
+
 
 
 Steps 1-3 below are done (sections 2b and 2c): next is merging to `main` and deploying (hub first), then step 4.

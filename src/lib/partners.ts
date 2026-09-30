@@ -138,6 +138,10 @@ export type JobEvent = { at: string; status?: string; note?: string };
 export type JobLine = { description: string; qty: number; amountCents: number; kind: string };
 export type OrderLine = { itemKey: string; partNumber: string; description: string; qty: number; unitCents: number; condition?: string; origin?: string };
 
+/** Order lines to compare, whatever order their keys are in (the database keeps a JSON column's keys in its own order). */
+const linesKey = (lines: unknown) =>
+  JSON.stringify(((lines as OrderLine[] | null) ?? []).map((l) => [l.itemKey, l.partNumber, l.description, l.qty, l.unitCents, l.condition ?? null, l.origin ?? null]));
+
 /** What the customer still owes on a repair: the bill, less anything already paid to either shop (the register's figure). */
 export function repairDue(j: { totalCents: number | null; repairPaidCents: number | null; paidCents: number | null }) {
   return Math.max(0, (j.totalCents ?? 0) - (j.repairPaidCents ?? 0) - (j.paidCents ?? 0));
@@ -1162,7 +1166,7 @@ async function applyMessage(m: HubMessage) {
         theirs = { lines: lines.filter((l) => l.qty > 0) as Json, totalCents: orderTotal(lines) };
       }
       if (theirs && (to === o.status || to === "PLACED")) {
-        const changed = theirs.totalCents !== o.totalCents || JSON.stringify(theirs.lines) !== JSON.stringify(o.lines);
+        const changed = theirs.totalCents !== o.totalCents || linesKey(theirs.lines) !== linesKey(o.lines);
         if (!changed) return;
         const note = `${who}'s copy comes to $${(theirs.totalCents / 100).toFixed(2)} at its prices${text(d.eventNote, 500) ? `: ${text(d.eventNote, 500)}` : ""}`;
         await db.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { ...theirs, events: withEvent(o.events, { at: at.toISOString(), note }) } });
