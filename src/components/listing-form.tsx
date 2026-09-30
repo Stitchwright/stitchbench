@@ -4,6 +4,7 @@ import { useRef, useTransition } from "react";
 import { toast } from "sonner";
 import { createListing } from "@/actions/market";
 import { shrinkImage } from "@/components/photo-upload";
+import { ORIGINS, ORIGIN_OPTION } from "@/lib/part-labels";
 
 type Defaults = {
   title?: string | null;
@@ -11,6 +12,8 @@ type Defaults = {
   brand?: string | null;
   fits?: string | null;
   kind?: string | null;
+  condition?: string | null;
+  origin?: string | null;
   priceCents?: number | null;
   qty?: number | null;
 };
@@ -71,10 +74,22 @@ export function ListingForm({ defaults = {} }: { defaults?: Defaults }) {
           <label htmlFor="ls-cond" className="label">
             Condition
           </label>
-          <select id="ls-cond" name="condition" defaultValue="NEW" className="select">
+          <select id="ls-cond" name="condition" defaultValue={defaults.condition ?? "NEW"} className="select">
             <option value="NEW">New</option>
             <option value="USED">Used, good</option>
             <option value="REFURB">Refurbished</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="ls-origin" className="label">
+            Made by
+          </label>
+          <select id="ls-origin" name="origin" defaultValue={defaults.origin ?? "GENUINE"} className="select">
+            {ORIGINS.map((o) => (
+              <option key={o} value={o}>
+                {ORIGIN_OPTION[o]}
+              </option>
+            ))}
           </select>
         </div>
         <div className="field">

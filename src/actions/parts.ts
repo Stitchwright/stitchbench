@@ -6,9 +6,10 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
-import { MAX_STOCK, centsField, countStock, partKeys, splitList } from "@/lib/parts";
+import { MAX_STOCK, centsField, countStock, partKeys, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
-import type { PartKind } from "@/generated/prisma/enums";
+import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
+import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 
@@ -20,19 +21,25 @@ function qtyValue(v: FormDataEntryValue | null, byYard = true) {
   return Math.max(0, byYard ? Math.round(n * 1000) / 1000 : Math.round(n));
 }
 
+/** What the form says about the item. The part number is null when left blank: the shop gives such an item a number. */
 function partData(formData: FormData) {
   const partNumber = str(formData.get("partNumber"));
   const description = str(formData.get("description"));
-  if (!partNumber || !description) throw new UserError("Enter a part number and description.");
+  if (!description) throw new UserError("Enter a description.");
   const kind = (str(formData.get("kind")) ?? "PART") as PartKind;
   if (!KINDS.includes(kind)) throw new UserError("Pick what kind of item it is.");
-  const altNumbers = splitList(str(formData.get("altNumbers"))).filter((n) => n !== partNumber);
+  // A form from before these were added doesn't send them: a new item is New + Genuine, a saved one stays as it is.
+  const condition = str(formData.get("condition")) as PartCondition | null;
+  if (condition && !CONDITIONS.includes(condition)) throw new UserError("Pick new, used or refurbished.");
+  const origin = str(formData.get("origin")) as PartOrigin | null;
+  if (origin && !ORIGINS.includes(origin)) throw new UserError("Pick who made it: genuine, compatible or 3D printed.");
   return {
     partNumber,
     description,
     kind,
-    altNumbers,
-    numberKeys: partKeys(partNumber, altNumbers),
+    condition: condition ?? undefined,
+    origin: origin ?? undefined,
+    altNumbers: splitList(str(formData.get("altNumbers"))),
     brand: str(formData.get("brand")),
     fits: str(formData.get("fits")),
     location: str(formData.get("location")),
@@ -50,30 +57,31 @@ function partData(formData: FormData) {
 export const createPart = safe(async function createPart(formData: FormData) {
   const user = await requireUser();
   const data = partData(formData);
-  // The same number in another case is the same part (the scanner treats them as one). A partner's consigned stock
-  // doesn't count: the shop's own stock of that number is kept apart as "<number> (own)", as the import does.
-  const same = await db.part.findMany({
-    where: { shopId: user.shopId, OR: [{ partNumber: sameText(data.partNumber) }, { partNumber: sameText(`${data.partNumber} (own)`) }] },
-    select: { id: true, partNumber: true, consignLinkId: true },
-  });
-  const exists = same.find((p) => !p.consignLinkId);
   const qty = qtyValue(formData.get("qtyOnHand"), data.unit === "yd");
-  if (exists && qty) throw new UserError(`${exists.partNumber} is already in inventory. Open it and use Receive stock to add ${qty}.`);
-  // Opened with a note on the page: what was typed here isn't saved anywhere.
-  if (exists) redirect(`/parts/${exists.id}?existing=1`);
-  if (same.length) {
-    data.altNumbers = [...new Set([data.partNumber, ...data.altNumbers])];
-    data.partNumber = `${data.partNumber} (own)`;
-    data.numberKeys = partKeys(data.partNumber, data.altNumbers);
+  const row = {
+    ...data,
+    shopId: user.shopId,
+    qtyOnHand: qty,
+    moves: qty ? { create: { shopId: user.shopId, qty, reason: "RECEIVED" as const, userId: user.id, note: "Opening stock" } } : undefined,
+  };
+  if (!data.partNumber) {
+    // The maker gave no number: the item gets a shop number (SB-00001), taken in the same step as the item.
+    const p = await db.$transaction(async (tx) => {
+      const partNumber = await takeShopNumber(tx, user.shopId);
+      return tx.part.create({ data: { ...row, partNumber, ownNumber: true, numberKeys: partKeys(partNumber, data.altNumbers) } });
+    });
+    revalidatePath("/parts");
+    redirect(`/parts/${p.id}`);
   }
-  const p = await db.part.create({
-    data: {
-      ...data,
-      shopId: user.shopId,
-      qtyOnHand: qty,
-      moves: qty ? { create: { shopId: user.shopId, qty, reason: "RECEIVED", userId: user.id, note: "Opening stock" } } : undefined,
-    },
-  });
+  // The same number in another case is the same part (the scanner treats them as one). A partner's consigned stock
+  // doesn't count: the shop's own stock of that number is kept apart as "<number> (own)", as the import does. The same
+  // part in another condition is a second item, "<number> (used)".
+  const stock = await stockFor(db, user.shopId, data.partNumber, data.condition ?? "NEW");
+  if (stock.existing && qty) throw new UserError(`${stock.existing.partNumber} is already in inventory. Open it and use Receive stock to add ${qty}.`);
+  // Opened with a note on the page: what was typed here isn't saved anywhere.
+  if (stock.existing) redirect(`/parts/${stock.existing.id}?existing=1`);
+  const altNumbers = [...new Set([...stock.altNumbers, ...data.altNumbers.filter((n) => n !== data.partNumber)])];
+  const p = await db.part.create({ data: { ...row, partNumber: stock.partNumber, altNumbers, numberKeys: partKeys(stock.partNumber, altNumbers) } });
   revalidatePath("/parts");
   redirect(`/parts/${p.id}`);
 });
@@ -84,12 +92,16 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
   if (!p) throw new UserError("Part not found.");
   const data = partData(formData);
+  // A shop number stays as it is (its form shows it, but doesn't send it).
+  const partNumber = p.ownNumber ? p.partNumber : data.partNumber;
+  if (!partNumber) throw new UserError("Enter a part number.");
   // What an item costs, sells for and is offered to partner shops at is for an owner or admin to change (the register
   // holds a tech to the price too): a tech's Save keeps those as they were.
   if (user.role === "TECH") Object.assign(data, { costCents: p.costCents, priceCents: p.priceCents, wholesaleCents: p.wholesaleCents, offerToPartners: p.offerToPartners });
-  const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: sameText(data.partNumber) } });
+  const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: sameText(partNumber) } });
   if (clash) throw new UserError(`${clash.partNumber} is already another item in inventory.`);
-  await db.part.update({ where: { id: partId }, data });
+  const altNumbers = data.altNumbers.filter((n) => n !== partNumber);
+  await db.part.update({ where: { id: partId }, data: { ...data, partNumber, altNumbers, numberKeys: partKeys(partNumber, altNumbers) } });
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/parts");
 });

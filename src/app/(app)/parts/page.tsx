@@ -8,8 +8,9 @@ import { PartFields } from "@/components/part-fields";
 import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
 import { createPart } from "@/actions/parts";
 import { KIND_LABEL } from "@/lib/parts";
+import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
-import type { PartKind } from "@/generated/prisma/enums";
+import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
 const KINDS = [
@@ -30,20 +31,26 @@ export default async function Parts({
     q?: string;
     low?: string;
     kind?: string;
+    condition?: string;
+    origin?: string;
     new?: string;
   }>;
 }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, doesRepair: true } });
   const tabs = KINDS.filter((x) => !("retail" in x) || shop.sellsRetail);
-  const { q, low, kind: k, new: newCode } = await searchParams;
+  const { q, low, kind: k, condition: cond, origin: made, new: newCode } = await searchParams;
   const term = q?.trim();
   const kind = KINDS.some((x) => x.key && x.key === k)
     ? (k as PartKind)
     : undefined;
+  const condition = CONDITIONS.find((c) => c === cond) as PartCondition | undefined;
+  const origin = ORIGINS.find((o) => o === made) as PartOrigin | undefined;
   const where: Prisma.PartWhereInput = {
     shopId: user.shopId,
     ...(kind ? { kind } : {}),
+    ...(condition ? { condition } : {}),
+    ...(origin ? { origin } : {}),
     // Low stock is filtered in the database, so it isn't limited to the first rows of the list.
     ...(low === "1" ? { qtyOnHand: { lte: db.part.fields.reorderAt } } : {}),
     ...(term
@@ -95,7 +102,7 @@ export default async function Parts({
         {tabs.map((x) => (
           <Link
             key={x.key}
-            href={`/parts?${new URLSearchParams({ ...(x.key ? { kind: x.key } : {}), ...(term ? { q: term } : {}) })}`}
+            href={`/parts?${new URLSearchParams({ ...(x.key ? { kind: x.key } : {}), ...(term ? { q: term } : {}), ...(condition ? { condition } : {}), ...(origin ? { origin } : {}) })}`}
             className={`btn btn-sm ${(kind ?? "") === x.key ? "btn-primary" : ""}`}
             aria-current={(kind ?? "") === x.key ? "page" : undefined}
           >
@@ -115,6 +122,28 @@ export default async function Parts({
           className="input max-w-md"
           placeholder="Part number, description, fits model"
         />
+        <label htmlFor="pcond" className="sr-only">
+          Condition
+        </label>
+        <select id="pcond" name="condition" defaultValue={condition ?? ""} className="select w-40">
+          <option value="">Any condition</option>
+          {CONDITIONS.map((c) => (
+            <option key={c} value={c}>
+              {CONDITION_NAME[c]}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="porigin" className="sr-only">
+          Made by
+        </label>
+        <select id="porigin" name="origin" defaultValue={origin ?? ""} className="select w-40">
+          <option value="">Made by anyone</option>
+          {ORIGINS.map((o) => (
+            <option key={o} value={o}>
+              {ORIGIN_NAME[o]}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -206,6 +235,11 @@ export default async function Parts({
                     </td>
                     <td>
                       {p.description}
+                      {partTags(p).map((t) => (
+                        <span key={t} className="pill tone-wait ml-1">
+                          {t}
+                        </span>
+                      ))}
                       <div className="muted text-xs">
                         {[
                           p.kind !== "PART" ? KIND_LABEL[p.kind] : null,

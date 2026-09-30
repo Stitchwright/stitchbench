@@ -8,7 +8,7 @@ import { money } from "@/lib/format";
 import { KIND_LABEL } from "@/lib/parts";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
-import { CONDITION_LABEL, MarketNav, Stars } from "@/components/market-ui";
+import { CONDITION_LABEL, MarketNav, Stars, originName } from "@/components/market-ui";
 import { placeOrder, removeListing, updateListing } from "@/actions/market";
 
 const d2 = (c: number | null) => (c == null ? "" : (c / 100).toFixed(2));
@@ -71,6 +71,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               <KV k="Available" v={String(l.qty)} />
               <KV k="Shipping" v={l.shippingCents != null ? money(l.shippingCents) : "Quoted with the invoice"} />
               <KV k="Condition" v={CONDITION_LABEL[l.condition] ?? l.condition} />
+              <KV k="Made by" v={originName(l.origin) ?? "Not stated"} />
               <KV k="Type" v={KIND_LABEL[l.kind] ?? l.kind} />
               <KV k="Part number" v={l.partNumber ? <span className="mono">{l.partNumber}</span> : "-"} />
               {l.brand && <KV k="Brand" v={l.brand} />}

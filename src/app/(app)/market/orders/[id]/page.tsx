@@ -8,7 +8,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import type { HubOrder } from "@/lib/hub";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
-import { MarketNav, OrderStatus, CONDITION_LABEL, Stars } from "@/components/market-ui";
+import { MarketNav, OrderStatus, CONDITION_LABEL, Stars, originName } from "@/components/market-ui";
 import { orderAction, orderStock } from "@/actions/market";
 import { orderStockNote } from "@/lib/parts";
 
@@ -73,6 +73,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               <KV k="Item" v={o.item.title} />
               <KV k="Part number" v={o.item.partNumber ? <span className="mono">{o.item.partNumber}</span> : "-"} />
               <KV k="Condition" v={CONDITION_LABEL[o.item.condition] ?? o.item.condition} />
+              {originName(o.item.origin) && <KV k="Made by" v={originName(o.item.origin)} />}
               <KV k="Quantity" v={String(o.qty)} />
               <KV k="Each" v={money(o.unitPriceCents)} />
               <KV k="Shipping" v={o.shippingCents != null ? money(o.shippingCents) : "to be quoted"} />

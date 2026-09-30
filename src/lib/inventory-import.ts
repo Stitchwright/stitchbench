@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
 import { EXCEL_NUMBER } from "@/lib/input";
 import { MAX_CENTS, MAX_STOCK, numberKey, partKeys } from "@/lib/parts";
-import type { PartKind } from "@/generated/prisma/enums";
+import { CONDITIONS, ORIGINS, numberNames, twinNumber } from "@/lib/part-labels";
+import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 const BLOCK = 500; // rows per insert, so no statement carries more values than the database takes
@@ -21,6 +22,9 @@ export type ImportRow = {
   priceCents?: number | null;
   qty?: number | null;
   location?: string | null;
+  /** NEW | USED | REFURB and GENUINE | COMPATIBLE | PRINTED, when the sheet says (anything else counts as not said). */
+  condition?: string | null;
+  origin?: string | null;
 };
 
 export type ImportOptions = { kind: string; unit: string | null; supplier: string | null; addQty: boolean; updateExisting: boolean };
@@ -39,6 +43,8 @@ type Item = {
   unit: string | null;
   altNumbers: string[];
   numberKeys: string[];
+  condition: PartCondition;
+  origin: PartOrigin;
   consigned: boolean;
   fresh: boolean; // made by this import
   changed: boolean; // details to write
@@ -72,7 +78,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
       const items = (
         await tx.part.findMany({
           where: { shopId },
-          select: { id: true, partNumber: true, description: true, brand: true, location: true, costCents: true, priceCents: true, unit: true, altNumbers: true, numberKeys: true, consignLinkId: true },
+          select: { id: true, partNumber: true, description: true, brand: true, location: true, costCents: true, priceCents: true, unit: true, altNumbers: true, numberKeys: true, condition: true, origin: true, consignLinkId: true },
         })
       ).map((p): Item => ({ ...p, consigned: p.consignLinkId != null, fresh: false, changed: false, more: 0 }));
       const taken = new Set(items.map((p) => p.partNumber));
@@ -113,6 +119,8 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
         const price = cents(r.priceCents);
         const brand = String(r.brand ?? "").trim() || null;
         const location = String(r.location ?? "").trim() || null;
+        const condition = CONDITIONS.find((c) => c === r.condition) ?? null;
+        const origin = ORIGINS.find((o) => o === r.origin) ?? null;
         // A quantity that can't be read, or is beyond belief, keeps the row out (it would come in with no stock).
         const typed = opts.addQty && r.qty != null ? Number(r.qty) : null;
         if (typed != null && (!Number.isFinite(typed) || typed > MAX_STOCK)) {
@@ -121,16 +129,17 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
         }
 
         // The same number in any case is the same item; a partner's consigned stock is never imported into. When a
-        // partner's consigned item already has the number, this shop's own stock of it is "<number> (own)".
+        // partner's consigned item already has the number, this shop's own stock of it is "<number> (own)". A sheet
+        // that gives the condition means the item in that condition: the same part in another is a second item.
         const lower = partNumber.toLowerCase();
-        const same = [...(byName.get(lower) ?? []), ...(byName.get(`${lower} (own)`) ?? [])];
-        let item = same.find((p) => p.partNumber.toLowerCase() === lower) ?? same[0] ?? null;
+        const same = numberNames(lower).flatMap((n) => byName.get(n) ?? []);
+        let item = (condition ? same.find((p) => p.condition === condition) : (same.find((p) => p.partNumber.toLowerCase() === lower) ?? same[0])) ?? null;
         // No item has the number: an item that already has the row's barcode or number among its numbers (e.g. added
         // at the scanner with the UPC as its number) is the same item, and gets the row's number as another number.
         let alsoKnownAs: string[] = [];
         if (!item) {
           const keys = [...new Set([partNumber, ...alt].map(numberKey).filter((k) => k.length >= 3))];
-          const hits = new Set(keys.flatMap((k) => byKey.get(k) ?? []));
+          const hits = new Set(keys.flatMap((k) => byKey.get(k) ?? []).filter((p) => !condition || p.condition === condition));
           if (hits.size > 1) {
             // Two items share these numbers: which one is meant is the user's call.
             unmatched.push(partNumber);
@@ -156,6 +165,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             item.costCents = cost ?? item.costCents;
             item.priceCents = price ?? item.priceCents;
             item.location = location || item.location;
+            item.origin = origin ?? item.origin;
             item.altNumbers = altNumbers;
             item.numberKeys = partKeys(item.partNumber, altNumbers);
             item.changed = true;
@@ -165,7 +175,14 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
           if (qty) moves.push({ shopId, partId: item.id, qty, reason: "RECEIVED", userId, note: "Imported" });
           updated++;
         } else {
-          const own = taken.has(partNumber) ? `${partNumber} (own)` : partNumber;
+          // The number is taken by a partner's consigned item, or by this shop's own stock in another condition.
+          const clash = taken.has(partNumber) || same.some((p) => p.partNumber.toLowerCase() === lower);
+          const own = clash ? twinNumber(partNumber, condition ?? "NEW", same.length > 0) : partNumber;
+          if (own !== partNumber && taken.has(own)) {
+            unmatched.push(partNumber);
+            skipped++;
+            continue;
+          }
           const alts = own !== partNumber ? [...new Set([partNumber, ...alt])] : alt;
           const it: Item = {
             id: randomUUID(),
@@ -178,6 +195,8 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             unit,
             altNumbers: alts,
             numberKeys: partKeys(own, alts),
+            condition: condition ?? "NEW",
+            origin: origin ?? "GENUINE",
             consigned: false,
             fresh: true,
             changed: false,
@@ -202,6 +221,8 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             unit: it.unit,
             brand: it.brand,
             location: it.location,
+            condition: it.condition,
+            origin: it.origin,
             supplier: opts.supplier,
             costCents: it.costCents,
             priceCents: it.priceCents,
@@ -215,11 +236,11 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
       // Items that were here already: all their new details in one statement, all their added stock in another.
       const details = items.filter((it) => it.changed);
       if (details.length) {
-        const list = JSON.stringify(details.map((it) => ({ id: it.id, description: it.description, brand: it.brand, location: it.location, costCents: it.costCents, priceCents: it.priceCents, altNumbers: it.altNumbers, numberKeys: it.numberKeys })));
+        const list = JSON.stringify(details.map((it) => ({ id: it.id, description: it.description, brand: it.brand, location: it.location, costCents: it.costCents, priceCents: it.priceCents, origin: it.origin, altNumbers: it.altNumbers, numberKeys: it.numberKeys })));
         await tx.$executeRaw`
           UPDATE "Part" p SET description = v.description, brand = v.brand, location = v.location, "costCents" = v."costCents", "priceCents" = v."priceCents",
-            "altNumbers" = ARRAY(SELECT jsonb_array_elements_text(v."altNumbers")), "numberKeys" = ARRAY(SELECT jsonb_array_elements_text(v."numberKeys"))
-          FROM jsonb_to_recordset(${list}::jsonb) AS v(id text, description text, brand text, location text, "costCents" int, "priceCents" int, "altNumbers" jsonb, "numberKeys" jsonb)
+            origin = v.origin::"PartOrigin", "altNumbers" = ARRAY(SELECT jsonb_array_elements_text(v."altNumbers")), "numberKeys" = ARRAY(SELECT jsonb_array_elements_text(v."numberKeys"))
+          FROM jsonb_to_recordset(${list}::jsonb) AS v(id text, description text, brand text, location text, "costCents" int, "priceCents" int, origin text, "altNumbers" jsonb, "numberKeys" jsonb)
           WHERE p.id = v.id AND p."shopId" = ${shopId}`;
       }
       const stock = items.filter((it) => it.more > 0);

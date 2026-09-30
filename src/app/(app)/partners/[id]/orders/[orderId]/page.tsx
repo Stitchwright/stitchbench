@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { qtyText } from "@/lib/register-math";
+import { partTags } from "@/lib/part-labels";
 import type { JobEvent, OrderLine } from "@/lib/partners";
 import { PageHeader, Section, OrderStatusPill } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
@@ -51,6 +52,11 @@ export default async function PartnerOrderPage({ params }: { params: Promise<{ i
               <tr key={l.itemKey}>
                 <td>
                   <span className="mono">{l.partNumber}</span> {l.description}
+                  {partTags(l).map((t) => (
+                    <span key={t} className="pill tone-wait ml-1">
+                      {t}
+                    </span>
+                  ))}
                 </td>
                 <td className="num text-right">{qtyText(l.qty, null)}</td>
                 <td className="num text-right">{money(l.unitCents)}</td>

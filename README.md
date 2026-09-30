@@ -26,7 +26,9 @@ cost) or hosted on Railway.
   - Printable invoices, an Invoices area (paid, unpaid, what's owed), and trade-account commission.
 - **Price list.** A printable price sheet built from the service menu, with categories and descriptions.
 - **Parts inventory.** Stock on hand, bins, reorder points, receiving, shelf counts, and automatic stock-out when
-  a part goes on a ticket.
+  a part goes on a ticket. A part is new, used or refurbished, and genuine, compatible or 3D printed; the customer's
+  invoice says when it is used, refurbished, compatible or 3D printed. A part the maker gave no number gets the
+  shop's own (SB-00001), which prints on labels and scans like any other.
 - **Companies and people.** Each company's data is separate, and every employee has their own login (owner,
   admin or tech).
 - **Community hub (StitchHub).** Shops share:

@@ -3,7 +3,12 @@ import "server-only";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
 import { modelKey, str, toCents } from "@/lib/format";
+import { sameText } from "@/lib/input";
 import { brandMatches } from "@/lib/model-info";
+import { numberNames, shopNumberText, twinNumber } from "@/lib/part-labels";
+import { appName } from "@/lib/shops";
+import type { Prisma } from "@/generated/prisma/client";
+import type { PartCondition } from "@/generated/prisma/enums";
 
 export type XNumber = { brand: string; number: string };
 export type XFit = { brand: string; model: string; modelKey: string; evidence: string; source?: string | null };
@@ -57,6 +62,44 @@ export function centsField(v: FormDataEntryValue | string | null | undefined, wh
   if (c == null) throw new UserError(`${what}: enter dollars and cents, like 12.50.`);
   if (c < 0 || c > MAX_CENTS) throw new UserError(`${what} must be between $0 and $${(MAX_CENTS / 100).toLocaleString("en-US")}.`);
   return c;
+}
+
+/**
+ * The next shop number for a stock item the maker gave no number: "SB-00001" in StitchBench, "SS-00001" in StitchShop,
+ * counted per company. Taken atomically, like a ticket number, and skipping numbers already in use (typed in, imported,
+ * or the counter set back). Call it in the same transaction that makes the item.
+ */
+export async function takeShopNumber(tx: Prisma.TransactionClient, shopId: string): Promise<string> {
+  const prefix = appName() === "StitchShop" ? "SS" : "SB";
+  const used = async (n: number) => (await tx.part.findFirst({ where: { shopId, partNumber: sameText(shopNumberText(prefix, n)) }, select: { id: true } })) != null;
+  let n = (await tx.shop.update({ where: { id: shopId }, data: { nextPartNumber: { increment: 1 } }, select: { nextPartNumber: true } })).nextPartNumber - 1;
+  if (await used(n)) {
+    // The counter is behind the numbers in use: go straight past the highest instead of trying the used ones one at a time.
+    const [top] = await tx.$queryRaw<{ n: number | null }[]>`
+      SELECT max(substring("partNumber" from 4)::int) AS n FROM "Part" WHERE "shopId" = ${shopId} AND "partNumber" ~* ${`^${prefix}-[0-9]{1,9}$`}`;
+    n = (top?.n ?? 0) + 1;
+    await tx.shop.update({ where: { id: shopId }, data: { nextPartNumber: n + 1 } });
+  }
+  return shopNumberText(prefix, n);
+}
+
+/**
+ * This shop's own item for a number in a condition (a partner's consigned stock doesn't count), and the number a new
+ * one would be saved under: the number itself, or, when the shop holds it already, "<number> (used)" for the same part
+ * in another condition and "<number> (own)" beside a partner's consigned stock, with the number among its other
+ * numbers so a scan finds both. The same number in another case is the same number.
+ */
+export async function stockFor(client: Pick<Prisma.TransactionClient, "part">, shopId: string, number: string, condition: PartCondition) {
+  const same = await client.part.findMany({
+    where: { shopId, OR: numberNames(number).map((n) => ({ partNumber: sameText(n) })) },
+    select: { id: true, partNumber: true, consignLinkId: true, condition: true },
+  });
+  const own = same.filter((p) => !p.consignLinkId);
+  const taken = (n: string) => same.some((p) => p.partNumber.toLowerCase() === n.toLowerCase());
+  const existing = own.find((p) => p.condition === condition) ?? null;
+  const partNumber = taken(number) ? twinNumber(number, condition, own.length > 0) : number;
+  if (!existing && partNumber !== number && taken(partNumber)) throw new UserError(`${partNumber} is already another item in inventory.`);
+  return { existing, partNumber, altNumbers: partNumber === number ? [] : [number] };
 }
 
 /**

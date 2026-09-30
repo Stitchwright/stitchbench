@@ -22,15 +22,16 @@ export default async function CrossRef({ searchParams }: { searchParams: Promise
     hubJoined(),
     db.xPart.count(),
     db.removedXPart.findMany({ where: { removedAt: { gte: daysAgo(90) } }, orderBy: { removedAt: "desc" }, take: 20 }),
-    add ? db.part.findFirst({ where: { id: add, shopId: user.shopId }, select: { description: true, kind: true, brand: true, partNumber: true, altNumbers: true, fits: true } }) : null,
+    add ? db.part.findFirst({ where: { id: add, shopId: user.shopId }, select: { description: true, kind: true, brand: true, partNumber: true, altNumbers: true, fits: true, ownNumber: true } }) : null,
   ]);
   // A part of this shop's offered to the cross-reference: the form comes filled in to check before it goes to every
-  // shop. Its own suffixes ("(own)", a partner's name) come off the number; its notes stay here.
+  // shop. Its own suffixes ("(own)", "(used)", a partner's name) come off the number; its notes stay here. A shop
+  // number isn't the maker's, so it is left out: such a part is known by its name and the models it fits.
   const offer = offered
     ? {
         name: offered.description,
         kind: offered.kind,
-        numbers: [...new Set([baseNumber(offered.partNumber), ...offered.altNumbers.map(baseNumber)])].map((n) => (offered.brand ? `${offered.brand}, ${n}` : n)).join("\n"),
+        numbers: [...new Set([...(offered.ownNumber ? [] : [baseNumber(offered.partNumber)]), ...offered.altNumbers.map(baseNumber)])].map((n) => (offered.brand ? `${offered.brand}, ${n}` : n)).join("\n"),
         fits: offered.brand ? splitList(offered.fits).map((m) => `${offered.brand}, ${m}`).join("\n") : "",
       }
     : undefined;

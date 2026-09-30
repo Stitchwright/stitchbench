@@ -55,7 +55,8 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
     ...(prev ? { baseUpdatedAt: str(formData.get("baseUpdatedAt")) ?? prev.updatedAt.toISOString() } : {}),
   };
   if (!body.name) throw new UserError("Give the part a name, e.g. \"Needle plate screw\".");
-  if (!body.numbers.length) throw new UserError("Add at least one part number (one per line: Brand, number).");
+  // A part the maker gave no number is known by its name and the models it fits.
+  if (!body.numbers.length && !body.fits.length) throw new UserError("Add at least one part number (one per line: Brand, number), or the models it fits if the maker gave none.");
   const clash = await numberOwner(body.numbers, id ?? undefined);
   if (clash) throw new UserError(`One of those numbers is already on "${clash.name}" (same brand). If it is the same part, open that one and merge the two instead.`);
   let x: HubXPart;
@@ -134,9 +135,10 @@ export async function crossRefHistory(id: string): Promise<{ revisions: XRevisio
  */
 export const addPartToCrossRef = safe(async function addPartToCrossRef(partId: string) {
   const user = await requireUser();
-  const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId }, select: { id: true, partNumber: true, altNumbers: true } });
+  const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId }, select: { id: true, partNumber: true, altNumbers: true, ownNumber: true } });
   if (!p) throw new UserError("Part not found.");
-  const existing = await db.xPart.findFirst({ where: { numberKeys: { hasSome: partKeys(p.partNumber, p.altNumbers) } }, select: { id: true } });
+  // A shop number isn't the maker's, so it doesn't find (or make) an entry.
+  const existing = await db.xPart.findFirst({ where: { numberKeys: { hasSome: partKeys(p.ownNumber ? "" : p.partNumber, p.altNumbers) } }, select: { id: true } });
   if (existing) redirect(`/xref/${existing.id}`);
   redirect(`/xref?add=${encodeURIComponent(p.id)}#add`);
 });

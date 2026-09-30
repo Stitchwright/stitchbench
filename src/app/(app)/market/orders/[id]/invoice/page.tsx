@@ -6,7 +6,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import type { HubOrder } from "@/lib/hub";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader } from "@/components/ui";
-import { CONDITION_LABEL } from "@/components/market-ui";
+import { CONDITION_LABEL, originName } from "@/components/market-ui";
 
 // The invoice for a marketplace order, from the seller to the buyer. The buyer pays the seller directly.
 export default async function MarketInvoice({ params }: { params: Promise<{ id: string }> }) {
@@ -73,7 +73,7 @@ export default async function MarketInvoice({ params }: { params: Promise<{ id: 
               <td>
                 {o.item.title}
                 <div className="text-xs">
-                  {[o.item.brand, o.item.partNumber, CONDITION_LABEL[o.item.condition] ?? o.item.condition].filter(Boolean).join(" · ")}
+                  {[o.item.brand, o.item.partNumber, CONDITION_LABEL[o.item.condition] ?? o.item.condition, originName(o.item.origin)].filter(Boolean).join(" · ")}
                 </div>
               </td>
               <td className="num text-right">{o.qty}</td>

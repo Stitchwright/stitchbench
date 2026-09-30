@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
 import { MAX_STOCK, codeKeys, countStock, numberKey } from "@/lib/parts";
+import { withDisclosure } from "@/lib/part-labels";
 import { assertId, sameText } from "@/lib/input";
 
 export type ScannedPart = {
@@ -79,7 +80,7 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
     // Never below 0, even for an item saved before prices were checked: a line can't lower the ticket's total.
     const unit = Math.max(0, part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100)));
     const [, p] = await db.$transaction([
-      db.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: `${part.partNumber} ${part.description}`, qty: n, unitPriceCents: unit, partId: part.id } }),
+      db.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty: n, unitPriceCents: unit, partId: part.id } }),
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: n } } }),
       db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: -n, reason: "USED", ticketId: t.id, userId: user.id } }),
     ]);

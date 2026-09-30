@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
+import { withDisclosure } from "@/lib/part-labels";
 import { sameText } from "@/lib/input";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
@@ -446,7 +447,9 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
       const unit = price ?? part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100));
       await db.$transaction([
         db.ticketLine.create({
-          data: { ticketId, kind, description: `${part.partNumber} ${part.description}`, qty, unitPriceCents: unit, partId: part.id },
+          // A used, refurbished, compatible or 3D printed part says so on the invoice: written now, so the bill stays
+          // right if the part is changed later.
+          data: { ticketId, kind, description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty, unitPriceCents: unit, partId: part.id },
         }),
         db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: qty } } }),
         db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: -qty, reason: "USED", ticketId, userId: user.id } }),
