@@ -58,15 +58,15 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     let next = kind === "retail" ? "/register" : "/settings";
     if (code && !shop.first && !(await hubJoined())) {
       // The code would connect the whole install to a hub, which is its administrator's call, not a new sign-up's.
-      next = `/partners?error=${encodeURIComponent("Your shop is set up. Enter the partner code here once this StitchBench's administrator has joined the community hub.")}`;
+      next = "/partners?error=need-hub";
     } else if (code) {
       try {
         await redeemPartnerCode(shop.id, shop.name, email, code);
         next = "/partners";
       } catch (e) {
-        // Only what a person can act on goes in the address; anything else (a database or network error) stays in the log.
+        // A fixed code goes in the address (the partners page maps it to a message); the real reason stays in the log.
         if (!isUserError(e)) console.error("partner code at sign-up:", e);
-        next = `/partners?error=${encodeURIComponent(isUserError(e) ? e.message : "That partner code didn't work. Try it again under Partner shops.")}`;
+        next = "/partners?error=partner-code";
       }
     }
     try {

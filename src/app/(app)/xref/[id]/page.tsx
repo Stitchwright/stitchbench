@@ -8,7 +8,7 @@ import { EVIDENCE_LABEL, KIND_LABEL, type XFit, type XNumber, type XSource } fro
 import { PageHeader, Section, Empty, modelHref } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { XrefForm } from "@/components/xref-form";
-import { XrefHistory } from "@/components/xref-history";
+import { XrefHistory } from "./history";
 import { PartSearchLinks } from "@/components/part-search-links";
 import { mergeCrossRef, removeCrossRef } from "@/actions/xref";
 

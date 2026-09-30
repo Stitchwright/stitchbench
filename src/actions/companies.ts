@@ -6,6 +6,18 @@ import { requirePlatformAdmin } from "@/lib/session";
 import { createShopWithOwner, type ShopKind } from "@/lib/shops";
 import { normalizeEmail } from "@/lib/email";
 import { redeemPartnerCode } from "@/lib/partners";
+import { str } from "@/lib/format";
+
+/** An IANA time zone this server knows (America/New_York...), or null for blank. Same check Settings uses. */
+function validTimeZone(tz: string | null) {
+  if (!tz) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    throw new UserError(`"${tz}" isn't a time zone. Use a name like America/New_York or America/Chicago.`);
+  }
+}
 
 /**
  * The StitchBench admin sets up another shop and its owner login (sign-up stays closed). With a partner code from the
@@ -21,6 +33,7 @@ export const createCompany = safe(async function createCompany(formData: FormDat
     email,
     password: String(formData.get("password") ?? ""),
     kind: (String(formData.get("kind") ?? "repair") as ShopKind) || "repair",
+    timeZone: validTimeZone(str(formData.get("timeZone"))),
   }, { allowReserved: true });
   revalidatePath("/companies");
   const code = String(formData.get("partnerCode") ?? "").trim();

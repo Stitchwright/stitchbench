@@ -12,6 +12,7 @@ import { sameText } from "@/lib/input";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
+import { splitForReturn } from "@/lib/sale-return";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 
@@ -122,6 +123,20 @@ export type PickupJob = {
   customerId: string | null;
 };
 
+function toPickupJob(j: { id: string; tag: string; customerName: string; brand: string; model: string; paidCents: number | null; pickedUpAt: Date | null; status: string; customerId: string | null; totalCents: number | null; repairPaidCents: number | null }): PickupJob {
+  return {
+    id: j.id,
+    tag: j.tag,
+    customerName: j.customerName,
+    machine: `${j.brand} ${j.model}`,
+    dueCents: repairDue(j),
+    paidCents: j.paidCents ?? 0,
+    pickedUp: Boolean(j.pickedUpAt),
+    status: j.status,
+    customerId: j.customerId,
+  };
+}
+
 /**
  * Repairs back from the partner repair shop and not paid for yet: the customer pays for them at the register. Also a
  * repair paid here whose bill then went up (the repair shop added to it before its update arrived): the rest is due.
@@ -140,19 +155,70 @@ export async function pickupJobs(): Promise<PickupJob[]> {
     },
     orderBy: { updatedAt: "desc" },
   });
-  return jobs
-    .map((j) => ({
-      id: j.id,
-      tag: j.tag,
-      customerName: j.customerName,
-      machine: `${j.brand} ${j.model}`,
-      dueCents: repairDue(j),
-      paidCents: j.paidCents ?? 0,
-      pickedUp: Boolean(j.pickedUpAt),
-      status: j.status,
-      customerId: j.customerId,
-    }))
-    .filter((j) => j.dueCents > 0);
+  return jobs.map(toPickupJob).filter((j) => j.dueCents > 0);
+}
+
+/**
+ * The one pickup job whose claim tag this is (the tag printed as "T<tag>" on the two-part claim tag, or typed plain),
+ * if it has a balance due. Scanning or typing it at the register finds this the same way /search finds the repair.
+ */
+export async function pickupJobByTag(tag: string): Promise<PickupJob | null> {
+  const user = await requireUser();
+  const t = tag.trim().slice(0, 20);
+  if (!t) return null;
+  const j = await db.repairJob.findFirst({ where: { shopId: user.shopId, side: "retail", tag: t, totalCents: { not: null } } });
+  if (!j) return null;
+  const job = toPickupJob(j);
+  return job.dueCents > 0 ? job : null;
+}
+
+export type SaleReturnLine = {
+  partId: string | null;
+  description: string;
+  partNumber: string | null;
+  unit: string | null;
+  /** Already the return's own quantity (negative of what the sale charged; see splitForReturn), not the sale's. */
+  qty: number;
+  unitPriceCents: number;
+  taxable: boolean;
+};
+
+export type SaleForReturn = {
+  id: string;
+  number: number;
+  customer: CustomerHit | null;
+  lines: SaleReturnLine[];
+  /** Payment lines for a repair bill, left out: reverse those with the repair shop instead (same as voiding a sale). */
+  skippedRepairLines: number;
+};
+
+/**
+ * A past sale by its receipt number (the "S<number>" the printed receipt's barcode reads), to scan back in as a
+ * return at the register instead of re-finding and re-pricing each item by hand.
+ */
+export async function saleForReturn(number: number): Promise<SaleForReturn | null> {
+  const user = await requireUser();
+  if (!Number.isInteger(number) || number <= 0) return null;
+  const sale = await db.sale.findFirst({
+    where: { shopId: user.shopId, number, status: "COMPLETED" },
+    include: { lines: true, customer: { select: { id: true, name: true, phone: true } } },
+  });
+  if (!sale) return null;
+  const lines: SaleReturnLine[] = [];
+  let skippedRepairLines = 0;
+  for (const l of sale.lines) {
+    if (l.repairJobId) {
+      skippedRepairLines++;
+      continue;
+    }
+    // What the line actually charged (its own discount folded in), split into whole-cent unit prices that refund
+    // exactly that amount: one line, or two when the charge doesn't divide evenly among the units (splitForReturn).
+    const net = lineNet({ qty: l.qty, unitPriceCents: l.unitPriceCents, discountCents: l.discountCents, taxable: l.taxable });
+    for (const part of splitForReturn(l.qty, net)) {
+      lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable });
+    }
+  }
+  return { id: sale.id, number: sale.number, customer: sale.customer, lines, skippedRepairLines };
 }
 
 export type CustomerHit = { id: string; name: string; phone: string | null };

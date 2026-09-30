@@ -5,20 +5,23 @@ import { ACCESSORIES, MACHINE_TYPES } from "@/lib/constants";
 import { money, ticketNo } from "@/lib/format";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
+import { CustomerPicker } from "@/components/customer-picker";
 import { createTicket } from "@/actions/tickets";
 
 export default async function NewTicket({ searchParams }: { searchParams: Promise<{ machineId?: string; customerId?: string }> }) {
   const user = await requireUser();
   const sp = firstValues(await searchParams);
-  const [shop, customers, accounts, services, brands, machine] = await Promise.all([
+  const [shop, accounts, services, brands, machine] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId } }),
-    db.customer.findMany({ where: { shopId: user.shopId, kind: "RETAIL" }, orderBy: { name: "asc" } }),
     db.customer.findMany({ where: { shopId: user.shopId, kind: "TRADE" }, orderBy: { name: "asc" } }),
     db.serviceItem.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { sortOrder: "asc" } }),
     db.tensionSpec.findMany({ distinct: ["brand"], select: { brand: true }, orderBy: { brand: "asc" } }),
     sp.machineId ? db.machine.findFirst({ where: { id: sp.machineId, shopId: user.shopId } }) : null,
   ]);
-  const presetCustomer = sp.customerId ?? machine?.customerId ?? "";
+  const presetCustomerId = sp.customerId ?? machine?.customerId ?? "";
+  const presetCustomer = presetCustomerId
+    ? await db.customer.findFirst({ where: { id: presetCustomerId, shopId: user.shopId, kind: "RETAIL" }, select: { id: true, name: true, phone: true } })
+    : null;
 
   return (
     <div className="max-w-3xl">
@@ -26,20 +29,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
       <ActionForm action={createTicket} className="space-y-5">
         <Section title="Customer">
           <div className="grid-form">
-            <div className="field sm:col-span-2">
-              <label htmlFor="customerId" className="label">
-                Existing customer
-              </label>
-              <select id="customerId" name="customerId" className="select" defaultValue={presetCustomer}>
-                <option value="">New customer (fill in below)</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.phone ? ` · ${c.phone}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CustomerPicker initial={presetCustomer} />
             <div className="field">
               <label htmlFor="customerName" className="label">
                 New customer name
