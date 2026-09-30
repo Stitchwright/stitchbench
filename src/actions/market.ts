@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
-import { hubFetch, hubId, saveListing, saveOrder, syncHub, type HubListing, type HubOrder } from "@/lib/hub";
+import { hubFetch, hubId, hubReachable, saveListing, saveOrder, syncHub, syncSoon, type HubListing, type HubOrder } from "@/lib/hub";
 import { numberKey } from "@/lib/parts";
 
 const CONDITIONS = ["NEW", "USED", "REFURB"];
@@ -55,6 +55,11 @@ export const createListing = safe(async function createListing(formData: FormDat
     shippingNote: str(formData.get("shippingNote")),
     // Only what the seller typed: never the shop's street address, which every hub member would see.
     shipsFrom: str(formData.get("shipsFrom")),
+    // Listed by this company, under its own name (several companies can share one StitchBench).
+    shopRef: shop.id,
+    shopName: shop.name,
+    // The form's own id: sent again after a lost answer, it's the same listing on the hub, not a second one.
+    clientId: str(formData.get("clientId")),
   };
   const photos = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 8);
   for (const f of photos) {
@@ -87,11 +92,29 @@ export const updateListing = safe(async function updateListing(id: string, formD
   const user = await requireUser();
   await ownListing(user.shopId, id);
   const body: Record<string, unknown> = {};
-  const price = toCents(formData.get("price"));
-  if (price != null) body.priceCents = price;
-  const qty = int(formData.get("qty"), 0);
-  if (qty != null) body.qty = qty;
-  if (formData.has("shipping")) body.shippingCents = toCents(formData.get("shipping"));
+  // What's typed is checked like a new listing: a typo is an error, never skipped or saved as "no price".
+  if (str(formData.get("price")) != null) {
+    const price = toCents(formData.get("price"));
+    if (price == null || price <= 0) throw new UserError("Enter the price in dollars, e.g. 12.50.");
+    body.priceCents = price;
+  }
+  if (str(formData.get("qty")) != null) {
+    const qty = int(formData.get("qty"), 0);
+    if (qty == null) throw new UserError("Enter how many are available: a whole number, 0 or more.");
+    // Sent only when the seller changed it, with the number they saw: orders accepted or cancelled since the page
+    // opened change it on the hub, and the hub refuses a number typed over theirs.
+    const was = int(formData.get("qtyWas"), 0);
+    if (was == null || qty !== was) {
+      body.qty = qty;
+      if (was != null) body.expectedQty = was;
+    }
+  }
+  if (formData.has("shipping")) {
+    const shipping = str(formData.get("shipping"));
+    const cents = shipping == null ? null : toCents(shipping);
+    if (shipping != null && (cents == null || cents < 0)) throw new UserError("Enter shipping in dollars, e.g. 4.50, or leave it blank to quote it on the invoice.");
+    body.shippingCents = cents;
+  }
   for (const k of ["title", "description", "shippingNote", "shipsFrom"]) if (formData.has(k)) body[k] = str(formData.get(k));
   const condition = str(formData.get("condition"));
   if (condition && CONDITIONS.includes(condition)) body.condition = condition;
@@ -129,6 +152,10 @@ export const placeOrder = safe(async function placeOrder(listingId: string, form
         shipTo,
         buyerNote: str(formData.get("note")),
         buyerContact: { name: `${user.name}, ${shop.name}`, email: shop.email ?? user.email, phone: shop.phone },
+        // Ordered by this company, under its own name; the form's id makes a retry after a lost answer the same order.
+        shopRef: shop.id,
+        shopName: shop.name,
+        clientId: str(formData.get("clientId")),
       },
     })
   ).json()) as HubOrder;
@@ -241,14 +268,16 @@ export const orderAction = safe(async function orderAction(orderId: string, acti
   await saveOrder(o);
   if (action === "received" && formData.get("addToStock") === "on") await receiveIntoStock(o, user.id, user.shopId);
   if (action === "ship" && formData.get("takeFromStock") === "on") await takeFromStock(o, user.id, user.shopId);
-  // Listing quantities change on accept / cancel; pick them up now.
-  if (action === "accept" || action === "cancel") await syncHub().catch(() => {});
+  // Listing quantities change on accept / cancel; pick them up now (a few seconds at most, the rest in the background).
+  if (action === "accept" || action === "cancel") await syncSoon();
   refresh();
   revalidatePath("/parts", "layout");
 });
 
 export const refreshOrders = safe(async function refreshOrders() {
   await requireUser();
+  // A dead line says so in seconds, not after every request of a sync has waited out its time.
+  await hubReachable();
   await syncHub();
   refresh();
 });

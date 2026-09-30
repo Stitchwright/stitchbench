@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { numberKey } from "@/lib/parts";
+import { codeKeys, numberKey } from "@/lib/parts";
 import { sameText } from "@/lib/input";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
@@ -53,9 +53,10 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   const user = await requireUser();
   const c = code.trim();
   if (!c) return null;
-  const key = numberKey(c);
+  // Its barcode form too: a scanner's 12-digit UPC finds the item imported with its 13-digit EAN.
+  const keys = codeKeys(c);
   const matches = await db.part.findMany({
-    where: { shopId: user.shopId, OR: [{ partNumber: sameText(c) }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
+    where: { shopId: user.shopId, OR: [{ partNumber: sameText(c) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
     take: 20,
   });
   const lc = c.toLowerCase();

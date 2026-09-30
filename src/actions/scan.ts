@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
-import { numberKey } from "@/lib/parts";
+import { codeKeys, numberKey } from "@/lib/parts";
 import { assertId, sameText } from "@/lib/input";
 
 export type ScannedPart = {
@@ -25,9 +25,10 @@ export type ScanResult =
 
 /** The item a code means: the exact number first, and the shop's own stock before a partner's consigned stock. */
 async function findPart(shopId: string, code: string) {
-  const key = numberKey(code);
+  // Its barcode form too: a scanner's 12-digit UPC finds the item imported with its 13-digit EAN.
+  const keys = codeKeys(code);
   const matches = await db.part.findMany({
-    where: { shopId, OR: [{ partNumber: sameText(code) }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
+    where: { shopId, OR: [{ partNumber: sameText(code) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
     take: 20,
   });
   const rank = (p: (typeof matches)[number]) => (p.consignLinkId ? 2 : 0) + (p.partNumber.toLowerCase() === code.toLowerCase() ? 0 : 1);

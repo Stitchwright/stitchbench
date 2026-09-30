@@ -20,11 +20,15 @@ const d2 = (c?: number | null) => (c == null ? "" : (c / 100).toFixed(2));
 /** Put a part or accessory up for sale to other shops on the community hub. Photos are shrunk before upload. */
 export function ListingForm({ defaults = {} }: { defaults?: Defaults }) {
   const form = useRef<HTMLFormElement>(null);
+  // One id for this form's listing: pressed again after an answer got lost, it's the same listing on the hub.
+  const clientId = useRef<string | null>(null);
   const [pending, start] = useTransition();
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    clientId.current ??= `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+    fd.set("clientId", clientId.current);
     start(async () => {
       try {
         const files = fd.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);

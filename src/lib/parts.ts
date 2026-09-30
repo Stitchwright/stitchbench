@@ -1,6 +1,7 @@
 import "server-only";
 // Parts, their numbers, and the community cross-reference (synced XPart rows).
 import { db } from "@/lib/db";
+import { UserError } from "@/lib/action";
 import { modelKey } from "@/lib/format";
 import { brandMatches } from "@/lib/model-info";
 
@@ -26,9 +27,26 @@ export const KIND_LABEL: Record<string, string> = {
 /** A part number reduced to letters and digits, upper-case: "XA-1234-001" → "XA1234001". */
 export const numberKey = (n: string) => n.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-export function partKeys(partNumber: string, altNumbers: string[]) {
-  return [...new Set([partNumber, ...altNumbers].map(numberKey).filter((k) => k.length >= 3))];
+/**
+ * One form of a barcode: UPC-A (12 digits, or 11 once a spreadsheet dropped the leading 0), EAN-13 and GTIN-14 of the
+ * same item are the same 14 digits. Scanners send UPC-A as 12 digits while line sheets often carry 13 or 14.
+ */
+export function gtinKey(n: string) {
+  const k = numberKey(n);
+  return /^\d{11,14}$/.test(k) ? k.padStart(14, "0") : null;
 }
+
+/** The keys a typed or scanned code matches parts on: its letters and digits, and its barcode form. */
+export function codeKeys(code: string) {
+  return [...new Set([numberKey(code), gtinKey(code)].filter((k): k is string => !!k && k.length >= 3))];
+}
+
+export function partKeys(partNumber: string, altNumbers: string[]) {
+  return [...new Set([partNumber, ...altNumbers].flatMap(codeKeys))];
+}
+
+/** A part number without the note this program adds to tell stock apart ("X (own)", "X (Partner name)"). */
+export const baseNumber = (n: string) => n.replace(/\s+\([^()]*\)$/, "").trim() || n;
 
 /** "a, b; c" or one per line → trimmed list. */
 export function splitList(v: string | null | undefined) {
@@ -101,17 +119,44 @@ export function parseFits(text: string | null | undefined, previous: XFit[] = []
   return out;
 }
 
-/** "Vendor, https://..., 12.50" lines → where to buy. */
+/**
+ * "Vendor, https://..., 12.50" lines → where to buy. The link is the one http(s) address (commas in it and all), the
+ * vendor is what comes before it and the price what comes after ("12.50", "1,000.50" or "12.99 CAD"). With no link,
+ * a last field that looks like a price is the price. A source already on the entry keeps its id, currency and note.
+ */
 export function parseSources(text: string | null | undefined, previous: XSource[] = []): XSource[] {
   const out: XSource[] = [];
-  for (const line of (text ?? "").split("\n")) {
-    const parts = line.split(",").map((s) => s.trim());
-    if (!parts[0]) continue;
-    const url = parts.find((p) => /^https?:\/\//i.test(p)) ?? null;
-    const priceText = parts.find((p) => /^\$?\d+(\.\d{1,2})?$/.test(p));
-    const priceCents = priceText ? Math.round(Number(priceText.replace("$", "")) * 100) : null;
-    const was = previous.find((s) => s.vendor === parts[0] && (s.url ?? null) === url);
-    out.push({ ...(was ?? {}), vendor: parts[0], url, priceCents, currency: "USD" });
+  for (const raw of (text ?? "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const link = /https?:\/\/\S+/i.exec(line);
+    let vendor = line;
+    let url: string | null = null;
+    let price = "";
+    if (link) {
+      url = link[0].replace(/,+$/, "");
+      vendor = line.slice(0, link.index).replace(/[,\s]+$/, "");
+      price = line.slice(link.index + link[0].length).replace(/^[,\s]+/, "");
+    } else {
+      const i = line.lastIndexOf(",");
+      const last = i > 0 ? line.slice(i + 1).trim() : "";
+      if (/^\$?\s*\d[\d,]*(\.\d*)?(\s+[A-Za-z]{3})?$/.test(last)) {
+        vendor = line.slice(0, i).trim();
+        price = last;
+      }
+    }
+    if (!vendor) throw new UserError(`Put the vendor's name before the link: "${line}"`);
+    let priceCents: number | null = null;
+    let currency: string | undefined;
+    if (price) {
+      const m = /^\$?\s*(\d[\d,]*(?:\.\d+)?)\s*([A-Za-z]{3})?$/.exec(price);
+      const amount = m?.[1].replace(/,/g, "") ?? "";
+      if (!m || !/^\d+(\.\d{1,2})?$/.test(amount)) throw new UserError(`Write the price in dollars and cents, e.g. 12.50: "${line}"`);
+      priceCents = Math.round(Number(amount) * 100);
+      currency = m[2]?.toUpperCase();
+    }
+    const was = previous.find((s) => s.vendor === vendor && (s.url ?? null) === url);
+    out.push({ ...(was ?? {}), vendor, url, priceCents, currency: currency ?? was?.currency ?? "USD" });
   }
   return out;
 }
@@ -119,7 +164,13 @@ export function parseSources(text: string | null | undefined, previous: XSource[
 export const numbersText = (n: XNumber[]) => n.map((x) => `${x.brand}, ${x.number}`).join("\n");
 export const fitsText = (f: XFit[]) => f.map((x) => `${x.brand}, ${x.model}`).join("\n");
 export const sourcesText = (s: XSource[]) =>
-  s.map((x) => [x.vendor, x.url, x.priceCents != null ? (x.priceCents / 100).toFixed(2) : null].filter(Boolean).join(", ")).join("\n");
+  s
+    .map((x) =>
+      [x.vendor, x.url, x.priceCents != null ? `${(x.priceCents / 100).toFixed(2)}${x.currency && x.currency !== "USD" ? ` ${x.currency}` : ""}` : null]
+        .filter(Boolean)
+        .join(", "),
+    )
+    .join("\n");
 
 /** Supplier site searches for a part number: always there, no scraping. Suppliers are added as their search pages are verified. */
 // Search pages checked 2026-09-25 (they're for people to click; the scraper never fetches them).

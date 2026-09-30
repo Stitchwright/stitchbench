@@ -75,7 +75,8 @@ export async function sharedNotes(user: CurrentUser, f: Filter = {}): Promise<Sh
       author: p.authorName,
       createdAt: p.createdAt,
       photos: p.photos.map((ph) => ({ src: `/api/hub-photos/${ph.id}`, kind: ph.kind, caption: ph.caption })),
-      remove: p.mine ? removeHubPost.bind(null, p.id) : undefined,
+      // Shared from this install, and (when the hub says which company shared it) by this company.
+      remove: p.mine && (admin || !p.shopRef || p.shopRef === user.shopId) ? removeHubPost.bind(null, p.id) : undefined,
     })),
     ...local.map((p) => ({
       key: `l-${p.id}`,
