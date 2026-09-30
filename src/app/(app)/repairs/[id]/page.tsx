@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money, ticketNo } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
-import type { JobEvent, JobLine } from "@/lib/partners";
+import { repairDue, type JobEvent, type JobLine } from "@/lib/partners";
 import { JOB_STATUS_LABEL } from "@/lib/constants";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { PageHeader, Section, KV, JobStatusPill } from "@/components/ui";
@@ -25,6 +25,9 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
   const lines = (j.lines as JobLine[] | null) ?? [];
   const events = (j.events as JobEvent[]) ?? [];
   const ready = ["READY_FOR_PICKUP", "READY_IN_TRUCK", "RETURNED_UNREPAIRED"].includes(j.status);
+  // What the register's Repair pickup line asks for: less a deposit paid straight to the repair shop.
+  const due = repairDue(j);
+  const paidSoFar = (j.repairPaidCents ?? 0) + (j.paidCents ?? 0);
 
   return (
     <div className="space-y-6">
@@ -92,10 +95,11 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
       {ready && !j.pickedUpAt && (
         <Section title="Handing it back">
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            {!j.paidAt && j.totalCents != null && j.totalCents > 0 ? (
+            {due > 0 && (!j.paidAt || j.paidCents) ? (
               <>
                 <span>
-                  The customer owes <strong>{money(j.totalCents)}</strong>. Ring it up on the register (Repair pickup).
+                  The customer owes <strong>{money(due)}</strong>
+                  {paidSoFar > 0 && ` (${money(paidSoFar)} of the ${money(j.totalCents)} bill is paid)`}. Ring it up on the register (Repair pickup).
                 </span>
                 <Link href="/register" className="btn btn-primary">
                   Register
@@ -143,6 +147,12 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
                 <span>Customer pays</span>
                 <span className="num">{money(j.totalCents)}</span>
               </li>
+              {(j.repairPaidCents ?? 0) > 0 && (
+                <li className="muted flex justify-between">
+                  <span>Paid to the repair shop</span>
+                  <span className="num">{money(j.repairPaidCents)}</span>
+                </li>
+              )}
               <li className="muted flex justify-between">
                 <span>Your commission ({j.commissionPct}%)</span>
                 <span className="num">{money(j.commissionCents ?? 0)}</span>

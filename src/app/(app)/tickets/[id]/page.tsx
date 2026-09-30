@@ -13,6 +13,7 @@ import { valueRange } from "@/lib/adjustments";
 import { PageHeader, Section, KV, modelHref } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Checklist, StatusSelect } from "@/components/ticket-controls";
+import { PartPicker } from "@/components/part-picker";
 import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
 import {
@@ -70,9 +71,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const job = await db.repairJob.findUnique({ where: { ticketId: t.id } });
   const jobLink = job ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: job.linkId } } }) : null;
 
-  const [services, parts, techs, specs, settings] = await Promise.all([
+  const [services, techs, specs, settings] = await Promise.all([
     db.serviceItem.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { sortOrder: "asc" } }),
-    db.part.findMany({ where: { shopId: user.shopId }, orderBy: { partNumber: "asc" }, select: { partNumber: true, description: true, qtyOnHand: true } }),
     db.user.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { name: "asc" } }),
     specsFor(t.machine.brand, t.machine.model),
     settingsFor(t.machine.brand, t.machine.model),
@@ -159,7 +159,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <div className="space-y-6 xl:col-span-3">
           <Section title="Status and work">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <StatusSelect ticketId={t.id} status={t.status} />
+              <StatusSelect ticketId={t.id} status={t.status} partnerOwns={job?.side === "repair" && !job.pickedUpAt} />
               <KV k="Ready" v={t.readyAt ? fmtDate(t.readyAt, tz) : null} />
               <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil, tz) : null} />
             </div>
@@ -413,12 +413,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <ActionForm action={addLine.bind(null, t.id)} reset className="space-y-2 rounded border border-line p-3">
                 <input type="hidden" name="kind" value="PART" />
                 <div className="label">Add part from inventory</div>
-                <input name="partNumber" aria-label="Part" list="parts-list" className="input mono" placeholder="Part number" autoComplete="off" />
-                <datalist id="parts-list">
-                  {parts.map((p) => (
-                    <option key={p.partNumber} value={`${p.partNumber} | ${p.description} (${p.qtyOnHand} on hand)`} />
-                  ))}
-                </datalist>
+                <PartPicker />
                 <div className="flex gap-2">
                   <input name="qty" aria-label="Quantity" inputMode="numeric" defaultValue="1" className="input num w-20" />
                   <input name="price" aria-label="Price each" inputMode="decimal" className="input num" placeholder="$ each (blank = list price)" />

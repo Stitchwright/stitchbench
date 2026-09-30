@@ -15,7 +15,7 @@ import "server-only";
 // aside (PartnerFailure, shown on the Partners page) instead of stopping every message after it.
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { isUserError, UserError } from "@/lib/action";
 import { checkHubUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey } from "@/lib/format";
@@ -133,6 +133,11 @@ export type CatalogItem = {
 export type JobEvent = { at: string; status?: string; note?: string };
 export type JobLine = { description: string; qty: number; amountCents: number; kind: string };
 export type OrderLine = { itemKey: string; partNumber: string; description: string; qty: number; unitCents: number };
+
+/** What the customer still owes on a repair: the bill, less anything already paid to either shop (the register's figure). */
+export function repairDue(j: { totalCents: number | null; repairPaidCents: number | null; paidCents: number | null }) {
+  return Math.max(0, (j.totalCents ?? 0) - (j.repairPaidCents ?? 0) - (j.paidCents ?? 0));
+}
 
 export async function partnerLink(shopId: string, id: string) {
   const l = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id } } });
@@ -517,6 +522,9 @@ async function pushCatalogs() {
       const samePrices = l.catalogHash?.split(":")[0] === c.h.split(":")[0];
       if (samePrices && l.catalogAt && Date.now() - l.catalogAt.getTime() < 10 * 60_000) continue;
       await db.$transaction([
+        // Only the newest catalog matters: one still waiting to go (the hub or the partner was away) is replaced, not
+        // left to be sent and applied ahead of this one.
+        db.partnerOutbox.deleteMany({ where: { shopId: l.shopId, linkId: l.id, type: "catalog", sentAt: null, deadAt: null } }),
         db.partnerOutbox.create({ data: { shopId: l.shopId, linkId: l.id, type: "catalog", data: { items: c.items, at: new Date().toISOString() } as Json } }),
         db.partnerLink.update({ where: { shopId_id: { shopId: l.shopId, id: l.id } }, data: { catalogHash: c.h, catalogAt: new Date() } }),
       ]);
@@ -528,6 +536,16 @@ async function pushCatalogs() {
 }
 
 // ---------- sync ----------
+
+const OUTBOX_KEPT_DAYS = 30; // as long as a message the partner refused stays listed on the Partners page
+let outboxPrunedAt = 0;
+
+/** Messages sent long ago go (catalogs and intakes with photos would otherwise fill the database and every backup). */
+async function pruneOutbox() {
+  if (Date.now() - outboxPrunedAt < 3600_000) return;
+  outboxPrunedAt = Date.now();
+  await db.partnerOutbox.deleteMany({ where: { sentAt: { lt: new Date(Date.now() - OUTBOX_KEPT_DAYS * 86400_000) } } }).catch(() => {});
+}
 
 /**
  * Send what's waiting, oldest first per partnership. A message the hub refuses for good (bad data, too large) is set
@@ -766,9 +784,14 @@ async function doPartnerSync(): Promise<PartnerSyncResult> {
       // This status line is one for the whole install, so it only says what concerns every company here (the hub out
       // of reach, a sync that broke off). Messages one company couldn't send are listed on that company's Partners page.
       await db.hubState.update({ where: { id: 1 }, data: { partnerSyncAt: new Date(), partnerError: null } });
+      await pruneOutbox();
       return { sent: sent + more, received };
     } catch (e) {
-      await db.hubState.update({ where: { id: 1 }, data: { partnerError: e instanceof Error ? e.message : String(e) } }).catch(() => {});
+      // Every company's Partners page shows this line: the hub's own words (out of reach, refused) are fine there; what
+      // the database said may name one company's data, so that stays in the log.
+      if (!isUserError(e)) console.error("partner sync stopped:", e);
+      const plain = isUserError(e) ? e.message : "The sync stopped on an error. Try again in a minute; if it keeps happening, tell whoever runs this install.";
+      await db.hubState.update({ where: { id: 1 }, data: { partnerError: plain } }).catch(() => {});
       throw e;
     }
   });
@@ -832,7 +855,13 @@ async function applyMessage(m: HubMessage) {
       if (l.id !== linkId) return bad("link.created names another link");
       return saveLinkFromHub(shopId, toSide, l);
     }
-    await db.partnerLink.updateMany({ where: { shopId, id: linkId }, data: { status: "ENDED", endedAt: d.endedAt ? dateOf(d.endedAt, "endedAt") : new Date() } });
+    // The note typed with the ending and who ended it are kept for the shop to read on the partner's page.
+    const endNote = text(d.note, 500);
+    const endedBy = text(d.endedBy, 120);
+    await db.partnerLink.updateMany({
+      where: { shopId, id: linkId },
+      data: { status: "ENDED", endedAt: d.endedAt ? dateOf(d.endedAt, "endedAt") : new Date(), ...(endNote ? { endNote } : {}), ...(endedBy ? { endedBy } : {}) },
+    });
     return;
   }
 
@@ -1097,10 +1126,16 @@ async function applyMessage(m: HubMessage) {
       if (!o || o.linkId !== link.id) return;
       const to = String(d.status ?? "");
       // What each side may do to an order, from where it stands on our copy.
+      // Both shops can move a placed order at the same moment (a cancel and an acceptance cross on the way). The buyer's
+      // screen only offers Cancel on a placed order, so a cancel that finds it accepted is one sent before the buyer
+      // heard: nothing has shipped, so it stands. Once the repair shop has delivered, what it did stands, and the
+      // buyer's cancelled copy takes the delivery. Either way the two copies end up the same.
       const legal =
         m.fromSide === "retail"
-          ? (o.status === "PLACED" && to === "CANCELLED") || (o.status === "DELIVERED" && to === "RECEIVED")
-          : (o.status === "PLACED" && ["ACCEPTED", "DELIVERED", "CANCELLED"].includes(to)) || (o.status === "ACCEPTED" && ["DELIVERED", "CANCELLED"].includes(to));
+          ? ((o.status === "PLACED" || o.status === "ACCEPTED") && to === "CANCELLED") || (o.status === "DELIVERED" && to === "RECEIVED")
+          : (o.status === "PLACED" && ["ACCEPTED", "DELIVERED", "CANCELLED"].includes(to)) ||
+            (o.status === "ACCEPTED" && ["DELIVERED", "CANCELLED"].includes(to)) ||
+            (o.side === "buyer" && o.status === "CANCELLED" && to === "DELIVERED");
       const who = m.fromSide === "retail" ? "the sewing shop" : "the repair shop";
       // The repair shop's copy of the order (its lines at its prices, items it no longer offers left out): ours takes
       // it, so both statements show the same total and only what was delivered is received here.
@@ -1314,8 +1349,10 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
     : await db.repairJob.count({ where: { shopId, linkId: link.id, side: "repair", createdAt: { gte: hourAgo } } });
   if (lately >= MAX_INTAKES_PER_HOUR) return bad(`${link.partnerName} sent more than ${MAX_INTAKES_PER_HOUR} machines within an hour`);
   const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
-  const machine = existing ?? (await db.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
+  // (Several MB of photos written on a busy PC can take longer than the default 5 seconds, which would fail every try.)
   await db.$transaction(async (tx) => {
+    // In the same transaction as the ticket: a try that fails leaves no machine behind for the next try to repeat.
+    const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
     // The next free ticket number, taken atomically (a tech may be checking a machine in at the same moment). A counter
     // behind the tickets goes straight past the highest number, as createTicket does, not one used number at a time.
     let number = (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
@@ -1376,7 +1413,7 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
         data: { shopId, machineId: machine.id, ticketId: t.id, kind: "CONDITION", caption: text(p.caption, 200) ?? `At intake, ${link.partnerName}`, mime, data: Buffer.from(b64, "base64") },
       });
     }
-  });
+  }, { timeout: 30_000, maxWait: 10_000 });
 }
 
 /** A part number not yet used on this shop, from `number` with a suffix when needed. */
@@ -1436,9 +1473,10 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
  * Consigned stock going back to the repair shop, recorded by the sewing shop (which hands it over) and applied on both
  * sides; never more than is still out on the shelf.
  */
-export async function consignReturned(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, qty: number, at: Date) {
+export async function consignReturned(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, qty: number, at: Date, outer?: Prisma.TransactionClient) {
   if (!(qty > 0)) return 0;
-  return db.$transaction(async (tx) => {
+  // Inside the caller's transaction when it has one (so the message to the other shop is queued with the change).
+  const run = async (tx: Prisma.TransactionClient) => {
     const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
     if (!item) return 0;
     const onShelf = Math.max(0, item.placed - item.sold - item.returned);
@@ -1457,7 +1495,8 @@ export async function consignReturned(shopId: string, link: { id: string; side: 
       });
     }
     return back;
-  });
+  };
+  return outer ? run(outer) : db.$transaction(run);
 }
 
 // ---------- statements ----------

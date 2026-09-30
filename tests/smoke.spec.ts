@@ -70,6 +70,14 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   await page.getByRole("button", { name: "Record payment" }).click();
   await expect(page.getByText("Payment recorded")).toBeVisible();
 
+  // Status round trip: collected closes the ticket, on the bench opens it again (each saved, the page shows it).
+  await page.locator("#status").selectOption("COLLECTED");
+  await expect(page.getByText("Status: Collected by customer")).toBeVisible();
+  await page.reload();
+  await expect(page.locator("#status")).toHaveValue("COLLECTED");
+  await page.locator("#status").selectOption("ON_BENCH");
+  await expect(page.getByText("Status: On bench")).toBeVisible();
+
   // Accessories returned
   await page.getByLabel("Power cord", { exact: true }).check();
   await page.getByRole("button", { name: "Save returned" }).click();

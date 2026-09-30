@@ -153,6 +153,10 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
   const hub = await db.hubState.findUnique({ where: { id: 1 } });
   if (!hub?.installKey) throw new UserError("Join the community hub first (Settings): partner shops talk through it.");
   const repair = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
+  // The invite comes first: it needs the hub, so with the hub down nothing has been created yet (a retry isn't refused
+  // for an email that already has an account). An email already in use is caught before the invite is spent on it.
+  if (await db.user.findUnique({ where: { email: normalizeEmail(formData.get("email")) }, select: { id: true } })) throw new UserError("That email already has an account.");
+  const invite = await createPartnerInvite(repair.id, repair.name, "repair", termsFromForm(formData));
   const created = await createShopWithOwner({
     shopName: String(formData.get("shop") ?? ""),
     name: String(formData.get("name") ?? ""),
@@ -160,8 +164,17 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
     password: String(formData.get("password") ?? ""),
     kind: "retail",
   });
-  const invite = await createPartnerInvite(repair.id, repair.name, "repair", termsFromForm(formData));
-  const r = await redeemPartnerCode(created.id, created.name, normalizeEmail(formData.get("email")), invite.code);
+  let r: Awaited<ReturnType<typeof redeemPartnerCode>>;
+  try {
+    r = await redeemPartnerCode(created.id, created.name, normalizeEmail(formData.get("email")), invite.code);
+  } catch (e) {
+    // The company and its login exist by now: the code is the way to finish, not the form again.
+    refresh();
+    revalidatePath("/companies");
+    throw new UserError(
+      `${created.name} was added, but the partnership wasn't made${isUserError(e) ? ` (${e.message})` : ""}. Ask them to sign in and enter this partner code under Partners: ${invite.code}`,
+    );
+  }
   // Our side of the link now too, rather than on the next sync.
   await saveLinkFromHub(repair.id, "repair", r.link);
   refresh();

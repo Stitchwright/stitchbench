@@ -62,6 +62,11 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
         }
       />
 
+      {link.status === "ENDED" && link.endNote && (
+        <p className="card card-pad text-sm" role="status">
+          {link.endedBy === link.side ? "Your note" : `Note from ${link.partnerName}`} when the partnership ended: {link.endNote}
+        </p>
+      )}
       {!agreed && (
         <p className="card card-pad text-sm" role="status">
           {iAccepted ? `Waiting for ${link.partnerName} to accept the terms.` : "The terms aren't accepted by you yet."}{" "}

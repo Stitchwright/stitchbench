@@ -231,12 +231,20 @@ export const returnConsigned = safe(async function returnConsigned(linkId: strin
   const item = await db.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId: user.shopId, linkId, itemKey } } });
   if (!item) throw new UserError("That item isn't on consignment here.");
   const onShelf = item.placed - item.sold - item.returned;
-  const qty = Number(str(formData.get("qty")) ?? "0");
-  if (!(qty > 0) || qty > onShelf + 1e-9) throw new UserError(`Between 1 and ${onShelf} can go back.`);
+  // Whole pieces, or yards to the thousandth: the same as when it was placed, and as the repair shop reads it.
+  const yards = (item.partId ? await db.part.findFirst({ where: { id: item.partId, shopId: user.shopId }, select: { unit: true } }) : null)?.unit === "yd";
+  const raw = Number(str(formData.get("qty")) ?? "0");
+  const qty = yards ? Math.round(raw * 1000) / 1000 : raw;
+  if (!(qty > 0) || qty > onShelf + 1e-9) throw new UserError(yards ? `Up to ${onShelf} yards can go back.` : `Between 1 and ${onShelf} can go back.`);
+  if (!yards && !Number.isInteger(qty)) throw new UserError("This item goes back in whole pieces. Enter a whole number.");
   const at = new Date();
-  const back = await consignReturned(user.shopId, link, itemKey, qty, at);
+  // The shelf change and the message to the repair shop are one transaction: neither happens without the other.
+  const back = await db.$transaction(async (tx) => {
+    const n = await consignReturned(user.shopId, link, itemKey, qty, at, tx);
+    if (n) await sendToPartner(user.shopId, linkId, "consign.return", { id: crypto.randomUUID(), items: [{ itemKey, qty: n }], at: at.toISOString() }, tx);
+    return n;
+  });
   if (!back) throw new UserError("Nothing went back: the shelf count changed meanwhile. Reload and try again.");
-  await sendToPartner(user.shopId, linkId, "consign.return", { id: crypto.randomUUID(), items: [{ itemKey, qty: back }], at: at.toISOString() });
   refresh(linkId);
 });
 
@@ -253,11 +261,13 @@ export const countConsigned = safe(async function countConsigned(linkId: string,
     for (const it of items) {
       const v = str(formData.get(`count_${it.itemKey}`));
       if (v == null) continue;
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) throw new UserError(`Check the count for ${it.partNumber}.`);
+      const part = it.partId ? await tx.part.findFirst({ where: { id: it.partId, shopId } }) : null;
+      // Whole pieces, or yards to the thousandth.
+      const yards = part?.unit === "yd";
+      const n = yards ? Math.round(Number(v) * 1000) / 1000 : Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > MAX_QTY || (!yards && !Number.isInteger(n))) throw new UserError(`Check the count for ${it.partNumber}${yards ? "" : ": whole pieces only"}.`);
       counted.push({ itemKey: it.itemKey, onHand: n });
       await tx.consignItem.update({ where: { id: it.id }, data: { countedQty: n, countedAt: at } });
-      const part = it.partId ? await tx.part.findFirst({ where: { id: it.partId, shopId } }) : null;
       if (part && part.qtyOnHand !== n) {
         await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: n } });
         await tx.stockMove.create({ data: { shopId, partId: part.id, qty: n - part.qtyOnHand, reason: "ADJUSTED", userId: user.id, note: "Consignment shelf count", createdAt: at } });
