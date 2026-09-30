@@ -18,7 +18,9 @@ type P = {
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
 
-export function PartFields({ part, withQty = false, defaultNumber }: { part?: P; withQty?: boolean; defaultNumber?: string }) {
+/** `lockMoney`: what it costs, sells for and is offered to partner shops at is for an owner or admin to change. */
+export function PartFields({ part, withQty = false, defaultNumber, lockMoney = false }: { part?: P; withQty?: boolean; defaultNumber?: string; lockMoney?: boolean }) {
+  const locked = lockMoney ? { disabled: true, title: "Only an owner or admin can change this." } : {};
   return (
     <>
       <div className="field">
@@ -90,22 +92,22 @@ export function PartFields({ part, withQty = false, defaultNumber }: { part?: P;
         <label htmlFor="cost" className="label">
           Cost each ($)
         </label>
-        <input id="cost" name="cost" inputMode="decimal" defaultValue={c2d(part?.costCents)} className="input num" />
+        <input id="cost" name="cost" inputMode="decimal" defaultValue={c2d(part?.costCents)} className="input num" {...locked} />
       </div>
       <div className="field">
         <label htmlFor="price" className="label">
           Price each ($, blank = cost + markup)
         </label>
-        <input id="price" name="price" inputMode="decimal" defaultValue={c2d(part?.priceCents)} className="input num" />
+        <input id="price" name="price" inputMode="decimal" defaultValue={c2d(part?.priceCents)} className="input num" {...locked} />
       </div>
       <div className="field">
         <label htmlFor="wholesale" className="label">
           Partner price ($, to partner sewing shops)
         </label>
-        <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" />
+        <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" {...locked} />
       </div>
       <label className="flex items-center gap-2 self-end pb-2 text-sm">
-        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" /> Offer to partner shops
+        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" {...locked} /> Offer to partner shops
         (in their catalog)
       </label>
       <div className="field">

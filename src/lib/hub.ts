@@ -5,6 +5,9 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
+import { baseNumber } from "@/lib/parts";
+import { readUpTo } from "@/lib/read-body";
+import { monthPeriod } from "@/lib/time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 import type { NoteKind, PhotoKind } from "@/generated/prisma/enums";
 
@@ -649,21 +652,18 @@ const usageOff = new Set<string>();
 /**
  * Tell the hub how many of each part each company used this month and last (counts only), for the community's
  * most-used list: only the companies that turned it on (Parts → Most used). The others' earlier reports, and what the
- * install sent before companies chose, are taken back.
+ * install sent before companies chose, are taken back. Months start and end on each company's own clock.
  */
 async function pushUsage() {
   if (Date.now() - lastUsagePush < 3600_000) return;
   // Once an hour whether or not the hub takes it: a report it refuses isn't tried again every ten minutes.
   lastUsagePush = Date.now();
-  const now = new Date();
-  const months = [0, 1].map((back) => {
-    const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() - back + 1, 1);
-    return { start, end, month: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}` };
-  });
+  // The hub refuses a month later than its own (UTC) month. For the first hours of a month east of UTC the company's
+  // month has begun and the hub's hasn't: that month waits for a later report.
+  const hubMonth = new Date().toISOString().slice(0, 7);
   type Item = { number: string; brand: string; qty: number; tickets: number };
-  const offered: { id: string; name: string; byMonth: Item[][] }[] = [];
-  for (const shop of await db.shop.findMany({ select: { id: true, name: true, shareUsage: true } })) {
+  const offered: { id: string; name: string; months: { month: string; items: Item[] }[] }[] = [];
+  for (const shop of await db.shop.findMany({ select: { id: true, name: true, shareUsage: true, timeZone: true } })) {
     if (!shop.shareUsage) {
       if (usageOff.has(shop.id)) continue;
       // An older hub doesn't know "off" (400): it keeps what this install sent before, as it did.
@@ -674,49 +674,68 @@ async function pushUsage() {
       continue;
     }
     usageOff.delete(shop.id);
-    const byMonth: Item[][] = [];
-    for (const { start, end } of months) {
-      const rows = await db.$queryRaw<{ number: string; brand: string | null; qty: bigint; tickets: bigint }[]>`
+    const months: { month: string; items: Item[] }[] = [];
+    const thisMonth = monthPeriod(undefined, shop.timeZone);
+    for (const { from, to, month } of [thisMonth, monthPeriod(thisMonth.prev, shop.timeZone)]) {
+      if (month > hubMonth) continue;
+      const rows = await db.$queryRaw<{ number: string; brand: string | null; qty: number; tickets: bigint }[]>`
         SELECT p."partNumber" AS number, p.brand, SUM(-sm.qty) AS qty, COUNT(DISTINCT sm."ticketId") AS tickets
         FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
-        WHERE sm."shopId" = ${shop.id} AND sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${start} AND sm."createdAt" < ${end}
+        WHERE sm."shopId" = ${shop.id} AND sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${from} AND sm."createdAt" < ${to}
         GROUP BY p."partNumber", p.brand`;
-      // The hub counts by the letters and digits of a number; one with none ("-", a part named only in Chinese) would
-      // make it refuse the whole month, so those stay out.
-      byMonth.push(
-        rows
-          .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Math.round(Number(r.qty)), tickets: Number(r.tickets) }))
-          .filter((i) => i.qty > 0 && key(i.number))
-          .slice(0, 5000),
-      );
+      // The community counts a part by its number, not by how this shop tells its stock apart ("X (own)", "X (Partner)"),
+      // and by the letters and digits of it: one with none ("-", a part named only in Chinese) would make the hub refuse
+      // the whole month, so those stay out.
+      const byPart = new Map<string, { number: string; brand: string; qty: number; tickets: number }>();
+      for (const r of rows) {
+        const number = baseNumber(r.number).slice(0, 60);
+        if (!key(number)) continue;
+        const brand = r.brand ?? "";
+        const k = `${key(number)}|${brand}`;
+        const had = byPart.get(k) ?? { number, brand, qty: 0, tickets: 0 };
+        had.qty += Number(r.qty);
+        had.tickets += Number(r.tickets);
+        byPart.set(k, had);
+      }
+      const items = [...byPart.values()].map((i) => ({ ...i, qty: Math.round(i.qty) })).filter((i) => i.qty > 0);
+      months.push({ month, items: items.slice(0, 5000) });
     }
-    offered.push({ id: shop.id, name: shop.name, byMonth });
+    offered.push({ id: shop.id, name: shop.name, months });
   }
+  let refused: unknown = null;
   for (const shop of offered) {
     let perCompany = true;
-    for (const [i, { month }] of months.entries()) {
-      const r = await hubFetch("/v1/usage", { method: "POST", json: { month, items: shop.byMonth[i], shopRef: shop.id, shopName: shop.name } });
-      perCompany = !!((await r.json().catch(() => null)) as { shopRef?: string } | null)?.shopRef;
+    for (const { month, items } of shop.months) {
+      try {
+        const r = await hubFetch("/v1/usage", { method: "POST", json: { month, items, shopRef: shop.id, shopName: shop.name } });
+        perCompany = !!((await r.json().catch(() => null)) as { shopRef?: string } | null)?.shopRef;
+      } catch (e) {
+        // A month the hub refuses mustn't keep the other month, or the other companies, from arriving.
+        refused ??= e;
+      }
     }
     // An older hub keeps one report per install and month, so each company's would replace the one before: it gets
     // every offering company's counts together instead, as one report.
     if (!perCompany) {
-      for (const [i, { month }] of months.entries()) {
-        const all = new Map<string, Item>();
-        for (const s of offered)
-          for (const it of s.byMonth[i]) {
+      const all = new Map<string, Map<string, Item>>();
+      for (const s of offered)
+        for (const { month, items } of s.months) {
+          const sum = all.get(month) ?? new Map<string, Item>();
+          all.set(month, sum);
+          for (const it of items) {
             const k = `${key(it.number)}|${it.brand}`;
-            const had = all.get(k);
+            const had = sum.get(k);
             if (had) {
               had.qty += it.qty;
               had.tickets += it.tickets;
-            } else all.set(k, { ...it });
+            } else sum.set(k, { ...it });
           }
-        await hubFetch("/v1/usage", { method: "POST", json: { month, items: [...all.values()].slice(0, 5000) } });
-      }
+        }
+      for (const [month, sum] of all) await hubFetch("/v1/usage", { method: "POST", json: { month, items: [...sum.values()].slice(0, 5000) } });
       return;
     }
   }
+  if (refused) throw refused;
 }
 
 /** Report usage again on the next sync (a company just changed its setting). */
@@ -756,7 +775,9 @@ async function pushPending() {
     for (const ph of p.photos) fd.append("photo", new Blob([new Uint8Array(ph.data)], { type: ph.mime }), "photo.jpg");
     // Photos take a while on a slow connection.
     const { id } = (await (await hubFetch("/v1/posts", { method: "POST", body: fd, signal: AbortSignal.timeout(180_000) })).json()) as { id: string };
-    await db.sharedPost.update({ where: { id: p.id }, data: { hubId: id } });
+    // Removed here while it was on its way: it is on the hub now, so it comes down again (and the rest still go).
+    const kept = await db.sharedPost.updateMany({ where: { id: p.id }, data: { hubId: id } });
+    if (!kept.count) await hubFetch(`/v1/posts/${hubId(id)}`, { method: "DELETE" }).catch((e: unknown) => console.error("community hub: a removed note is still up:", e instanceof Error ? e.message : e));
   }
   return pending.length;
 }
@@ -886,6 +907,10 @@ export function syncHub(): Promise<SyncResult> {
   return shared.__hubSync;
 }
 
+// The hub's own limit for a figure or a photo is 2 MB. A picture past this isn't read further, kept, or shown: a hub that
+// sends a huge body must not fill this program's memory and database.
+const MAX_PICTURE = 3 * 1024 * 1024;
+
 /** A picture from the hub (note photo, figure snapshot or listing photo), kept locally after the first look. */
 export async function hubPicture(kind: "photo" | "figure" | "listing", id: string): Promise<{ mime: string; data: Uint8Array } | null> {
   id = hubId(id);
@@ -894,7 +919,8 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
     if (have) return { mime: safeImageType(have.mime), data: have.data };
     const r = await hubFetch(`/v1/listing-photos/${id}`, { quick: true });
     const mime = safeImageType(r.headers.get("content-type"));
-    const data = new Uint8Array(await r.arrayBuffer());
+    const data = await readUpTo(r, MAX_PICTURE);
+    if (!data) return null;
     await db.listingPhoto.upsert({ where: { id }, create: { id, mime, data }, update: {} });
     return { mime, data };
   }
@@ -903,7 +929,8 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
     if (!p) return null;
     if (p.data) return { mime: safeImageType(p.mime), data: p.data };
     const r = await hubFetch(`/v1/photos/${id}`, { quick: true });
-    const data = new Uint8Array(await r.arrayBuffer());
+    const data = await readUpTo(r, MAX_PICTURE);
+    if (!data) return null;
     await db.hubPhoto.update({ where: { id }, data: { data } });
     return { mime: safeImageType(p.mime), data };
   }
@@ -912,7 +939,8 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
   if (f.data && f.mime) return { mime: safeImageType(f.mime), data: f.data };
   const r = await hubFetch(`/v1/figures/${id}`, { quick: true });
   const mime = safeImageType(r.headers.get("content-type"));
-  const data = new Uint8Array(await r.arrayBuffer());
+  const data = await readUpTo(r, MAX_PICTURE);
+  if (!data) return null;
   await db.hubFigure.update({ where: { id }, data: { mime, data } });
   return { mime, data };
 }

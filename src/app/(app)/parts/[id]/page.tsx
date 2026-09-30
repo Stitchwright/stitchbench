@@ -26,10 +26,11 @@ const REASON: Record<string, string> = {
   CONSIGNED: "Consignment",
 };
 
-export default async function PartPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PartPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ existing?: string }> }) {
   const user = await requireUser();
   const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
+  const { existing } = await searchParams;
   const p = await db.part.findFirst({
     where: { id, shopId: user.shopId },
     include: {
@@ -69,6 +70,11 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
           </>
         }
       />
+      {existing && (
+        <p className="card card-pad text-sm" role="status">
+          This number was already in your inventory, so this is the item that was there: nothing you typed was saved. Change it under Details below.
+        </p>
+      )}
       {consignedBy && (
         <p className="card card-pad text-sm">
           On consignment from <strong>{consignedBy.partnerName}</strong>: it stays theirs until it sells. Each sale is reported to them and shows on
@@ -249,7 +255,8 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
                         fits: p.fits,
                         kind: p.kind,
                         priceCents: p.priceCents,
-                        qty: Math.max(1, p.qtyOnHand),
+                        // Whole units: a listing's quantity is a count (for fabric, whole yards).
+                        qty: Math.max(1, Math.floor(p.qtyOnHand)),
                       }}
                     />
                   </div>
@@ -283,7 +290,7 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
         </div>
         <Section title="Details">
           <ActionForm action={updatePart.bind(null, p.id)} success="Saved" className="grid-form">
-            <PartFields part={p} />
+            <PartFields part={p} lockMoney={user.role === "TECH"} />
             <div className="sm:col-span-2">
               <Submit>Save</Submit>
             </div>
