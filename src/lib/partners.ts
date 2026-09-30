@@ -22,6 +22,7 @@ import { modelKey } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms, repairCommission, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
 import { Prisma } from "@/generated/prisma/client";
+import { sameText } from "@/lib/input";
 
 export const DEFAULT_HUB_URL = (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
 const FINAL = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
@@ -273,7 +274,7 @@ export async function endPartnership(shopId: string, linkId: string, note: strin
  * if no other partnership already uses it, and its commission is left as the shop set it.
  */
 async function tradeAccountFor(shopId: string, name: string, terms: PartnerTerms) {
-  const found = await db.customer.findFirst({ where: { shopId, kind: "TRADE", name: { equals: name, mode: "insensitive" } } });
+  const found = await db.customer.findFirst({ where: { shopId, kind: "TRADE", name: sameText(name) } });
   if (found && !(await db.partnerLink.findFirst({ where: { shopId, accountId: found.id } }))) return found.id;
   const c = await db.customer.create({
     data: {
@@ -1305,7 +1306,7 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
     ? await db.ticket.count({ where: { shopId, viaAccountId: link.accountId, createdAt: { gte: hourAgo } } })
     : await db.repairJob.count({ where: { shopId, linkId: link.id, side: "repair", createdAt: { gte: hourAgo } } });
   if (lately >= MAX_INTAKES_PER_HOUR) return bad(`${link.partnerName} sent more than ${MAX_INTAKES_PER_HOUR} machines within an hour`);
-  const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
+  const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
   const machine = existing ?? (await db.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
   await db.$transaction(async (tx) => {
     // The next free ticket number, taken atomically (a tech may be checking a machine in at the same moment). A counter
