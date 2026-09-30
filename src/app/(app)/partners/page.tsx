@@ -11,6 +11,8 @@ import { TermsFields } from "@/components/terms-fields";
 import { enterPartnerCode, resendPartnerMessage, setUpSewingShop, syncPartnersNow } from "@/actions/partners";
 import { isPlatformAdmin } from "@/lib/shops";
 
+const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
+
 /** Partner shops: the sewing / quilt shops that take machines in for this repair shop, or the repair shop this sewing shop uses. */
 export default async function Partners({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const user = await requireUser();
@@ -33,7 +35,12 @@ export default async function Partners({ searchParams }: { searchParams: Promise
   // What didn't get through, either way: shown so nothing is lost quietly.
   const [failures, stuck] = await Promise.all([
     db.partnerFailure.findMany({ where: { shopId: user.shopId }, orderBy: { at: "desc" }, take: 30 }),
-    db.partnerOutbox.findMany({ where: { shopId: user.shopId, sentAt: null, OR: [{ deadAt: { not: null } }, { tries: { gte: 3 } }] }, orderBy: { createdAt: "asc" }, take: 30 }),
+    // Refused by the hub (or still failing), or delivered and refused by the partner (sent, then set aside there).
+    db.partnerOutbox.findMany({
+      where: { shopId: user.shopId, OR: [{ sentAt: null, OR: [{ deadAt: { not: null } }, { tries: { gte: 3 } }] }, { sentAt: { not: null }, deadAt: { gte: daysAgo(30) } }] },
+      orderBy: { createdAt: "asc" },
+      take: 30,
+    }),
   ]);
   const nameOf = new Map(links.map((l) => [l.id, l.partnerName]));
 
@@ -108,9 +115,9 @@ export default async function Partners({ searchParams }: { searchParams: Promise
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span>
                   To {nameOf.get(m.linkId) ?? "a partner"}: <span className="mono">{m.type}</span> from {fmtDate(m.createdAt, tz)} —{" "}
-                  {m.deadAt ? "refused by the hub" : `still trying (${m.tries} tries)`}: {m.error}
+                  {m.sentAt ? "refused by the partner" : m.deadAt ? "refused by the hub" : `still trying (${m.tries} tries)`}: {m.error}
                 </span>
-                {m.deadAt && admin && (
+                {m.deadAt && !m.sentAt && admin && (
                   <ActionButton action={resendPartnerMessage.bind(null, m.id)} success="Queued again">
                     Send again
                   </ActionButton>

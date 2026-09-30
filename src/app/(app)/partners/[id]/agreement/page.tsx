@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
-import { acceptedBoth, COMMISSION_ON_LABEL, CUSTOMERS_PAY_LABEL, normalizeTerms, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
+import { acceptedBoth, COMMISSION_ON_LABEL, CUSTOMERS_PAY_LABEL, normalizeTerms, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
 import { PageHeader, Section } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
@@ -38,7 +38,7 @@ export default async function Agreement({ params }: { params: Promise<{ id: stri
       {theirProposal && (
         <Section title={`${link.partnerName} proposed new terms (version ${theirProposal.version})`}>
           <AgreementText repairName={repairName} sewingName={sewingName} terms={normalizeTerms(theirProposal.terms)} />
-          {admin && <AcceptForm linkId={id} label="Accept the new terms" />}
+          {admin && <AcceptForm linkId={id} label="Accept the new terms" version={theirProposal.version} termsKey={termsKey(normalizeTerms(theirProposal.terms))} />}
         </Section>
       )}
 
@@ -69,7 +69,7 @@ export default async function Agreement({ params }: { params: Promise<{ id: stri
 
       {admin && !iAccepted && !theirProposal && (
         <Section title="Accept these terms">
-          <AcceptForm linkId={id} label="Accept" />
+          <AcceptForm linkId={id} label="Accept" version={link.termsVersion} termsKey={termsKey(terms)} />
         </Section>
       )}
       {acceptedBoth(accepted, link.termsVersion) && <p className="pill tone-done no-print">Both shops accepted version {link.termsVersion}.</p>}
@@ -91,9 +91,12 @@ export default async function Agreement({ params }: { params: Promise<{ id: stri
   );
 }
 
-function AcceptForm({ linkId, label }: { linkId: string; label: string }) {
+function AcceptForm({ linkId, label, version, termsKey }: { linkId: string; label: string; version: number; termsKey: string }) {
   return (
     <ActionForm action={acceptPartnerTerms.bind(null, linkId)} className="no-print mt-3 flex flex-wrap items-end gap-3" success="Accepted">
+      {/* What was on the screen: accepting binds to these, never to terms that arrived after the page was opened. */}
+      <input type="hidden" name="version" value={version} />
+      <input type="hidden" name="key" value={termsKey} />
       <div className="field">
         <label htmlFor="accept-name" className="label">
           Your name
