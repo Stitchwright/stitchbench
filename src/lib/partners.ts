@@ -168,9 +168,12 @@ export function partnerQuota(shopId: string, what: string, perHour: number, mess
   map.set(key, b);
 }
 
-/** Queue a message for the partner on the other side of `linkId`; it goes out on the next partner sync. */
-export async function sendToPartner(shopId: string, linkId: string, type: string, data: Json, tx: Prisma.TransactionClient = db) {
-  partnerQuota(shopId, "message", 600, "This company has sent its partners a lot in the last hour. Wait a while and try again.");
+/**
+ * Queue a message for the partner on the other side of `linkId`; it goes out on the next partner sync. `limited: false`
+ * for the record of a sale at the register (a consigned item sold, a repair paid): a busy counter is never turned away.
+ */
+export async function sendToPartner(shopId: string, linkId: string, type: string, data: Json, tx: Prisma.TransactionClient = db, limited = true) {
+  if (limited) partnerQuota(shopId, "message", 600, "This company has sent its partners a lot in the last hour. Wait a while and try again.");
   await tx.partnerOutbox.create({ data: { shopId, linkId, type, data } });
   kickPartnerSync();
 }
@@ -408,7 +411,9 @@ function jobSnapshot(job: JobRow, t: TicketForJob, terms: PartnerTerms) {
   const direct = t.payments.filter((p) => p.method !== "SHOP_COLLECTED" && p.method !== "INVOICE").reduce((a, p) => a + p.amountCents, 0);
   const atShop = t.payments.filter((p) => p.method === "SHOP_COLLECTED").reduce((a, p) => a + p.amountCents, 0);
   const paidAt = job.paidAt ?? (total > 0 && direct + atShop >= total ? new Date() : null);
-  const settled = job.paidAt != null && direct + atShop >= total;
+  // Frozen while it's paid in full, or while the bill is what it was when it was paid (a job paid before on-account
+  // payments stopped counting as paid keeps what it earned); only a bill that went up afterwards is worked out again.
+  const settled = job.paidAt != null && (direct + atShop >= total || total <= (job.totalCents ?? 0));
   return {
     id: job.id,
     status: t.status,
@@ -933,7 +938,7 @@ async function applyMessage(m: HubMessage) {
       // The commission is worked out here from the bill and our copy of the terms, not taken from the partner; once the
       // job is fully paid it stays as it was. Paid against a bill that has since gone up, it follows the bill until the
       // rest is paid, as the repair shop's does.
-      const settled = job.paidAt != null && (job.paidCents ?? 0) + (repairPaid ?? 0) >= (totalCents ?? 0);
+      const settled = job.paidAt != null && ((job.paidCents ?? 0) + (repairPaid ?? 0) >= (totalCents ?? 0) || (totalCents ?? 0) <= (job.totalCents ?? 0));
       const commission = settled && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms);
       // The repair shop asks for the customer's OK again (a second estimate): the last answer was to the first one, so
       // the question is shown again.
@@ -1116,7 +1121,9 @@ async function applyMessage(m: HubMessage) {
         return;
       }
       if (!legal) {
-        if (to !== o.status) {
+        // The repair shop's copy sent just after an order arrives says PLACED: an order already moved on here (cancelled,
+        // received) has nothing to sort out.
+        if (to !== o.status && to !== "PLACED") {
           await db.partnerOrder.update({
             where: { shopId_id: { shopId, id: o.id } },
             data: { events: withEvent(o.events, { at: at.toISOString(), note: `${who} marked it ${to.toLowerCase() || "?"}, but it was already ${o.status.toLowerCase()} here: sort it out with them` }) },
