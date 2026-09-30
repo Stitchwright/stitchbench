@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { fmtDate, modelKey, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { MODEL_PHOTO_KINDS, PHOTO_KIND_LABEL } from "@/lib/constants";
 import { Section, Empty, StatusPill } from "@/components/ui";
 
@@ -17,6 +18,7 @@ function sameModel(shopId: string, brand: string, model: string, excludeMachineI
 }
 
 export async function ModelMachines({ shopId, brand, model, excludeMachineId, title, hideWhenEmpty }: Props) {
+  const tz = await shopTimeZone(shopId);
   const machines = await db.machine.findMany({
     where: sameModel(shopId, brand, model, excludeMachineId),
     include: {
@@ -55,7 +57,7 @@ export async function ModelMachines({ shopId, brand, model, excludeMachineId, ti
                     <Link href={`/tickets/${last.id}`} className="link mono">
                       #{ticketNo(last.number)}
                     </Link>
-                    <span>{fmtDate(last.intakeAt)}</span>
+                    <span>{fmtDate(last.intakeAt, tz)}</span>
                     <StatusPill status={last.status} />
                     {last.tech && <span>{last.tech.name}</span>}
                     <span className="min-w-0 truncate">{last.workDone ?? last.diagnosis ?? last.problem ?? ""}</span>
@@ -71,6 +73,7 @@ export async function ModelMachines({ shopId, brand, model, excludeMachineId, ti
 }
 
 export async function ModelPhotos({ shopId, brand, model, excludeMachineId, title, hideWhenEmpty }: Props) {
+  const tz = await shopTimeZone(shopId);
   const photos = await db.machinePhoto.findMany({
     where: { shopId, kind: { in: MODEL_PHOTO_KINDS }, machine: sameModel(shopId, brand, model, excludeMachineId) },
     select: { id: true, kind: true, caption: true, createdAt: true, machine: { select: { id: true, serial: true } } },
@@ -94,7 +97,7 @@ export async function ModelPhotos({ shopId, brand, model, excludeMachineId, titl
                 <span className="pill tone-neutral">{PHOTO_KIND_LABEL[p.kind]}</span> {p.caption}
               </p>
               <Link href={`/machines/${p.machine.id}`} className="link muted text-xs">
-                {p.machine.serial ? `SN ${p.machine.serial}` : "Machine"} · {fmtDate(p.createdAt)}
+                {p.machine.serial ? `SN ${p.machine.serial}` : "Machine"} · {fmtDate(p.createdAt, tz)}
               </Link>
             </li>
           ))}

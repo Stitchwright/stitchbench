@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { CustomerForm } from "@/components/customer-form";
@@ -10,6 +11,7 @@ import { saveCustomer } from "@/actions/records";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const c = await db.customer.findFirst({
     where: { id, shopId: user.shopId },
@@ -69,7 +71,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                     {"customer" in t && t.customer ? <span className="muted">({(t.customer as { name: string }).name})</span> : null}
                   </span>
                   <span className="flex items-center gap-2">
-                    <span className="num muted">{fmtDate(t.intakeAt)}</span>
+                    <span className="num muted">{fmtDate(t.intakeAt, tz)}</span>
                     <StatusPill status={t.status} />
                   </span>
                 </li>

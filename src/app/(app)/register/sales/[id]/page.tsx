@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { money } from "@/lib/format";
+import { fmtDateTime, money } from "@/lib/format";
 import { barcodeSvg } from "@/lib/barcode";
 import { lineNet, qtyText, TENDER_LABEL, type Tender } from "@/lib/register-math";
 import { PageHeader } from "@/components/ui";
@@ -22,7 +22,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
   const svg = barcodeSvg(`S${sale.number}`, 7);
   const tenders = sale.tenders as Tender[];
   // Clock times in the shop's zone: a hosted install's server runs on UTC, which would put an evening sale on tomorrow's date.
-  const when = (d: Date, opts: Intl.DateTimeFormatOptions = {}) => d.toLocaleString("en-US", { timeZone: shop.timeZone, ...opts });
+  const when = (d: Date, opts?: Intl.DateTimeFormatOptions) => fmtDateTime(d, shop.timeZone, opts);
 
   return (
     <div className="space-y-4">

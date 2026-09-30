@@ -3,11 +3,12 @@ import { requireUser } from "@/lib/session";
 import { hubJoined } from "@/lib/hub";
 import { PageHeader, Empty } from "@/components/ui";
 import { sharedNotes, SharedPostList } from "@/components/shared-posts";
+import { shopTimeZone } from "@/lib/shop-zone";
 
 export default async function SharedPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
   const term = (await searchParams).q?.trim() ?? "";
-  const [notes, joined] = await Promise.all([sharedNotes(user, { term: term || undefined, take: 100 }), hubJoined()]);
+  const [notes, joined, tz] = await Promise.all([sharedNotes(user, { term: term || undefined, take: 100 }), hubJoined(), shopTimeZone(user.shopId)]);
   return (
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Shared by techs" sub="Issues, fixes and photos techs at every shop on the community hub have shared. Share yours from a machine page." />
@@ -24,7 +25,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
         <button className="btn">Search</button>
       </form>
       <div className="card card-pad">
-        {notes.length === 0 ? <Empty>{term ? "Nothing shared matches that." : "Nothing shared yet."}</Empty> : <SharedPostList notes={notes} showModel />}
+        {notes.length === 0 ? <Empty>{term ? "Nothing shared matches that." : "Nothing shared yet."}</Empty> : <SharedPostList notes={notes} showModel timeZone={tz} />}
       </div>
     </div>
   );

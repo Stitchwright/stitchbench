@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { shopTimeZone } from "@/lib/shop-zone";
+import { startOfMonth } from "@/lib/time-zone";
 import { hubFetch, hubJoined } from "@/lib/hub";
 import { numberKey } from "@/lib/parts";
 import { PageHeader, Empty } from "@/components/ui";
@@ -21,7 +23,7 @@ export default async function MostUsed({ searchParams }: { searchParams: Promise
   const view = sp.view === "community" ? "community" : "shop";
   const months = PERIODS.includes(Number(sp.months)) ? Number(sp.months) : 12;
   const brand = sp.brand?.trim() ?? "";
-  const since = new Date(new Date().getFullYear(), new Date().getMonth() - months + 1, 1);
+  const since = startOfMonth(await shopTimeZone(user.shopId), months - 1);
   const qs = (o: Record<string, string>) => `/parts/most-used?${new URLSearchParams({ view, months: String(months), ...(brand ? { brand } : {}), ...o })}`;
 
   let shopRows: { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; reorderAt: number; location: string | null; used: number; tickets: number; supplier: string | null }[] = [];

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { fmtDate, money } from "@/lib/format";
-import { monthRange, todayIn } from "@/lib/sales";
+import { fmtDateTime, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
+import { fmtDay, monthRange, todayIn } from "@/lib/time-zone";
 import { lineNet, TENDER_LABEL, type Tender } from "@/lib/register-math";
 import { KIND_LABEL } from "@/lib/parts";
 import { PageHeader, Section, Empty } from "@/components/ui";
@@ -12,7 +13,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
   const user = await requireUser();
   const sp = await searchParams;
   // Default: today, in the shop's time zone.
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
+  const tz = await shopTimeZone(user.shopId);
   const iso = todayIn(tz);
   const { start, end, fromStr, toStr } = monthRange(sp.from ?? iso, sp.to ?? sp.from ?? iso, tz);
   const sales = await db.sale.findMany({
@@ -66,7 +67,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
       <PageHeader
         back={{ href: "/register", label: "Register" }}
         title="Register sales"
-        sub={`${fmtDate(start, tz)}${fromStr !== toStr ? ` to ${fmtDate(new Date(end.getTime() - 1), tz)}` : ""} · ${done.length} sales · ${money(total)}`}
+        sub={`${fmtDay(fromStr)}${fromStr !== toStr ? ` to ${fmtDay(toStr)}` : ""} · ${done.length} sales · ${money(total)}`}
       />
       <form className="flex flex-wrap items-end gap-2 no-print">
         <div className="field">
@@ -149,7 +150,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
                         {s.number}
                       </Link>
                     </td>
-                    <td>{s.createdAt.toLocaleString("en-US", { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
+                    <td>{fmtDateTime(s.createdAt, tz, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
                     <td>{s.customer?.name}</td>
                     <td className="text-xs">{s.lines.map((l) => l.description).join(", ").slice(0, 80)}</td>
                     <td className="text-xs">{(s.tenders as Tender[]).map((t) => TENDER_LABEL[t.method] ?? t.method).join(" + ")}</td>

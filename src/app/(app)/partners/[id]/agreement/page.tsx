@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { acceptedBoth, COMMISSION_ON_LABEL, CUSTOMERS_PAY_LABEL, normalizeTerms, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
 import { PageHeader, Section } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
@@ -11,6 +12,7 @@ import { acceptPartnerTerms, proposePartnerTerms } from "@/actions/partners";
 
 export default async function Agreement({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id } } });
   if (!link) notFound();
@@ -52,7 +54,7 @@ export default async function Agreement({ params }: { params: Promise<{ id: stri
                 <div className="font-semibold">{name}</div>
                 {a && a.version === link.termsVersion ? (
                   <div>
-                    Accepted in StitchBench by <strong>{a.name}</strong> on {fmtDate(a.at)}
+                    Accepted in StitchBench by <strong>{a.name}</strong> on {fmtDate(a.at, tz)}
                   </div>
                 ) : (
                   <div className="muted">Not accepted yet</div>
