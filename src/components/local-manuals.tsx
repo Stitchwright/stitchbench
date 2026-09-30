@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { FileText, ExternalLink } from "lucide-react";
-import { findByName, findManuals, firstPage, loadIndex, openLocal, type LibraryIndex } from "@/lib/local-manuals";
+import { findManuals, firstPage, loadIndex, manualPath, openLocal, type LibraryIndex } from "@/lib/local-manuals";
 
 function useIndex() {
   const [index, setIndex] = useState<LibraryIndex | undefined>();
@@ -77,20 +77,28 @@ export function LocalManuals({ brand, model }: { brand: string; model: string })
   );
 }
 
-/** "Open p.51" for a tension spec, if the tech has that exact manual. */
-export function OpenSpecSource({ file, pages }: { file: string; pages: string | null }) {
+/** "Open p.51" for a tension spec, if this PC has that manual: in the connected folder, or in the shop PC's library. */
+export function OpenSpecSource({ file, sourcePath, pages }: { file: string; sourcePath?: string | null; pages: string | null }) {
   const { index, ready } = useIndex();
-  if (!ready) return null;
-  const hit = findByName(index, file);
+  const [path, setPath] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    manualPath(index, sourcePath ?? file).then((p) => live && setPath(p));
+    return () => {
+      live = false;
+    };
+  }, [index, ready, sourcePath, file]);
+  if (!ready || path === undefined) return null;
   const page = firstPage(pages);
-  if (!hit)
+  if (!path)
     return (
       <span className="muted text-xs" title={file}>
         {pages ? `p. ${pages}` : ""}
       </span>
     );
   return (
-    <button type="button" className="link text-xs font-semibold" onClick={() => open(hit.path, page)} title={`Open ${file}`}>
+    <button type="button" className="link text-xs font-semibold" onClick={() => open(path, page)} title={`Open ${file}`}>
       Open{page ? ` p. ${page}` : ""}
     </button>
   );

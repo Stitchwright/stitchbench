@@ -23,3 +23,6 @@ export const escapeLike = (s: string) => s.replace(/[\\%_]/g, "\\$&");
  * the value, so "Q_7" would also match "Q-7" and "Z%" anything starting with Z.
  */
 export const sameText = (s: string) => ({ equals: escapeLike(s), mode: "insensitive" as const });
+
+/** A number the way Excel shortens a long one it was told is a number: "7.44272E+11". The digits after it are gone. */
+export const EXCEL_NUMBER = /^\d+(?:\.\d+)?E\+?\d+$/i;

@@ -11,7 +11,7 @@ import { isPlatformAdmin } from "@/lib/shops";
 import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
 import { str } from "@/lib/format";
 import { hubFetch, hubId, hubReachable, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, usageSettingChanged, type HubLink, type LinkRevision } from "@/lib/hub";
-import { libraryDir } from "@/lib/library-dir";
+import { libraryDir, writeUnusedPdf } from "@/lib/library-dir";
 
 const UA = "StitchBench (manual download for a repair shop's own library)";
 const MAX_PDF = 300 * 1024 * 1024;
@@ -108,13 +108,6 @@ export async function manualLinkHistory(linkId: string): Promise<{ revisions: Li
   }
 }
 
-function inboxName(dir: string, wanted: string) {
-  const base = wanted.replace(/\.pdf$/i, "").replace(/[^\w\-+.() ]+/g, "_").slice(0, 150) || "manual";
-  let name = `${base}.pdf`;
-  for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} (${i}).pdf`;
-  return name;
-}
-
 /**
  * Fetch a linked manual from where it's published into <library>\_inbox, to be identified and filed. Links come from
  * other shops through the hub, so only public web servers are fetched (never the shop's own network), and the
@@ -145,8 +138,8 @@ export const downloadManualLink = safe(async function downloadManualLink(linkId:
   }
   const inbox = path.join(root, "_inbox");
   await fs.promises.mkdir(inbox, { recursive: true });
-  const name = inboxName(inbox, l.fileName ?? `${l.brand}_${l.models.replace(/,\s*/g, "+")}_${l.docType ?? "Manual"}`);
-  await fs.promises.writeFile(path.join(inbox, name), data, { flag: "wx" });
+  const wanted = l.fileName ?? `${l.brand}_${l.models.replace(/,\s*/g, "+")}_${l.docType ?? "Manual"}`;
+  await writeUnusedPdf(inbox, wanted.replace(/\.pdf$/i, "").replace(/[^\w\-+.() ]+/g, "_").slice(0, 150) || "manual", data);
 });
 
 // ---------- shared notes ----------

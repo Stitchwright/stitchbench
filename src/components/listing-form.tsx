@@ -51,7 +51,7 @@ export function ListingForm({ defaults = {} }: { defaults?: Defaults }) {
           <label htmlFor="ls-title" className="label">
             Title
           </label>
-          <input id="ls-title" name="title" required defaultValue={defaults.title ?? ""} className="input" placeholder="Brother PR bobbin case, new" />
+          <input id="ls-title" name="title" required maxLength={160} defaultValue={defaults.title ?? ""} className="input" placeholder="Brother PR bobbin case, new" />
         </div>
         <div className="field">
           <label htmlFor="ls-kind" className="label">
@@ -61,6 +61,10 @@ export function ListingForm({ defaults = {} }: { defaults?: Defaults }) {
             <option value="PART">Part</option>
             <option value="ACCESSORY">Accessory</option>
             <option value="SUPPLY">Supply</option>
+            <option value="NOTION">Notion</option>
+            <option value="FABRIC">Fabric</option>
+            <option value="THREAD">Thread</option>
+            <option value="PATTERN">Pattern / book</option>
           </select>
         </div>
         <div className="field">
@@ -125,7 +129,7 @@ export function ListingForm({ defaults = {} }: { defaults?: Defaults }) {
           <label htmlFor="ls-desc" className="label">
             Description
           </label>
-          <textarea id="ls-desc" name="description" rows={3} className="textarea" placeholder="What it is, what it came off, anything the buyer should know" />
+          <textarea id="ls-desc" name="description" rows={3} maxLength={4000} className="textarea" placeholder="What it is, what it came off, anything the buyer should know" />
         </div>
         <div className="field sm:col-span-2">
           <label htmlFor="ls-photos" className="label">

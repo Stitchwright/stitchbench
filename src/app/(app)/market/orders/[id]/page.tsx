@@ -9,7 +9,8 @@ import type { HubOrder } from "@/lib/hub";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { MarketNav, OrderStatus, CONDITION_LABEL, Stars } from "@/components/market-ui";
-import { orderAction } from "@/actions/market";
+import { orderAction, orderStock } from "@/actions/market";
+import { orderStockNote } from "@/lib/parts";
 
 const ACTION_LABEL: Record<string, string> = {
   requested: "Ordered",
@@ -40,6 +41,11 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   // The buyer rates the seller once it has shipped; the seller rates the buyer once they've paid.
   const canRate = buyer ? ["SHIPPED", "RECEIVED"].includes(o.status) : ["PAID", "SHIPPED", "RECEIVED"].includes(o.status);
   const mine = o.ratings?.[o.role] ?? null;
+  // A received purchase (or a shipped sale of a listing with a part number) that isn't in the parts stock: the box was
+  // left unticked, or the stock change failed after the hub had the step.
+  const stockOffer =
+    (buyer ? o.status === "RECEIVED" : seller && Boolean(o.item.partNumber) && ["SHIPPED", "RECEIVED"].includes(o.status)) &&
+    (await db.stockMove.count({ where: { shopId: user.shopId, note: orderStockNote(o) } })) === 0;
 
   return (
     <div className="space-y-6">
@@ -187,6 +193,13 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 <p className="muted">
                   Done{o.cancelReason ? `: ${o.cancelReason}` : ""}.
                 </p>
+              )}
+              {stockOffer && (
+                <ActionForm action={orderStock.bind(null, o.id)} success={buyer ? "Added to your parts stock" : "Taken out of your parts stock"} className="space-y-2 border-t border-line pt-3">
+                  <div className="label">Parts stock</div>
+                  <p className="muted">{buyer ? `The ${o.qty} that arrived aren't in your parts stock yet.` : `The ${o.qty} you shipped are still counted in your parts stock.`}</p>
+                  <Submit className="btn btn-sm">{buyer ? `Add ${o.qty} to my parts stock` : `Take ${o.qty} out of my parts stock`}</Submit>
+                </ActionForm>
               )}
               {beforeShipping && (
                 <ActionForm action={act("cancel")} success="Cancelled" className="space-y-2 border-t border-line pt-3">

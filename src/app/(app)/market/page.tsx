@@ -11,6 +11,10 @@ const KINDS = [
   { key: "PART", label: "Parts" },
   { key: "ACCESSORY", label: "Accessories" },
   { key: "SUPPLY", label: "Supplies" },
+  { key: "NOTION", label: "Notions" },
+  { key: "FABRIC", label: "Fabric" },
+  { key: "THREAD", label: "Thread" },
+  { key: "PATTERN", label: "Patterns / books" },
 ] as const;
 
 export default async function Market({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
