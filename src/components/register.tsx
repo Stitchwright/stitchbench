@@ -129,7 +129,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   }
 
   // A camera sees the same code many times a second: count it once. A handheld scanner's every scan counts.
-  const cam = useBarcodeCamera((c) => {
+  const { video: camVideo, on: camOn, start: camStart, stop: camStop } = useBarcodeCamera((c) => {
     if (c === last.current.code && Date.now() - last.current.at < 1500) return;
     last.current = { code: c, at: Date.now() };
     lookup(c);
@@ -252,11 +252,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
             <input id="register-code" ref={code} autoComplete="off" className="input mono text-lg" placeholder="Scan, or type a number or words" />
           </div>
           <button className="btn btn-primary">Add</button>
-          <button type="button" className="btn" onClick={() => (cam.on ? cam.stop() : cam.start())}>
-            {cam.on ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {cam.on ? "Stop camera" : "Camera"}
+          <button type="button" className="btn" onClick={() => (camOn ? camStop() : camStart())}>
+            {camOn ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camOn ? "Stop camera" : "Camera"}
           </button>
         </form>
-        <video ref={cam.video} className={cam.on ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
+        <video ref={camVideo} className={camOn ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
