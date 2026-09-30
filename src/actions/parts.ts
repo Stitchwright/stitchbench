@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
-import { MAX_STOCK, centsField, countStock, partKeys, splitList, stockFor, takeShopNumber } from "@/lib/parts";
+import { MAX_STOCK, centsField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
 import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
@@ -66,10 +66,16 @@ export const createPart = safe(async function createPart(formData: FormData) {
   };
   if (!data.partNumber) {
     // The maker gave no number: the item gets a shop number (SB-00001), taken in the same step as the item.
-    const p = await db.$transaction(async (tx) => {
-      const partNumber = await takeShopNumber(tx, user.shopId);
-      return tx.part.create({ data: { ...row, partNumber, ownNumber: true, numberKeys: partKeys(partNumber, data.altNumbers) } });
-    });
+    const p = await db
+      .$transaction(async (tx) => {
+        const partNumber = await takeShopNumber(tx, user.shopId);
+        return tx.part.create({ data: { ...row, partNumber, ownNumber: true, numberKeys: partKeys(partNumber, data.altNumbers) } });
+      })
+      .catch((e: unknown) => {
+        // Two saves took the same shop number at the same moment (the counter's step and the number check don't lock
+        // each other out): the database's key refused the second, and saving again takes the next number.
+        throw isPartNumberClash(e) ? new UserError("Another item was given that shop number at the same moment. Save again.") : e;
+      });
     revalidatePath("/parts");
     redirect(`/parts/${p.id}`);
   }
@@ -81,7 +87,11 @@ export const createPart = safe(async function createPart(formData: FormData) {
   // Opened with a note on the page: what was typed here isn't saved anywhere.
   if (stock.existing) redirect(`/parts/${stock.existing.id}?existing=1`);
   const altNumbers = [...new Set([...stock.altNumbers, ...data.altNumbers.filter((n) => n !== data.partNumber)])];
-  const p = await db.part.create({ data: { ...row, partNumber: stock.partNumber, altNumbers, numberKeys: partKeys(stock.partNumber, altNumbers) } });
+  // The check above and this insert aren't one step: someone adding the same number (in any case) meanwhile is caught
+  // by the database's key on the number, not made a second item.
+  const p = await db.part.create({ data: { ...row, partNumber: stock.partNumber, altNumbers, numberKeys: partKeys(stock.partNumber, altNumbers) } }).catch(async (e: unknown) => {
+    throw await partNumberClash(e, user.shopId, stock.partNumber);
+  });
   revalidatePath("/parts");
   redirect(`/parts/${p.id}`);
 });
@@ -101,7 +111,11 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: sameText(partNumber) } });
   if (clash) throw new UserError(`${clash.partNumber} is already another item in inventory.`);
   const altNumbers = data.altNumbers.filter((n) => n !== partNumber);
-  await db.part.update({ where: { id: partId }, data: { ...data, partNumber, altNumbers, numberKeys: partKeys(partNumber, altNumbers) } });
+  // The clash check and this update aren't one step: the database's key on the number (in any case) catches a number
+  // taken meanwhile.
+  await db.part.update({ where: { id: partId }, data: { ...data, partNumber, altNumbers, numberKeys: partKeys(partNumber, altNumbers) } }).catch(async (e: unknown) => {
+    throw await partNumberClash(e, user.shopId, partNumber);
+  });
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/parts");
 });

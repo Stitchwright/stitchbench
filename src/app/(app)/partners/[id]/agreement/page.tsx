@@ -9,6 +9,7 @@ import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
 import { TermsFields } from "@/components/terms-fields";
 import { acceptPartnerTerms, proposePartnerTerms } from "@/actions/partners";
+import type { WithdrawnTerms } from "@/lib/partners";
 
 export default async function Agreement({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -25,6 +26,9 @@ export default async function Agreement({ params }: { params: Promise<{ id: stri
   const iAccepted = mine?.version === link.termsVersion;
   const proposal = link.proposedTerms as { version: number; terms: PartnerTerms; by: { name: string; at: string } } | null;
   const theirProposal = proposal && link.proposedBy !== link.side ? proposal : null;
+  // A proposal accepted here that the partner had replaced before the acceptance reached it: not in force.
+  const withdrawn = link.withdrawnTerms as WithdrawnTerms | null;
+  const withdrawnTerms = withdrawn ? normalizeTerms(withdrawn.terms) : null;
   const admin = user.role !== "TECH";
 
   return (
@@ -34,6 +38,14 @@ export default async function Agreement({ params }: { params: Promise<{ id: stri
         This agreement is filled in from the terms both shops set in StitchBench. It&apos;s a plain-language starting point, not legal advice: have your own
         attorney look at it before you rely on it, especially the parts about unclaimed machines and consigned stock, which differ by state.
       </p>
+
+      {withdrawn && withdrawnTerms && (
+        <p className="pill tone-wait no-print" role="status">
+          Version {withdrawn.version} ({withdrawnTerms.repairCommissionPct}% on repairs, keeps {withdrawnTerms.consignSharePct}% of consigned sales), which
+          this shop accepted on {fmtDate(withdrawn.at, tz)}, was withdrawn: {link.partnerName} had replaced it before the acceptance reached them, so it is not
+          in force. {theirProposal ? "Their newer proposal is below." : `The terms in force are version ${link.termsVersion}, below.`}
+        </p>
+      )}
 
       {theirProposal && (
         <Section title={`${link.partnerName} proposed new terms (version ${theirProposal.version})`}>

@@ -9,7 +9,7 @@ import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { hubFetch, hubId, hubReachable, saveListing, saveOrder, syncHub, syncSoon, type HubListing, type HubOrder } from "@/lib/hub";
-import { numberKey, orderStockNote, partKeys, stockFor, takeShopNumber } from "@/lib/parts";
+import { numberKey, orderStockNote, partKeys, partNumberClash, stockFor, takeShopNumber } from "@/lib/parts";
 import { CONDITIONS as PART_CONDITIONS, ORIGINS as PART_ORIGINS } from "@/lib/part-labels";
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 
@@ -227,7 +227,10 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
     if (stock) {
       // The number may be a partner's consigned item here, or this shop's own stock in another condition: this
       // stock gets its own entry.
-      await db.part.create({ data: { ...item, partNumber: stock.partNumber, altNumbers: stock.altNumbers, numberKeys: partKeys(stock.partNumber, stock.altNumbers) } });
+      // Someone adding the same number (in any case) at the same moment hits the case-insensitive index: say so.
+      await db.part.create({ data: { ...item, partNumber: stock.partNumber, altNumbers: stock.altNumbers, numberKeys: partKeys(stock.partNumber, stock.altNumbers) } }).catch(async (e) => {
+        throw await partNumberClash(e, shopId, stock.partNumber);
+      });
     } else {
       // The listing has no maker's number: the item gets a shop number.
       await db.$transaction(async (tx) => {

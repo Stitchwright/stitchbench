@@ -103,6 +103,32 @@ export async function stockFor(client: Pick<Prisma.TransactionClient, "part">, s
 }
 
 /**
+ * A create or update the database refused on the part-number key: the shop has that number already, in this or
+ * another case (the unique index on shopId + lower(partNumber) from migration 20260930220000, which Prisma reports as
+ * P2002 with the index's name; the schema's own key on the exact number is the other way it shows). It is the backstop
+ * for the check the forms and the import make first: two people adding "xa1234" and "XA1234" at the same moment
+ * both pass the check, and the second insert lands here instead of making a second item.
+ */
+export function isPartNumberClash(e: unknown): boolean {
+  const err = e as { code?: unknown; meta?: { modelName?: unknown; target?: unknown; driverAdapterError?: { cause?: { constraint?: { index?: unknown; fields?: unknown } } } } } | null;
+  if (err?.code !== "P2002") return false;
+  const constraint = err.meta?.driverAdapterError?.cause?.constraint;
+  const named = [constraint?.index, err.meta?.target, ...(Array.isArray(constraint?.fields) ? constraint.fields : [])].filter((t) => typeof t === "string");
+  // Part's only unique keys besides its id are the two on the number, so a clash on the model with no name is one too.
+  return named.some((t) => /partNumber/i.test(t)) || (Array.isArray(err.meta?.target) && err.meta.target.includes("partNumber")) || (!named.length && err.meta?.modelName === "Part");
+}
+
+/**
+ * The error the user sees when a save was refused by the part-number key: "That part number is already in use (as
+ * XA1234)", naming the item that has the number in whatever case. Any other error comes back as it was, to be thrown.
+ */
+export async function partNumberClash(e: unknown, shopId: string, number: string): Promise<unknown> {
+  if (!isPartNumberClash(e)) return e;
+  const other = await db.part.findFirst({ where: { shopId, partNumber: sameText(number) }, select: { partNumber: true } });
+  return new UserError(`That part number is already in use${other ? ` (as ${other.partNumber})` : ""}. Open that item, or give this one another number.`);
+}
+
+/**
  * Set a part's stock to what was counted. The change written to the history is worked out from the stock at that
  * moment (the row is locked), so a sale that lands while the count is being saved can't leave the history off.
  * Returns the change (0 when the count matched).
