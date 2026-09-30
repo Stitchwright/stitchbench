@@ -977,17 +977,19 @@ model ConsignSale {
 
 // A payment that settled a statement between partners (same id on both sides).
 model Settlement {
-  id         String
-  shopId     String
-  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  linkId     String
-  periodFrom DateTime
-  periodTo   DateTime
-  netCents   Int // + the sewing shop paid the repair shop; - the other way
-  summary    Json
-  note       String?
-  byName     String?
-  paidAt     DateTime @default(now())
+  id          String
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId      String
+  periodFrom  DateTime
+  periodTo    DateTime
+  netCents    Int // + the sewing shop paid the repair shop; - the other way
+  summary     Json
+  note        String?
+  byName      String?
+  paidAt      DateTime  @default(now())
+  // A payment the partner says it made counts once this shop confirms the money arrived (its own count at once)
+  confirmedAt DateTime?
 
   @@id([shopId, id])
   @@index([shopId, linkId])

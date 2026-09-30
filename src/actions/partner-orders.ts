@@ -9,7 +9,7 @@ import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { numberKey, partKeys } from "@/lib/parts";
-import { consignReturned, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
+import { consignReturned, MAX_MONEY, MAX_QTY, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
 
@@ -86,12 +86,20 @@ export const partnerOrderAction = safe(async function partnerOrderAction(orderId
   const extra: Record<string, unknown> = {};
 
   await db.$transaction(async (tx) => {
+    // First claim the change: only while the order still stands as it was read. Two clicks at once (two tabs, two
+    // people) would otherwise both pass the checks below and both move the stock.
+    const claim = async () => {
+      const r = await tx.partnerOrder.updateMany({ where: { shopId, id: o.id, status: o.status }, data: { status } });
+      if (!r.count) throw new UserError("This order changed meanwhile. Reload and try again.");
+    };
     if (o.side === "seller" && action === "accept") {
       if (o.status !== "PLACED") throw new UserError("Only a new order can be accepted.");
       status = "ACCEPTED";
+      await claim();
     } else if (o.side === "seller" && action === "deliver") {
       if (!["PLACED", "ACCEPTED"].includes(o.status)) throw new UserError("This order was already delivered or cancelled.");
       status = "DELIVERED";
+      await claim();
       extra.carrier = str(formData.get("carrier"));
       extra.tracking = str(formData.get("tracking"));
       // Out of the repair shop's stock.
@@ -105,9 +113,11 @@ export const partnerOrderAction = safe(async function partnerOrderAction(orderId
       if (o.side === "buyer" && o.status !== "PLACED") throw new UserError("The repair shop already accepted it. Ask them to cancel.");
       if (o.side === "seller" && !["PLACED", "ACCEPTED"].includes(o.status)) throw new UserError("A delivered order can't be cancelled.");
       status = "CANCELLED";
+      await claim();
     } else if (o.side === "buyer" && action === "receive") {
       if (o.status !== "DELIVERED") throw new UserError("Receive it once the repair shop marks it delivered.");
       status = "RECEIVED";
+      await claim();
       // Onto this shop's shelf: the same item if it's stocked already, else a new one.
       const catalog = new Map(((link.catalog as CatalogItem[] | null) ?? []).map((c) => [c.itemKey, c]));
       for (const l of lines) {
@@ -153,11 +163,13 @@ export const partnerOrderAction = safe(async function partnerOrderAction(orderId
         ...(o.side === "seller" && note ? { sellerNote: note } : {}),
       },
     });
+    // The seller's lines and total go along, so the buyer's copy matches what the seller delivers and bills.
+    const copy = o.side === "seller" ? { lines, totalCents: o.totalCents } : {};
     await sendToPartner(
       shopId,
       o.linkId,
       "order.update",
-      { id: o.id, status, ...extra, ...(o.side === "seller" && note ? { sellerNote: note } : {}), eventNote: note, at: at.toISOString() },
+      { id: o.id, status, ...extra, ...copy, ...(o.side === "seller" && note ? { sellerNote: note } : {}), eventNote: note, at: at.toISOString() },
       tx,
     );
   });
@@ -181,8 +193,11 @@ export const placeConsignment = safe(async function placeConsignment(linkId: str
   const raw = Number(str(formData.get("qty")) ?? "0");
   const qty = part.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
   if (!(qty > 0)) throw new UserError("Enter how many you're leaving there.");
+  // The same limits the sewing shop's install holds a placement to: past them it would refuse it, after this shop had
+  // already taken the stock off its shelf.
+  if (qty > MAX_QTY) throw new UserError(`At most ${MAX_QTY.toLocaleString("en-US")} at a time.`);
   const price = toCents(formData.get("price")) ?? part.priceCents;
-  if (!price) throw new UserError("Set the shelf price (what the customer pays).");
+  if (price == null || !(price > 0) || price > MAX_MONEY) throw new UserError("Set the shelf price (what the customer pays).");
   const at = new Date();
   await db.$transaction(async (tx) => {
     await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: qty } } });
