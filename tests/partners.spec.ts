@@ -237,7 +237,9 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await expect(r.getByText("Partnership ended", { exact: true })).toBeVisible();
   await sync(r);
   await s.goto(`/partners/${linkId}`);
-  await expect(s.getByText(/partnership ended/)).toBeVisible();
+  await expect(s.getByText(/ · partnership ended/)).toBeVisible();
+  // The note typed when ending it reaches the other shop.
+  await expect(s.getByText(/End of the test/)).toBeVisible();
 });
 
 // Hosting: the repair shop makes a code in its own StitchBench; the host adds the sewing shop from Companies with it.
