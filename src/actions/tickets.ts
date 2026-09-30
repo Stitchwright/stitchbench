@@ -10,7 +10,7 @@ import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { OPEN_STATUSES, STATUS_ORDER } from "@/lib/constants";
+import { OPEN_STATUSES, PAYMENT_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { kickPartnerSync } from "@/lib/partners";
 
 // $100,000 in cents: far above any real line or payment, and well inside what the books' whole numbers hold.
@@ -25,6 +25,14 @@ async function ownTicket(shopId: string, ticketId: string) {
 /** A closed ticket's bill is the owner's or an admin's to change (like voiding a register sale). */
 function assertBillOpen(t: { closedAt: Date | null }, user: CurrentUser) {
   if (t.closedAt && user.role === "TECH") throw new UserError("The ticket is closed: only the owner or an admin can change its bill.");
+}
+
+/** An amount typed on the ticket (pre-approved, approved): blank for none, else $0 to $100,000. */
+function amountOf(v: FormDataEntryValue | null, label: string): number | null {
+  if (str(v) == null) return null;
+  const c = toCents(v);
+  if (c == null || c < 0 || c > MAX_MONEY) throw new UserError(`${label}: enter an amount from $0 to $100,000, e.g. 150.00.`);
+  return c;
 }
 
 function refresh(ticketId: string) {
@@ -130,7 +138,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
         status: (str(formData.get("status")) as TicketStatus | null) ?? (viaAccountId ? "AT_SHOP_AWAITING_PICKUP" : "ON_BENCH"),
         serviceRequested: serviceItem?.name ?? str(formData.get("serviceRequested")),
         problem: str(formData.get("problem")),
-        preApprovedCents: toCents(formData.get("preApproved")),
+        preApprovedCents: amountOf(formData.get("preApproved"), "Pre-approved"),
         accessories,
         taxRatePct: shop.taxRatePct,
         openedById: user.id,
@@ -165,12 +173,20 @@ export const setStatus = safe(async function setStatus(ticketId: string, status:
     // back on the bench it isn't ready either. Ready again later, the storage-fee clock starts from that ready-call.
     data.closedAt = null;
     data.warrantyUntil = null;
+    data.tradeCommissionPct = null; // open tickets follow the account's current rate
     if (!ready(status)) data.readyAt = null;
     else if (!t.readyAt || !(ready(t.status) || wasClosed)) data.readyAt = now;
   } else {
     // Collected and returned-unrepaired swapped for each other keep the day it left; closing a reopened ticket, or
     // handing back an abandoned machine, dates from now. Only a collected repair carries the warranty.
-    data.closedAt = wasClosed && t.closedAt && t.status !== "ABANDONED" ? t.closedAt : now;
+    const closedAt = wasClosed && t.closedAt && t.status !== "ABANDONED" ? t.closedAt : now;
+    data.closedAt = closedAt;
+    // A trade account's commission is kept as it stands when the machine leaves, so editing the account later doesn't
+    // rewrite what past months owe it.
+    if (closedAt !== t.closedAt || t.tradeCommissionPct == null) {
+      const account = t.viaAccountId ? await db.customer.findFirst({ where: { id: t.viaAccountId, shopId: user.shopId }, select: { commissionPct: true } }) : null;
+      data.tradeCommissionPct = account ? (account.commissionPct ?? 0) : null;
+    }
     data.warrantyUntil =
       status === "COLLECTED" ? (t.status === "COLLECTED" && t.warrantyUntil ? t.warrantyUntil : new Date(now.getTime() + t.shop.warrantyDays * 86400000)) : null;
   }
@@ -212,7 +228,8 @@ export const saveTicketText = safe(async function saveTicketText(ticketId: strin
     if (current !== was && current !== mine) {
       throw new UserError(`Someone else changed "${label}" while you had this ticket open. Copy what you typed, reload the page, then save again.`);
     }
-    data[col] = mine;
+    // A changed amount is checked (an unchanged one is left as it is).
+    data[col] = col.endsWith("Cents") ? amountOf(formData.get(field), label) : mine;
   }
   if (Object.keys(data).length) await db.ticket.update({ where: { id: ticketId }, data });
   refresh(ticketId);
@@ -261,29 +278,31 @@ export const saveTension = safe(async function saveTension(ticketId: string, for
 
 export const saveMeasurements = safe(async function saveMeasurements(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId);
   // Field names come from the browser: a Map (not an object, where "__proto__" would reach every object in the
   // server) keyed only by factory settings that exist.
   const read = new Map<string, { found?: string; left?: string }>();
   for (const [k, v] of formData.entries()) {
     const m = /^(found|left):([A-Za-z0-9_.:-]{1,120})$/.exec(k);
-    const s = str(v);
-    if (!m || s == null) continue;
+    if (!m) continue;
     const entry = read.get(m[2]) ?? {};
-    entry[m[1] as "found" | "left"] = s;
-    read.set(m[2], entry);
+    const s = str(v);
+    if (s != null) entry[m[1] as "found" | "left"] = s;
+    read.set(m[2], entry); // a blank box clears that reading
     if (read.size > 500) throw new UserError("Too many readings in one save.");
   }
   const known = await db.factorySetting.findMany({ where: { id: { in: [...read.keys()] } }, select: { id: true, label: true } });
   // Timing and clearances can be set below zero (a belt tensioner at -0.3 mm), so a minus sign is a real reading here.
-  const out = Object.fromEntries(
-    known.map((f) => {
-      const typed = read.get(f.id)!;
-      const entry: { found?: number; left?: number } = {};
-      for (const k of ["found", "left"] as const) if (typed[k] != null) entry[k] = reading(typed[k], `${f.label} as ${k}`, true)!;
-      return [f.id, entry];
-    }),
+  // Readings for settings not on this form (the model's list changed since) are kept.
+  const out: Record<string, { found?: number; left?: number }> = Object.fromEntries(
+    Object.entries((t.measurements as Record<string, { found?: number; left?: number }> | null) ?? {}).filter(([id]) => !read.has(id)),
   );
+  for (const f of known) {
+    const typed = read.get(f.id)!;
+    const entry: { found?: number; left?: number } = {};
+    for (const k of ["found", "left"] as const) if (typed[k] != null) entry[k] = reading(typed[k], `${f.label} as ${k}`, true)!;
+    if (entry.found != null || entry.left != null) out[f.id] = entry;
+  }
   await db.ticket.update({ where: { id: ticketId }, data: { measurements: out } });
   refresh(ticketId);
 });
@@ -430,10 +449,12 @@ export const addPayment = safe(async function addPayment(ticketId: string, formD
   if (Math.abs(amount) > MAX_MONEY) throw new UserError("That's more than $100,000. Check the amount.");
   // Money back (a minus amount) cancels what was taken, like removing a payment: the owner's or an admin's call.
   if (amount < 0 && user.role === "TECH") throw new UserError("Only the shop owner or an admin can record a refund.");
+  const method = (str(formData.get("method")) ?? "CARD") as PaymentMethod;
+  if (!Object.hasOwn(PAYMENT_LABEL, method)) throw new UserError("Pick how it was paid.");
   await db.payment.create({
     data: {
       ticketId,
-      method: (str(formData.get("method")) ?? "CARD") as PaymentMethod,
+      method,
       amountCents: amount,
       note: str(formData.get("note")),
     },

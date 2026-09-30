@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { setStatus, toggleChecklist } from "@/actions/tickets";
+import { runAction } from "@/components/action-form";
 
 export function StatusSelect({ ticketId, status }: { ticketId: string; status: TicketStatus }) {
   const [pending, start] = useTransition();
@@ -19,11 +20,14 @@ export function StatusSelect({ ticketId, status }: { ticketId: string; status: T
         defaultValue={status}
         disabled={pending}
         onChange={(e) => {
-          const next = e.target.value as TicketStatus;
+          const el = e.currentTarget;
+          const next = el.value as TicketStatus;
           start(async () => {
-            const r = await setStatus(ticketId, next);
-            if (r?.error) toast.error(r.error);
-            else toast.success(`Status: ${STATUS_LABEL[next]}`);
+            const r = await runAction(() => setStatus(ticketId, next));
+            if (r?.error) {
+              toast.error(r.error);
+              el.value = status; // not saved: show what the ticket still says
+            } else toast.success(`Status: ${STATUS_LABEL[next]}`);
           });
         }}
       >
@@ -73,10 +77,14 @@ export function Checklist({
                 defaultChecked={!!s?.done}
                 disabled={pending}
                 onChange={(e) => {
-                  const done = e.target.checked;
+                  const el = e.currentTarget;
+                  const done = el.checked;
                   start(async () => {
-                    const r = await toggleChecklist(ticketId, item, done);
-                    if (r?.error) toast.error(r.error);
+                    const r = await runAction(() => toggleChecklist(ticketId, item, done));
+                    if (r?.error) {
+                      toast.error(r.error);
+                      el.checked = !done;
+                    }
                   });
                 }}
               />

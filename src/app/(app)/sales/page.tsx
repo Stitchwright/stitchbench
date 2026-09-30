@@ -29,8 +29,8 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
   );
   const byMethod = new Map<string, number>();
   for (const p of payments) byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amountCents);
-  // "Money taken" is what reached the drawer and card reader. A partner shop's counter takings and invoices on account
-  // are revenue too, but they arrive later (statement, invoice payment), so they get their own figure.
+  // "Money taken" is what reached the drawer and card reader. A partner shop's counter takings are revenue too, but
+  // arrive later on the statement, so they get their own figure. Bills put on account aren't listed until paid.
   const taken = payments.filter((p) => !PAID_ELSEWHERE.includes(p.method)).reduce((s, p) => s + p.amountCents, 0);
   const elsewhere = payments.filter((p) => PAID_ELSEWHERE.includes(p.method)).reduce((s, p) => s + p.amountCents, 0);
   let service = 0,
@@ -39,7 +39,8 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
     tax = 0,
     commission = 0;
   for (const t of closed) {
-    const x = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct, partnerCommission.get(t.id));
+    // A trade account's commission at the rate it had when the ticket closed, not today's.
+    const x = ticketTotals(t.lines, t.payments, t.taxRatePct, t.tradeCommissionPct ?? t.viaAccount?.commissionPct, partnerCommission.get(t.id));
     service += x.service;
     labor += x.labor;
     parts += x.parts;
@@ -77,7 +78,7 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
         {[
           ["Money taken", taken],
-          ["Paid at a partner shop / on account", elsewhere],
+          ["Paid at a partner shop", elsewhere],
           ["Service (collected)", service],
           ["Labor (collected)", labor],
           ["Parts (collected)", parts],
