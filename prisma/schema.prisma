@@ -156,6 +156,7 @@ model Machine {
 
   @@index([shopId, serial])
   @@index([shopId, brand, modelKey])
+  @@index([customerId])
 }
 
 // Important facts and gotchas, attached to a brand + model (not to one machine),
@@ -327,6 +328,9 @@ model Ticket {
 
   @@unique([shopId, number])
   @@index([shopId, status])
+  @@index([machineId])
+  @@index([customerId])
+  @@index([viaAccountId])
 }
 
 enum LineKind {
@@ -349,6 +353,8 @@ model TicketLine {
   partId         String?
   part           Part?    @relation(fields: [partId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
+
+  @@index([ticketId])
 }
 
 enum PaymentMethod {
@@ -368,6 +374,9 @@ model Payment {
   amountCents Int
   paidAt      DateTime      @default(now())
   note        String?
+
+  @@index([ticketId])
+  @@index([paidAt])
 }
 
 // Menu of standard services with a set price (clean/oil/time/adjust etc.)
@@ -382,6 +391,8 @@ model ServiceItem {
   // Price list grouping and the line under the name, e.g. "Domestic sewing" / "Clean, oil, adjust timing and tension"
   category    String?
   description String?
+
+  @@index([shopId])
 }
 
 // ============================================================
@@ -474,6 +485,9 @@ model StockMove {
   userId    String?
   user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt DateTime   @default(now())
+
+  @@index([partId, createdAt])
+  @@index([shopId, createdAt])
 }
 
 // ============================================================
@@ -821,6 +835,8 @@ model SaleLine {
   consignItemKey String?
   // A customer paying for a machine the partner repair shop fixed
   repairJobId    String?
+
+  @@index([saleId])
 }
 
 // A partnership with another shop, from this shop's side (the id is the hub's link id).
@@ -873,6 +889,7 @@ model PartnerOutbox {
   deadAt    DateTime?
 
   @@index([sentAt, createdAt])
+  @@index([shopId, linkId, sentAt])
 }
 
 // A machine a sewing shop took in for its partner repair shop. Same id on both sides: the sewing shop's copy keeps

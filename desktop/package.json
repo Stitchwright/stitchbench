@@ -10,6 +10,7 @@
   "scripts": {
     "prepare-app": "node prepare-app.mjs",
     "start": "electron .",
+    "test": "node --test \"test/*.test.mjs\"",
     "installer": "electron-builder --win nsis --publish never",
     "installer:stitchshop": "electron-builder --win nsis --publish never -c.extraMetadata.flavor=stitchshop -c.extraMetadata.productName=StitchShop -c.productName=StitchShop -c.appId=com.timingandtension.stitchshop -c.nsis.shortcutName=StitchShop -c.directories.output=dist-stitchshop",
     "dist": "node prepare-app.mjs && npm run installer",

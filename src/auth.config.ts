@@ -1,10 +1,18 @@
 import type { NextAuthConfig } from "next-auth";
 
+// Browsers keep one set of cookies per host, whatever the port: StitchBench (:3100) and StitchShop (:3110) on one shop PC
+// would overwrite each other's sign-in and be sent each other's. The Windows program passes AUTH_COOKIE_PREFIX (its own
+// name), so each program has cookies of its own. Unset (hosted, tests): Auth.js' usual names. The program serves plain
+// http, so no Secure flag.
+const own = (process.env.AUTH_COOKIE_PREFIX ?? "").replace(/[^a-z0-9]/gi, "");
+const ownCookie = (name: string) => ({ name: `${own}.${name}`, options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: false } });
+
 // Edge-safe auth config shared by the proxy and the full auth setup.
 // Do NOT import bcrypt or the Prisma client here.
 export const authConfig = {
   // Self-hosted (Railway / local): trust the Host header the platform's proxy sets.
   trustHost: true,
+  ...(own ? { cookies: { sessionToken: ownCookie("session-token"), callbackUrl: ownCookie("callback-url"), csrfToken: ownCookie("csrf-token") } } : {}),
   pages: { signIn: "/login" },
   providers: [],
   callbacks: {
