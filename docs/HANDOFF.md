@@ -112,9 +112,33 @@ partners and register all pass, hub smoke test passes.
   Playwright needs `executablePath: "/opt/pw-browsers/chromium"` (a local config that spreads playwright.config.ts).
   The hub spec loads its catalog links itself when HUB_ADMIN_TOKEN is set.
 
+## 2c. Round-3 low and info pass (30 Sep 2026, same branch)
+
+Low: 116 fixed, 15 partly done, 8 open; info: 4 fixed, 13 partly, 11 open (statuses say what is left). Everything
+passes: `npm ci`, tsc, lint, `npm run test:unit` (33 tests), `next build`, migrations + drift check, every Playwright
+spec (smoke, auth, hub, inventory, market, partners, register), hub `npm run check` and smoke test.
+
+- New migrations: `20260930120000_round3_lo-infra` (12 indexes), `20260930130000_round3_lo-tickets`
+  (PartnerLink.endNote/endedBy). No hub migration.
+- Behaviour the owner will notice:
+  - Techs can't change a part's cost or price (same rule as the register); say if techs should.
+  - Everyone on the Windows program signs in once after the update (each program now has its own cookies, so
+    StitchBench and StitchShop on one PC no longer sign each other out).
+  - The community most-used list shows a part once 3 shops report it (hub `USAGE_MIN_SHOPS`; the local test hub uses 1).
+  - A partner ticket can't be marked Collected until the sewing shop has picked it up; the register hands a repair
+    over only once it's back from the repair shop; consigned items can't be sold past what's on the shelf.
+  - Settings > People has "Change role". Railway health-checks `/api/health`. The hub needs Node 20.12+ and reads `.env`.
+  - The note typed when a partnership is ended now shows on the other shop's partner page.
+- New tests: `npm run test:unit`; `cd desktop && npm test` (needs Postgres; runs in the Checks workflow); hub
+  `npm run test:db` (scratch database) and, with IMPORT_HUB_URL, a hub-move check in the smoke test.
+- Owner decisions the open ones wait on: per-company email uniqueness (L7, L31); signing out other devices (L42);
+  merging customer/machine records (L126); reversing payments instead of deleting (L127); a single-writer lock on the
+  hub (L95); signed partner invites/messages (L134, I27).
+
 ## 3. What to do next, in order
 
-Steps 1 and 2 below are done for high + medium (section 2b); next is step 3, then merge to `main` and deploy.
+
+Steps 1-3 below are done (sections 2b and 2c): next is merging to `main` and deploying (hub first), then step 4.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
