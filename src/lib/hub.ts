@@ -656,6 +656,13 @@ async function pushUsage() {
   // Once an hour whether or not the hub takes it: a report it refuses isn't tried again every ten minutes.
   lastUsagePush = Date.now();
   const now = new Date();
+  const months = [0, 1].map((back) => {
+    const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - back + 1, 1);
+    return { start, end, month: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}` };
+  });
+  type Item = { number: string; brand: string; qty: number; tickets: number };
+  const offered: { id: string; name: string; byMonth: Item[][] }[] = [];
   for (const shop of await db.shop.findMany({ select: { id: true, name: true, shareUsage: true } })) {
     if (!shop.shareUsage) {
       if (usageOff.has(shop.id)) continue;
@@ -667,9 +674,8 @@ async function pushUsage() {
       continue;
     }
     usageOff.delete(shop.id);
-    for (const back of [0, 1]) {
-      const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() - back + 1, 1);
+    const byMonth: Item[][] = [];
+    for (const { start, end } of months) {
       const rows = await db.$queryRaw<{ number: string; brand: string | null; qty: bigint; tickets: bigint }[]>`
         SELECT p."partNumber" AS number, p.brand, SUM(-sm.qty) AS qty, COUNT(DISTINCT sm."ticketId") AS tickets
         FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
@@ -677,12 +683,38 @@ async function pushUsage() {
         GROUP BY p."partNumber", p.brand`;
       // The hub counts by the letters and digits of a number; one with none ("-", a part named only in Chinese) would
       // make it refuse the whole month, so those stay out.
-      const items = rows
-        .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Math.round(Number(r.qty)), tickets: Number(r.tickets) }))
-        .filter((i) => i.qty > 0 && key(i.number))
-        .slice(0, 5000);
-      const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
-      await hubFetch("/v1/usage", { method: "POST", json: { month, items, shopRef: shop.id, shopName: shop.name } });
+      byMonth.push(
+        rows
+          .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Math.round(Number(r.qty)), tickets: Number(r.tickets) }))
+          .filter((i) => i.qty > 0 && key(i.number))
+          .slice(0, 5000),
+      );
+    }
+    offered.push({ id: shop.id, name: shop.name, byMonth });
+  }
+  for (const shop of offered) {
+    let perCompany = true;
+    for (const [i, { month }] of months.entries()) {
+      const r = await hubFetch("/v1/usage", { method: "POST", json: { month, items: shop.byMonth[i], shopRef: shop.id, shopName: shop.name } });
+      perCompany = !!((await r.json().catch(() => null)) as { shopRef?: string } | null)?.shopRef;
+    }
+    // An older hub keeps one report per install and month, so each company's would replace the one before: it gets
+    // every offering company's counts together instead, as one report.
+    if (!perCompany) {
+      for (const [i, { month }] of months.entries()) {
+        const all = new Map<string, Item>();
+        for (const s of offered)
+          for (const it of s.byMonth[i]) {
+            const k = `${key(it.number)}|${it.brand}`;
+            const had = all.get(k);
+            if (had) {
+              had.qty += it.qty;
+              had.tickets += it.tickets;
+            } else all.set(k, { ...it });
+          }
+        await hubFetch("/v1/usage", { method: "POST", json: { month, items: [...all.values()].slice(0, 5000) } });
+      }
+      return;
     }
   }
 }

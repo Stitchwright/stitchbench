@@ -14,12 +14,15 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
 export default async function CrossRef({ searchParams }: { searchParams: Promise<{ q?: string; add?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const term = sp.q?.trim() ?? "";
+  // A repeated parameter (?add=a&add=b) arrives as a list: only a single value counts.
+  const one = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const term = one(sp.q)?.trim() ?? "";
+  const add = one(sp.add);
   const [joined, total, removed, offered] = await Promise.all([
     hubJoined(),
     db.xPart.count(),
     db.removedXPart.findMany({ where: { removedAt: { gte: daysAgo(90) } }, orderBy: { removedAt: "desc" }, take: 20 }),
-    sp.add ? db.part.findFirst({ where: { id: sp.add, shopId: user.shopId }, select: { description: true, kind: true, brand: true, partNumber: true, altNumbers: true, fits: true } }) : null,
+    add ? db.part.findFirst({ where: { id: add, shopId: user.shopId }, select: { description: true, kind: true, brand: true, partNumber: true, altNumbers: true, fits: true } }) : null,
   ]);
   // A part of this shop's offered to the cross-reference: the form comes filled in to check before it goes to every
   // shop. Its own suffixes ("(own)", a partner's name) come off the number; its notes stay here.

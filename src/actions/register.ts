@@ -348,7 +348,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
             data: { sold: { increment: l.qty } },
           });
           if (!took.count) throw new UserError(`More of ${l.description} is being returned than was sold on consignment.`);
-          await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx);
+          await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx, false);
         }
         if (l.repairJobId) {
           const job = jobs.get(l.repairJobId)!;
@@ -371,8 +371,8 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           });
           if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid, or its bill changed. Take it off this sale and add it again.`);
           // amountCents is this payment; paidCents is everything paid here so far (a repeat of a message adds nothing).
-          await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, paidCents: paidHere, saleNumber: number, at: at.toISOString() }, tx);
-          if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx);
+          await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, paidCents: paidHere, saleNumber: number, at: at.toISOString() }, tx, false);
+          if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx, false);
         }
       }
       return sale;
@@ -432,7 +432,7 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
           data: { sold: { decrement: l.qty } },
         });
         if (!undone.count) throw new UserError(`${l.description} was returned since this sale; void that return first.`);
-        await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, at: at.toISOString() }, tx);
+        await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, at: at.toISOString() }, tx, false);
       }
     }
   });

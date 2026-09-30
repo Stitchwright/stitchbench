@@ -14,7 +14,8 @@ export default async function ShopPage({ params, searchParams }: { params: Promi
   const user = await requireUser();
   const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
-  const ref = (await searchParams).ref?.trim().slice(0, 64) || null;
+  const refParam = (await searchParams).ref;
+  const ref = (typeof refParam === "string" && refParam.trim().slice(0, 64)) || null;
   const [found, rep] = await Promise.all([
     db.listing.findMany({ where: { sellerId: id, status: "ACTIVE", ...(ref ? { sellerRef: ref } : {}) }, orderBy: { createdAt: "desc" } }),
     hubFetch(`/v1/reputation/${id}${ref ? `?shopRef=${encodeURIComponent(ref)}` : ""}`, { quick: true })
