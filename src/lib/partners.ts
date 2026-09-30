@@ -19,6 +19,7 @@ import { UserError } from "@/lib/action";
 import { checkHubUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms, repairCommission, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -873,7 +874,7 @@ async function applyMessage(m: HubMessage) {
       const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
       if (!t) return;
       const who = text(d.name, 80);
-      const line = `${at.toLocaleDateString("en-US")} ${link.partnerName}${who ? ` (${who})` : ""}: customer ${approval === "APPROVED" ? `approved${approvedCents != null ? ` up to $${(approvedCents / 100).toFixed(2)}` : ""}` : "declined the work"}${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
+      const line = `${at.toLocaleDateString("en-US", { timeZone: await shopTimeZone(shopId) })} ${link.partnerName}${who ? ` (${who})` : ""}: customer ${approval === "APPROVED" ? `approved${approvedCents != null ? ` up to $${(approvedCents / 100).toFixed(2)}` : ""}` : "declined the work"}${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
       await db.$transaction([
         db.ticket.update({
           where: { id: t.id },
@@ -934,7 +935,7 @@ async function applyMessage(m: HubMessage) {
       if (!job?.ticketId) return;
       const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
       if (!t) return;
-      const line = `${at.toLocaleDateString("en-US")} ${link.partnerName}: customer took the machine back before pickup${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
+      const line = `${at.toLocaleDateString("en-US", { timeZone: await shopTimeZone(shopId) })} ${link.partnerName}: customer took the machine back before pickup${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
       await db.ticket.update({
         where: { id: t.id },
         data: {
@@ -1381,38 +1382,5 @@ async function runningBalance(shopId: string, linkId: string, terms: PartnerTerm
   return repairs + consign + (orders._sum.totalCents ?? 0) - (settled._sum.netCents ?? 0);
 }
 
-/** Month boundaries for statements, in the shop's time zone: "2026-09" -> [Sep 1, Oct 1). */
-export function monthPeriod(month?: string | null, timeZone = "America/New_York") {
-  const now = zonedParts(new Date(), timeZone);
-  const m = /^(\d{4})-(\d{2})$/.exec(month ?? "");
-  const y = m ? Number(m[1]) : now.year;
-  const mo = m ? Number(m[2]) - 1 : now.month - 1;
-  const from = zonedMidnight(y, mo, 1, timeZone);
-  const to = zonedMidnight(y, mo + 1, 1, timeZone);
-  const key = (yy: number, mm: number) => {
-    const d = new Date(Date.UTC(yy, mm, 1));
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-  };
-  return { from, to, month: key(y, mo), prev: key(y, mo - 1), next: key(y, mo + 1) };
-}
-
-/** Year, month (1-12) and day of an instant, as the clock on the wall in `timeZone` shows it. */
-export function zonedParts(d: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "numeric", day: "numeric" }).formatToParts(d);
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-  return { year: get("year"), month: get("month"), day: get("day") };
-}
-
-/** The instant a day starts in `timeZone` (month is 0-based and may overflow, like Date). */
-export function zonedMidnight(year: number, month: number, day: number, timeZone: string) {
-  const guess = new Date(Date.UTC(year, month, day));
-  // How far the zone's wall clock is from UTC at that moment, applied twice to settle around a DST change.
-  let t = guess.getTime();
-  for (let i = 0; i < 2; i++) {
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(t));
-    const get = (k: string) => Number(parts.find((p) => p.type === k)?.value);
-    const wall = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
-    t = guess.getTime() - (wall - t);
-  }
-  return new Date(t);
-}
+// Statement months and the zone helpers live with the other shop-time-zone helpers.
+export { monthPeriod, zonedMidnight, zonedParts } from "@/lib/time-zone";

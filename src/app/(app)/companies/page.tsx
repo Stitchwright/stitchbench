@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { defaultShopKind, isPlatformAdmin } from "@/lib/shops";
 import { fmtDate } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { createCompany } from "@/actions/companies";
@@ -10,6 +11,7 @@ import { createCompany } from "@/actions/companies";
 // Only the StitchBench admin (PLATFORM_ADMIN_EMAILS) sees this: every company on the system, and a form to add one.
 export default async function Companies() {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   if (!isPlatformAdmin(user.email)) notFound();
   const shops = await db.shop.findMany({
     orderBy: { createdAt: "asc" },
@@ -52,7 +54,7 @@ export default async function Companies() {
                 <td className="num text-right">{s._count.machines}</td>
                 <td className="num text-right">{s._count.tickets}</td>
                 <td className="num text-right">{s._count.sharedPosts}</td>
-                <td className="num whitespace-nowrap">{fmtDate(s.createdAt)}</td>
+                <td className="num whitespace-nowrap">{fmtDate(s.createdAt, tz)}</td>
               </tr>
             ))}
           </tbody>

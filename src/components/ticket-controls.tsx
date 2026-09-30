@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
+import { fmtDateTime } from "@/lib/format";
 import { setStatus, toggleChecklist } from "@/actions/tickets";
 
 export function StatusSelect({ ticketId, status }: { ticketId: string; status: TicketStatus }) {
@@ -43,10 +44,12 @@ export function Checklist({
   ticketId,
   items,
   state,
+  timeZone,
 }: {
   ticketId: string;
   items: string[];
   state: Record<string, Done>;
+  timeZone: string;
 }) {
   const [pending, start] = useTransition();
   const doneCount = items.filter((i) => state[i]?.done).length;
@@ -84,7 +87,7 @@ export function Checklist({
                 <span className={s?.done ? "text-ink" : ""}>{item}</span>
                 {s?.done && (
                   <span className="muted block text-xs">
-                    {s.by || "Someone"}, {s.at ? new Date(s.at).toLocaleString() : ""}
+                    {s.by || "Someone"}, {fmtDateTime(s.at, timeZone)}
                   </span>
                 )}
               </label>

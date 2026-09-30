@@ -4,6 +4,7 @@ import { CheckCircle2, Circle } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { MACHINE_TYPES, OPEN_STATUSES } from "@/lib/constants";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
@@ -26,6 +27,7 @@ function g(v: number | null) {
 
 export default async function MachinePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const m = await db.machine.findFirst({
     where: { id, shopId: user.shopId },
@@ -79,7 +81,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
           <Section title="Photos">
-            <PhotoStrip machineId={m.id} ticketId={current && OPEN_STATUSES.includes(current.status) ? current.id : undefined} photos={m.photos} />
+            <PhotoStrip machineId={m.id} ticketId={current && OPEN_STATUSES.includes(current.status) ? current.id : undefined} photos={m.photos} timeZone={tz} />
           </Section>
 
           <ShareForm
@@ -158,7 +160,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
                             {d?.done && (
                               <span className="muted block text-xs">
                                 {d.by || "Someone"}
-                                {d.at ? `, ${new Date(d.at).toLocaleDateString()}` : ""}
+                                {d.at ? `, ${fmtDate(d.at, tz)}` : ""}
                               </span>
                             )}
                           </span>
@@ -192,7 +194,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
                           <Link href={`/tickets/${t.id}`} className="link mono font-semibold">
                             #{ticketNo(t.number)}
                           </Link>
-                          <span className="num text-sm">{fmtDate(t.intakeAt)}</span>
+                          <span className="num text-sm">{fmtDate(t.intakeAt, tz)}</span>
                           <StatusPill status={t.status} />
                         </div>
                         <span className="num text-sm">{money(tot.total)}</span>
@@ -265,7 +267,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
               </div>
             </ActionForm>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <KV k="First seen" v={fmtDate(m.createdAt)} />
+              <KV k="First seen" v={fmtDate(m.createdAt, tz)} />
               <KV k="Visits" v={String(m.tickets.length)} />
             </div>
           </Section>
@@ -275,7 +277,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
 
         <div className="space-y-6 xl:col-span-2">
           <ModelPanel shopId={user.shopId} brand={m.brand} model={m.model} />
-          <ManualLinks brand={m.brand} model={m.model} />
+          <ManualLinks brand={m.brand} model={m.model} timeZone={tz} />
           <PartsThatFit shopId={user.shopId} brand={m.brand} model={m.model} />
           <SharedPosts user={user} brand={m.brand} model={m.model} title="Shared by techs" />
         </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import type { HubOrder } from "@/lib/hub";
 import { PageHeader, Empty } from "@/components/ui";
 import { ActionButton } from "@/components/action-form";
@@ -12,6 +13,7 @@ const OPEN = ["REQUESTED", "ACCEPTED", "PAID", "SHIPPED"];
 
 export default async function Orders({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const role = (await searchParams).role === "seller" ? "seller" : "buyer";
   const rows = await db.marketOrder.findMany({ where: { role, shopId: user.shopId }, orderBy: { updatedAt: "desc" }, take: 300 });
   const orders = rows.map((r) => r.data as unknown as HubOrder);
@@ -69,7 +71,7 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
                     <td>
                       <OrderStatus status={o.status} />
                     </td>
-                    <td className="num whitespace-nowrap">{fmtDate(o.updatedAt)}</td>
+                    <td className="num whitespace-nowrap">{fmtDate(o.updatedAt, tz)}</td>
                     <td className="num text-right">{money(o.totalCents)}</td>
                   </tr>
                 ))}

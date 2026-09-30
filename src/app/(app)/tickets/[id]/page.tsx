@@ -4,6 +4,7 @@ import { Trash2, Printer } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { LINE_LABEL, PAYMENT_LABEL } from "@/lib/constants";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
@@ -50,6 +51,7 @@ function Reading({ id, label, value, min, max }: { id: string; label: string; va
 
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const t = await db.ticket.findFirst({
     where: { id, shopId: user.shopId },
@@ -109,7 +111,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 <span className="mono">SN {m.serial}</span>
               </>
             )}{" "}
-            · in {fmtDate(t.intakeAt)}
+            · in {fmtDate(t.intakeAt, tz)}
           </>
         }
         actions={
@@ -158,8 +160,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <Section title="Status and work">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <StatusSelect ticketId={t.id} status={t.status} />
-              <KV k="Ready" v={t.readyAt ? fmtDate(t.readyAt) : null} />
-              <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil) : null} />
+              <KV k="Ready" v={t.readyAt ? fmtDate(t.readyAt, tz) : null} />
+              <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil, tz) : null} />
             </div>
             <ActionForm action={saveTicketText.bind(null, t.id)} success="Saved" className="space-y-3">
               {/* What each field showed when the page loaded: only what's changed here is saved, so a change made
@@ -242,7 +244,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </Section>
 
           <Section title="Service checklist">
-            <Checklist ticketId={t.id} items={checklistItems} state={checklist} />
+            <Checklist ticketId={t.id} items={checklistItems} state={checklist} timeZone={tz} />
             <div className="mt-5 border-t border-line pt-4">
               <h3 className="font-semibold">Tension gauge readings</h3>
               <p className="muted mb-3 text-sm">
@@ -446,7 +448,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 {t.payments.map((p) => (
                   <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                     <span>
-                      {fmtDate(p.paidAt)} · {PAYMENT_LABEL[p.method]}
+                      {fmtDate(p.paidAt, tz)} · {PAYMENT_LABEL[p.method]}
                       {p.method === "INVOICE" && <span className="muted"> · billed to the account: owed until it&apos;s paid</span>}
                       {p.note && <span className="muted"> · {p.note}</span>}
                     </span>
@@ -506,7 +508,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
         <div className="space-y-6 xl:col-span-2">
           <Section title="Photos">
-            <PhotoStrip machineId={m.id} ticketId={t.id} photos={m.photos} />
+            <PhotoStrip machineId={m.id} ticketId={t.id} photos={m.photos} timeZone={tz} />
           </Section>
 
           <Section title="Accessories">

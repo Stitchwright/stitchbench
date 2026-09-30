@@ -3,12 +3,14 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { PageHeader, StatusPill, Empty } from "@/components/ui";
 import type { TicketStatus } from "@/generated/prisma/enums";
 
 export default async function TicketsPage({ searchParams }: { searchParams: Promise<{ status?: string; all?: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const sp = await searchParams;
   const status = STATUS_ORDER.includes(sp.status as TicketStatus) ? (sp.status as TicketStatus) : undefined;
   const all = sp.all === "1";
@@ -83,7 +85,7 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
                       <td>
                         <StatusPill status={t.status} />
                       </td>
-                      <td className="num whitespace-nowrap">{fmtDate(t.intakeAt)}</td>
+                      <td className="num whitespace-nowrap">{fmtDate(t.intakeAt, tz)}</td>
                       <td className="num text-right">{money(tot.total)}</td>
                       <td className={`num text-right ${tot.balance > 0 ? "font-semibold" : "muted"}`}>{money(tot.balance)}</td>
                     </tr>

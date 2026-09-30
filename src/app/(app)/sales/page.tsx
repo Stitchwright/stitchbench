@@ -4,13 +4,15 @@ import { requireUser } from "@/lib/session";
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PAYMENT_LABEL } from "@/lib/constants";
 import { ticketTotals } from "@/lib/ticket-math";
-import { monthRange, paymentsBetween, PAID_ELSEWHERE } from "@/lib/sales";
+import { paymentsBetween, PAID_ELSEWHERE } from "@/lib/sales";
+import { fmtDay, monthRange } from "@/lib/time-zone";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, Empty } from "@/components/ui";
 
 export default async function Sales({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
+  const tz = await shopTimeZone(user.shopId);
   const { start, end, fromStr, toStr } = monthRange(sp.from, sp.to, tz);
   const [payments, closed] = await Promise.all([
     paymentsBetween(user.shopId, start, end),
@@ -51,7 +53,7 @@ export default async function Sales({ searchParams }: { searchParams: Promise<{ 
     <div className="space-y-6">
       <PageHeader
         title="Sales log"
-        sub={`${fmtDate(start, tz)} to ${fmtDate(new Date(end.getTime() - 1), tz)}`}
+        sub={`${fmtDay(fromStr)} to ${fmtDay(toStr)}`}
         actions={
           <a className="btn" href={`/api/sales?from=${fromStr}&to=${toStr}`}>
             Download CSV
