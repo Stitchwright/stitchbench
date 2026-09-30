@@ -6,12 +6,12 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
-import { requireInstallAdmin, requireUser } from "@/lib/session";
+import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/shops";
 import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
 import { str } from "@/lib/format";
-import { hubFetch, hubId, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, type HubLink, type LinkRevision } from "@/lib/hub";
-import { libraryDir } from "@/lib/library-dir";
+import { hubFetch, hubId, hubReachable, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, usageSettingChanged, type HubLink, type LinkRevision } from "@/lib/hub";
+import { libraryDir, writeUnusedPdf } from "@/lib/library-dir";
 
 const UA = "StitchBench (manual download for a repair shop's own library)";
 const MAX_PDF = 300 * 1024 * 1024;
@@ -37,9 +37,20 @@ export const joinCommunityHub = safe(async function joinCommunityHub(formData: F
 
 export const syncCommunityHub = safe(async function syncCommunityHub() {
   await requireUser();
+  // A dead line says so in seconds, not after every request of a sync has waited out its time.
+  await hubReachable();
   reportUsageNextSync();
   await syncHub();
   refresh();
+});
+
+/** Whether this company offers its monthly parts counts to the community's most-used list (owner or admin). */
+export const setUsageSharing = safe(async function setUsageSharing(on: boolean) {
+  const admin = await requireAdmin();
+  await db.shop.update({ where: { id: admin.shopId }, data: { shareUsage: on === true } });
+  // Sent (or taken back) with the next sync.
+  usageSettingChanged(admin.shopId);
+  revalidatePath("/parts/most-used");
 });
 
 export const leaveCommunityHub = safe(async function leaveCommunityHub() {
@@ -97,13 +108,6 @@ export async function manualLinkHistory(linkId: string): Promise<{ revisions: Li
   }
 }
 
-function inboxName(dir: string, wanted: string) {
-  const base = wanted.replace(/\.pdf$/i, "").replace(/[^\w\-+.() ]+/g, "_").slice(0, 150) || "manual";
-  let name = `${base}.pdf`;
-  for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} (${i}).pdf`;
-  return name;
-}
-
 /**
  * Fetch a linked manual from where it's published into <library>\_inbox, to be identified and filed. Links come from
  * other shops through the hub, so only public web servers are fetched (never the shop's own network), and the
@@ -134,25 +138,27 @@ export const downloadManualLink = safe(async function downloadManualLink(linkId:
   }
   const inbox = path.join(root, "_inbox");
   await fs.promises.mkdir(inbox, { recursive: true });
-  const name = inboxName(inbox, l.fileName ?? `${l.brand}_${l.models.replace(/,\s*/g, "+")}_${l.docType ?? "Manual"}`);
-  await fs.promises.writeFile(path.join(inbox, name), data, { flag: "wx" });
+  const wanted = l.fileName ?? `${l.brand}_${l.models.replace(/,\s*/g, "+")}_${l.docType ?? "Manual"}`;
+  await writeUnusedPdf(inbox, wanted.replace(/\.pdf$/i, "").replace(/[^\w\-+.() ]+/g, "_").slice(0, 150) || "manual", data);
 });
 
 // ---------- shared notes ----------
 
 export const removeHubPost = safe(async function removeHubPost(postId: string) {
   const user = await requireUser();
-  const p = await db.hubPost.findUnique({ where: { id: postId }, select: { mine: true } });
+  const p = await db.hubPost.findUnique({ where: { id: postId }, select: { mine: true, shopRef: true } });
   if (!p?.mine) throw new UserError("Only the shop that shared a note can remove it.");
   // Same rule as before it reached the hub: its author, their shop's owner or admin, or the StitchBench administrator.
   const own = await db.sharedPost.findFirst({ where: { hubId: postId }, select: { shopId: true, authorId: true } });
   // With no local copy (an older backup was restored, or it was deleted while uploading), the owner or an admin of the
   // company can still remove it when this install holds just that one company.
+  // The hub also says which company shared it, so that company's owner or admin can too on an install with several.
   const soleCompany = !own && (await db.shop.count()) === 1;
+  const ownCompany = !own && p.shopRef === user.shopId;
   const allowed =
     isPlatformAdmin(user.email) ||
     (own != null && own.shopId === user.shopId && (own.authorId === user.id || user.role !== "TECH")) ||
-    (soleCompany && user.role !== "TECH");
+    ((soleCompany || ownCompany) && user.role !== "TECH");
   if (!allowed) throw new UserError("Only whoever shared this note, or their shop's owner or admin, can remove it.");
   await hubFetch(`/v1/posts/${hubId(postId)}`, { method: "DELETE" });
   await db.hubPost.delete({ where: { id: postId } });

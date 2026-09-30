@@ -5,26 +5,40 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
-import { numberKey } from "@/lib/parts";
+import { MAX_STOCK, codeKeys, countStock, numberKey } from "@/lib/parts";
+import { withDisclosure } from "@/lib/part-labels";
+import { assertId, sameText } from "@/lib/input";
 
-export type ScannedPart = { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; location: string | null; priceCents: number | null; unit: string | null };
+export type ScannedPart = {
+  id: string;
+  partNumber: string;
+  description: string;
+  brand: string | null;
+  qtyOnHand: number;
+  location: string | null;
+  priceCents: number | null;
+  unit: string | null;
+  consigned?: boolean;
+};
 export type ScanResult =
   | { ok: true; part: ScannedPart; message: string }
   | { ok: false; code: string; message: string; xpart?: { id: string; name: string } | null };
 
 /** The item a code means: the exact number first, and the shop's own stock before a partner's consigned stock. */
 async function findPart(shopId: string, code: string) {
-  const key = numberKey(code);
+  // Its barcode form too: a scanner's 12-digit UPC finds the item imported with its 13-digit EAN.
+  const keys = codeKeys(code);
   const matches = await db.part.findMany({
-    where: { shopId, OR: [{ partNumber: { equals: code, mode: "insensitive" } }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
+    where: { shopId, OR: [{ partNumber: sameText(code) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
     take: 20,
   });
   const rank = (p: (typeof matches)[number]) => (p.consignLinkId ? 2 : 0) + (p.partNumber.toLowerCase() === code.toLowerCase() ? 0 : 1);
   return matches.sort((a, b) => rank(a) - rank(b))[0] ?? null;
 }
 
-const view = (p: { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; location: string | null; priceCents: number | null; unit: string | null }): ScannedPart => ({
+const view = (p: Omit<ScannedPart, "consigned"> & { consignLinkId: string | null }): ScannedPart => ({
   unit: p.unit,
+  consigned: Boolean(p.consignLinkId),
   id: p.id,
   partNumber: p.partNumber,
   description: p.description,
@@ -35,8 +49,9 @@ const view = (p: { id: string; partNumber: string; description: string; brand: s
 });
 
 export async function scanCode(code: string, mode: "lookup" | "receive" | "ticket", qty = 1, ticketId?: string): Promise<ScanResult> {
+  if (ticketId) assertId(ticketId);
   const user = await requireUser();
-  const c = code.trim();
+  const c = String(code ?? "").trim();
   if (!c) return { ok: false, code: c, message: "Nothing scanned." };
   const part = await findPart(user.shopId, c);
   if (!part) {
@@ -62,9 +77,10 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
       ? await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId, status: { in: OPEN_STATUSES } }, include: { shop: { select: { partsMarkupPct: true } } } })
       : null;
     if (!t) return { ok: false, code: c, message: "Pick an open ticket first." };
-    const unit = part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100));
+    // Never below 0, even for an item saved before prices were checked: a line can't lower the ticket's total.
+    const unit = Math.max(0, part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100)));
     const [, p] = await db.$transaction([
-      db.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: `${part.partNumber} ${part.description}`, qty: n, unitPriceCents: unit, partId: part.id } }),
+      db.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty: n, unitPriceCents: unit, partId: part.id } }),
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: n } } }),
       db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: -n, reason: "USED", ticketId: t.id, userId: user.id } }),
     ]);
@@ -78,18 +94,19 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
 /** A shelf count done by scanning: set each counted part to what was scanned. */
 export async function saveCounts(counts: { partId: string; qty: number }[]): Promise<{ saved: number } | { error: string }> {
   const user = await requireUser();
+  if (!Array.isArray(counts)) return { error: "Nothing to save." };
+  const list = counts.slice(0, 2000);
+  // The counts come from the browser, and a call made by hand can send NaN or a negative: that would be written as stock.
+  if (list.some((c) => typeof c?.qty !== "number" || !Number.isFinite(c.qty) || c.qty < 0 || c.qty > MAX_STOCK)) {
+    return { error: `A count is out of range (0 to ${MAX_STOCK.toLocaleString("en-US")}): nothing was saved.` };
+  }
   let saved = 0;
-  for (const c of counts.slice(0, 2000)) {
-    const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId } });
-    // Fabric isn't counted by scanning bolts.
-    if (!p || p.unit === "yd") continue;
-    const n = Math.max(0, Math.round(c.qty));
-    if (p.qtyOnHand === n) continue;
-    await db.$transaction([
-      db.part.update({ where: { id: p.id }, data: { qtyOnHand: n } }),
-      db.stockMove.create({ data: { shopId: user.shopId, partId: p.id, qty: n - p.qtyOnHand, reason: "ADJUSTED", userId: user.id, note: "Scanned shelf count" } }),
-    ]);
-    saved++;
+  for (const c of list) {
+    if (typeof c?.partId !== "string" || !c.partId) continue;
+    const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId }, select: { id: true, unit: true, consignLinkId: true } });
+    // Fabric isn't counted by scanning bolts, and a partner's consigned stock is counted by the partner.
+    if (!p || p.unit === "yd" || p.consignLinkId) continue;
+    if (await countStock(user.shopId, p.id, Math.round(c.qty), user.id, "Scanned shelf count")) saved++;
   }
   revalidatePath("/parts", "layout");
   return { saved };

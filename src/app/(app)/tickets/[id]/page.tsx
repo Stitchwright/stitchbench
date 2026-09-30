@@ -4,6 +4,7 @@ import { Trash2, Printer } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { LINE_LABEL, PAYMENT_LABEL } from "@/lib/constants";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
@@ -12,6 +13,7 @@ import { valueRange } from "@/lib/adjustments";
 import { PageHeader, Section, KV, modelHref } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Checklist, StatusSelect } from "@/components/ticket-controls";
+import { PartPicker } from "@/components/part-picker";
 import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
 import {
@@ -50,6 +52,7 @@ function Reading({ id, label, value, min, max }: { id: string; label: string; va
 
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const t = await db.ticket.findFirst({
     where: { id, shopId: user.shopId },
@@ -68,9 +71,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const job = await db.repairJob.findUnique({ where: { ticketId: t.id } });
   const jobLink = job ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: job.linkId } } }) : null;
 
-  const [services, parts, techs, specs, settings] = await Promise.all([
+  const [services, techs, specs, settings] = await Promise.all([
     db.serviceItem.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { sortOrder: "asc" } }),
-    db.part.findMany({ where: { shopId: user.shopId }, orderBy: { partNumber: "asc" }, select: { partNumber: true, description: true, qtyOnHand: true } }),
     db.user.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { name: "asc" } }),
     specsFor(t.machine.brand, t.machine.model),
     settingsFor(t.machine.brand, t.machine.model),
@@ -78,7 +80,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const measurable = settings.filter((x) => (x.valueMin != null || x.valueMax != null) && (x.unit === "mm" || x.unit === "deg"));
   const meas = (t.measurements ?? {}) as Record<string, { found?: number; left?: number }>;
   const spec = specs.find((s) => s.upperMinG != null || s.bobbinMinG != null);
-  const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.viaAccount?.commissionPct, job?.commissionCents);
+  const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.tradeCommissionPct ?? t.viaAccount?.commissionPct, job?.commissionCents);
   const checklistItems = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
   const checklist = (t.checklist ?? {}) as Record<string, { done: boolean; by?: string; at?: string }>;
   const m = t.machine;
@@ -109,7 +111,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 <span className="mono">SN {m.serial}</span>
               </>
             )}{" "}
-            · in {fmtDate(t.intakeAt)}
+            · in {fmtDate(t.intakeAt, tz)}
           </>
         }
         actions={
@@ -157,9 +159,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <div className="space-y-6 xl:col-span-3">
           <Section title="Status and work">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <StatusSelect ticketId={t.id} status={t.status} />
-              <KV k="Ready" v={t.readyAt ? fmtDate(t.readyAt) : null} />
-              <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil) : null} />
+              <StatusSelect ticketId={t.id} status={t.status} partnerOwns={job?.side === "repair" && !job.pickedUpAt} />
+              <KV k="Ready" v={t.readyAt ? fmtDate(t.readyAt, tz) : null} />
+              <KV k="Warranty until" v={t.warrantyUntil ? fmtDate(t.warrantyUntil, tz) : null} />
             </div>
             <ActionForm action={saveTicketText.bind(null, t.id)} success="Saved" className="space-y-3">
               {/* What each field showed when the page loaded: only what's changed here is saved, so a change made
@@ -242,7 +244,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </Section>
 
           <Section title="Service checklist">
-            <Checklist ticketId={t.id} items={checklistItems} state={checklist} />
+            <Checklist ticketId={t.id} items={checklistItems} state={checklist} timeZone={tz} />
             <div className="mt-5 border-t border-line pt-4">
               <h3 className="font-semibold">Tension gauge readings</h3>
               <p className="muted mb-3 text-sm">
@@ -411,12 +413,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <ActionForm action={addLine.bind(null, t.id)} reset className="space-y-2 rounded border border-line p-3">
                 <input type="hidden" name="kind" value="PART" />
                 <div className="label">Add part from inventory</div>
-                <input name="partNumber" aria-label="Part" list="parts-list" className="input mono" placeholder="Part number" autoComplete="off" />
-                <datalist id="parts-list">
-                  {parts.map((p) => (
-                    <option key={p.partNumber} value={`${p.partNumber} | ${p.description} (${p.qtyOnHand} on hand)`} />
-                  ))}
-                </datalist>
+                <PartPicker />
                 <div className="flex gap-2">
                   <input name="qty" aria-label="Quantity" inputMode="numeric" defaultValue="1" className="input num w-20" />
                   <input name="price" aria-label="Price each" inputMode="decimal" className="input num" placeholder="$ each (blank = list price)" />
@@ -446,7 +443,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 {t.payments.map((p) => (
                   <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                     <span>
-                      {fmtDate(p.paidAt)} · {PAYMENT_LABEL[p.method]}
+                      {fmtDate(p.paidAt, tz)} · {PAYMENT_LABEL[p.method]}
                       {p.method === "INVOICE" && <span className="muted"> · billed to the account: owed until it&apos;s paid</span>}
                       {p.note && <span className="muted"> · {p.note}</span>}
                     </span>
@@ -506,7 +503,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
         <div className="space-y-6 xl:col-span-2">
           <Section title="Photos">
-            <PhotoStrip machineId={m.id} ticketId={t.id} photos={m.photos} />
+            <PhotoStrip machineId={m.id} ticketId={t.id} photos={m.photos} timeZone={tz} />
           </Section>
 
           <Section title="Accessories">

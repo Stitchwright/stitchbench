@@ -6,15 +6,25 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
+import { withDisclosure } from "@/lib/part-labels";
+import { sameText } from "@/lib/input";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { OPEN_STATUSES, STATUS_ORDER } from "@/lib/constants";
+import { OPEN_STATUSES, PAYMENT_LABEL, STATUS_ORDER } from "@/lib/constants";
+import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { kickPartnerSync } from "@/lib/partners";
 
 // $100,000 in cents: far above any real line or payment, and well inside what the books' whole numbers hold.
 const MAX_MONEY = 10_000_000;
+// Free text on a ticket: as long as anyone would write, not as long as a request body may be.
+const MAX_TEXT = 20_000;
+
+function fits(v: string | null, label: string): string | null {
+  if (v && v.length > MAX_TEXT) throw new UserError(`${label} is too long. Keep it under ${MAX_TEXT.toLocaleString("en-US")} characters.`);
+  return v;
+}
 
 async function ownTicket(shopId: string, ticketId: string) {
   const t = await db.ticket.findFirst({ where: { id: ticketId, shopId }, include: { shop: true } });
@@ -25,6 +35,24 @@ async function ownTicket(shopId: string, ticketId: string) {
 /** A closed ticket's bill is the owner's or an admin's to change (like voiding a register sale). */
 function assertBillOpen(t: { closedAt: Date | null }, user: CurrentUser) {
   if (t.closedAt && user.role === "TECH") throw new UserError("The ticket is closed: only the owner or an admin can change its bill.");
+}
+
+/** An amount typed on the ticket (pre-approved, approved): blank for none, else $0 to $100,000. */
+function amountOf(v: FormDataEntryValue | null, label: string): number | null {
+  if (str(v) == null) return null;
+  const c = toCents(v);
+  if (c == null || c < 0 || c > MAX_MONEY) throw new UserError(`${label}: enter an amount from $0 to $100,000, e.g. 150.00.`);
+  return c;
+}
+
+/**
+ * A check-in with a status that isn't open (a crafted request could start a ticket already collected, which the Sales log
+ * never shows). Checked first, so a mistake leaves no new customer or machine behind. (A typed paper number is checked
+ * in createTicket.)
+ */
+function checkNewTicket(formData: FormData) {
+  const status = str(formData.get("status"));
+  if (status != null && !OPEN_STATUSES.includes(status as TicketStatus)) throw new UserError("A new ticket has to start open.");
 }
 
 function refresh(ticketId: string) {
@@ -40,52 +68,29 @@ function refresh(ticketId: string) {
 export const createTicket = safe(async function createTicket(formData: FormData) {
   const user = await requireUser();
   const shopId = user.shopId;
+  checkNewTicket(formData);
+
+  // Everything is checked first, and the new customer and machine are made in the same transaction as the ticket: a
+  // refused check-in leaves nothing behind, so the retry doesn't add a second customer and machine.
 
   // Customer: pick an existing one or type a new name.
-  let customerId = str(formData.get("customerId"));
+  const pickedCustomerId = str(formData.get("customerId"));
   const newCustomer = str(formData.get("customerName"));
-  if (!customerId && newCustomer) {
-    const c = await db.customer.create({
-      data: {
-        shopId,
-        name: newCustomer,
-        phone: str(formData.get("customerPhone")),
-        email: str(formData.get("customerEmail")),
-      },
-    });
-    customerId = c.id;
-  } else if (customerId) {
-    const ok = await db.customer.findFirst({ where: { id: customerId, shopId } });
+  if (pickedCustomerId) {
+    const ok = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId } });
     if (!ok) throw new UserError("Customer not found.");
   }
 
   // Machine: pick an existing one, or brand + model (+ serial). An existing serial is reused.
-  let machineId = str(formData.get("machineId"));
-  if (machineId) {
-    const ok = await db.machine.findFirst({ where: { id: machineId, shopId } });
+  const pickedMachineId = str(formData.get("machineId"));
+  const brand = str(formData.get("brand"));
+  const model = str(formData.get("model"));
+  const serial = str(formData.get("serial"));
+  if (pickedMachineId) {
+    const ok = await db.machine.findFirst({ where: { id: pickedMachineId, shopId } });
     if (!ok) throw new UserError("Machine not found.");
-  } else {
-    const brand = str(formData.get("brand"));
-    const model = str(formData.get("model"));
-    if (!brand || !model) throw new UserError("Enter the machine's brand and model.");
-    const serial = str(formData.get("serial"));
-    const existing = serial
-      ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } })
-      : null;
-    const m =
-      existing ??
-      (await db.machine.create({
-        data: {
-          shopId,
-          brand,
-          model,
-          modelKey: modelKey(model),
-          serial,
-          machineType: str(formData.get("machineType")),
-          customerId,
-        },
-      }));
-    machineId = m.id;
+  } else if (!brand || !model) {
+    throw new UserError("Enter the machine's brand and model.");
   }
 
   const viaAccountId = str(formData.get("viaAccountId"));
@@ -98,12 +103,19 @@ export const createTicket = safe(async function createTicket(formData: FormData)
 
   const serviceItemId = str(formData.get("serviceItemId"));
   const serviceItem = serviceItemId ? await db.serviceItem.findFirst({ where: { id: serviceItemId, shopId } }) : null;
+  const serviceRequested = fits(serviceItem?.name ?? str(formData.get("serviceRequested")), "Service requested");
+  const problem = fits(str(formData.get("problem")), "Problem reported");
 
-  const typedNumber = Number(str(formData.get("number")) ?? "");
+  // A paper ticket number typed in (blank takes the next one): a whole number of up to 8 digits, like the counter in
+  // Settings. The column is a 32-bit integer and the counter moves past what is typed, so a number near the top of it
+  // would break every later check-in, and every job a partner sends.
+  const typedText = str(formData.get("number"))?.replace(/^#/, "") ?? null;
+  const typed = typedText == null ? null : /^\d{1,8}$/.test(typedText) ? Number(typedText) : 0;
+  if (typed === 0) throw new UserError("Paper ticket number: enter a whole number from 1 to 99999999, or leave it blank to use the next one.");
+  const preApprovedCents = amountOf(formData.get("preApproved"), "Pre-approved");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
 
   const ticket = await db.$transaction(async (tx) => {
-    const typed = Number.isInteger(typedNumber) && typedNumber > 0 ? typedNumber : null;
     let number: number;
     if (typed) {
       number = typed;
@@ -120,17 +132,43 @@ export const createTicket = safe(async function createTicket(formData: FormData)
         await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: number + 1 } });
       }
     }
+
+    const customerId =
+      pickedCustomerId ??
+      (newCustomer
+        ? (await tx.customer.create({ data: { shopId, name: newCustomer, phone: str(formData.get("customerPhone")), email: str(formData.get("customerEmail")) } })).id
+        : null);
+
+    let machineId = pickedMachineId;
+    if (!machineId) {
+      const existing = serial ? await tx.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model!) } }) : null;
+      machineId = (
+        existing ??
+        (await tx.machine.create({
+          data: {
+            shopId,
+            brand: brand!,
+            model: model!,
+            modelKey: modelKey(model!),
+            serial,
+            machineType: str(formData.get("machineType")),
+            customerId,
+          },
+        }))
+      ).id;
+    }
+
     const t = await tx.ticket.create({
       data: {
         shopId,
         number,
-        machineId: machineId!,
+        machineId,
         customerId,
         viaAccountId,
         status: (str(formData.get("status")) as TicketStatus | null) ?? (viaAccountId ? "AT_SHOP_AWAITING_PICKUP" : "ON_BENCH"),
-        serviceRequested: serviceItem?.name ?? str(formData.get("serviceRequested")),
-        problem: str(formData.get("problem")),
-        preApprovedCents: toCents(formData.get("preApproved")),
+        serviceRequested,
+        problem,
+        preApprovedCents,
         accessories,
         taxRatePct: shop.taxRatePct,
         openedById: user.id,
@@ -156,6 +194,12 @@ export const setStatus = safe(async function setStatus(ticketId: string, status:
   const user = await requireUser();
   if (!STATUS_ORDER.includes(status)) throw new UserError("Unknown status.");
   const t = await ownTicket(user.shopId, ticketId);
+  if (status === "COLLECTED" && t.status !== "COLLECTED") {
+    // A partner sewing shop's machine goes back to them, and they mark it collected when their customer pays and picks
+    // it up. Set here, it would send "collected" and take the job off their register's pickup list, unpaid.
+    const job = await db.repairJob.findFirst({ where: { shopId: user.shopId, ticketId, side: "repair" }, select: { pickedUpAt: true } });
+    if (job && !job.pickedUpAt) throw new UserError("This machine came from a partner shop. They mark it collected when their customer picks it up.");
+  }
   const now = new Date();
   const data: Record<string, unknown> = { status };
   const ready = (s: TicketStatus) => s === "READY_IN_TRUCK" || s === "READY_FOR_PICKUP";
@@ -165,12 +209,20 @@ export const setStatus = safe(async function setStatus(ticketId: string, status:
     // back on the bench it isn't ready either. Ready again later, the storage-fee clock starts from that ready-call.
     data.closedAt = null;
     data.warrantyUntil = null;
+    data.tradeCommissionPct = null; // open tickets follow the account's current rate
     if (!ready(status)) data.readyAt = null;
     else if (!t.readyAt || !(ready(t.status) || wasClosed)) data.readyAt = now;
   } else {
     // Collected and returned-unrepaired swapped for each other keep the day it left; closing a reopened ticket, or
     // handing back an abandoned machine, dates from now. Only a collected repair carries the warranty.
-    data.closedAt = wasClosed && t.closedAt && t.status !== "ABANDONED" ? t.closedAt : now;
+    const closedAt = wasClosed && t.closedAt && t.status !== "ABANDONED" ? t.closedAt : now;
+    data.closedAt = closedAt;
+    // A trade account's commission is kept as it stands when the machine leaves, so editing the account later doesn't
+    // rewrite what past months owe it.
+    if (closedAt !== t.closedAt || t.tradeCommissionPct == null) {
+      const account = t.viaAccountId ? await db.customer.findFirst({ where: { id: t.viaAccountId, shopId: user.shopId }, select: { commissionPct: true } }) : null;
+      data.tradeCommissionPct = account ? (account.commissionPct ?? 0) : null;
+    }
     data.warrantyUntil =
       status === "COLLECTED" ? (t.status === "COLLECTED" && t.warrantyUntil ? t.warrantyUntil : new Date(now.getTime() + t.shop.warrantyDays * 86400000)) : null;
   }
@@ -212,7 +264,8 @@ export const saveTicketText = safe(async function saveTicketText(ticketId: strin
     if (current !== was && current !== mine) {
       throw new UserError(`Someone else changed "${label}" while you had this ticket open. Copy what you typed, reload the page, then save again.`);
     }
-    data[col] = mine;
+    // A changed amount is checked (an unchanged one is left as it is), and so is the length of a changed text.
+    data[col] = col.endsWith("Cents") ? amountOf(formData.get(field), label) : typeof mine === "string" ? fits(mine, label) : mine;
   }
   if (Object.keys(data).length) await db.ticket.update({ where: { id: ticketId }, data });
   refresh(ticketId);
@@ -224,8 +277,12 @@ export const toggleChecklist = safe(async function toggleChecklist(ticketId: str
   const user = await requireUser();
   const t = await ownTicket(user.shopId, ticketId);
   const list = { ...((t.checklist as Prisma.JsonObject | null) ?? {}) };
-  if (done) list[item] = { done: true, by: user.name, at: new Date().toISOString() };
-  else delete list[item];
+  if (done) {
+    // The name comes from the browser: only what is on the shop's checklist is stored (not any key, of any size).
+    const items = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
+    if (!items.includes(item)) throw new UserError("That item isn't on the checklist any more. Reload the page.");
+    list[item] = { done: true, by: user.name, at: new Date().toISOString() };
+  } else delete list[item];
   await db.ticket.update({ where: { id: ticketId }, data: { checklist: list } });
   refresh(ticketId);
 });
@@ -261,29 +318,31 @@ export const saveTension = safe(async function saveTension(ticketId: string, for
 
 export const saveMeasurements = safe(async function saveMeasurements(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId);
   // Field names come from the browser: a Map (not an object, where "__proto__" would reach every object in the
   // server) keyed only by factory settings that exist.
   const read = new Map<string, { found?: string; left?: string }>();
   for (const [k, v] of formData.entries()) {
     const m = /^(found|left):([A-Za-z0-9_.:-]{1,120})$/.exec(k);
-    const s = str(v);
-    if (!m || s == null) continue;
+    if (!m) continue;
     const entry = read.get(m[2]) ?? {};
-    entry[m[1] as "found" | "left"] = s;
-    read.set(m[2], entry);
+    const s = str(v);
+    if (s != null) entry[m[1] as "found" | "left"] = s;
+    read.set(m[2], entry); // a blank box clears that reading
     if (read.size > 500) throw new UserError("Too many readings in one save.");
   }
   const known = await db.factorySetting.findMany({ where: { id: { in: [...read.keys()] } }, select: { id: true, label: true } });
   // Timing and clearances can be set below zero (a belt tensioner at -0.3 mm), so a minus sign is a real reading here.
-  const out = Object.fromEntries(
-    known.map((f) => {
-      const typed = read.get(f.id)!;
-      const entry: { found?: number; left?: number } = {};
-      for (const k of ["found", "left"] as const) if (typed[k] != null) entry[k] = reading(typed[k], `${f.label} as ${k}`, true)!;
-      return [f.id, entry];
-    }),
+  // Readings for settings not on this form (the model's list changed since) are kept.
+  const out: Record<string, { found?: number; left?: number }> = Object.fromEntries(
+    Object.entries((t.measurements as Record<string, { found?: number; left?: number }> | null) ?? {}).filter(([id]) => !read.has(id)),
   );
+  for (const f of known) {
+    const typed = read.get(f.id)!;
+    const entry: { found?: number; left?: number } = {};
+    for (const k of ["found", "left"] as const) if (typed[k] != null) entry[k] = reading(typed[k], `${f.label} as ${k}`, true)!;
+    if (entry.found != null || entry.left != null) out[f.id] = entry;
+  }
   await db.ticket.update({ where: { id: ticketId }, data: { measurements: out } });
   refresh(ticketId);
 });
@@ -314,6 +373,29 @@ export const removeAccessory = safe(async function removeAccessory(ticketId: str
 
 // ---------- line items ----------
 
+/** Suggestions for the part box on a ticket: the shop's own stock (a partner's consigned items can't be added there). */
+export async function findStockedParts(q: string): Promise<string[]> {
+  const user = await requireUser();
+  const t = String(q ?? "").trim().slice(0, 60);
+  if (t.length < 2) return [];
+  const words = t.split(/\s+/).slice(0, 5);
+  const parts = await db.part.findMany({
+    where: {
+      shopId: user.shopId,
+      consignLinkId: null,
+      OR: [
+        { partNumber: { contains: t, mode: "insensitive" } },
+        { numberKeys: { has: numberKey(t) } },
+        { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) },
+      ],
+    },
+    orderBy: { partNumber: "asc" },
+    take: 25,
+    select: { partNumber: true, description: true, qtyOnHand: true },
+  });
+  return parts.map((p) => `${p.partNumber} | ${p.description} (${p.qtyOnHand} on hand)`);
+}
+
 export const addLine = safe(async function addLine(ticketId: string, formData: FormData) {
   const user = await requireUser();
   const t = await ownTicket(user.shopId, ticketId);
@@ -332,8 +414,9 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
   if (kind === "SERVICE") {
     const item = await db.serviceItem.findFirst({ where: { id: String(formData.get("serviceItemId")), shopId: user.shopId } });
     const price = priceOf("price");
-    const desc = str(formData.get("description"));
+    const desc = fits(str(formData.get("description")), "Description");
     if (!item && !desc) throw new UserError("Pick a service or type a description.");
+    if (!item && price == null) throw new UserError("Enter a price for a service that isn't on the menu, e.g. 45.00.");
     await db.ticketLine.create({
       data: { ticketId, kind, description: desc ?? item!.name, qty: 1, unitPriceCents: price ?? item?.priceCents ?? 0 },
     });
@@ -342,14 +425,14 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
     if (!(hours > 0 && hours <= 100)) throw new UserError("Enter labor hours up to 100, e.g. 0.25 for 15 minutes.");
     const rate = priceOf("rate") ?? t.shop.laborRateCents;
     await db.ticketLine.create({
-      data: { ticketId, kind, description: str(formData.get("description")) ?? "Repair labor", qty: hours, unitPriceCents: rate },
+      data: { ticketId, kind, description: fits(str(formData.get("description")), "Description") ?? "Repair labor", qty: hours, unitPriceCents: rate },
     });
   } else if (kind === "PART") {
     const pn = str(formData.get("partNumber"))?.split(" | ")[0].trim();
     // The shop's own stock (not a partner's consigned items), by its number, any case, or another number it's sold under.
     const key = pn ? numberKey(pn) : "";
     const part = pn
-      ? ((await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, partNumber: { equals: pn, mode: "insensitive" } } })) ??
+      ? ((await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, partNumber: sameText(pn) } })) ??
         (key.length >= 3 ? await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, numberKeys: { has: key } } }) : null))
       : null;
     const rawQty = Number(str(formData.get("qty")) ?? "1");
@@ -357,14 +440,16 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
       throw new UserError(part?.unit === "yd" ? "Enter yards from 0.125 to 10,000." : "Enter a quantity from 1 to 10,000.");
     }
     const qty = part?.unit === "yd" ? Math.max(0.125, Math.round((rawQty || 1) * 1000) / 1000) : Math.max(1, Math.round(rawQty || 1));
-    const desc = str(formData.get("description"));
+    const desc = fits(str(formData.get("description")), "Description");
     const price = priceOf("price");
     if (!part && price == null) throw new UserError(pn ? `${pn} isn't in your parts. Pick it from the list, or enter a price for a part you don't stock.` : "Pick a part from inventory, or describe it and enter a price.");
     if (part) {
       const unit = price ?? part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100));
       await db.$transaction([
         db.ticketLine.create({
-          data: { ticketId, kind, description: `${part.partNumber} ${part.description}`, qty, unitPriceCents: unit, partId: part.id },
+          // A used, refurbished, compatible or 3D printed part says so on the invoice: written now, so the bill stays
+          // right if the part is changed later.
+          data: { ticketId, kind, description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty, unitPriceCents: unit, partId: part.id },
         }),
         db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: qty } } }),
         db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: -qty, reason: "USED", ticketId, userId: user.id } }),
@@ -388,7 +473,7 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
       data: {
         ticketId,
         kind,
-        description: str(formData.get("description")) ?? (kind === "FEE" ? "Fee" : "Discount"),
+        description: fits(str(formData.get("description")), "Description") ?? (kind === "FEE" ? "Fee" : "Discount"),
         qty: 1,
         unitPriceCents: kind === "DISCOUNT" ? -Math.abs(amt) : amt,
         taxable: kind === "FEE",
@@ -430,12 +515,14 @@ export const addPayment = safe(async function addPayment(ticketId: string, formD
   if (Math.abs(amount) > MAX_MONEY) throw new UserError("That's more than $100,000. Check the amount.");
   // Money back (a minus amount) cancels what was taken, like removing a payment: the owner's or an admin's call.
   if (amount < 0 && user.role === "TECH") throw new UserError("Only the shop owner or an admin can record a refund.");
+  const method = (str(formData.get("method")) ?? "CARD") as PaymentMethod;
+  if (!Object.hasOwn(PAYMENT_LABEL, method)) throw new UserError("Pick how it was paid.");
   await db.payment.create({
     data: {
       ticketId,
-      method: (str(formData.get("method")) ?? "CARD") as PaymentMethod,
+      method,
       amountCents: amount,
-      note: str(formData.get("note")),
+      note: fits(str(formData.get("note")), "Note"),
     },
   });
   refresh(ticketId);

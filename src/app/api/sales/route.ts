@@ -1,7 +1,8 @@
 import { sessionUser } from "@/lib/session";
-import { csvCell as csv } from "@/lib/csv";
-import { db } from "@/lib/db";
-import { dateIn, monthRange, paymentsBetween } from "@/lib/sales";
+import { csvResponse } from "@/lib/csv";
+import { paymentsBetween } from "@/lib/sales";
+import { dateIn, monthRange } from "@/lib/time-zone";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PAYMENT_LABEL } from "@/lib/constants";
 
 export async function GET(req: Request) {
@@ -9,13 +10,13 @@ export async function GET(req: Request) {
   if (!user) return new Response("Sign in first.", { status: 401 });
   const shopId = user.shopId;
   const url = new URL(req.url);
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
+  const tz = await shopTimeZone(shopId);
   const { start, end, fromStr, toStr } = monthRange(url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined, tz);
   const rows = await paymentsBetween(shopId, start, end);
-  const lines = [
-    ["date", "ticket", "customer", "via_account", "brand", "model", "serial", "method", "amount", "note"].join(","),
-    ...rows.map((p) =>
-      [
+  return csvResponse(
+    [
+      ["date", "ticket", "customer", "via_account", "brand", "model", "serial", "method", "amount", "note"],
+      ...rows.map((p) => [
         // The shop's calendar day, the same one the range above was cut on (the server's UTC day can be tomorrow).
         dateIn(p.paidAt, tz),
         p.ticket.number,
@@ -27,15 +28,8 @@ export async function GET(req: Request) {
         PAYMENT_LABEL[p.method],
         (p.amountCents / 100).toFixed(2),
         p.note,
-      ]
-        .map(csv)
-        .join(","),
-    ),
-  ];
-  return new Response(lines.join("\n") + "\n", {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="sales_${fromStr}_to_${toStr}.csv"`,
-    },
-  });
+      ]),
+    ],
+    `sales_${fromStr}_to_${toStr}.csv`,
+  );
 }

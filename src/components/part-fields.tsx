@@ -1,5 +1,10 @@
+import { CONDITIONS, CONDITION_OPTION, ORIGINS, ORIGIN_OPTION } from "@/lib/part-labels";
+
 type P = {
   partNumber: string;
+  ownNumber?: boolean;
+  condition?: string;
+  origin?: string;
   kind?: string;
   altNumbers?: string[];
   description: string;
@@ -18,15 +23,37 @@ type P = {
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
 
-export function PartFields({ part, withQty = false, defaultNumber }: { part?: P; withQty?: boolean; defaultNumber?: string }) {
+/** `lockMoney`: what it costs, sells for and is offered to partner shops at is for an owner or admin to change. */
+export function PartFields({ part, withQty = false, defaultNumber, lockMoney = false }: { part?: P; withQty?: boolean; defaultNumber?: string; lockMoney?: boolean }) {
+  const locked = lockMoney ? { disabled: true, title: "Only an owner or admin can change this." } : {};
   return (
     <>
-      <div className="field">
-        <label htmlFor="partNumber" className="label">
-          Part number
-        </label>
-        <input id="partNumber" name="partNumber" required defaultValue={part?.partNumber ?? defaultNumber} className="input mono" />
-      </div>
+      {part?.ownNumber ? (
+        // The shop's own number for an item the maker gave none: shown, never typed over.
+        <div className="field">
+          <div className="label">Shop number (the maker gives none)</div>
+          <div className="mono py-2 text-sm">{part.partNumber}</div>
+        </div>
+      ) : (
+        <div className="field">
+          <label htmlFor="partNumber" className="label">
+            Part number
+          </label>
+          <input
+            id="partNumber"
+            name="partNumber"
+            required={Boolean(part)}
+            defaultValue={part?.partNumber ?? defaultNumber}
+            className="input mono"
+            aria-describedby={part ? undefined : "partNumber-hint"}
+          />
+          {!part && (
+            <p id="partNumber-hint" className="muted text-xs">
+              Leave it blank if the maker gave none: the shop gives the item its own number, which prints on labels and scans like any other.
+            </p>
+          )}
+        </div>
+      )}
       <div className="field">
         <label htmlFor="description" className="label">
           Description
@@ -45,6 +72,30 @@ export function PartFields({ part, withQty = false, defaultNumber }: { part?: P;
           <option value="FABRIC">Fabric</option>
           <option value="THREAD">Thread</option>
           <option value="PATTERN">Pattern / book</option>
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="condition" className="label">
+          Condition
+        </label>
+        <select id="condition" name="condition" defaultValue={part?.condition ?? "NEW"} className="select">
+          {CONDITIONS.map((c) => (
+            <option key={c} value={c}>
+              {CONDITION_OPTION[c]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="origin" className="label">
+          Made by
+        </label>
+        <select id="origin" name="origin" defaultValue={part?.origin ?? "GENUINE"} className="select">
+          {ORIGINS.map((o) => (
+            <option key={o} value={o}>
+              {ORIGIN_OPTION[o]}
+            </option>
+          ))}
         </select>
       </div>
       <div className="field">
@@ -90,22 +141,22 @@ export function PartFields({ part, withQty = false, defaultNumber }: { part?: P;
         <label htmlFor="cost" className="label">
           Cost each ($)
         </label>
-        <input id="cost" name="cost" inputMode="decimal" defaultValue={c2d(part?.costCents)} className="input num" />
+        <input id="cost" name="cost" inputMode="decimal" defaultValue={c2d(part?.costCents)} className="input num" {...locked} />
       </div>
       <div className="field">
         <label htmlFor="price" className="label">
           Price each ($, blank = cost + markup)
         </label>
-        <input id="price" name="price" inputMode="decimal" defaultValue={c2d(part?.priceCents)} className="input num" />
+        <input id="price" name="price" inputMode="decimal" defaultValue={c2d(part?.priceCents)} className="input num" {...locked} />
       </div>
       <div className="field">
         <label htmlFor="wholesale" className="label">
           Partner price ($, to partner sewing shops)
         </label>
-        <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" />
+        <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" {...locked} />
       </div>
       <label className="flex items-center gap-2 self-end pb-2 text-sm">
-        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" /> Offer to partner shops
+        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" {...locked} /> Offer to partner shops
         (in their catalog)
       </label>
       <div className="field">

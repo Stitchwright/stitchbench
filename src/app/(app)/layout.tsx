@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
+import { fmtDateTime } from "@/lib/format";
+import { DEFAULT_TIME_ZONE } from "@/lib/time-zone";
 import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
 import { isPlatformAdmin } from "@/lib/shops";
@@ -9,7 +11,7 @@ import { hubOfflineSince } from "@/lib/hub";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const [shop, hub, retailPartners] = await Promise.all([
-    db.shop.findUnique({ where: { id: user.shopId }, select: { name: true, doesRepair: true, sellsRetail: true } }),
+    db.shop.findUnique({ where: { id: user.shopId }, select: { name: true, doesRepair: true, sellsRetail: true, timeZone: true } }),
     db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
@@ -44,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {offline && (
           <div className="px-4 pb-2">
             <span className="pill tone-wait text-xs" title="Sharing, the marketplace and messages to partner shops wait until the connection is back. Tickets, the register, customers and parts work as usual.">
-              Offline since {new Date(offline).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              Offline since {fmtDateTime(new Date(offline), shop?.timeZone ?? DEFAULT_TIME_ZONE, { hour: "numeric", minute: "2-digit" })}
             </span>
           </div>
         )}

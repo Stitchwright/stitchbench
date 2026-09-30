@@ -3,26 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageIcon, ExternalLink, X } from "lucide-react";
-import { getLocalFile, loadIndex, manualPath, openLocal, type LibraryIndex } from "@/lib/local-manuals";
+import { getLocalFile, loadIndex, manualSource, openLocal, type LibraryIndex } from "@/lib/local-manuals";
 
 // Figures show from the server when they've been saved (any device, any browser).
 // Otherwise they're drawn here from the tech's own copy of the manual and then saved,
 // so the next person, e.g. on a phone on the route, sees them without the manuals folder.
 
-type PdfDoc = { getPage(n: number): Promise<PdfPage>; numPages: number };
+type PdfDoc = { getPage(n: number): Promise<PdfPage>; numPages: number; destroy(): Promise<void> };
 type PdfPage = {
   getViewport(o: { scale: number; offsetX?: number; offsetY?: number }): { width: number; height: number };
   render(o: { canvas: HTMLCanvasElement | null; canvasContext?: CanvasRenderingContext2D; viewport: unknown }): { promise: Promise<void> };
 };
 
+// Manuals opened so far, the last few only: each stays in memory (and in the pdf.js worker) until it is let go.
 const docs = new Map<string, Promise<PdfDoc>>();
+const KEEP_DOCS = 3;
 let indexPromise: Promise<LibraryIndex | undefined> | null = null;
 
 async function loadDoc(path: string): Promise<PdfDoc> {
   let p = docs.get(path);
   if (!p) {
     p = (async () => {
-      const pdfjs = await import("pdfjs-dist");
+      // The legacy build: it carries the polyfills (Map.getOrInsertComputed and others) that browsers a few versions
+      // old, and tablets that don't update, lack. The worker copied to /public is the legacy one too.
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       const data = new Uint8Array(await (await getLocalFile(path)).arrayBuffer());
       // Plain 2D-canvas rendering (no OffscreenCanvas / ImageDecoder). The wasm decoders are what draw scanned
@@ -40,6 +44,12 @@ async function loadDoc(path: string): Promise<PdfDoc> {
     })();
     docs.set(path, p);
     p.catch(() => docs.delete(path));
+    // The oldest ones are closed, so a visit that opens figures from many manuals doesn't keep them all.
+    for (const [old, gone] of docs) {
+      if (docs.size <= KEEP_DOCS) break;
+      docs.delete(old);
+      gone.then((d) => d.destroy()).catch(() => {});
+    }
   }
   return p;
 }
@@ -109,13 +119,19 @@ export function ManualFigure({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [path, setPath] = useState<string | null | undefined>(undefined); // local file; undefined = still looking
+  const [exact, setExact] = useState(true); // false: a file with the same name, which may be another manual
   const [state, setState] = useState<"closed" | "drawing" | "open" | "error">("closed");
   const [whole, setWhole] = useState(false);
   const [showStored, setShowStored] = useState(false);
 
   useEffect(() => {
     indexPromise ??= loadIndex();
-    indexPromise.then((i) => manualPath(i, sourcePath ?? file)).then(setPath);
+    indexPromise
+      .then((i) => manualSource(i, sourcePath ?? file))
+      .then((m) => {
+        setPath(m ? m.path : null);
+        setExact(m?.exact ?? true);
+      });
   }, [file, sourcePath]);
 
   if (!page) return null;
@@ -128,7 +144,8 @@ export function ManualFigure({
       draw(canvas.current!, path, page!, fullPage ? [] : box, fullPage ? Math.max(width, 640) : width)
         .then(() => {
           setState("open");
-          if (!fullPage && !stored && sourcePath) saveOnline(canvas.current!, sourcePath, page!, box);
+          // Kept for every device only when it came from the manual the setting cites, not one that shares its name.
+          if (!fullPage && !stored && sourcePath && exact) saveOnline(canvas.current!, sourcePath, page!, box);
         })
         .catch((e) => {
           setState("error");

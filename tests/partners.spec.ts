@@ -104,6 +104,10 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await s.locator("#brand").fill("Janome");
   await s.locator("#model").fill("MC6700P");
   await s.locator("#serial").fill(`SN${run}`);
+  // A problem of only spaces gets past the browser's "required": refused, and no customer is left behind by it.
+  await s.locator("#problem").fill("   ");
+  await s.getByRole("button", { name: "Take it in and make the claim tag" }).click();
+  await expect(s.getByText(/Say what's wrong with it/)).toBeVisible();
   await s.locator("#problem").fill("Skipping stitches, loud clunk");
   await s.locator("#preApproved").fill("100");
   await s.getByRole("button", { name: "Take it in and make the claim tag" }).click();
@@ -112,6 +116,9 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await expect(s.getByText("Here, waiting for the repair shop").first()).toBeVisible();
   await s.getByRole("link", { name: "Print claim tag" }).click();
   await expect(s.getByText("CLAIM TAG", { exact: true })).toBeVisible();
+  // The corrected try made the only "Mary Stitch".
+  await s.goto("/customers?q=Mary%20Stitch");
+  await expect(s.getByRole("link", { name: "Mary Stitch" })).toHaveCount(1);
   await sync(s);
 
   // The repair shop has a ticket for it, from the partner, with only first name + initial.
@@ -148,6 +155,8 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await r.goto(ticketUrl);
   await expect(r.getByText(/customer approved up to \$120\.00/).first()).toBeVisible();
   await expect(r.locator("#status")).toHaveValue("ON_BENCH");
+  // "Collected" is the sewing shop's to mark (when its customer pays and takes the machine), not the bench's.
+  await expect(r.locator('#status option[value="COLLECTED"]')).toBeDisabled();
   await r.locator("#status").selectOption("READY_FOR_PICKUP");
   await expect(r.getByText("Status: Ready - customer called")).toBeVisible();
   await sync(r);
@@ -211,6 +220,11 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await expect(s.getByTestId("balance")).toHaveText("$0.00");
   await sync(s);
   await r.goto(`/partners/${linkId}/statement`);
+  // The sewing shop's word first; the repair shop confirms the money arrived.
+  await expect(r.getByTestId("balance")).toHaveText("$146.80");
+  await r.getByRole("button", { name: "Confirm it arrived" }).click();
+  await expect(r.getByText("Payment confirmed")).toBeVisible();
+  await r.reload();
   await expect(r.getByTestId("balance")).toHaveText("$0.00");
   await r.screenshot({ path: "test-results/partner-statement.png", fullPage: true });
   await s.goto("/repairs");
@@ -223,7 +237,9 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await expect(r.getByText("Partnership ended", { exact: true })).toBeVisible();
   await sync(r);
   await s.goto(`/partners/${linkId}`);
-  await expect(s.getByText(/partnership ended/)).toBeVisible();
+  await expect(s.getByText(/ · partnership ended/)).toBeVisible();
+  // The note typed when ending it reaches the other shop.
+  await expect(s.getByText(/End of the test/)).toBeVisible();
 });
 
 // Hosting: the repair shop makes a code in its own StitchBench; the host adds the sewing shop from Companies with it.

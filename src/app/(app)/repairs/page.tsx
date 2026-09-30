@@ -2,6 +2,8 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
+import { startOfMonth } from "@/lib/time-zone";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, Empty, JobStatusPill } from "@/components/ui";
 
 const GROUPS: { title: string; statuses: string[] }[] = [
@@ -15,6 +17,7 @@ const DONE = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
 /** The sewing shop's view of every machine it took in: where each one is, and what the customer owes. */
 export default async function Repairs() {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const jobs = await db.repairJob.findMany({
     where: { shopId: user.shopId, side: "retail" },
     include: { customer: { select: { name: true, phone: true } } },
@@ -24,7 +27,7 @@ export default async function Repairs() {
   const partners = new Map((await db.partnerLink.findMany({ where: { shopId: user.shopId } })).map((l) => [l.id, l.partnerName]));
   const open = jobs.filter((j) => !DONE.includes(j.status) || (j.status === "RETURNED_UNREPAIRED" && !j.pickedUpAt));
   const done = jobs.filter((j) => !open.includes(j)).slice(0, 50);
-  const commission = jobs.filter((j) => j.paidAt && j.paidAt >= new Date(new Date().getFullYear(), new Date().getMonth(), 1)).reduce((a, j) => a + (j.commissionCents ?? 0), 0);
+  const commission = jobs.filter((j) => j.paidAt && j.paidAt >= startOfMonth(tz)).reduce((a, j) => a + (j.commissionCents ?? 0), 0);
 
   const table = (list: typeof jobs) => (
     <div className="scroll-x">
@@ -59,7 +62,7 @@ export default async function Repairs() {
                 {j.paidAt && <span className="pill tone-done ml-1">paid</span>}
               </td>
               <td className="num text-right">{money(j.totalCents)}</td>
-              <td>{fmtDate(j.createdAt)}</td>
+              <td>{fmtDate(j.createdAt, tz)}</td>
             </tr>
           ))}
         </tbody>

@@ -26,7 +26,9 @@ cost) or hosted on Railway.
   - Printable invoices, an Invoices area (paid, unpaid, what's owed), and trade-account commission.
 - **Price list.** A printable price sheet built from the service menu, with categories and descriptions.
 - **Parts inventory.** Stock on hand, bins, reorder points, receiving, shelf counts, and automatic stock-out when
-  a part goes on a ticket.
+  a part goes on a ticket. A part is new, used or refurbished, and genuine, compatible or 3D printed; the customer's
+  invoice says when it is used, refurbished, compatible or 3D printed. A part the maker gave no number gets the
+  shop's own (SB-00001), which prints on labels and scans like any other.
 - **Companies and people.** Each company's data is separate, and every employee has their own login (owner,
   admin or tech).
 - **Community hub (StitchHub).** Shops share:
@@ -85,27 +87,50 @@ npm run dev
 
 ## Tests
 
+`npm run dev` serves on port 3000, but the specs go to `http://localhost:3100` (the Windows program's port) unless
+`E2E_BASE_URL` says otherwise. Point them at the dev server, or start it on 3100 (`npx next dev -p 3100`):
+
 ```bash
 npm run e2e:setup               # throwaway "E2E Test Shop" user
-PW_CHANNEL=chrome E2E_EMAIL=e2e@stitchbench.test E2E_PASSWORD=e2e-password-1 npm run e2e
+PW_CHANNEL=chrome E2E_BASE_URL=http://localhost:3000 E2E_EMAIL=e2e@stitchbench.test E2E_PASSWORD=e2e-password-1 npm run e2e
 ```
 
-`PW_CHANNEL=chrome` uses the installed Google Chrome instead of downloading a Playwright browser.
+`PW_CHANNEL=chrome` uses the installed Google Chrome; without it, install Playwright's browser first
+(`npx playwright install chromium`). The specs share one install (its hub connection, partnerships and E2E shop), so
+they run one file at a time, in order.
 
-Opt-in suites:
-- `tests/hub.spec.ts` needs a test StitchHub (`HUB_URL`, `HUB_JOIN_KEY`, `PDF_URL`).
-- `tests/shop-library.spec.ts` runs against the Windows program (`SHOP_LIBRARY=1`).
-- `tests/walkthrough.spec.ts` records the demo screens (`DEMO_DIR`).
+Two smaller suites run without the app or a browser (the Checks workflow runs both):
+- `npm run test:unit` tests the guards on "Download to library" (`tests/unit/`).
+- The Windows program's database code (migrations, reference data, backup and restore) runs against a scratch
+  Postgres whose user is a superuser: `cd desktop && npm ci --ignore-scripts`, then
+  `TEST_DATABASE_URL=postgresql://user:password@localhost:5433/postgres npm test`.
+
+Opt-in suites (each skips itself unless its variables are set):
+- `tests/hub.spec.ts` needs a test StitchHub (`HUB_URL`, `HUB_JOIN_KEY`, `PDF_URL`; `HUB_ADMIN_TOKEN` loads the catalog
+  links into a fresh hub).
+- `tests/market.spec.ts` needs a test StitchHub too (`HUB_URL`, `HUB_JOIN_KEY`; `HUB_ADMIN_TOKEN`). `inventory.spec.ts`
+  also checks the community's most-used parts when `HUB_URL` is set.
 - `tests/partners.spec.ts` plays both sides of a partnership on one install (`HUB_URL`; the E2E user must be in
   `PLATFORM_ADMIN_EMAILS`).
+- `tests/offline.spec.ts` checks the shop keeps working when the hub is unreachable. It runs in phases (`OFFLINE_PHASE`,
+  `OFFLINE_STATE`, `HUB_URL`, `PLATFORM_ADMIN_EMAILS`) that something has to cut the connection between:
+  `scripts/local-test/offline_test.ps1` does that on Windows (see `scripts/local-test/README.md`).
+- `tests/figure.spec.ts` draws a manual figure from a PDF (`MANUAL_DIR`, a folder holding the manual; optionally
+  `MANUAL_BRAND` and `MANUAL_MODEL`, default Janome MC6700P; the E2E shop needs a machine of that model).
+- `tests/shop-library.spec.ts` runs against the Windows program (`SHOP_LIBRARY=1`).
+- `tests/walkthrough.spec.ts` records the demo screens (`DEMO_DIR`).
+
+`scripts/local-test/` has the Windows helpers used for the review: a test hub, a test app, and a runner for the
+specs above.
 
 ## How the pieces fit
 
 - **Companies:** one **Shop** per business. Every business table carries `shopId`, and every query filters by the
   signed-in user's shop.
 - **Specs:** factory specs are shared reference data (`prisma/seed-data/`). They're matched to machines by a
-  normalized model key (`BES-1216AC` → `BES1216AC`). `npm start` applies database migrations and loads any
-  missing reference data before the server starts.
+  normalized model key (`BES-1216AC` → `BES1216AC`). `npm start` applies database migrations and loads the
+  shipped reference data when it is new or changed (a hash of each file is kept as the table's comment) before the
+  server starts.
 - **Manuals:**
   - Hosted: the browser keeps the folder handle and a file-name index in IndexedDB (`src/lib/local-manuals.ts`).
   - Windows program: the server reads `LIBRARY_DIR` (`src/lib/library-dir.ts`, `/api/library/*`).

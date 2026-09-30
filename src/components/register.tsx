@@ -7,7 +7,7 @@ import { Camera, CameraOff, Trash2, Undo2, Wrench, Plus } from "lucide-react";
 import { completeSale, findCustomers, findItems, itemByCode, pickupJobs, type CustomerHit, type PickupJob, type RegisterItem } from "@/actions/register";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 import { money, toCents } from "@/lib/format";
-import { discountBase, inEighths, lineNet, qtyText, saleTotals, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
+import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
 
 type CartLine = {
   key: string;
@@ -23,12 +23,16 @@ type CartLine = {
   unitPriceCents: number;
   /** The item has a price in inventory: only an owner or admin changes it. */
   priced?: boolean;
+  /** How many the shop had when the item was scanned (a warning when the sale asks for more). */
+  onHand?: number;
   discountPct: number;
   taxable: boolean;
   consigned?: boolean;
+  /** "used", "compatible, not genuine Brother"...: the receipt says it after the description. */
+  disclosure?: string;
 };
 
-const discountOf = (l: CartLine) => Math.round((Math.abs(Math.round(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
+const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
 // Names a sale for the server, so one sent twice is made once. getRandomValues works on the shop's plain-http network.
 const saleKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -71,6 +75,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
   const t = saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
+  const refund = t.total < 0;
+  // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
+  const problem = tenderProblem(t, tenders);
+  // Still to pay back on a refund: below 0 when too much was paid back.
+  const refundLeft = t.paid - t.total;
 
   useEffect(() => code.current?.focus(), []);
 
@@ -97,9 +106,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
           qty: sign * (it.unit === "yd" ? 1 : 1),
           unitPriceCents: it.priceCents ?? 0,
           priced: it.priceCents != null,
+          onHand: it.qtyOnHand,
           discountPct: 0,
           taxable: true,
           consigned: it.consigned,
+          disclosure: it.disclosure,
         },
       ];
     });
@@ -129,7 +140,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   }
 
   // A camera sees the same code many times a second: count it once. A handheld scanner's every scan counts.
-  const cam = useBarcodeCamera((c) => {
+  const { video: camVideo, on: camOn, start: camStart, stop: camStop } = useBarcodeCamera((c) => {
     if (c === last.current.code && Date.now() - last.current.at < 1500) return;
     last.current = { code: c, at: Date.now() };
     lookup(c);
@@ -182,9 +193,13 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
 
   function addTender(method: TenderMethod) {
     const typed = toCents(tenderAmt);
-    const amount = typed ?? (t.total < 0 ? t.total - t.paid : t.due);
+    // Something typed that isn't an amount is not the same as blank (which takes what is still to pay).
+    if (tenderAmt.trim() && typed == null) return toast.error("Type the amount like 12.50, or leave it blank.");
+    // A refund is paid out in negative amounts, whatever sign was typed. Blank is what is still to pay (back).
+    const amount = typed != null ? (refund ? -Math.abs(typed) : typed) : refund ? -refundLeft : t.due;
     if (!amount) return;
-    setTenders((x) => [...x, { method, amountCents: t.total < 0 ? -Math.abs(amount) : amount }]);
+    if (refund && amount > 0) return toast.error(`Already refunded ${money(amount)} too much. Take a payment off first.`);
+    setTenders((x) => [...x, { method, amountCents: amount }]);
     setTenderAmt("");
     // Ready for the next scan (a scanner's Enter on this button would take the payment again).
     code.current?.focus();
@@ -252,11 +267,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
             <input id="register-code" ref={code} autoComplete="off" className="input mono text-lg" placeholder="Scan, or type a number or words" />
           </div>
           <button className="btn btn-primary">Add</button>
-          <button type="button" className="btn" onClick={() => (cam.on ? cam.stop() : cam.start())}>
-            {cam.on ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {cam.on ? "Stop camera" : "Camera"}
+          <button type="button" className="btn" onClick={() => (camOn ? camStop() : camStart())}>
+            {camOn ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camOn ? "Stop camera" : "Camera"}
           </button>
         </form>
-        <video ref={cam.video} className={cam.on ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
+        <video ref={camVideo} className={camOn ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
@@ -308,6 +323,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                   >
                     <span>
                       <span className="mono">{it.partNumber}</span> {it.description}
+                      {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     </span>
                     <span className="num">
@@ -428,6 +444,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                   <td>
                     {l.partNumber && <span className="mono mr-1">{l.partNumber}</span>}
                     {l.description}
+                    {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">
@@ -449,6 +466,11 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                     />
                     {l.unit === "yd" &&
                       (inEighths(l.qty) ? <div className="muted text-xs">{qtyText(l.qty, "yd")}</div> : <div className="text-xs text-[var(--bad)]">Use 1/8 yd steps</div>)}
+                    {l.partId && l.onHand != null && l.qty > l.onHand && (
+                      <div className="text-xs text-[var(--bad)]">
+                        Only {qtyText(Math.max(0, l.onHand), l.unit)} {l.consigned ? "left on the shelf" : "on hand"}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <input
@@ -458,7 +480,13 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       // A tech can type the price of an item that has none, not change one that has.
                       disabled={(!canSell && l.priced) || Boolean(l.repairJobId)}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
-                      onBlur={(e) => setLine(l.key, { unitPriceCents: toCents(e.target.value) ?? l.unitPriceCents })}
+                      onBlur={(e) => {
+                        const cents = toCents(e.target.value);
+                        if (cents == null) {
+                          toast.error("Type the price like 12.50.");
+                          e.target.value = (l.unitPriceCents / 100).toFixed(2);
+                        } else setLine(l.key, { unitPriceCents: cents });
+                      }}
                       onKeyDown={backToScan}
                     />
                   </td>
@@ -575,7 +603,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
         <div className="card card-pad space-y-2">
           <div className="field">
             <label htmlFor="tender-amount" className="label">
-              {t.total < 0 ? "Refund amount" : "Amount tendered"} (blank = {money(Math.abs(t.total < 0 ? t.total - t.paid : t.due))})
+              {refund ? "Refund amount" : "Amount tendered"} (blank = {money(refund ? Math.max(0, refundLeft) : t.due)})
             </label>
             <input id="tender-amount" inputMode="decimal" className="input num" value={tenderAmt} onChange={(e) => setTenderAmt(e.target.value)} />
           </div>
@@ -602,7 +630,12 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
             </ul>
           )}
           {t.total >= 0 && t.due > 0 && tenders.length > 0 && <Row k="Still due" v={money(t.due)} />}
-          {t.change > 0 && (
+          {problem && tenders.length > 0 && (refund || t.due === 0) && (
+            <p className="text-sm text-[var(--bad)]" role="alert">
+              {problem}
+            </p>
+          )}
+          {t.change > 0 && !problem && (
             <div className="flex justify-between text-lg font-bold text-[var(--ok)]">
               <span>Change</span>
               <span className="num">{money(t.change)}</span>
@@ -611,7 +644,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
           <button
             type="button"
             className="btn btn-primary w-full"
-            disabled={busy || !lines.length || (t.total >= 0 ? t.due > 0 : t.paid !== t.total)}
+            disabled={busy || !lines.length || Boolean(problem)}
             onClick={finish}
           >
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}

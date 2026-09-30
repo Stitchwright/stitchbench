@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { fmtDate, money, ticketNo } from "@/lib/format";
-import type { JobEvent, JobLine } from "@/lib/partners";
+import { fmtDate, fmtDateTime, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
+import { repairDue, type JobEvent, type JobLine } from "@/lib/partners";
 import { JOB_STATUS_LABEL } from "@/lib/constants";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { PageHeader, Section, KV, JobStatusPill } from "@/components/ui";
@@ -13,6 +14,7 @@ import { answerEstimate, cancelJob, markPickedUp } from "@/actions/repair-jobs";
 
 export default async function RepairJobPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const j = await db.repairJob.findUnique({
     where: { shopId_id: { shopId: user.shopId, id } },
@@ -23,6 +25,9 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
   const lines = (j.lines as JobLine[] | null) ?? [];
   const events = (j.events as JobEvent[]) ?? [];
   const ready = ["READY_FOR_PICKUP", "READY_IN_TRUCK", "RETURNED_UNREPAIRED"].includes(j.status);
+  // What the register's Repair pickup line asks for: less a deposit paid straight to the repair shop.
+  const due = repairDue(j);
+  const paidSoFar = (j.repairPaidCents ?? 0) + (j.paidCents ?? 0);
 
   return (
     <div className="space-y-6">
@@ -90,17 +95,18 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
       {ready && !j.pickedUpAt && (
         <Section title="Handing it back">
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            {!j.paidAt && j.totalCents != null && j.totalCents > 0 ? (
+            {due > 0 && (!j.paidAt || j.paidCents) ? (
               <>
                 <span>
-                  The customer owes <strong>{money(j.totalCents)}</strong>. Ring it up on the register (Repair pickup).
+                  The customer owes <strong>{money(due)}</strong>
+                  {paidSoFar > 0 && ` (${money(paidSoFar)} of the ${money(j.totalCents)} bill is paid)`}. Ring it up on the register (Repair pickup).
                 </span>
                 <Link href="/register" className="btn btn-primary">
                   Register
                 </Link>
               </>
             ) : (
-              <span>{j.paidAt ? `Paid ${fmtDate(j.paidAt)}.` : "Nothing to pay."}</span>
+              <span>{j.paidAt ? `Paid ${fmtDate(j.paidAt, tz)}.` : "Nothing to pay."}</span>
             )}
             <ActionButton action={markPickedUp.bind(null, j.id)} confirm="Tap again: the customer has it" success="Marked as picked up">
               Customer took it (no payment here)
@@ -141,6 +147,12 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
                 <span>Customer pays</span>
                 <span className="num">{money(j.totalCents)}</span>
               </li>
+              {(j.repairPaidCents ?? 0) > 0 && (
+                <li className="muted flex justify-between">
+                  <span>Paid to the repair shop</span>
+                  <span className="num">{money(j.repairPaidCents)}</span>
+                </li>
+              )}
               <li className="muted flex justify-between">
                 <span>Your commission ({j.commissionPct}%)</span>
                 <span className="num">{money(j.commissionCents ?? 0)}</span>
@@ -153,7 +165,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
 
       {j.machine && (
         <Section title="Photos">
-          <PhotoStrip machineId={j.machine.id} photos={j.machine.photos} />
+          <PhotoStrip machineId={j.machine.id} photos={j.machine.photos} timeZone={tz} />
         </Section>
       )}
 
@@ -161,7 +173,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
         <ul className="space-y-1 text-sm">
           {events.map((e, i) => (
             <li key={i}>
-              {new Date(e.at).toLocaleString("en-US")} · {e.status ? (JOB_STATUS_LABEL[e.status as TicketStatus] ?? e.status) : ""} {e.note ?? ""}
+              {fmtDateTime(e.at, tz)} · {e.status ? (JOB_STATUS_LABEL[e.status as TicketStatus] ?? e.status) : ""} {e.note ?? ""}
             </li>
           ))}
         </ul>

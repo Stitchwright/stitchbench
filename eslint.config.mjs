@@ -13,6 +13,11 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "src/generated/**",
+    // Copied from pdfjs-dist at install; the Windows program's bundled server and installers.
+    "public/pdf.worker.min.mjs",
+    "public/pdfjs/**",
+    "desktop/server/**",
+    "desktop/dist*/**",
   ]),
 ]);
 

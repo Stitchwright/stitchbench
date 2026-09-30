@@ -8,8 +8,10 @@ import { PartFields } from "@/components/part-fields";
 import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
 import { createPart } from "@/actions/parts";
 import { KIND_LABEL } from "@/lib/parts";
+import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
-import type { PartKind } from "@/generated/prisma/enums";
+import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 const KINDS = [
   { key: "", label: "All" },
@@ -29,38 +31,47 @@ export default async function Parts({
     q?: string;
     low?: string;
     kind?: string;
+    condition?: string;
+    origin?: string;
     new?: string;
   }>;
 }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, doesRepair: true } });
   const tabs = KINDS.filter((x) => !("retail" in x) || shop.sellsRetail);
-  const { q, low, kind: k, new: newCode } = await searchParams;
+  const { q, low, kind: k, condition: cond, origin: made, new: newCode } = await searchParams;
   const term = q?.trim();
   const kind = KINDS.some((x) => x.key && x.key === k)
     ? (k as PartKind)
     : undefined;
-  let parts = await db.part.findMany({
-    where: {
-      shopId: user.shopId,
-      ...(kind ? { kind } : {}),
-      ...(term
-        ? {
-            OR: [
-              { partNumber: { contains: term, mode: "insensitive" } },
-              { description: { contains: term, mode: "insensitive" } },
-              { fits: { contains: term, mode: "insensitive" } },
-              { brand: { contains: term, mode: "insensitive" } },
-              { altNumbers: { has: term } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { partNumber: "asc" },
-    take: 1000,
-  });
-  if (low === "1") parts = parts.filter((p) => p.qtyOnHand <= p.reorderAt);
-  const value = parts.reduce(
+  const condition = CONDITIONS.find((c) => c === cond) as PartCondition | undefined;
+  const origin = ORIGINS.find((o) => o === made) as PartOrigin | undefined;
+  const where: Prisma.PartWhereInput = {
+    shopId: user.shopId,
+    ...(kind ? { kind } : {}),
+    ...(condition ? { condition } : {}),
+    ...(origin ? { origin } : {}),
+    // Low stock is filtered in the database, so it isn't limited to the first rows of the list.
+    ...(low === "1" ? { qtyOnHand: { lte: db.part.fields.reorderAt } } : {}),
+    ...(term
+      ? {
+          OR: [
+            { partNumber: { contains: term, mode: "insensitive" } },
+            { description: { contains: term, mode: "insensitive" } },
+            { fits: { contains: term, mode: "insensitive" } },
+            { brand: { contains: term, mode: "insensitive" } },
+            { altNumbers: { has: term } },
+          ],
+        }
+      : {}),
+  };
+  const SHOWN = 1000;
+  // The count and the shelf value cover every matching item, not only the ones listed.
+  const [parts, all] = await Promise.all([
+    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN }),
+    db.part.findMany({ where, select: { costCents: true, qtyOnHand: true } }),
+  ]);
+  const value = all.reduce(
     (s, p) => s + (p.costCents ?? 0) * Math.max(0, p.qtyOnHand),
     0,
   );
@@ -69,7 +80,7 @@ export default async function Parts({
     <div className="space-y-6">
       <PageHeader
         title={shop.doesRepair ? "Parts and accessories" : "Inventory"}
-        sub={`${parts.length} items · ${money(value)} on the shelf at cost`}
+        sub={`${all.length} items${all.length > parts.length ? ` (the first ${parts.length} listed: search to narrow it down)` : ""} · ${money(value)} on the shelf at cost`}
         actions={
           <>
             <Link href="/parts/import" className="btn">
@@ -91,7 +102,7 @@ export default async function Parts({
         {tabs.map((x) => (
           <Link
             key={x.key}
-            href={`/parts?${new URLSearchParams({ ...(x.key ? { kind: x.key } : {}), ...(term ? { q: term } : {}) })}`}
+            href={`/parts?${new URLSearchParams({ ...(x.key ? { kind: x.key } : {}), ...(term ? { q: term } : {}), ...(condition ? { condition } : {}), ...(origin ? { origin } : {}) })}`}
             className={`btn btn-sm ${(kind ?? "") === x.key ? "btn-primary" : ""}`}
             aria-current={(kind ?? "") === x.key ? "page" : undefined}
           >
@@ -111,6 +122,28 @@ export default async function Parts({
           className="input max-w-md"
           placeholder="Part number, description, fits model"
         />
+        <label htmlFor="pcond" className="sr-only">
+          Condition
+        </label>
+        <select id="pcond" name="condition" defaultValue={condition ?? ""} className="select w-40">
+          <option value="">Any condition</option>
+          {CONDITIONS.map((c) => (
+            <option key={c} value={c}>
+              {CONDITION_NAME[c]}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="porigin" className="sr-only">
+          Made by
+        </label>
+        <select id="porigin" name="origin" defaultValue={origin ?? ""} className="select w-40">
+          <option value="">Made by anyone</option>
+          {ORIGINS.map((o) => (
+            <option key={o} value={o}>
+              {ORIGIN_NAME[o]}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -202,6 +235,11 @@ export default async function Parts({
                     </td>
                     <td>
                       {p.description}
+                      {partTags(p).map((t) => (
+                        <span key={t} className="pill tone-wait ml-1">
+                          {t}
+                        </span>
+                      ))}
                       <div className="muted text-xs">
                         {[
                           p.kind !== "PART" ? KIND_LABEL[p.kind] : null,

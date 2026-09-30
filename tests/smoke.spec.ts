@@ -27,6 +27,27 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   await page.getByRole("button", { name: "Add part" }).click();
   await expect(page.getByText("3 on hand")).toBeVisible();
 
+  // A part the maker gave no number: left blank, the shop numbers it. Used and compatible, so the bill says so.
+  await page.goto("/parts");
+  await page.getByLabel("Description", { exact: true }).fill("Touch screen (test)");
+  await page.getByLabel("Brand", { exact: true }).fill("Brother");
+  await page.locator("#condition").selectOption("USED");
+  await page.locator("#origin").selectOption("COMPATIBLE");
+  await page.getByLabel("Price each ($, blank = cost + markup)").fill("45.00");
+  await page.getByLabel("Quantity on hand").fill("2");
+  await page.getByRole("button", { name: "Add part" }).click();
+  await expect(page.getByText("2 on hand")).toBeVisible();
+  const shopNo = ((await page.locator("h1 .mono").textContent()) ?? "").trim();
+  expect(shopNo).toMatch(/^S[BS]-\d{5}$/);
+  await expect(page.getByText("Shop number (the maker gives none)")).toBeVisible();
+  await expect(page.locator("h1 + div")).toContainText("Used");
+  await expect(page.locator("h1 + div")).toContainText("Compatible");
+  // Its label prints the tag under the description.
+  const screenId = page.url().split("/").pop()!;
+  await page.goto(`/labels?id=${screenId}&format=thermal`);
+  await expect(page.locator(".label .pn")).toHaveText(shopNo);
+  await expect(page.locator(".label .tag")).toHaveText("USED · COMPATIBLE");
+
   // Intake
   await page.goto("/tickets/new");
   await page.getByLabel("New customer name").fill("E2E Customer");
@@ -61,6 +82,12 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   await page.getByLabel("Part", { exact: true }).fill(pn);
   await page.getByRole("button", { name: "Add part" }).click();
   await expect(page.getByText(`${pn} Bobbin case (test)`)).toBeVisible();
+  // The shop number scans and adds like any number; the line says what the part is, written when it is added.
+  const screenLine = `${shopNo} Touch screen (test) (used, compatible, not genuine Brother)`;
+  await expect(page.getByLabel("Part", { exact: true })).toHaveValue(""); // the form clears after the first part
+  await page.getByLabel("Part", { exact: true }).fill(shopNo);
+  await page.getByRole("button", { name: "Add part" }).click();
+  await expect(page.getByText(screenLine)).toBeVisible();
 
   // Photo
   await page.locator('input[type="file"][capture]').first().setInputFiles({ name: "m.png", mimeType: "image/png", buffer: png });
@@ -69,6 +96,14 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   // Payment of the balance
   await page.getByRole("button", { name: "Record payment" }).click();
   await expect(page.getByText("Payment recorded")).toBeVisible();
+
+  // Status round trip: collected closes the ticket, on the bench opens it again (each saved, the page shows it).
+  await page.locator("#status").selectOption("COLLECTED");
+  await expect(page.getByText("Status: Collected by customer")).toBeVisible();
+  await page.reload();
+  await expect(page.locator("#status")).toHaveValue("COLLECTED");
+  await page.locator("#status").selectOption("ON_BENCH");
+  await expect(page.getByText("Status: On bench")).toBeVisible();
 
   // Accessories returned
   await page.getByLabel("Power cord", { exact: true }).check();
@@ -87,6 +122,8 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   // Invoice
   await page.goto(ticketUrl + "/invoice");
   await expect(page.getByText("Balance due")).toBeVisible();
+  // The customer's invoice says the part is used and not the maker's.
+  await expect(page.getByText(screenLine)).toBeVisible();
 
   // Stock went down
   await page.goto("/parts?q=" + pn);

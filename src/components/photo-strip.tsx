@@ -4,12 +4,13 @@ import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { deletePhoto, updatePhoto } from "@/actions/records";
 import { PHOTO_KINDS, PHOTO_KIND_LABEL } from "@/lib/constants";
 import type { PhotoKind } from "@/generated/prisma/enums";
+import { fmtDate } from "@/lib/format";
 
 type Photo = { id: string; caption: string | null; kind: PhotoKind; createdAt: Date; ticketId: string | null };
 
 export const PHOTO_SELECT = { id: true, caption: true, kind: true, createdAt: true, ticketId: true } as const;
 
-export function PhotoStrip({ machineId, ticketId, photos }: { machineId: string; ticketId?: string; photos: Photo[] }) {
+export function PhotoStrip({ machineId, ticketId, photos, timeZone }: { machineId: string; ticketId?: string; photos: Photo[]; timeZone: string }) {
   const groups = PHOTO_KINDS.map((k) => ({ kind: k, items: photos.filter((p) => p.kind === k) })).filter((g) => g.items.length);
   return (
     <div className="space-y-4">
@@ -32,7 +33,7 @@ export function PhotoStrip({ machineId, ticketId, photos }: { machineId: string;
                   </a>
                   {p.caption && <p className="mt-1 text-xs">{p.caption}</p>}
                   <div className="mt-1 flex items-center justify-between gap-1">
-                    <span className="muted text-xs">{p.createdAt.toLocaleDateString()}</span>
+                    <span className="muted text-xs">{fmtDate(p.createdAt, timeZone)}</span>
                     <ActionButton action={deletePhoto.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Delete?" title="Delete photo">
                       <Trash2 size={12} aria-label="Delete" />
                     </ActionButton>

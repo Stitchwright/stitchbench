@@ -9,5 +9,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   // This install's own copy first, then the community hub's.
   const img = (await db.figureImage.findUnique({ where: { id }, select: { data: true, mime: true } })) ?? (await hubPicture("figure", id).catch(() => null));
   if (!img) return new Response("Not found", { status: 404 });
-  return imageResponse(img.data, img.mime);
+  // Not kept for long: a wrong figure can be replaced under the same address.
+  return imageResponse(img.data, img.mime, "private, max-age=3600");
 }

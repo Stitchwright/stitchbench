@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { CustomerForm } from "@/components/customer-form";
 import { saveCustomer } from "@/actions/records";
+import { customerIdsByPhone } from "@/lib/phone-search";
 
 export default async function Customers({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
-  const { q } = await searchParams;
+  const { q } = firstValues(await searchParams);
   const term = q?.trim();
+  const phoneIds = term ? await customerIdsByPhone(user.shopId, term) : [];
   const customers = await db.customer.findMany({
     where: {
       shopId: user.shopId,
@@ -17,6 +20,7 @@ export default async function Customers({ searchParams }: { searchParams: Promis
             OR: [
               { name: { contains: term, mode: "insensitive" } },
               { phone: { contains: term } },
+              { id: { in: phoneIds } },
               { email: { contains: term, mode: "insensitive" } },
               { code: { contains: term, mode: "insensitive" } },
             ],

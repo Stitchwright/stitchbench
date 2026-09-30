@@ -11,5 +11,7 @@ export async function register() {
   setTimeout(run, 20_000);
   g.hubTimer = setInterval(run, 10 * 60_000);
   setTimeout(partners, 10_000);
-  g.partnerTimer = setInterval(partners, Number(process.env.PARTNER_SYNC_SECONDS ?? 60) * 1000);
+  // Blank, a word ("1m") or 0 would make Node run the timer about every millisecond: anything under 10 s means the usual 60.
+  const every = Number(process.env.PARTNER_SYNC_SECONDS);
+  g.partnerTimer = setInterval(partners, (Number.isFinite(every) && every >= 10 ? every : 60) * 1000);
 }
