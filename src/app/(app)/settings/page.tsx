@@ -52,7 +52,7 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
               Sync now
             </ActionButton>
             {admin && (
-              <ActionButton action={leaveCommunityHub} className="btn btn-sm btn-danger" confirm="Leave? Your listings come off the marketplace" success="Disconnected">
+              <ActionButton action={leaveCommunityHub} className="btn btn-sm btn-danger" confirm="Disconnect from the hub? Your listings come off the marketplace." success="Disconnected">
                 Leave the hub
               </ActionButton>
             )}
