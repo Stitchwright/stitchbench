@@ -42,6 +42,12 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
         beep(false);
         return;
       }
+      if (r.ok && mode === "count" && r.part.consigned) {
+        // A partner's consigned stock is counted by the partner (saveCounts skips it).
+        setLog((l) => [{ at: Date.now(), ok: false, text: `${r.part.partNumber} is a partner's consigned stock: it isn't counted here`, code, partId: r.part.id }, ...l].slice(0, 50));
+        beep(false);
+        return;
+      }
       if (r.ok && mode === "count") {
         setCounts((prev) => {
           const next = new Map(prev);

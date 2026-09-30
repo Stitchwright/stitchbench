@@ -134,6 +134,7 @@ export function ImportItems() {
             if (f) {
               setText(await f.text());
               setMap(null);
+              setResult(null);
             }
           }}
         />
@@ -249,7 +250,8 @@ export function ImportItems() {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy || !toImport.length || m.partNumber < 0 && m.barcode < 0}
+            // Once imported, the same sheet can't be sent again (it would receive every quantity twice) until it's changed.
+            disabled={busy || result !== null || !toImport.length || (m.partNumber < 0 && m.barcode < 0)}
             onClick={async () => {
               setBusy(true);
               try {
@@ -257,7 +259,7 @@ export function ImportItems() {
                 if ("error" in r) toast.error(r.error);
                 else {
                   const skipped = r.skipped + unreadable.length;
-                  const msg = `Imported: ${r.added} added, ${r.updated} updated, ${skipped} skipped${unreadable.length ? ` (${unreadable.length} with a quantity that couldn't be read)` : ""}`;
+                  const msg = `Imported: ${r.added} added, ${r.updated} updated, ${skipped} skipped${unreadable.length ? ` (${unreadable.length} with a quantity that couldn't be read)` : ""}${r.unmatched?.length ? `. Not imported, because more than one item already has the number: ${r.unmatched.slice(0, 10).join(", ")}${r.unmatched.length > 10 ? ` and ${r.unmatched.length - 10} more` : ""}` : ""}`;
                   setResult(msg);
                   toast.success(msg);
                 }
@@ -268,7 +270,7 @@ export function ImportItems() {
               }
             }}
           >
-            {busy ? "Importing..." : `Import ${toImport.length} items`}
+            {busy ? "Importing..." : result !== null ? "Imported: paste another sheet" : `Import ${toImport.length} items`}
           </button>
           {result && (
             <p role="status" className="text-sm">

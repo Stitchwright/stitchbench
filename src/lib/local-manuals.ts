@@ -74,9 +74,26 @@ async function getRoot(): Promise<DirHandle | undefined> {
   return idbGet<DirHandle>("root");
 }
 
+/**
+ * Whether the folder may be read (or written). Asking needs a fresh click: the browser refuses once the click has been
+ * used (e.g. by opening a tab) or has expired (a few seconds), and that counts as not allowed.
+ */
 async function ensurePermission(h: DirHandle, mode: "read" | "readwrite"): Promise<boolean> {
-  if ((await h.queryPermission({ mode })) === "granted") return true;
-  return (await h.requestPermission({ mode })) === "granted";
+  try {
+    if ((await h.queryPermission({ mode })) === "granted") return true;
+    return (await h.requestPermission({ mode })) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ask for write access to the manuals folder while the Save click still counts, before the slow work (building a
+ * scanned PDF) that saveToLibrary follows. Without it the save falls back to a download.
+ */
+export async function askToSaveToLibrary(): Promise<void> {
+  const root = await getRoot().catch(() => undefined);
+  if (root) await ensurePermission(root, "readwrite");
 }
 
 async function walk(dir: DirHandle, prefix: string, out: IndexedFile[], onProgress?: (n: number) => void, depth = 0) {
@@ -202,7 +219,14 @@ export async function openLocal(path: string, page?: number | null): Promise<voi
     window.open(serverUrl(path) + (page ? `#page=${page}` : ""), "_blank");
     return;
   }
-  // Open the tab first, while the click still counts as a user action, then point it at the file.
+  // Browsers re-ask for the folder after a restart. Ask before opening the tab: opening it uses up the click, and
+  // asking without one fails.
+  if (!sessionFiles.has(path)) {
+    const root = await getRoot().catch(() => undefined);
+    if (root && !(await ensurePermission(root, "read"))) throw new Error("The browser was not allowed to read the manuals folder. Click Open again and allow it.");
+  }
+  // Open the tab while the click still counts as a user action, then point it at the file (the same tab if the browser
+  // blocked a new one after asking).
   const w = window.open("", "_blank");
   try {
     const f = await fileAt(path);
