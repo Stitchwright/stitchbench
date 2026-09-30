@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
+import { sameText } from "@/lib/input";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { inEighths, lineNet, orderDiscountShares, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
@@ -54,7 +55,7 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   if (!c) return null;
   const key = numberKey(c);
   const matches = await db.part.findMany({
-    where: { shopId: user.shopId, OR: [{ partNumber: { equals: c, mode: "insensitive" } }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
+    where: { shopId: user.shopId, OR: [{ partNumber: sameText(c) }, ...(key.length >= 3 ? [{ numberKeys: { has: key } }] : [])] },
     take: 20,
   });
   const lc = c.toLowerCase();

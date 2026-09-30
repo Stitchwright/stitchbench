@@ -10,6 +10,7 @@ import { createPart } from "@/actions/parts";
 import { KIND_LABEL } from "@/lib/parts";
 import { qtyText } from "@/lib/register-math";
 import type { PartKind } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 const KINDS = [
   { key: "", label: "All" },
@@ -40,27 +41,30 @@ export default async function Parts({
   const kind = KINDS.some((x) => x.key && x.key === k)
     ? (k as PartKind)
     : undefined;
-  let parts = await db.part.findMany({
-    where: {
-      shopId: user.shopId,
-      ...(kind ? { kind } : {}),
-      ...(term
-        ? {
-            OR: [
-              { partNumber: { contains: term, mode: "insensitive" } },
-              { description: { contains: term, mode: "insensitive" } },
-              { fits: { contains: term, mode: "insensitive" } },
-              { brand: { contains: term, mode: "insensitive" } },
-              { altNumbers: { has: term } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { partNumber: "asc" },
-    take: 1000,
-  });
-  if (low === "1") parts = parts.filter((p) => p.qtyOnHand <= p.reorderAt);
-  const value = parts.reduce(
+  const where: Prisma.PartWhereInput = {
+    shopId: user.shopId,
+    ...(kind ? { kind } : {}),
+    // Low stock is filtered in the database, so it isn't limited to the first rows of the list.
+    ...(low === "1" ? { qtyOnHand: { lte: db.part.fields.reorderAt } } : {}),
+    ...(term
+      ? {
+          OR: [
+            { partNumber: { contains: term, mode: "insensitive" } },
+            { description: { contains: term, mode: "insensitive" } },
+            { fits: { contains: term, mode: "insensitive" } },
+            { brand: { contains: term, mode: "insensitive" } },
+            { altNumbers: { has: term } },
+          ],
+        }
+      : {}),
+  };
+  const SHOWN = 1000;
+  // The count and the shelf value cover every matching item, not only the ones listed.
+  const [parts, all] = await Promise.all([
+    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN }),
+    db.part.findMany({ where, select: { costCents: true, qtyOnHand: true } }),
+  ]);
+  const value = all.reduce(
     (s, p) => s + (p.costCents ?? 0) * Math.max(0, p.qtyOnHand),
     0,
   );
@@ -69,7 +73,7 @@ export default async function Parts({
     <div className="space-y-6">
       <PageHeader
         title={shop.doesRepair ? "Parts and accessories" : "Inventory"}
-        sub={`${parts.length} items · ${money(value)} on the shelf at cost`}
+        sub={`${all.length} items${all.length > parts.length ? ` (the first ${parts.length} listed: search to narrow it down)` : ""} · ${money(value)} on the shelf at cost`}
         actions={
           <>
             <Link href="/parts/import" className="btn">

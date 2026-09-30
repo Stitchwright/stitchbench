@@ -7,6 +7,7 @@ import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { partKeys, splitList } from "@/lib/parts";
+import { assertId, assertIds, sameText } from "@/lib/input";
 import type { PartKind } from "@/generated/prisma/enums";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
@@ -47,11 +48,21 @@ function partData(formData: FormData) {
 export const createPart = safe(async function createPart(formData: FormData) {
   const user = await requireUser();
   const data = partData(formData);
-  // The same number in another case is the same part (the scanner treats them as one).
-  const exists = await db.part.findFirst({ where: { shopId: user.shopId, partNumber: { equals: data.partNumber, mode: "insensitive" } } });
+  // The same number in another case is the same part (the scanner treats them as one). A partner's consigned stock
+  // doesn't count: the shop's own stock of that number is kept apart as "<number> (own)", as the import does.
+  const same = await db.part.findMany({
+    where: { shopId: user.shopId, OR: [{ partNumber: sameText(data.partNumber) }, { partNumber: sameText(`${data.partNumber} (own)`) }] },
+    select: { id: true, partNumber: true, consignLinkId: true },
+  });
+  const exists = same.find((p) => !p.consignLinkId);
   const qty = qtyValue(formData.get("qtyOnHand"));
   if (exists && qty) throw new UserError(`${exists.partNumber} is already in inventory. Open it and use Receive stock to add ${qty}.`);
   if (exists) redirect(`/parts/${exists.id}`);
+  if (same.length) {
+    data.altNumbers = [...new Set([data.partNumber, ...data.altNumbers])];
+    data.partNumber = `${data.partNumber} (own)`;
+    data.numberKeys = partKeys(data.partNumber, data.altNumbers);
+  }
   const p = await db.part.create({
     data: {
       ...data,
@@ -65,11 +76,12 @@ export const createPart = safe(async function createPart(formData: FormData) {
 });
 
 export const updatePart = safe(async function updatePart(partId: string, formData: FormData) {
+  assertId(partId);
   const user = await requireUser();
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
   if (!p) throw new UserError("Part not found.");
   const data = partData(formData);
-  const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: { equals: data.partNumber, mode: "insensitive" } } });
+  const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: sameText(data.partNumber) } });
   if (clash) throw new UserError(`${clash.partNumber} is already another item in inventory.`);
   await db.part.update({ where: { id: partId }, data });
   revalidatePath(`/parts/${partId}`);
@@ -78,9 +90,13 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
 
 /** Receive stock (+) or correct the count (set to what's on the shelf). */
 export const moveStock = safe(async function moveStock(partId: string, formData: FormData) {
+  assertId(partId);
   const user = await requireUser();
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
   if (!p) throw new UserError("Part not found.");
+  // A partner's consigned stock is placed, counted and taken back by the partner; receiving the shop's own units into
+  // it would pay the partner for them when they sell.
+  if (p.consignLinkId) throw new UserError(`${p.partNumber} is a partner's consigned stock: its stock comes and goes through the partnership. Add your own stock as a separate item.`);
   const mode = str(formData.get("mode"));
   const raw = Number(str(formData.get("qty")) ?? "NaN");
   if (!Number.isFinite(raw)) throw new UserError("Enter a quantity.");
@@ -109,7 +125,9 @@ export const moveStock = safe(async function moveStock(partId: string, formData:
 
 // ---------- where to buy (this shop's own suppliers for a part) ----------
 
+/** The part, if it's this shop's. PartSource has no shopId, so every write below is scoped by the id this returns. */
 async function ownPart(partId: string) {
+  assertId(partId);
   const user = await requireUser();
   const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId }, select: { id: true } });
   if (!p) throw new UserError("Part not found.");
@@ -117,30 +135,32 @@ async function ownPart(partId: string) {
 }
 
 export const addPartSource = safe(async function addPartSource(partId: string, formData: FormData) {
-  await ownPart(partId);
+  const { id } = await ownPart(partId);
   const vendor = str(formData.get("vendor"));
   const url = str(formData.get("url"));
   if (!vendor) throw new UserError("Enter where you buy it.");
   if (url && !/^https?:\/\//i.test(url)) throw new UserError("The link must start with http:// or https://");
   const preferred = formData.get("preferred") === "on";
   await db.$transaction([
-    ...(preferred ? [db.partSource.updateMany({ where: { partId }, data: { preferred: false } })] : []),
-    db.partSource.create({ data: { partId, vendor, url, priceCents: toCents(formData.get("price")), note: str(formData.get("note")), preferred } }),
+    ...(preferred ? [db.partSource.updateMany({ where: { partId: id }, data: { preferred: false } })] : []),
+    db.partSource.create({ data: { partId: id, vendor, url, priceCents: toCents(formData.get("price")), note: str(formData.get("note")), preferred } }),
   ]);
-  revalidatePath(`/parts/${partId}`);
+  revalidatePath(`/parts/${id}`);
 });
 
 export const removePartSource = safe(async function removePartSource(partId: string, sourceId: string) {
-  await ownPart(partId);
-  await db.partSource.deleteMany({ where: { id: sourceId, partId } });
-  revalidatePath(`/parts/${partId}`);
+  assertIds(partId, sourceId);
+  const { id } = await ownPart(partId);
+  await db.partSource.deleteMany({ where: { id: sourceId, partId: id } });
+  revalidatePath(`/parts/${id}`);
 });
 
 export const preferPartSource = safe(async function preferPartSource(partId: string, sourceId: string) {
-  await ownPart(partId);
+  assertIds(partId, sourceId);
+  const { id } = await ownPart(partId);
   await db.$transaction([
-    db.partSource.updateMany({ where: { partId }, data: { preferred: false } }),
-    db.partSource.updateMany({ where: { id: sourceId, partId }, data: { preferred: true } }),
+    db.partSource.updateMany({ where: { partId: id }, data: { preferred: false } }),
+    db.partSource.updateMany({ where: { id: sourceId, partId: id }, data: { preferred: true } }),
   ]);
-  revalidatePath(`/parts/${partId}`);
+  revalidatePath(`/parts/${id}`);
 });

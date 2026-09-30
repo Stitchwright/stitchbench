@@ -3,6 +3,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { sessionUser } from "@/lib/session";
 import { libraryDir, resolveInLibrary } from "@/lib/library-dir";
+import { formUpTo } from "@/lib/read-body";
 
 const MAX_UPLOAD = 150 * 1024 * 1024;
 
@@ -37,9 +38,10 @@ export async function POST(req: Request) {
   if (!(await sessionUser())) return new Response("Sign in first.", { status: 401 });
   const root = libraryDir();
   if (!root) return new Response("This StitchBench doesn't serve a manual library.", { status: 404 });
-  // Refuse an oversized upload before reading it into memory.
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_UPLOAD + 1_000_000) return new Response("That PDF is too large.", { status: 413 });
-  const form = await req.formData();
+  // Refuse an oversized upload while reading it (a chunked upload has no Content-Length to check first).
+  const form = await formUpTo(req, MAX_UPLOAD + 1_000_000);
+  if (form === "too large") return new Response("That PDF is too large.", { status: 413 });
+  if (!form) return new Response("No PDF received.", { status: 400 });
   const file = form.get("file");
   if (!(file instanceof Blob) || file.size === 0) return new Response("No PDF received.", { status: 400 });
   if (file.size > MAX_UPLOAD) return new Response("That PDF is too large.", { status: 413 });
