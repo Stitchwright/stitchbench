@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { PDFDocument } from "pdf-lib";
 import { Camera, ImagePlus, FileUp, RotateCw, ArrowLeft, ArrowRight, Trash2 } from "lucide-react";
 import { DOC_TYPES } from "@/lib/constants";
-import { saveToLibrary } from "@/lib/local-manuals";
+import { askToSaveToLibrary, saveToLibrary } from "@/lib/local-manuals";
 
 type PageImg = { id: string; file: File; url: string; rotate: number };
 
@@ -77,6 +77,8 @@ export function Scanner({ brands, initialBrand, initialModel }: { brands: string
       toast.error("Enter the brand and model so the manual matches machines.");
       return;
     }
+    // Ask for the folder now: after building the PDF the click no longer counts.
+    await askToSaveToLibrary();
     setBusy("Building PDF...");
     try {
       let blob: Blob;

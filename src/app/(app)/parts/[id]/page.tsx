@@ -84,25 +84,29 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
               <KV k="Cost" v={money(p.costCents)} />
               <KV k="Price" v={money(p.priceCents)} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <ActionForm action={moveStock.bind(null, p.id)} reset success="Stock received" className="space-y-2 rounded border border-line p-3">
-                <input type="hidden" name="mode" value="receive" />
-                <div className="label">Receive stock</div>
-                <div className="flex gap-2">
-                  <input name="qty" aria-label="Quantity received" inputMode="numeric" className="input num w-20" placeholder="qty" required />
-                  <input name="cost" aria-label="Cost each" inputMode="decimal" className="input num" placeholder="$ cost each (optional)" />
-                </div>
-                <input name="note" aria-label="Note" className="input" placeholder="PO / supplier invoice" />
-                <Submit className="btn btn-sm">Receive</Submit>
-              </ActionForm>
-              <ActionForm action={moveStock.bind(null, p.id)} reset success="Count updated" className="space-y-2 rounded border border-line p-3">
-                <input type="hidden" name="mode" value="count" />
-                <div className="label">Shelf count</div>
-                <input name="qty" aria-label="Counted quantity" inputMode="numeric" className="input num" placeholder="what's actually there" required />
-                <input name="note" aria-label="Note" className="input" placeholder="reason (optional)" />
-                <Submit className="btn btn-sm">Set count</Submit>
-              </ActionForm>
-            </div>
+            {p.consignLinkId ? (
+              <p className="muted text-sm">A partner&apos;s consigned stock: the partner places, counts and takes it back. Receive your own stock of it as a separate item.</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ActionForm action={moveStock.bind(null, p.id)} reset success="Stock received" className="space-y-2 rounded border border-line p-3">
+                  <input type="hidden" name="mode" value="receive" />
+                  <div className="label">Receive stock</div>
+                  <div className="flex gap-2">
+                    <input name="qty" aria-label="Quantity received" inputMode="numeric" className="input num w-20" placeholder="qty" required />
+                    <input name="cost" aria-label="Cost each" inputMode="decimal" className="input num" placeholder="$ cost each (optional)" />
+                  </div>
+                  <input name="note" aria-label="Note" className="input" placeholder="PO / supplier invoice" />
+                  <Submit className="btn btn-sm">Receive</Submit>
+                </ActionForm>
+                <ActionForm action={moveStock.bind(null, p.id)} reset success="Count updated" className="space-y-2 rounded border border-line p-3">
+                  <input type="hidden" name="mode" value="count" />
+                  <div className="label">Shelf count</div>
+                  <input name="qty" aria-label="Counted quantity" inputMode="numeric" className="input num" placeholder="what's actually there" required />
+                  <input name="note" aria-label="Note" className="input" placeholder="reason (optional)" />
+                  <Submit className="btn btn-sm">Set count</Submit>
+                </ActionForm>
+              </div>
+            )}
           </Section>
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (

@@ -9,16 +9,24 @@ import { PrintButton } from "@/components/print-button";
 // label printer (2.25" x 1.25": Dymo 30334, Zebra, Rollo). The barcode is the part number (Code 128).
 type SP = { id?: string | string[]; format?: string; price?: string; copies?: string; skip?: string };
 
+// Barcodes are drawn on the server and drawing blocks it, so one page is kept to a size a printer run needs.
+const MAX_PARTS = 300;
+const MAX_LABELS = 600;
+
 export default async function Labels({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const ids = [sp.id ?? []].flat().flatMap((s) => s.split(",")).filter(Boolean).slice(0, 300);
+  const asked = [...new Set([sp.id ?? []].flat().flatMap((s) => s.split(",")).filter(Boolean))];
+  const ids = asked.slice(0, MAX_PARTS);
   const format = sp.format === "thermal" ? "thermal" : "sheet";
   const withPrice = sp.price === "1";
   const copies = Math.min(30, Math.max(1, Number(sp.copies) || 1));
   const skip = format === "sheet" ? Math.min(29, Math.max(0, Number(sp.skip) || 0)) : 0;
   const parts = await db.part.findMany({ where: { shopId: user.shopId, id: { in: ids } }, orderBy: { partNumber: "asc" } });
-  const labels = parts.flatMap((p) => Array.from({ length: copies }, () => p));
+  const all = parts.flatMap((p) => Array.from({ length: copies }, () => p));
+  const labels = all.slice(0, MAX_LABELS);
+  // One barcode per part, shared by its copies.
+  const svgs = new Map(parts.slice(0, Math.ceil(MAX_LABELS / copies)).map((p) => [p.id, barcodeSvg(p.partNumber)]));
   const qs = (o: Record<string, string>) =>
     `/labels?${new URLSearchParams({ id: ids.join(","), format, copies: String(copies), ...(withPrice ? { price: "1" } : {}), ...(skip ? { skip: String(skip) } : {}), ...o })}`;
 
@@ -51,6 +59,13 @@ export default async function Labels({ searchParams }: { searchParams: Promise<S
             {labels.length} label{labels.length === 1 ? "" : "s"}
           </strong>
         </div>
+        {(asked.length > ids.length || all.length > labels.length) && (
+          <p className="text-sm">
+            Only the first {labels.length} labels are shown
+            {asked.length > ids.length ? ` (${MAX_PARTS} items at a time; ${asked.length} were ticked)` : ` (${MAX_LABELS} at a time)`}. Print these, then
+            the rest in another batch.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 text-sm">
           <Link href={qs({ format: "sheet" })} className={`btn btn-sm ${format === "sheet" ? "btn-primary" : ""}`}>
             Avery 5160 sheet (30 per page)
@@ -80,19 +95,26 @@ export default async function Labels({ searchParams }: { searchParams: Promise<S
             {Array.from({ length: 30 }, (_, i) => {
               const idx = page * 30 + i - skip;
               const p = idx >= 0 ? labels[idx] : undefined;
-              return p ? <Label key={i} p={p} withPrice={withPrice} /> : <div key={i} />;
+              return p ? <Label key={i} p={p} svg={svgs.get(p.id)} withPrice={withPrice} /> : <div key={i} />;
             })}
           </div>
         ))
       ) : (
-        labels.map((p, i) => <Label key={i} p={p} withPrice={withPrice} />)
+        labels.map((p, i) => <Label key={i} p={p} svg={svgs.get(p.id)} withPrice={withPrice} />)
       )}
     </div>
   );
 }
 
-function Label({ p, withPrice }: { p: { partNumber: string; description: string; location: string | null; priceCents: number | null }; withPrice: boolean }) {
-  const svg = barcodeSvg(p.partNumber);
+function Label({
+  p,
+  svg,
+  withPrice,
+}: {
+  p: { partNumber: string; description: string; location: string | null; priceCents: number | null };
+  svg: string | null | undefined;
+  withPrice: boolean;
+}) {
   return (
     <div className="label">
       {svg ? <div dangerouslySetInnerHTML={{ __html: svg }} /> : null}
