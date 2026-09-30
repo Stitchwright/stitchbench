@@ -97,6 +97,29 @@ export function checkHubUrl(url: string) {
   return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
 }
 
+/**
+ * The hub address this install has stored, under the same rule as when one is entered (checkHubUrl, and join-hub.mjs):
+ * https, or http only for this computer. Every request carries the install key, so one stored another way (typed into
+ * the database, an old install with a plain-http address) is refused rather than sent in the clear.
+ */
+function storedHubUrl(url: string) {
+  try {
+    return checkHubUrl(url);
+  } catch {
+    throw new UserError(`The stored hub address (${url}) isn't https. Join the hub again from Settings → Community hub.`);
+  }
+}
+
+/**
+ * Who is making a change on the hub (a link, a cross-reference entry): the person, and which company on this install
+ * (a hosted install holds several), so the hub's history shows the company rather than the install. An older hub
+ * ignores the two extra fields.
+ */
+export async function byWhom(user: { shopId: string; name: string }) {
+  const shop = await db.shop.findUnique({ where: { id: user.shopId }, select: { name: true } });
+  return { byName: user.name, shopRef: user.shopId, shopName: shop?.name ?? null };
+}
+
 // ---------- when the internet is down ----------
 // Everything on this install works from its own database; only hub features (sharing, the marketplace, sending partner
 // messages) wait for the connection. Once the hub stops answering, a person waiting on a page or a button gets an
@@ -159,7 +182,7 @@ async function quickCheck(base: string) {
 /** Before a sync a person asked for ("Sync now", "Check for updates"): says there's no connection in seconds. */
 export async function hubReachable() {
   const s = await hubState();
-  if (s?.url && s.installKey) await quickCheck(s.url);
+  if (s?.url && s.installKey) await quickCheck(storedHubUrl(s.url));
 }
 
 /** quick: someone is waiting on a page for this (a picture, ratings): give up sooner. */
@@ -217,6 +240,8 @@ async function failure(r: Response) {
 export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean } = {}) {
   const s = await hubState();
   if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → Community hub).");
+  // The install key goes with every request: only to an address the join rules allow (https, or http on this computer).
+  const base = storedHubUrl(s.url);
   // Only API paths, and nothing in them that could climb out of the path (ids are checked by hubId too).
   const route = path.split("?")[0];
   if (!route.startsWith("/v1/") || /(^|\/)\.\.?(\/|$)|%2e|%2f|%5c|\\|#/i.test(route) || path.includes("#")) {
@@ -224,13 +249,13 @@ export async function hubFetch(path: string, init: RequestInit & { json?: unknow
   }
   const { json, ...rest } = init;
   const r = await reach(
-    s.url + path,
+    base + path,
     {
       ...rest,
       headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
       body: json !== undefined ? JSON.stringify(json) : rest.body,
     },
-    s.url,
+    base,
   );
   if (!r.ok) throw await failure(r);
   return r;
