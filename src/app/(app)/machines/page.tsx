@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { MACHINE_TYPES } from "@/lib/constants";
 import { PageHeader, Section, Empty, modelHref } from "@/components/ui";
 import { picturesFor } from "@/lib/model-info";
@@ -10,7 +11,7 @@ import { createMachine } from "@/actions/records";
 
 export default async function Machines({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
-  const { q } = await searchParams;
+  const { q } = firstValues(await searchParams);
   const term = q?.trim();
   const [machines, customers] = await Promise.all([
     db.machine.findMany({

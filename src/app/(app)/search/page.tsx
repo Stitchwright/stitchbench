@@ -2,12 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { modelKey, ticketNo } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty, modelHref } from "@/components/ui";
 
 export default async function Search({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
-  const q = (await searchParams).q?.trim() ?? "";
+  const q = firstValues(await searchParams).q?.trim() ?? "";
   if (!q) redirect("/");
   const shopId = user.shopId;
 

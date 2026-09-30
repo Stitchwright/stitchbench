@@ -36,6 +36,20 @@ function amountOf(v: FormDataEntryValue | null, label: string): number | null {
   return c;
 }
 
+/**
+ * A check-in with a typed ticket number a shop couldn't have, or a status that isn't open (a crafted request could start a
+ * ticket already collected, which the Sales log never shows). Checked first, so a mistake leaves no new customer or machine behind.
+ */
+function checkNewTicket(formData: FormData) {
+  const typed = str(formData.get("number"));
+  // A typed paper number moves the counter up to it (never back); search takes 1 to 6 digits.
+  if (typed != null && !(/^\d{1,6}$/.test(typed) && Number(typed) >= 1)) {
+    throw new UserError("The ticket number must be a whole number from 1 to 999,999. Leave it blank to use the next one.");
+  }
+  const status = str(formData.get("status"));
+  if (status != null && !OPEN_STATUSES.includes(status as TicketStatus)) throw new UserError("A new ticket has to start open.");
+}
+
 function refresh(ticketId: string) {
   // A ticket that came from a partner sewing shop: they see the change on their next sync (soon).
   kickPartnerSync();
@@ -49,6 +63,7 @@ function refresh(ticketId: string) {
 export const createTicket = safe(async function createTicket(formData: FormData) {
   const user = await requireUser();
   const shopId = user.shopId;
+  checkNewTicket(formData);
 
   // Customer: pick an existing one or type a new name.
   let customerId = str(formData.get("customerId"));
@@ -354,6 +369,7 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
     const price = priceOf("price");
     const desc = str(formData.get("description"));
     if (!item && !desc) throw new UserError("Pick a service or type a description.");
+    if (!item && price == null) throw new UserError("Enter a price for a service that isn't on the menu, e.g. 45.00.");
     await db.ticketLine.create({
       data: { ticketId, kind, description: desc ?? item!.name, qty: 1, unitPriceCents: price ?? item?.priceCents ?? 0 },
     });

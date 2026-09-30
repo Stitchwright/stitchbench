@@ -6,13 +6,17 @@ export function money(cents: number | null | undefined): string {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
-/** "12.50" -> 1250. Returns null for blank or invalid input. */
+/**
+ * "12.50" -> 1250. Returns null for blank or invalid input, and for an amount that could be read two ways: commas are
+ * thousands separators ("1,000.50"), so "1,50" and "1.000,50" are refused rather than turned into $150 or $1. Powers
+ * ("1e3"), hex and anything too big for the books' whole numbers are refused too. Extra decimals are rounded.
+ */
 export function toCents(v: FormDataEntryValue | string | null | undefined): number | null {
   if (v == null) return null;
-  const s = String(v).replace(/[$,\s]/g, "");
-  if (s === "") return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) : null;
+  const s = String(v).replace(/[$\s]/g, "");
+  if (!/^[-+]?(\d{1,3}(,\d{3})+|\d*)(\.\d*)?$/.test(s) || !/\d/.test(s)) return null;
+  const cents = Math.round(Number(s.replace(/,/g, "")) * 100);
+  return Number.isFinite(cents) && Math.abs(cents) <= 2_147_483_647 ? cents || 0 : null;
 }
 
 export function ticketNo(n: number): string {
