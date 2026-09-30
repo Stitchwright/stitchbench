@@ -8,6 +8,7 @@
     "start": "npm run release && next start",
     "release": "prisma migrate deploy && tsx prisma/seed.ts --if-empty",
     "lint": "eslint",
+    "test:unit": "tsx --test \"src/**/*.test.ts\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
