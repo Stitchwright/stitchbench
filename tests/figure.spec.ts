@@ -6,6 +6,8 @@ import { test, expect } from "@playwright/test";
 const dir = process.env.MANUAL_DIR!;
 const label = `${process.env.MANUAL_BRAND ?? "Janome"} ${process.env.MANUAL_MODEL ?? "MC6700P"}`;
 
+test.skip(!process.env.MANUAL_DIR, "set MANUAL_DIR to a folder holding the manual (MANUAL_BRAND and MANUAL_MODEL if it isn't a Janome MC6700P)");
+
 test("draws a timing figure from the tech's own manual", async ({ page }) => {
   await page.addInitScript(() => {
     delete (window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker;
