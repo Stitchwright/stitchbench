@@ -2,10 +2,16 @@
 
 Read this first in a new Claude Code session. Everything below is on `main` in both repos (bwattendorf/stitchbench
 and bwattendorf/stitchhub): the round-3 review fixes, the parts condition feature and Windows program 1.6.0 were
-merged on 30 Sep 2026 (pull request #1 in each repo). **Merged is not deployed**: until section 0 is done, the hub,
-hosted StitchShop and hosted StitchBench still run the old code and this PC still has StitchBench 1.5.0.
+merged on 30 Sep 2026 (pull request #1 in each repo) and deployed the same day: the hub, hosted StitchShop and hosted
+StitchBench run it, this PC has StitchBench 1.6.0, and the 1.6.0 installers were built (workflow run 36753645022).
+Next is section 3 step 4 (the paid-modules foundation).
 
-## 0. First steps on the owner's PC (30 Sep 2026)
+## 0. First steps on the owner's PC (done 30 Sep 2026)
+
+All done on 30 Sep 2026 (a backup `stitchbench-2026-09-30-13-47-56` was taken first). Kept as the recipe for the
+next release. Lessons: commands the owner runs with the `!` prefix go through Bash, which strips backslashes from
+Windows paths, so give forward-slash paths joined with `&&` (a failed `cd` deployed the StitchBench folder to the
+stitchshop project twice); `desktop/backup-now.mjs` makes the same backup as the tray menu from a console.
 
 1. The PC may have work that was never committed. In the StitchBench folder, then the StitchHub folder: `git status`
    and `git branch --show-current`. If anything is modified or untracked (check `.env` and other secrets are NOT
@@ -19,7 +25,7 @@ hosted StitchShop and hosted StitchBench still run the old code and this PC stil
    - Hosted StitchBench: `railway link --project stitchbench`, `railway up --service stitchbench --ci`, then
      `railway link --project stitchshop --service stitchshop`.
    - Each app applies its migrations on start and reloads the shipped specs once (a few seconds); Railway now
-     health-checks `/api/health`. Open each address and sign in to check.
+     health-checks `/api/health` on the apps and `/health` on the hub. Open each address and sign in to check.
 4. Windows program 1.6.0: make a backup from the tray menu first. Build the installers with the "Windows installers"
    workflow (GitHub, Actions tab, Run workflow on `main`; the cloud session wasn't allowed to start it), or update this
    PC in place: `npm run prepare-app` in `desktop/`, then `scripts/local-test/update_installed.ps1 -Version 1.6.0`.
@@ -34,8 +40,8 @@ hosted StitchShop and hosted StitchBench still run the old code and this PC stil
 - Hosted StitchShop: https://stitchshop-production.up.railway.app (project `stitchshop`, service `stitchshop`).
 - Hosted StitchBench: https://stitchbench-production-e554.up.railway.app (project `stitchbench`, service `stitchbench`;
   owner login bwattendorf@gmail.com, password file in the owner's Documents folder).
-- StitchBench 1.5.0 installed on the owner's PC; installers for both programs build with the GitHub Actions workflow
-  `installers.yml` (unsigned).
+- StitchBench 1.6.0 installed on the owner's PC (since 30 Sep 2026); installers for both programs build with the
+  GitHub Actions workflow `installers.yml` (unsigned; `gh workflow run installers.yml --ref main` starts it).
 
 ## 1. Get set up on the PC
 
@@ -82,7 +88,7 @@ copied into `public/` (the eslint config should ignore `public/`).
 
 ## 2b. Round-3 high + medium fixes finished (30 Sep 2026, cloud session)
 
-On branch `claude/remaining-tasks-l5s9q3` in both repos (not merged into `main`, not deployed). Every high and medium
+Merged to `main` in both repos and deployed on 30 Sep 2026 (section 0). Every high and medium
 finding is fixed or partly done; the statuses in `docs/round3/ROUND3_FINDINGS.md` say what is left for the 7 partly
 done ones (M12, M44, M53, M56, M58, M68, M71). Checked on Linux: `npm ci`, tsc, lint (0 errors), `next build`, all
 migrations on an empty and on a used database, drift check empty, Playwright specs smoke, hub, inventory, market,
@@ -148,7 +154,8 @@ marked as one on the partner wire (the partner sees it as an ordinary number).
 
 
 
-Steps 1-3 below are done and merged to `main` (sections 2b-2d). Next: deploy (section 0), then step 4.
+Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Next: step 4.1, the
+`modules-foundation` package, in a fresh session.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
