@@ -21,6 +21,7 @@ export default async function ScanParts() {
         sub="Use a USB or Bluetooth barcode scanner (it types into the box), or a phone or tablet camera. Print barcode labels from the Parts list."
       />
       <ScanStation
+        shopId={user.shopId}
         tickets={tickets.map((t) => ({
           id: t.id,
           label: `#${ticketNo(t.number)} ${t.machine.brand} ${t.machine.model}${t.customer ? ` · ${t.customer.name}` : ""}`,

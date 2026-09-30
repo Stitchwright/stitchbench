@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { importItems, type ImportRow } from "@/actions/inventory-import";
 import { money, toCents } from "@/lib/format";
+import { EXCEL_NUMBER } from "@/lib/input";
 
 type Field = "partNumber" | "barcode" | "description" | "brand" | "cost" | "price" | "qty" | "location";
 
@@ -51,14 +52,27 @@ function parseTable(text: string): string[][] {
   return rows;
 }
 
-/** "12", "2.5", "2 1/2", "3/4", "1,200", "12 yd" -> a number; anything else -> NaN (the row shows "?" and isn't sent). */
+/** The text of a chosen file. Excel's plain "CSV (Comma delimited)" is Windows-1252, its "Unicode Text" is UTF-16; only UTF-8 reads as UTF-8. */
+async function readText(f: File) {
+  const buf = await f.arrayBuffer();
+  const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+  if (head[0] === 0xff && head[1] === 0xfe) return new TextDecoder("utf-16le").decode(buf);
+  if (head[0] === 0xfe && head[1] === 0xff) return new TextDecoder("utf-16be").decode(buf);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buf);
+  }
+}
+
+/** "12", "2.5", ".5", "2 1/2", "3/4", "1,200", "12 yd" -> a number; anything else -> NaN (the row shows "?" and isn't sent). */
 function parseQty(v: string): number {
   const t = v.replace(/,/g, "").replace(/\s*(yds?|yards?|ea|each|pcs?)\.?$/i, "").trim();
   const mixed = /^(\d+)\s+(\d+)\/(\d+)$/.exec(t);
   if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
   const frac = /^(\d+)\/(\d+)$/.exec(t);
   if (frac) return Number(frac[1]) / Number(frac[2]);
-  return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+  return /^-?(\d+(\.\d+)?|\.\d+)$/.test(t) ? Number(t) : NaN;
 }
 
 /** A price or cost in cents. A minus sign in a price column is a discount or a typo, never a price: left unset. */
@@ -89,8 +103,10 @@ export function ImportItems() {
   const body = table.slice(1);
   const m = map ?? guess(headers);
   const cell = (r: string[], f: Field) => (m[f] >= 0 ? (r[m[f]] ?? "") : "");
+  const typedCode = (r: string[]) => cell(r, "barcode").replace(/\s/g, "");
   const rows: ImportRow[] = body.map((r) => {
-    const barcode = cell(r, "barcode").replace(/\s/g, "") || null;
+    // "7.44272E+11" is what Excel makes of a long number in a General cell: the digits are gone, so it is no barcode.
+    const barcode = (EXCEL_NUMBER.test(typedCode(r)) ? "" : typedCode(r)) || null;
     return {
       partNumber: cell(r, "partNumber") || barcode || "",
       barcode,
@@ -104,8 +120,9 @@ export function ImportItems() {
   });
   // A quantity that can't be read ("TBD", "2 bolts") must not turn into stock quietly not received: those rows stay
   // here, and the user is told which ones (sheet row numbers, the header being row 1).
-  const unreadable = rows.flatMap((r, i) => (Number.isNaN(r.qty) ? [i + 2] : []));
-  const toImport = rows.filter((r) => !Number.isNaN(r.qty));
+  const unreadable = opts.addQty ? rows.flatMap((r, i) => (Number.isNaN(r.qty) ? [i + 2] : [])) : [];
+  const toImport = opts.addQty ? rows.filter((r) => !Number.isNaN(r.qty)) : rows;
+  const shortened = body.flatMap((r, i) => (EXCEL_NUMBER.test(typedCode(r)) ? [i + 2] : []));
 
   return (
     <div className="space-y-4">
@@ -132,7 +149,7 @@ export function ImportItems() {
           onChange={async (e) => {
             const f = e.target.files?.[0];
             if (f) {
-              setText(await f.text());
+              setText(await readText(f));
               setMap(null);
               setResult(null);
             }
@@ -243,6 +260,17 @@ export function ImportItems() {
                     imported.
                   </span>{" "}
                   Fix those cells, or set Quantity to (none) to bring the items in without stock.
+                </>
+              )}
+              {shortened.length > 0 && (
+                <>
+                  {" "}
+                  <span className="text-[var(--bad)]">
+                    {shortened.length} barcode{shortened.length === 1 ? " was" : "s were"} shortened by Excel to a form like 7.44272E+11 (row
+                    {shortened.length === 1 ? "" : "s"} {shortened.slice(0, 10).join(", ")}
+                    {shortened.length > 10 ? ` and ${shortened.length - 10} more` : ""}): the digits are lost, so {shortened.length === 1 ? "it is" : "they are"} left out.
+                  </span>{" "}
+                  Format the barcode column as Text in Excel and copy it again.
                 </>
               )}
             </p>

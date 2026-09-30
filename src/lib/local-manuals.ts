@@ -190,10 +190,15 @@ function serverUrl(path: string) {
 
 /** Where to read a library manual from: this PC's connected folder first, then the shop PC. */
 export async function manualPath(index: LibraryIndex | undefined, libPath: string): Promise<string | null> {
-  const local = findByPath(index, libPath)?.path;
-  if (local) return local;
+  return (await manualSource(index, libPath))?.path ?? null;
+}
+
+/** manualPath, saying whether it is the manual meant (`exact`) or only one with the same file name, which may be another. */
+export async function manualSource(index: LibraryIndex | undefined, libPath: string): Promise<{ path: string; exact: boolean } | null> {
+  const local = matchByPath(index, libPath);
+  if (local) return { path: local.file.path, exact: local.exact };
   // The shop PC needs the path inside the library (Category\Brand\File.pdf), not just a file name.
-  return /[\\/]/.test(libPath) && (await serverLibrary()) ? SERVER_PREFIX + libPath : null;
+  return /[\\/]/.test(libPath) && (await serverLibrary()) ? { path: SERVER_PREFIX + libPath, exact: true } : null;
 }
 
 async function fileAt(path: string): Promise<File> {
@@ -323,6 +328,11 @@ export function findByName(index: LibraryIndex | undefined, name: string): Index
  * Works whether the tech connected the whole library folder or a sub-folder of it; falls back to the file name.
  */
 export function findByPath(index: LibraryIndex | undefined, libPath: string): IndexedFile | undefined {
+  return matchByPath(index, libPath)?.file;
+}
+
+/** findByPath, saying whether the match is by path (the manual meant) or only by file name (maybe another manual that shares the name). */
+export function matchByPath(index: LibraryIndex | undefined, libPath: string): { file: IndexedFile; exact: boolean } | undefined {
   if (!index) return undefined;
   const want = libPath.split("\\").join("/").toLowerCase();
   const name = want.split("/").pop()!;
@@ -330,10 +340,10 @@ export function findByPath(index: LibraryIndex | undefined, libPath: string): In
   for (const f of index.files) {
     if (f.name.toLowerCase() !== name) continue;
     const have = f.path.toLowerCase();
-    if (want === have || want.endsWith("/" + have) || have.endsWith("/" + want)) return f;
+    if (want === have || want.endsWith("/" + have) || have.endsWith("/" + want)) return { file: f, exact: true };
     byName ??= f;
   }
-  return byName;
+  return byName ? { file: byName, exact: false } : undefined;
 }
 
 export function firstPage(pages: string | null | undefined): number | null {

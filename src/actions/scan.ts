@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
-import { codeKeys, numberKey } from "@/lib/parts";
+import { MAX_STOCK, codeKeys, countStock, numberKey } from "@/lib/parts";
 import { assertId, sameText } from "@/lib/input";
 
 export type ScannedPart = {
@@ -76,7 +76,8 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
       ? await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId, status: { in: OPEN_STATUSES } }, include: { shop: { select: { partsMarkupPct: true } } } })
       : null;
     if (!t) return { ok: false, code: c, message: "Pick an open ticket first." };
-    const unit = part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100));
+    // Never below 0, even for an item saved before prices were checked: a line can't lower the ticket's total.
+    const unit = Math.max(0, part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100)));
     const [, p] = await db.$transaction([
       db.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: `${part.partNumber} ${part.description}`, qty: n, unitPriceCents: unit, partId: part.id } }),
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: n } } }),
@@ -93,19 +94,18 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
 export async function saveCounts(counts: { partId: string; qty: number }[]): Promise<{ saved: number } | { error: string }> {
   const user = await requireUser();
   if (!Array.isArray(counts)) return { error: "Nothing to save." };
+  const list = counts.slice(0, 2000);
+  // The counts come from the browser, and a call made by hand can send NaN or a negative: that would be written as stock.
+  if (list.some((c) => typeof c?.qty !== "number" || !Number.isFinite(c.qty) || c.qty < 0 || c.qty > MAX_STOCK)) {
+    return { error: `A count is out of range (0 to ${MAX_STOCK.toLocaleString("en-US")}): nothing was saved.` };
+  }
   let saved = 0;
-  for (const c of counts.slice(0, 2000)) {
+  for (const c of list) {
     if (typeof c?.partId !== "string" || !c.partId) continue;
-    const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId } });
+    const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId }, select: { id: true, unit: true, consignLinkId: true } });
     // Fabric isn't counted by scanning bolts, and a partner's consigned stock is counted by the partner.
     if (!p || p.unit === "yd" || p.consignLinkId) continue;
-    const n = Math.max(0, Math.round(c.qty));
-    if (p.qtyOnHand === n) continue;
-    await db.$transaction([
-      db.part.update({ where: { id: p.id }, data: { qtyOnHand: n } }),
-      db.stockMove.create({ data: { shopId: user.shopId, partId: p.id, qty: n - p.qtyOnHand, reason: "ADJUSTED", userId: user.id, note: "Scanned shelf count" } }),
-    ]);
-    saved++;
+    if (await countStock(user.shopId, p.id, Math.round(c.qty), user.id, "Scanned shelf count")) saved++;
   }
   revalidatePath("/parts", "layout");
   return { saved };
