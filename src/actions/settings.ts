@@ -9,6 +9,7 @@ import { str, ticketNo, toCents } from "@/lib/format";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { isPlatformAdmin } from "@/lib/shops";
 import type { Role } from "@/generated/prisma/enums";
+import { assertId } from "@/lib/input";
 
 /** An IANA time zone this server knows (America/New_York...), or null. */
 function validTimeZone(tz: string | null) {
@@ -150,13 +151,13 @@ export const setUserRole = safe(async function setUserRole(userId: string, formD
   const admin = await requireAdmin();
   const role = str(formData.get("role"));
   if (role !== "ADMIN" && role !== "TECH") throw new UserError("Pick admin or tech.");
-  const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
+  const u = await db.user.findFirst({ where: { id: assertId(userId), shopId: admin.shopId } });
   if (!u) throw new UserError("User not found.");
   if (u.role === "OWNER") throw new UserError("The owner's role can't be changed.");
   if (u.id === admin.id) throw new UserError("You can't change your own role.");
   if (u.role === role) return;
   // They sign in again, so nothing they had open keeps working with the old role.
-  await db.user.update({ where: { id: userId }, data: { role, sessionVersion: { increment: 1 } } });
+  await db.user.update({ where: { id: u.id }, data: { role, sessionVersion: { increment: 1 } } });
   revalidatePath("/settings");
 });
 
