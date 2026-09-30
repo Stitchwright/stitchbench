@@ -45,15 +45,11 @@ function amountOf(v: FormDataEntryValue | null, label: string): number | null {
 }
 
 /**
- * A check-in with a typed ticket number a shop couldn't have, or a status that isn't open (a crafted request could start a
- * ticket already collected, which the Sales log never shows). Checked first, so a mistake leaves no new customer or machine behind.
+ * A check-in with a status that isn't open (a crafted request could start a ticket already collected, which the Sales log
+ * never shows). Checked first, so a mistake leaves no new customer or machine behind. (A typed paper number is checked
+ * in createTicket.)
  */
 function checkNewTicket(formData: FormData) {
-  const typed = str(formData.get("number"));
-  // A typed paper number moves the counter up to it (never back); search takes 1 to 6 digits.
-  if (typed != null && !(/^\d{1,6}$/.test(typed) && Number(typed) >= 1)) {
-    throw new UserError("The ticket number must be a whole number from 1 to 999,999. Leave it blank to use the next one.");
-  }
   const status = str(formData.get("status"));
   if (status != null && !OPEN_STATUSES.includes(status as TicketStatus)) throw new UserError("A new ticket has to start open.");
 }
