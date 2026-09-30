@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { money } from "@/lib/format";
+import { fmtDateTime, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import type { HubOrder } from "@/lib/hub";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
@@ -26,6 +27,7 @@ const d2 = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const row = await db.marketOrder.findUnique({ where: { id } });
   if (!row || row.shopId !== user.shopId) notFound();
@@ -94,7 +96,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             <ol className="space-y-2 text-sm">
               {o.events.map((e, i) => (
                 <li key={i} className="border-b border-line pb-2 last:border-0">
-                  <span className="muted text-xs">{new Date(e.at).toLocaleString()}</span>{" "}
+                  <span className="muted text-xs">{fmtDateTime(e.at, tz)}</span>{" "}
                   <strong>{e.by === "seller" ? o.sellerShop : o.buyerShop}</strong>: {ACTION_LABEL[e.action] ?? e.action}
                   {e.note && <span className="block whitespace-pre-wrap">{e.note}</span>}
                 </li>

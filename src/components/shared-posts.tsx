@@ -8,6 +8,7 @@ import { PHOTO_KIND_LABEL } from "@/lib/constants";
 import { brandMatches } from "@/lib/model-info";
 import { hubJoined } from "@/lib/hub";
 import { isPlatformAdmin } from "@/lib/shops";
+import { shopTimeZone } from "@/lib/shop-zone";
 import type { CurrentUser } from "@/lib/session";
 import type { ActionResult } from "@/lib/action";
 import type { NoteKind, PhotoKind } from "@/generated/prisma/enums";
@@ -98,7 +99,7 @@ export async function sharedNotes(user: CurrentUser, f: Filter = {}): Promise<Sh
     .slice(0, take);
 }
 
-export function SharedPostList({ notes, showModel }: { notes: SharedNote[]; showModel?: boolean }) {
+export function SharedPostList({ notes, showModel, timeZone }: { notes: SharedNote[]; showModel?: boolean; timeZone: string }) {
   return (
     <ul className="space-y-5">
       {notes.map((p) => (
@@ -136,7 +137,7 @@ export function SharedPostList({ notes, showModel }: { notes: SharedNote[]; show
             </ul>
           )}
           <p className="muted mt-2 text-xs">
-            {p.author ?? "A tech"} · {p.shop} · {fmtDate(p.createdAt)}
+            {p.author ?? "A tech"} · {p.shop} · {fmtDate(p.createdAt, timeZone)}
             {p.pending && <span className="pill tone-wait ml-2">{p.pending}</span>}
           </p>
         </li>
@@ -146,13 +147,13 @@ export function SharedPostList({ notes, showModel }: { notes: SharedNote[]; show
 }
 
 export async function SharedPosts({ user, brand, model, title }: { user: CurrentUser; brand: string; model: string; title: string }) {
-  const notes = await sharedNotes(user, { brand, model });
+  const [notes, tz] = await Promise.all([sharedNotes(user, { brand, model }), shopTimeZone(user.shopId)]);
   return (
     <Section title={`${title} (${notes.length})`}>
       {notes.length === 0 ? (
         <Empty>Nothing shared for this model yet. Use &ldquo;Share with other techs&rdquo; on a machine page to post what you found, with photos.</Empty>
       ) : (
-        <SharedPostList notes={notes} />
+        <SharedPostList notes={notes} timeZone={tz} />
       )}
     </Section>
   );

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { acceptedBoth, CUSTOMERS_PAY_LABEL, normalizeTerms, type Accepted } from "@/lib/partner-terms";
 import { monthPeriod, statementFor } from "@/lib/partners";
 import { PageHeader, Section, Empty, KV, JobStatusPill, OrderStatusPill } from "@/components/ui";
@@ -19,7 +20,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
   const agreed = acceptedBoth(accepted, link.termsVersion);
   const iAccepted = accepted[link.side as "repair" | "retail"]?.version === link.termsVersion;
   const repairSide = link.side === "repair";
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
+  const tz = await shopTimeZone(user.shopId);
   const { from, to, month } = monthPeriod(null, tz);
   const [jobs, orders, consign, st] = await Promise.all([
     db.repairJob.findMany({ where: { shopId: user.shopId, linkId: id }, orderBy: { createdAt: "desc" }, take: 50 }),
@@ -35,7 +36,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
       <PageHeader
         back={{ href: "/partners", label: "Partners" }}
         title={link.partnerName}
-        sub={`${repairSide ? "Sewing shop partner" : "Your repair shop"} since ${fmtDate(link.createdAt)}${link.status === "ENDED" ? " · partnership ended" : ""}`}
+        sub={`${repairSide ? "Sewing shop partner" : "Your repair shop"} since ${fmtDate(link.createdAt, tz)}${link.status === "ENDED" ? " · partnership ended" : ""}`}
         actions={
           <>
             <Link href={`/partners/${id}/agreement`} className="btn">
@@ -142,7 +143,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
                       {j.paidAt && <span className="pill tone-done ml-1">paid</span>}
                     </td>
                     <td className="num text-right">{money(j.totalCents)}</td>
-                    <td>{fmtDate(j.createdAt)}</td>
+                    <td>{fmtDate(j.createdAt, tz)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -162,7 +163,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
                   <Link href={`/partners/${id}/orders/${o.id}`} className="link mono">
                     {o.number}
                   </Link>{" "}
-                  · {fmtDate(o.createdAt)} · {(o.lines as unknown[]).length} items
+                  · {fmtDate(o.createdAt, tz)} · {(o.lines as unknown[]).length} items
                 </span>
                 <span className="flex items-center gap-2">
                   <OrderStatusPill status={o.status} />

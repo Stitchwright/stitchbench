@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { fmtDate, money, ticketNo } from "@/lib/format";
+import { fmtDate, fmtDateTime, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import type { JobEvent, JobLine } from "@/lib/partners";
 import { JOB_STATUS_LABEL } from "@/lib/constants";
 import type { TicketStatus } from "@/generated/prisma/enums";
@@ -13,6 +14,7 @@ import { answerEstimate, cancelJob, markPickedUp } from "@/actions/repair-jobs";
 
 export default async function RepairJobPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const j = await db.repairJob.findUnique({
     where: { shopId_id: { shopId: user.shopId, id } },
@@ -100,7 +102,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
                 </Link>
               </>
             ) : (
-              <span>{j.paidAt ? `Paid ${fmtDate(j.paidAt)}.` : "Nothing to pay."}</span>
+              <span>{j.paidAt ? `Paid ${fmtDate(j.paidAt, tz)}.` : "Nothing to pay."}</span>
             )}
             <ActionButton action={markPickedUp.bind(null, j.id)} confirm="Tap again: the customer has it" success="Marked as picked up">
               Customer took it (no payment here)
@@ -153,7 +155,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
 
       {j.machine && (
         <Section title="Photos">
-          <PhotoStrip machineId={j.machine.id} photos={j.machine.photos} />
+          <PhotoStrip machineId={j.machine.id} photos={j.machine.photos} timeZone={tz} />
         </Section>
       )}
 
@@ -161,7 +163,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
         <ul className="space-y-1 text-sm">
           {events.map((e, i) => (
             <li key={i}>
-              {new Date(e.at).toLocaleString("en-US")} · {e.status ? (JOB_STATUS_LABEL[e.status as TicketStatus] ?? e.status) : ""} {e.note ?? ""}
+              {fmtDateTime(e.at, tz)} · {e.status ? (JOB_STATUS_LABEL[e.status as TicketStatus] ?? e.status) : ""} {e.note ?? ""}
             </li>
           ))}
         </ul>

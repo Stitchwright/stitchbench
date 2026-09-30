@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { modelKey } from "@/lib/format";
 import { hubJoined } from "@/lib/hub";
 import { libraryDir } from "@/lib/library-dir";
@@ -16,7 +17,7 @@ const FILTERS = [
 ] as const;
 
 export default async function LinksPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
-  await requireUser();
+  const tz = await shopTimeZone((await requireUser()).shopId);
   const sp = await searchParams;
   const term = sp.q?.trim() ?? "";
   const status = FILTERS.some((f) => f.key === sp.status) ? sp.status : "";
@@ -81,7 +82,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
                 <p className="muted text-xs">{total > links.length ? `Showing ${links.length} of ${total}. Search to narrow it down.` : `${total} links`}</p>
                 <ul className="divide-y divide-line">
                   {links.map((l) => (
-                    <ManualLinkItem key={l.id} l={l} canDownload={canDownload} showModel />
+                    <ManualLinkItem key={l.id} l={l} canDownload={canDownload} showModel timeZone={tz} />
                   ))}
                 </ul>
               </>

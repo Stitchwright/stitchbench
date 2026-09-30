@@ -1,7 +1,8 @@
 import { sessionUser } from "@/lib/session";
 import { csvCell as csv } from "@/lib/csv";
-import { db } from "@/lib/db";
-import { dateIn, monthRange, paymentsBetween } from "@/lib/sales";
+import { paymentsBetween } from "@/lib/sales";
+import { dateIn, monthRange } from "@/lib/time-zone";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PAYMENT_LABEL } from "@/lib/constants";
 
 export async function GET(req: Request) {
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
   if (!user) return new Response("Sign in first.", { status: 401 });
   const shopId = user.shopId;
   const url = new URL(req.url);
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
+  const tz = await shopTimeZone(shopId);
   const { start, end, fromStr, toStr } = monthRange(url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined, tz);
   const rows = await paymentsBetween(shopId, start, end);
   const lines = [

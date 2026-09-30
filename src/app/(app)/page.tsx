@@ -5,7 +5,9 @@ import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/con
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
-import { PAID_ELSEWHERE, startOfToday } from "@/lib/sales";
+import { PAID_ELSEWHERE } from "@/lib/sales";
+import { startOfToday } from "@/lib/time-zone";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PartnerTodo } from "@/components/partner-todo";
 import { redirect } from "next/navigation";
 
@@ -16,7 +18,7 @@ function daysSince(d: Date) {
 export default async function Dashboard() {
   const user = await requireUser();
   const shopId = user.shopId;
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
+  const tz = await shopTimeZone(shopId);
   const [shop, open, lowStock, todayPay] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: shopId } }),
     db.ticket.findMany({

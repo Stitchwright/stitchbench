@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { fmtDate, money } from "@/lib/format";
+import { fmtDate, fmtDateTime, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { qtyText } from "@/lib/register-math";
 import type { JobEvent, OrderLine } from "@/lib/partners";
 import { PageHeader, Section, OrderStatusPill } from "@/components/ui";
@@ -11,6 +12,7 @@ import { partnerOrderAction } from "@/actions/partner-orders";
 
 export default async function PartnerOrderPage({ params }: { params: Promise<{ id: string; orderId: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id, orderId } = await params;
   const [link, o] = await Promise.all([
     db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id } } }),
@@ -31,7 +33,7 @@ export default async function PartnerOrderPage({ params }: { params: Promise<{ i
             Order <span className="mono">{o.number}</span> <OrderStatusPill status={o.status} />
           </>
         }
-        sub={`${seller ? `From ${link.partnerName}` : `To ${link.partnerName}`} · placed ${fmtDate(o.createdAt)}`}
+        sub={`${seller ? `From ${link.partnerName}` : `To ${link.partnerName}`} · placed ${fmtDate(o.createdAt, tz)}`}
         actions={<PrintButton />}
       />
       <Section title="Items">
@@ -103,7 +105,7 @@ export default async function PartnerOrderPage({ params }: { params: Promise<{ i
         <ul className="space-y-1 text-sm">
           {events.map((e, i) => (
             <li key={i}>
-              {new Date(e.at).toLocaleString("en-US")} · {e.status ?? ""} {e.note ?? ""}
+              {fmtDateTime(e.at, tz)} · {e.status ?? ""} {e.note ?? ""}
             </li>
           ))}
         </ul>

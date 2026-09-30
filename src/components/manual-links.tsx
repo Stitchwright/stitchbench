@@ -74,7 +74,7 @@ function LinkFields({ l, brand, models }: { l?: LinkRow; brand?: string; models?
   );
 }
 
-export function ManualLinkItem({ l, canDownload, showModel }: { l: LinkRow; canDownload: boolean; showModel?: boolean }) {
+export function ManualLinkItem({ l, canDownload, showModel, timeZone }: { l: LinkRow; canDownload: boolean; showModel?: boolean; timeZone: string }) {
   const st = STATUS[l.status] ?? STATUS.unchecked;
   return (
     <li className="py-3">
@@ -92,7 +92,7 @@ export function ManualLinkItem({ l, canDownload, showModel }: { l: LinkRow; canD
             )}
             <span>{l.source}</span>
             <span className={`pill ${st.tone}`}>{st.label}</span>
-            {l.checkedAt && l.status !== "unchecked" && <span>checked {fmtDate(l.checkedAt)}</span>}
+            {l.checkedAt && l.status !== "unchecked" && <span>checked {fmtDate(l.checkedAt, timeZone)}</span>}
           </div>
         </div>
       </div>
@@ -125,7 +125,7 @@ export async function linksFor(brand: string, model: string) {
   return rows.filter((l) => brandMatches(l.brand, brand));
 }
 
-export async function ManualLinks({ brand, model }: { brand: string; model: string }) {
+export async function ManualLinks({ brand, model, timeZone }: { brand: string; model: string; timeZone: string }) {
   if (!(await hubJoined())) {
     return (
       <Section title="Manual links">
@@ -150,7 +150,7 @@ export async function ManualLinks({ brand, model }: { brand: string; model: stri
       ) : (
         <ul className="divide-y divide-line">
           {links.map((l) => (
-            <ManualLinkItem key={l.id} l={l} canDownload={canDownload} />
+            <ManualLinkItem key={l.id} l={l} canDownload={canDownload} timeZone={timeZone} />
           ))}
         </ul>
       )}

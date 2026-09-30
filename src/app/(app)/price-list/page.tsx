@@ -2,12 +2,14 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader, Empty } from "@/components/ui";
 
 // The shop's price sheet for the counter, quilt shops and customers, built from the service menu.
 export default async function PriceList() {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const [shop, items] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId } }),
     db.serviceItem.findMany({ where: { shopId: user.shopId, active: true, priceCents: { gt: 0 } }, orderBy: { sortOrder: "asc" } }),
@@ -46,7 +48,7 @@ export default async function PriceList() {
           </div>
           <div className="text-right">
             <div className="text-xl font-semibold">Service prices</div>
-            <div className="text-sm">Effective {fmtDate(new Date())}</div>
+            <div className="text-sm">Effective {fmtDate(new Date(), tz)}</div>
           </div>
         </header>
 

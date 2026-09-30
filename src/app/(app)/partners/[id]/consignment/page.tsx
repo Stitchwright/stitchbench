@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { qtyText } from "@/lib/register-math";
 import { PageHeader, Section, Empty } from "@/components/ui";
@@ -11,6 +12,7 @@ import { countConsigned, placeConsignment, returnConsigned } from "@/actions/par
 
 export default async function Consignment({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id } } });
   if (!link) notFound();
@@ -69,7 +71,7 @@ export default async function Consignment({ params }: { params: Promise<{ id: st
                       <td className="text-xs">
                         {i.countedAt ? (
                           <>
-                            {qtyText(i.countedQty ?? 0, unit)} on {fmtDate(i.countedAt)}
+                            {qtyText(i.countedQty ?? 0, unit)} on {fmtDate(i.countedAt, tz)}
                             {Math.abs(diff) > 1e-9 && <span className={`pill ml-1 ${diff < 0 ? "tone-bad" : "tone-wait"}`}>{diff > 0 ? `+${diff}` : diff}</span>}
                           </>
                         ) : (

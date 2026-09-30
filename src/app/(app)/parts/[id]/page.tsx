@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
@@ -27,6 +28,7 @@ const REASON: Record<string, string> = {
 
 export default async function PartPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const p = await db.part.findFirst({
     where: { id, shopId: user.shopId },
@@ -261,7 +263,7 @@ export default async function PartPage({ params }: { params: Promise<{ id: strin
               {p.moves.map((m) => (
                 <li key={m.id} className="flex justify-between gap-2 py-2">
                   <span>
-                    {fmtDate(m.createdAt)} · {REASON[m.reason]}
+                    {fmtDate(m.createdAt, tz)} · {REASON[m.reason]}
                     {m.ticketId && tno.has(m.ticketId) && (
                       <>
                         {" "}
