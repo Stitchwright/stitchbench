@@ -30,7 +30,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const owed = tickets.reduce((s, t) => s + Math.max(0, ticketTotals(t.lines, t.payments, t.taxRatePct).balance), 0);
   const commission =
     c.kind === "TRADE"
-      ? c.viaTickets.filter((t) => t.status === "COLLECTED").reduce((s, t) => s + ticketTotals(t.lines, t.payments, t.taxRatePct, c.commissionPct, partnerCommission.get(t.id)).commission, 0)
+      ? c.viaTickets.filter((t) => t.status === "COLLECTED").reduce((s, t) => s + ticketTotals(t.lines, t.payments, t.taxRatePct, t.tradeCommissionPct ?? c.commissionPct, partnerCommission.get(t.id)).commission, 0)
       : 0;
 
   return (

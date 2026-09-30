@@ -2,12 +2,28 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
+import { unstable_rethrow } from "next/navigation";
 import { toast } from "sonner";
 import type { ActionResult } from "@/lib/action";
 
 type Action = (formData: FormData) => Promise<ActionResult>;
 
 const Pending = createContext(false);
+
+/**
+ * Calls a server action from a click or a submit. A failure the server didn't explain (it errored, or the connection
+ * dropped while the shop PC restarted) comes back as an error to show: thrown inside the transition it would replace
+ * the whole page, and lose whatever was typed.
+ */
+export async function runAction(call: () => Promise<ActionResult>): Promise<ActionResult> {
+  try {
+    return await call();
+  } catch (e) {
+    unstable_rethrow(e); // an action that redirects still goes on to its page
+    console.error(e);
+    return { error: "Couldn't save: check the connection and try again." };
+  }
+}
 
 /**
  * A form that runs a server action and shows its error (or a success note) as a toast. It submits itself rather than
@@ -43,7 +59,7 @@ export function ActionForm({
           const form = e.currentTarget;
           const fd = new FormData(form, (e.nativeEvent as SubmitEvent).submitter);
           start(async () => {
-            const r = await action(fd);
+            const r = await runAction(() => action(fd));
             if (r?.error) toast.error(r.error);
             else {
               if (success) toast.success(success);
@@ -105,7 +121,7 @@ export function ActionButton({
         }
         setArmed(false);
         start(async () => {
-          const r = await action();
+          const r = await runAction(action);
           if (r?.error) toast.error(r.error);
           else if (success) toast.success(success);
         });

@@ -308,6 +308,9 @@ model Ticket {
   readyAt             DateTime?
   closedAt            DateTime?
   warrantyUntil       DateTime?
+  // The trade account's commission % as it was when the ticket closed (null while open): editing the account later
+  // doesn't rewrite past months
+  tradeCommissionPct  Float?
   openedById          String?
   openedBy            User?        @relation("TicketOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
   techId              String?
