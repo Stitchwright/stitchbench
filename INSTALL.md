@@ -93,7 +93,9 @@ Tray → **Settings file** opens `%APPDATA%\StitchBench\config.json`. Restart St
 Windows paths need double backslashes in this file: `"libraryDir": "D:\\Manuals"`. If the file has a mistake,
 StitchBench says so at start and offers to open it, or to start with the last settings that worked
 (`config.json.bak`). The database password and sign-in secret are kept separately in `secrets.json`: don't edit
-or delete that file, and include it if you ever copy `%APPDATA%\StitchBench` to another PC.
+or delete that file, and include it if you ever copy `%APPDATA%\StitchBench` to another PC. (It also holds
+`appDbPassword`, the password of `stitchbench_app`, the limited database login the web server uses; the program
+makes it up if it is missing and resets the role's password to it at every start, so that one is never lost.)
 
 | Setting | Meaning |
 |---|---|

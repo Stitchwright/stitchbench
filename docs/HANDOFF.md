@@ -180,7 +180,7 @@ Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). 
    - Migration folder names reserved per package: 2026092710/11/12/13/14/15/16 0000_round3_<pkg>.
    - Keep old installs working against an updated hub and the other way round.
 2. **Verify**: build, apply all migrations to an empty DB and to a copy of a populated one, check drift
-   (`npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma`), run the
+   (`SHADOW_DATABASE_URL=postgresql://stitchbench:stitchbench@localhost:5433/stitchbench_shadow npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code`; Prisma 7.10 reads the shadow URL from prisma.config.ts, create that empty database once), run the
    specs and the hub smoke test, and re-run each finding's reproduction (evidence in the findings file).
 3. Then the low and info findings (the owner chose high + medium first).
 4. **New features** (all designed; designs in `docs/plans/`). Build order:
@@ -290,6 +290,18 @@ Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). 
   central vac installs), Small Appliance Repair (KitchenAid-type mixers, 3D printers, other), Scheduling,
   Marketing. Unlocked by license keys the owner signs (checked offline) plus an admin switch on hosted.
   Monthly or yearly; renew reminders, grace period, read-only when lapsed.
+- Round-3 open findings (30 Sep 2026, evening; all answered yes, not built yet, do them after the round3-tail2 pass
+  or fold them into the modules foundation where they touch the same tables):
+  1. L7/L31: email addresses unique per company, not across the install; sign-in asks which company when one address
+     has more than one.
+  2. L42: signing out ends the session on every device (sessionVersion bump), not just the one used.
+  3. L126: customers and machines can be merged and deleted (duplicates folded into one record, history kept).
+  4. L127: a payment is reversed by a new opposite entry, never deleted; the day's totals keep their history.
+  5. L95: a single-writer lock on the hub (accept a few seconds of errors during a deploy overlap).
+  6. L134/I27: partner invites and messages signed end to end so the hub operator can't forge them; design first.
+  7. M56: a partner's consignment return needs "Confirm it arrived", like settlement payments.
+  8. L79: supplier costs may carry more than two decimals (store the cost with enough precision; prices stay cents).
+
 
 ## 5. Things to know
 

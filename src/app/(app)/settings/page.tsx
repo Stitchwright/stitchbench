@@ -52,7 +52,7 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
               Sync now
             </ActionButton>
             {admin && (
-              <ActionButton action={leaveCommunityHub} className="btn btn-sm btn-danger" confirm="Disconnect from the hub?" success="Disconnected">
+              <ActionButton action={leaveCommunityHub} className="btn btn-sm btn-danger" confirm="Leave? Your listings come off the marketplace" success="Disconnected">
                 Leave the hub
               </ActionButton>
             )}
@@ -64,6 +64,12 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
             The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers,
             tickets and prices never leave this StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
           </p>
+          {s?.formerUrl && (
+            <p className="muted text-sm">
+              This StitchBench left <span className="mono">{s.formerUrl}</span>. Joining that hub again (with its current invite) keeps this shop&apos;s
+              listings, orders and shared notes there as its own.
+            </p>
+          )}
           <InviteInput />
           <details>
             <summary className="link cursor-pointer text-sm">Or type the hub address and join key</summary>
@@ -72,7 +78,7 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
                 <label htmlFor="hub-url" className="label">
                   Hub address
                 </label>
-                <input id="hub-url" name="url" className="input mono" placeholder="https://..." defaultValue={s?.url ?? ""} />
+                <input id="hub-url" name="url" className="input mono" placeholder="https://..." defaultValue={s?.url ?? s?.formerUrl ?? ""} />
               </div>
               <div className="field">
                 <label htmlFor="hub-key" className="label">

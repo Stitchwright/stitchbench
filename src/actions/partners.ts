@@ -21,6 +21,7 @@ import {
   partnerQuota,
   proposeTerms,
   redeemPartnerCode,
+  retryPartnerMessage,
   kickPartnerSync,
   saveLinkFromHub,
   sendToPartner,
@@ -188,5 +189,12 @@ export const resendPartnerMessage = safe(async function resendPartnerMessage(out
   if (!m) throw new UserError("That message isn't waiting any more.");
   await db.partnerOutbox.update({ where: { id: m.id }, data: { deadAt: null, nextTryAt: null, tries: 0 } });
   kickPartnerSync();
+  refresh();
+});
+
+/** A message from a partner that was set aside: fetched from the hub again and applied once more (after the cause is fixed). */
+export const retryFailedMessage = safe(async function retryFailedMessage(key: string) {
+  const admin = await requireAdmin();
+  await retryPartnerMessage(admin.shopId, key);
   refresh();
 });
