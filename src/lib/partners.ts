@@ -18,6 +18,7 @@ import { db } from "@/lib/db";
 import { isUserError, UserError } from "@/lib/action";
 import { checkHubUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
+import { inEighths } from "@/lib/register-math";
 import { modelKey } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms, repairCommission, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
@@ -73,8 +74,13 @@ const int = (v: unknown, min: number, max: number, what: string) => {
 const optInt = (v: unknown, min: number, max: number, what: string) => (v == null || v === "" ? null : int(v, min, max, what));
 const qtyOf = (v: unknown, what: string) => {
   const x = Number(v);
-  return Number.isFinite(x) && Math.abs(x) <= MAX_QTY ? Math.round(x * 1000) / 1000 : bad(`${what} is out of range`);
+  if (!Number.isFinite(x) || Math.abs(x) > MAX_QTY) return bad(`${what} is out of range`);
+  // Fabric is cut in eighths of a yard: within a millionth of an eighth is that eighth (as the register takes it);
+  // anything else keeps thousandths.
+  return inEighths(x) ? Math.round(x * 8) / 8 : Math.round(x * 1000) / 1000;
 };
+// Quantities are floats (0.7 - 0.4 isn't 0.3 exactly): a millionth of slack on every "no more than" check, as at the register.
+const SLACK = 1e-6;
 /** A date from 2000 to a year from now: JavaScript takes years like -100000, which the database refuses. */
 const dateOf = (v: unknown, what: string) => {
   const d = new Date(String(v ?? ""));
@@ -289,10 +295,10 @@ export async function endPartnership(shopId: string, linkId: string, note: strin
  * The trade account a partner sewing shop's machines come in under. An existing account of the same name is used only
  * if no other partnership already uses it, and its commission is left as the shop set it.
  */
-async function tradeAccountFor(shopId: string, name: string, terms: PartnerTerms) {
-  const found = await db.customer.findFirst({ where: { shopId, kind: "TRADE", name: sameText(name) } });
-  if (found && !(await db.partnerLink.findFirst({ where: { shopId, accountId: found.id } }))) return found.id;
-  const c = await db.customer.create({
+async function tradeAccountFor(shopId: string, name: string, terms: PartnerTerms, tx: Prisma.TransactionClient = db) {
+  const found = await tx.customer.findFirst({ where: { shopId, kind: "TRADE", name: sameText(name) } });
+  if (found && !(await tx.partnerLink.findFirst({ where: { shopId, accountId: found.id } }))) return found.id;
+  const c = await tx.customer.create({
     data: {
       shopId,
       kind: "TRADE",
@@ -323,22 +329,23 @@ function hubLinkOf(v: unknown): HubPartnerLink {
   };
 }
 
-export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartnerLink) {
+/** `tx`: inside the transaction that applies a hub message, so the link is written with the message's "seen" row. */
+export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartnerLink, tx: Prisma.TransactionClient = db) {
   const l = hubLinkOf(raw);
   const partnerName = side === "repair" ? l.retail.name : l.repair.name;
   const terms = normalizeTerms(l.terms);
   const where = { shopId_id: { shopId, id: l.id } };
-  const existing = await db.partnerLink.findUnique({ where });
+  const existing = await tx.partnerLink.findUnique({ where });
   const endedAt = l.endedAt ? new Date(l.endedAt) : null;
   if (!existing) {
-    const accountId = side === "repair" ? await tradeAccountFor(shopId, partnerName, terms) : null;
-    await db.partnerLink.create({ data: { id: l.id, shopId, side, partnerName, status: l.status, terms, accountId, endedAt } });
+    const accountId = side === "repair" ? await tradeAccountFor(shopId, partnerName, terms, tx) : null;
+    await tx.partnerLink.create({ data: { id: l.id, shopId, side, partnerName, status: l.status, terms, accountId, endedAt } });
     return;
   }
   // The same two shops used a new code (after ending, or while still linked): its terms become a new version that both
   // accept again. Money already recorded keeps the rates it was recorded at.
   const newTerms = l.status === "ACTIVE" && termsKey(terms) !== termsKey(normalizeTerms(existing.terms));
-  await db.partnerLink.update({
+  await tx.partnerLink.update({
     where,
     data: {
       partnerName,
@@ -651,6 +658,39 @@ const PAGE = 50;
 const MAX_REJECTS_PER_HOUR = 30; // "couldn't take it" answers to one partner: a flood of bad messages isn't echoed
 
 /**
+ * The partnership a message is about, on this shop; missed link.created (a restored backup): fetched from the hub. Done
+ * before the message's transaction, so no transaction waits on the hub. Null when the hub doesn't know it either.
+ */
+async function linkFor(shopId: string, m: HubMessage) {
+  if (m.fromSide === "hub" || !/^[A-Za-z0-9_-]{1,80}$/.test(String(m.linkId))) return null;
+  const have = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: m.linkId } } });
+  if (have) return have;
+  const links = (await (await hubFetch("/v1/partners/links")).json()) as (HubPartnerLink & { side: Side; shopRef: string })[];
+  const l = links.find((x) => x.id === m.linkId && x.shopRef === shopId);
+  if (!l) return null;
+  await saveLinkFromHub(shopId, l.side, l);
+  return db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: m.linkId } } });
+}
+
+/**
+ * Apply one message and write its "seen" row in one transaction: a crash between the two, or a second server process
+ * pulling the same page, can't apply it twice (the seen row goes in first; one already there, once the other
+ * transaction has committed, means it was applied, and nothing is done). False when it was applied already.
+ */
+async function applyOnce(shopId: string, key: string, m: HubMessage) {
+  return db.$transaction(
+    async (tx) => {
+      const fresh = await tx.partnerSeen.createMany({ data: [{ shopId, key }], skipDuplicates: true });
+      if (!fresh.count) return false;
+      await applyMessage(m, tx);
+      return true;
+    },
+    // An intake can carry several MB of photos, which a busy PC takes a while to write.
+    { timeout: 60_000, maxWait: 10_000 },
+  );
+}
+
+/**
  * Apply what partners sent, in order. A message with bad data, or one the database can't store, is set aside at once
  * and the partner is told; one whose apply fails for a passing reason holds back only the rest of its own partnership
  * (everyone else's go on), and after 3 syncs it is set aside too, so nothing stops every later message. The cursor
@@ -687,11 +727,11 @@ async function pullMessages(cursor: string) {
         const seen = await db.partnerSeen.findUnique({ where: { shopId_key: { shopId: shop.id, key } } });
         if (!seen) {
           try {
-            await applyMessage(m);
-            await db.partnerSeen.create({ data: { shopId: shop.id, key } }).catch(() => {});
+            // The partnership first (it may have to come from the hub): not inside the message's transaction.
+            await linkFor(shop.id, m);
+            if (await applyOnce(shop.id, key, m)) received++;
             // An earlier try that failed is over with: it mustn't stay on the Partners page as still failing.
             await db.partnerFailure.deleteMany({ where: { shopId: shop.id, key } }).catch(() => {});
-            received++;
           } catch (e) {
             const dataError = e instanceof PartnerDataError;
             const dbError = !dataError && refusedForGood(e);
@@ -847,8 +887,17 @@ const FROM: Record<string, "repair" | "retail" | "either" | "hub"> = {
 // New work isn't taken from a partnership that has ended; updates and settlements still are (the last statement).
 const NEW_WORK = new Set(["job.new", "order.new", "consign.place", "catalog"]);
 
-async function applyMessage(m: HubMessage) {
-  const shop = await db.shop.findUnique({ where: { id: m.toShopRef } });
+/** True the first time `key` is seen on this shop; recorded in the same transaction as whatever it guards. */
+async function firstTime(tx: Prisma.TransactionClient, shopId: string, key: string) {
+  return (await tx.partnerSeen.createMany({ data: [{ shopId, key: key.slice(0, 300) }], skipDuplicates: true })).count > 0;
+}
+
+/**
+ * Everything a message changes goes through `tx`, the transaction its "seen" row is written in (applyOnce), so it is
+ * applied whole or not at all, and never twice.
+ */
+async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
+  const shop = await tx.shop.findUnique({ where: { id: m.toShopRef } });
   if (!shop) return; // that company isn't on this install any more
   const shopId = shop.id;
   const allowed = FROM[m.type];
@@ -862,28 +911,21 @@ async function applyMessage(m: HubMessage) {
     if (m.type === "link.created") {
       const l = hubLinkOf(d);
       if (l.id !== linkId) return bad("link.created names another link");
-      return saveLinkFromHub(shopId, toSide, l);
+      return saveLinkFromHub(shopId, toSide, l, tx);
     }
     // The note typed with the ending and who ended it are kept for the shop to read on the partner's page.
     const endNote = text(d.note, 500);
     const endedBy = text(d.endedBy, 120);
-    await db.partnerLink.updateMany({
+    await tx.partnerLink.updateMany({
       where: { shopId, id: linkId },
       data: { status: "ENDED", endedAt: d.endedAt ? dateOf(d.endedAt, "endedAt") : new Date(), ...(endNote ? { endNote } : {}), ...(endedBy ? { endedBy } : {}) },
     });
     return;
   }
 
-  let link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } } });
-  if (!link) {
-    // Missed the link.created (a restored backup): ask the hub for the link.
-    const links = (await (await hubFetch("/v1/partners/links")).json()) as (HubPartnerLink & { side: Side; shopRef: string })[];
-    const l = links.find((x) => x.id === linkId && x.shopRef === shopId);
-    if (!l) return;
-    await saveLinkFromHub(shopId, l.side, l);
-    link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } } });
-    if (!link) return;
-  }
+  // Missed the link.created (a restored backup): linkFor asked the hub before this transaction; not there either: nothing to do.
+  const link = await tx.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } } });
+  if (!link) return;
   const partnerSide: Side = link.side === "repair" ? "retail" : "repair";
   if (m.fromSide !== partnerSide) return bad(`${m.type} came from the wrong side`);
   if (allowed !== "either" && allowed !== partnerSide) return bad(`${m.type} can't come from the ${partnerSide === "repair" ? "repair shop" : "sewing shop"}`);
@@ -901,7 +943,7 @@ async function applyMessage(m: HubMessage) {
       const mine = link.proposedTerms as Proposal | null;
       // Both proposed the same version at once: the repair shop's proposal stands for both.
       if (mine && mine.version === version && link.proposedBy === link.side && link.side === "repair") return;
-      await db.partnerLink.update({
+      await tx.partnerLink.update({
         where: lk,
         data: { proposedTerms: { version, terms: normalizeTerms(d.terms), by: { name: text(d.name, 120) ?? "", at: at.toISOString() } } as Json, proposedBy: m.fromSide },
       });
@@ -919,7 +961,7 @@ async function applyMessage(m: HubMessage) {
         // They accepted the change we offered, if it is the same change.
         if (key && key !== termsKey(normalizeTerms(prop.terms))) return bad("the partner accepted different terms from the ones offered; propose them again");
         const accepted: Accepted = { [link.side]: { ...prop.by, version }, [m.fromSide]: who };
-        await db.partnerLink.update({
+        await tx.partnerLink.update({
           where: lk,
           data: { terms: normalizeTerms(prop.terms), termsVersion: version, accepted: accepted as Json, proposedTerms: Prisma.DbNull, proposedBy: null },
         });
@@ -928,7 +970,7 @@ async function applyMessage(m: HubMessage) {
         return bad(`the partner accepted version ${version}, which was replaced by version ${prop.version} before it arrived; accept that one instead`);
       } else if (version === link.termsVersion) {
         if (key && key !== termsKey(terms)) return bad("the partner accepted different terms from these; propose them again");
-        await db.partnerLink.update({ where: lk, data: { accepted: { ...((link.accepted as Accepted) ?? {}), [m.fromSide]: who } as Json } });
+        await tx.partnerLink.update({ where: lk, data: { accepted: { ...((link.accepted as Accepted) ?? {}), [m.fromSide]: who } as Json } });
       }
       return;
     }
@@ -949,16 +991,16 @@ async function applyMessage(m: HubMessage) {
           ...labelFields(it),
         } satisfies CatalogItem;
       });
-      await db.partnerLink.update({ where: lk, data: { catalog: items as Json, catalogAt: at } });
+      await tx.partnerLink.update({ where: lk, data: { catalog: items as Json, catalogAt: at } });
       return;
     }
 
     case "job.new":
-      await newJobFromPartner(shopId, link, d, at);
+      await newJobFromPartner(shopId, link, d, at, tx);
       return;
 
     case "job.update": {
-      const job = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id: idOf(d.id, "job") } } });
+      const job = await tx.repairJob.findUnique({ where: { shopId_id: { shopId, id: idOf(d.id, "job") } } });
       if (!job || job.side !== "retail" || job.linkId !== link.id) return;
       // Each update is the repair shop's whole view of the job at its time: an older one arriving late changes nothing.
       if (job.snapshotAt && at <= job.snapshotAt) return;
@@ -982,7 +1024,7 @@ async function applyMessage(m: HubMessage) {
       // The repair shop asks for the customer's OK again (a second estimate): the last answer was to the first one, so
       // the question is shown again.
       const askAgain = status === "WAITING_CUSTOMER_OK" && job.status !== "WAITING_CUSTOMER_OK" && job.approval != null;
-      await db.repairJob.update({
+      await tx.repairJob.update({
         where: { shopId_id: { shopId, id: job.id } },
         data: {
           status,
@@ -1005,30 +1047,28 @@ async function applyMessage(m: HubMessage) {
     }
 
     case "job.reply": {
-      const job = await repairSideJob(shopId, link.id, d.id);
+      const job = await repairSideJob(tx, shopId, link.id, d.id);
       if (!job?.ticketId) return;
       const approval = d.approval === "APPROVED" || d.approval === "DECLINED" ? d.approval : bad("approval must be APPROVED or DECLINED");
       const approvedCents = approval === "APPROVED" ? optInt(d.approvedCents, 0, MAX_MONEY, "approved amount") : null;
-      const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
+      const t = await tx.ticket.findUnique({ where: { id: job.ticketId } });
       if (!t) return;
       const who = text(d.name, 80);
       const line = `${at.toLocaleDateString("en-US", { timeZone: await shopTimeZone(shopId) })} ${link.partnerName}${who ? ` (${who})` : ""}: customer ${approval === "APPROVED" ? `approved${approvedCents != null ? ` up to $${(approvedCents / 100).toFixed(2)}` : ""}` : "declined the work"}${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
-      await db.$transaction([
-        db.ticket.update({
-          where: { id: t.id },
-          data: {
-            ...(approval === "APPROVED" && approvedCents != null ? { approvedCents } : {}),
-            ...(approval === "APPROVED" && t.status === "WAITING_CUSTOMER_OK" ? { status: "ON_BENCH" } : {}),
-            notes: [t.notes, line].filter(Boolean).join("\n").slice(-20_000),
-          },
-        }),
-        db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { approval, approvedCents, events: withEvent(job.events, { at: at.toISOString(), note: line }) } }),
-      ]);
+      await tx.ticket.update({
+        where: { id: t.id },
+        data: {
+          ...(approval === "APPROVED" && approvedCents != null ? { approvedCents } : {}),
+          ...(approval === "APPROVED" && t.status === "WAITING_CUSTOMER_OK" ? { status: "ON_BENCH" } : {}),
+          notes: [t.notes, line].filter(Boolean).join("\n").slice(-20_000),
+        },
+      });
+      await tx.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { approval, approvedCents, events: withEvent(job.events, { at: at.toISOString(), note: line }) } });
       return;
     }
 
     case "job.paid": {
-      const job = await repairSideJob(shopId, link.id, d.id);
+      const job = await repairSideJob(tx, shopId, link.id, d.id);
       if (!job?.ticketId) return;
       // Paid at the counter once; a repeat is not more money. The rest of a bill that went up after it was paid there
       // comes with everything paid there so far (paidCents): only what's new is added.
@@ -1038,43 +1078,39 @@ async function applyMessage(m: HubMessage) {
       const adds = paidBefore == null ? amount : paidThere == null ? 0 : paidThere - paidBefore;
       if (adds <= 0) return;
       const saleNumber = optInt(d.saleNumber, 0, 100_000_000, "sale number");
-      await db.$transaction([
-        db.payment.create({
-          data: { ticketId: job.ticketId, method: "SHOP_COLLECTED", amountCents: adds, paidAt: at, note: `Paid at ${link.partnerName}${saleNumber ? `, sale #${saleNumber}` : ""}` },
-        }),
-        db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { paidCents: (paidBefore ?? 0) + adds, paidAt: job.paidAt ?? at, paidWhere: job.repairPaidCents ? "split" : "shop" } }),
-      ]);
+      await tx.payment.create({
+        data: { ticketId: job.ticketId, method: "SHOP_COLLECTED", amountCents: adds, paidAt: at, note: `Paid at ${link.partnerName}${saleNumber ? `, sale #${saleNumber}` : ""}` },
+      });
+      await tx.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { paidCents: (paidBefore ?? 0) + adds, paidAt: job.paidAt ?? at, paidWhere: job.repairPaidCents ? "split" : "shop" } });
       return;
     }
 
     case "job.pickedup": {
-      const job = await repairSideJob(shopId, link.id, d.id);
+      const job = await repairSideJob(tx, shopId, link.id, d.id);
       if (!job?.ticketId) return;
-      const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
+      const t = await tx.ticket.findUnique({ where: { id: job.ticketId } });
       // Only a machine that's back and ready can have been picked up.
       if (!t || !READY.includes(t.status)) return;
-      await db.$transaction([
-        db.ticket.update({
-          where: { id: t.id },
-          data: {
-            status: t.status === "RETURNED_UNREPAIRED" ? t.status : "COLLECTED",
-            closedAt: t.closedAt ?? at,
-            // The warranty runs from the hub's time, never the partner's clock: the ticket and invoice show it.
-            warrantyUntil: t.status === "RETURNED_UNREPAIRED" ? t.warrantyUntil : (t.warrantyUntil ?? new Date(hubAt.getTime() + shop.warrantyDays * 86400000)),
-          },
-        }),
-        db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { pickedUpAt: at } }),
-      ]);
+      await tx.ticket.update({
+        where: { id: t.id },
+        data: {
+          status: t.status === "RETURNED_UNREPAIRED" ? t.status : "COLLECTED",
+          closedAt: t.closedAt ?? at,
+          // The warranty runs from the hub's time, never the partner's clock: the ticket and invoice show it.
+          warrantyUntil: t.status === "RETURNED_UNREPAIRED" ? t.warrantyUntil : (t.warrantyUntil ?? new Date(hubAt.getTime() + shop.warrantyDays * 86400000)),
+        },
+      });
+      await tx.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { pickedUpAt: at } });
       return;
     }
 
     case "job.cancel": {
-      const job = await repairSideJob(shopId, link.id, d.id);
+      const job = await repairSideJob(tx, shopId, link.id, d.id);
       if (!job?.ticketId) return;
-      const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
+      const t = await tx.ticket.findUnique({ where: { id: job.ticketId } });
       if (!t) return;
       const line = `${at.toLocaleDateString("en-US", { timeZone: await shopTimeZone(shopId) })} ${link.partnerName}: customer took the machine back before pickup${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
-      await db.ticket.update({
+      await tx.ticket.update({
         where: { id: t.id },
         data: {
           notes: [t.notes, line].filter(Boolean).join("\n").slice(-20_000),
@@ -1086,14 +1122,14 @@ async function applyMessage(m: HubMessage) {
 
     case "order.new": {
       const id = idOf(d.id, "order");
-      if (await db.partnerOrder.findUnique({ where: { shopId_id: { shopId, id } } })) return;
+      if (await tx.partnerOrder.findUnique({ where: { shopId_id: { shopId, id } } })) return;
       // Each line is rebuilt from our own item: its number, description and our partner price. Lines for items we
       // don't offer are left out, and a different price asked is noted.
       const asked = arr(d.lines, 500, "order").map((x) => obj(x, "order line"));
       const lines: OrderLine[] = [];
       const notes: string[] = [];
       for (const a of asked) {
-        const part = await db.part.findFirst({ where: { id: String(a.itemKey ?? ""), shopId, offerToPartners: true, wholesaleCents: { not: null }, consignLinkId: null } });
+        const part = await tx.part.findFirst({ where: { id: String(a.itemKey ?? ""), shopId, offerToPartners: true, wholesaleCents: { not: null }, consignLinkId: null } });
         if (!part) {
           notes.push(`Left out: ${text(a.partNumber, 80) ?? "an item"} isn't offered any more.`);
           continue;
@@ -1106,33 +1142,31 @@ async function applyMessage(m: HubMessage) {
       }
       if (!lines.length) return bad("the order has nothing we offer");
       const note = [text(d.note, 1000), ...notes].filter(Boolean).join("\n") || null;
-      await db.$transaction([
-        db.partnerOrder.create({
-          data: {
-            id,
-            shopId,
-            linkId: link.id,
-            side: "seller",
-            number: text(d.number, 30) ?? id.slice(-6),
-            lines: lines as Json,
-            totalCents: orderTotal(lines),
-            note,
-            events: [{ at: at.toISOString(), status: "PLACED", note: text(d.name, 80) ? `by ${text(d.name, 80)}` : undefined }] as Json,
-            createdAt: at,
-          },
-        }),
-        // Our copy goes back, so the sewing shop's order shows the same lines, prices and total as ours (its catalog
-        // may have been out of date). An older sewing shop install ignores it.
-        db.partnerOutbox.create({
-          data: { shopId, linkId: link.id, type: "order.update", data: { id, status: "PLACED", lines, totalCents: orderTotal(lines), eventNote: notes.filter((n) => n.startsWith("Left out")).join(" ") || undefined, at: new Date().toISOString() } as Json },
-        }),
-      ]);
+      await tx.partnerOrder.create({
+        data: {
+          id,
+          shopId,
+          linkId: link.id,
+          side: "seller",
+          number: text(d.number, 30) ?? id.slice(-6),
+          lines: lines as Json,
+          totalCents: orderTotal(lines),
+          note,
+          events: [{ at: at.toISOString(), status: "PLACED", note: text(d.name, 80) ? `by ${text(d.name, 80)}` : undefined }] as Json,
+          createdAt: at,
+        },
+      });
+      // Our copy goes back, so the sewing shop's order shows the same lines, prices and total as ours (its catalog
+      // may have been out of date). An older sewing shop install ignores it.
+      await tx.partnerOutbox.create({
+        data: { shopId, linkId: link.id, type: "order.update", data: { id, status: "PLACED", lines, totalCents: orderTotal(lines), eventNote: notes.filter((n) => n.startsWith("Left out")).join(" ") || undefined, at: new Date().toISOString() } as Json },
+      });
       kickPartnerSync();
       return;
     }
 
     case "order.update": {
-      const o = await db.partnerOrder.findUnique({ where: { shopId_id: { shopId, id: idOf(d.id, "order") } } });
+      const o = await tx.partnerOrder.findUnique({ where: { shopId_id: { shopId, id: idOf(d.id, "order") } } });
       if (!o || o.linkId !== link.id) return;
       const to = String(d.status ?? "");
       // What each side may do to an order, from where it stands on our copy.
@@ -1169,21 +1203,21 @@ async function applyMessage(m: HubMessage) {
         const changed = theirs.totalCents !== o.totalCents || linesKey(theirs.lines) !== linesKey(o.lines);
         if (!changed) return;
         const note = `${who}'s copy comes to $${(theirs.totalCents / 100).toFixed(2)} at its prices${text(d.eventNote, 500) ? `: ${text(d.eventNote, 500)}` : ""}`;
-        await db.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { ...theirs, events: withEvent(o.events, { at: at.toISOString(), note }) } });
+        await tx.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { ...theirs, events: withEvent(o.events, { at: at.toISOString(), note }) } });
         return;
       }
       if (!legal) {
         // The repair shop's copy sent just after an order arrives says PLACED: an order already moved on here (cancelled,
         // received) has nothing to sort out.
         if (to !== o.status && to !== "PLACED") {
-          await db.partnerOrder.update({
+          await tx.partnerOrder.update({
             where: { shopId_id: { shopId, id: o.id } },
             data: { events: withEvent(o.events, { at: at.toISOString(), note: `${who} marked it ${to.toLowerCase() || "?"}, but it was already ${o.status.toLowerCase()} here: sort it out with them` }) },
           });
         }
         return;
       }
-      await db.partnerOrder.update({
+      await tx.partnerOrder.update({
         where: { shopId_id: { shopId, id: o.id } },
         data: {
           status: to,
@@ -1199,20 +1233,27 @@ async function applyMessage(m: HubMessage) {
       return;
     }
 
+    // consign.place, consign.return and consign.count carry an id of their own: the same one again (sent twice after a
+    // lost answer, or from a feed that started over) changes nothing. Older installs send none; then only the hub
+    // message's seen row (applyOnce) tells a repeat.
     case "consign.place": {
+      const msgId = text(d.id, 80);
+      if (msgId && !(await firstTime(tx, shopId, `consign.place:${link.id}:${msgId}`))) return;
       const items = arr(d.items, 500, "items").map((x) => obj(x, "item"));
       // New shelf items from this partner in the last hour (each is an inventory entry here): a flood is set aside.
-      const lately = await db.part.count({ where: { shopId, consignLinkId: link.id, createdAt: { gte: new Date(Date.now() - 3600_000) } } });
+      const lately = await tx.part.count({ where: { shopId, consignLinkId: link.id, createdAt: { gte: new Date(Date.now() - 3600_000) } } });
       if (lately + items.length > MAX_CONSIGN_ITEMS_PER_HOUR) return bad(`${link.partnerName} placed more than ${MAX_CONSIGN_ITEMS_PER_HOUR} consigned items within an hour`);
-      for (const it of items) await receiveConsigned(shopId, link, it, at);
+      for (const it of items) await receiveConsigned(shopId, link, it, at, tx);
       return;
     }
 
     case "consign.return": {
+      const msgId = text(d.id, 80);
+      if (msgId && !(await firstTime(tx, shopId, `consign.return:${link.id}:${msgId}`))) return;
       // The sewing shop hands stock back; we put it back on our shelf, never more than is out there.
       for (const x of arr(d.items, 500, "items")) {
         const it = obj(x, "item");
-        await consignReturned(shopId, link, idOf(it.itemKey, "item"), Math.abs(qtyOf(it.qty, "qty")), at);
+        await consignReturned(shopId, link, idOf(it.itemKey, "item"), Math.abs(qtyOf(it.qty, "qty")), at, tx);
       }
       return;
     }
@@ -1220,50 +1261,53 @@ async function applyMessage(m: HubMessage) {
     case "consign.sale": {
       const id = String(d.id ?? "");
       if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return bad("sale id isn't valid");
-      if (await db.consignSale.findUnique({ where: { shopId_id: { shopId, id } } })) return;
+      if (await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id } } })) return;
       const itemKey = idOf(d.itemKey, "item");
       const qty = qtyOf(d.qty, "qty");
       const priceCents = int(d.priceCents, 0, MAX_MONEY, "price");
       if (qty === 0) return;
-      const item = await db.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
+      const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
       if (!item) return bad("a consigned sale for an item that isn't on consignment");
       // A negative sale takes back sales we have: a void of one sale on their register ("<sale>-void"), or a customer's
-      // return rung up at their counter. Never more than we've counted as sold of this item.
+      // return rung up at their counter. Never more than we've counted as sold of this item (with the register's slack:
+      // 0.7 sold less 0.4 returned isn't exactly 0.3).
       let voided: { itemKey: string; shopKeepsCents: number | null; qty: number; priceCents: number } | null = null;
       if (qty < 0) {
         if (id.endsWith("-void")) {
-          voided = await db.consignSale.findUnique({ where: { shopId_id: { shopId, id: id.slice(0, -5) } } });
-          if (!voided || voided.itemKey !== itemKey || voided.qty < -qty) return bad("a voided consigned sale doesn't match a sale");
+          voided = await tx.consignSale.findUnique({ where: { shopId_id: { shopId, id: id.slice(0, -5) } } });
+          if (!voided || voided.itemKey !== itemKey || voided.qty + SLACK < -qty) return bad("a voided consigned sale doesn't match a sale");
         }
-        if (item.sold < -qty) return bad("a consigned return is more than was sold");
+        if (item.sold + SLACK < -qty) return bad("a consigned return is more than was sold");
       }
       const gross = Math.round(qty * priceCents);
       // A void takes back exactly the share the sale gave (as the sewing shop's register does), not one worked out
       // again from today's terms and rounded the other way.
-      const voidedKeeps = voided && voided.qty === -qty ? (voided.shopKeepsCents ?? Math.round((Math.round(voided.qty * voided.priceCents) * terms.consignSharePct) / 100)) : null;
-      await db.$transaction([
-        db.consignSale.create({
-          data: {
-            id,
-            shopId,
-            linkId: link.id,
-            itemKey,
-            qty,
-            priceCents,
-            saleNumber: optInt(d.saleNumber, 0, 100_000_000, "sale number"),
-            soldAt: at,
-            shopKeepsCents: voidedKeeps != null ? -voidedKeeps : Math.round((gross * terms.consignSharePct) / 100),
-          },
-        }),
-        db.consignItem.update({ where: { id: item.id }, data: { sold: { increment: qty } } }),
-      ]);
+      const voidedKeeps = voided && Math.abs(voided.qty + qty) < SLACK ? (voided.shopKeepsCents ?? Math.round((Math.round(voided.qty * voided.priceCents) * terms.consignSharePct) / 100)) : null;
+      await tx.consignSale.create({
+        data: {
+          id,
+          shopId,
+          linkId: link.id,
+          itemKey,
+          qty,
+          priceCents,
+          saleNumber: optInt(d.saleNumber, 0, 100_000_000, "sale number"),
+          soldAt: at,
+          shopKeepsCents: voidedKeeps != null ? -voidedKeeps : Math.round((gross * terms.consignSharePct) / 100),
+        },
+      });
+      // A return takes back only what is still counted as sold at the moment it is written (as the register's does).
+      const took = await tx.consignItem.updateMany({ where: { id: item.id, ...(qty < 0 ? { sold: { gte: -qty - SLACK } } : {}) }, data: { sold: { increment: qty } } });
+      if (!took.count) return bad("a consigned return is more than was sold");
       return;
     }
 
     case "consign.count": {
+      const msgId = text(d.id, 80);
+      if (msgId && !(await firstTime(tx, shopId, `consign.count:${link.id}:${msgId}`))) return;
       for (const x of arr(d.items, 5000, "items")) {
         const it = obj(x, "item");
-        await db.consignItem.updateMany({
+        await tx.consignItem.updateMany({
           where: { shopId, linkId: link.id, itemKey: idOf(it.itemKey, "item") },
           data: { countedQty: Math.abs(qtyOf(it.onHand, "count")), countedAt: at },
         });
@@ -1273,17 +1317,17 @@ async function applyMessage(m: HubMessage) {
 
     case "msg.rejected": {
       // The partner couldn't take something we sent: it's shown with what we sent, and on the job or order it was about.
-      const sent = await db.partnerOutbox.findFirst({ where: { shopId, linkId: link.id, id: idOf(d.id, "message") } });
+      const sent = await tx.partnerOutbox.findFirst({ where: { shopId, linkId: link.id, id: idOf(d.id, "message") } });
       if (!sent?.sentAt) return;
       const reason = `${link.partnerName} couldn't take it: ${text(d.reason, 500) ?? "no reason given"}`;
-      await db.partnerOutbox.update({ where: { id: sent.id }, data: { deadAt: sent.deadAt ?? hubAt, error: reason } });
+      await tx.partnerOutbox.update({ where: { id: sent.id }, data: { deadAt: sent.deadAt ?? hubAt, error: reason } });
       const sentData = sent.data && typeof sent.data === "object" && !Array.isArray(sent.data) ? (sent.data as Obj) : {};
       if (sent.type === "terms.accept") {
         // Our acceptance didn't take on their side: these terms aren't agreed by both, whatever we recorded for them.
         const accepted = { ...((link.accepted as Accepted) ?? {}) };
         if (Number(sentData.version) === link.termsVersion && accepted[partnerSide]?.version === link.termsVersion) {
           delete accepted[partnerSide];
-          await db.partnerLink.update({ where: lk, data: { accepted: accepted as Json } });
+          await tx.partnerLink.update({ where: lk, data: { accepted: accepted as Json } });
         }
         return;
       }
@@ -1291,25 +1335,25 @@ async function applyMessage(m: HubMessage) {
       if (!about) return;
       const note = `${sent.type} ${reason}`;
       if (sent.type.startsWith("job.")) {
-        const job = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id: about } } });
-        if (job?.linkId === link.id) await db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { events: withEvent(job.events, { at: hubAt.toISOString(), note }) } });
+        const job = await tx.repairJob.findUnique({ where: { shopId_id: { shopId, id: about } } });
+        if (job?.linkId === link.id) await tx.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { events: withEvent(job.events, { at: hubAt.toISOString(), note }) } });
       } else if (sent.type.startsWith("order.")) {
-        const o = await db.partnerOrder.findUnique({ where: { shopId_id: { shopId, id: about } } });
-        if (o?.linkId === link.id) await db.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { events: withEvent(o.events, { at: hubAt.toISOString(), note }) } });
+        const o = await tx.partnerOrder.findUnique({ where: { shopId_id: { shopId, id: about } } });
+        if (o?.linkId === link.id) await tx.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { events: withEvent(o.events, { at: hubAt.toISOString(), note }) } });
       }
       return;
     }
 
     case "settle.paid": {
       const id = idOf(d.id, "payment");
-      if (await db.settlement.findUnique({ where: { shopId_id: { shopId, id } } })) return;
+      if (await tx.settlement.findUnique({ where: { shopId_id: { shopId, id } } })) return;
       // A shop records only the payments it made (+ the sewing shop paid the repair shop, - the other way round); a
       // settlement claiming the other shop paid can't come from it.
       const netCents = int(d.netCents, -MAX_MONEY, MAX_MONEY, "amount");
       if (m.fromSide === "retail" ? netCents <= 0 : netCents >= 0) return bad("a settlement can only record a payment the shop sending it made");
       // Stored as the partner's word (confirmedAt empty): it counts in the balance once someone here confirms the money
       // arrived, so a payment claimed and never made doesn't wipe out what the partner owes.
-      await db.settlement.create({
+      await tx.settlement.create({
         data: {
           id,
           shopId,
@@ -1328,8 +1372,8 @@ async function applyMessage(m: HubMessage) {
   }
 }
 
-async function repairSideJob(shopId: string, linkId: string, id: unknown) {
-  const job = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id: idOf(id, "job") } } });
+async function repairSideJob(tx: Prisma.TransactionClient, shopId: string, linkId: string, id: unknown) {
+  const job = await tx.repairJob.findUnique({ where: { shopId_id: { shopId, id: idOf(id, "job") } } });
   return job?.side === "repair" && job.linkId === linkId ? job : null;
 }
 
@@ -1348,10 +1392,13 @@ export function orderLines(v: unknown): OrderLine[] {
 
 export const orderTotal = (lines: OrderLine[]) => lines.reduce((a, l) => a + Math.round(l.qty * l.unitCents), 0);
 
-/** A repair shop's machine that a sewing shop took in: a ticket on the repair shop's bench, in its route flow. */
-async function newJobFromPartner(shopId: string, link: { id: string; partnerName: string; accountId: string | null; terms: unknown }, d: Obj, at: Date) {
+/**
+ * A repair shop's machine that a sewing shop took in: a ticket on the repair shop's bench, in its route flow. All in
+ * the message's transaction (`tx`): a try that fails leaves no machine or ticket behind for the next try to repeat.
+ */
+async function newJobFromPartner(shopId: string, link: { id: string; partnerName: string; accountId: string | null; terms: unknown }, d: Obj, at: Date, tx: Prisma.TransactionClient) {
   const id = idOf(d.id, "job");
-  if (await db.repairJob.findUnique({ where: { shopId_id: { shopId, id } } })) return;
+  if (await tx.repairJob.findUnique({ where: { shopId_id: { shopId, id } } })) return;
   const terms = normalizeTerms(link.terms);
   const brand = text(d.brand, 80) ?? "Unknown";
   const model = text(d.model, 80) ?? "Unknown";
@@ -1363,89 +1410,85 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
   // clock): past the limit, the intake is set aside and shown, and the shop can ask the partner what's going on.
   const hourAgo = new Date(Date.now() - 3600_000);
   const lately = link.accountId
-    ? await db.ticket.count({ where: { shopId, viaAccountId: link.accountId, createdAt: { gte: hourAgo } } })
-    : await db.repairJob.count({ where: { shopId, linkId: link.id, side: "repair", createdAt: { gte: hourAgo } } });
+    ? await tx.ticket.count({ where: { shopId, viaAccountId: link.accountId, createdAt: { gte: hourAgo } } })
+    : await tx.repairJob.count({ where: { shopId, linkId: link.id, side: "repair", createdAt: { gte: hourAgo } } });
   if (lately >= MAX_INTAKES_PER_HOUR) return bad(`${link.partnerName} sent more than ${MAX_INTAKES_PER_HOUR} machines within an hour`);
-  const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
-  // (Several MB of photos written on a busy PC can take longer than the default 5 seconds, which would fail every try.)
-  await db.$transaction(async (tx) => {
-    // In the same transaction as the ticket: a try that fails leaves no machine behind for the next try to repeat.
-    const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
-    // The next free ticket number, taken atomically (a tech may be checking a machine in at the same moment). A counter
-    // behind the tickets goes straight past the highest number, as createTicket does, not one used number at a time.
-    let number = (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
-    if (await tx.ticket.findFirst({ where: { shopId, number }, select: { id: true } })) {
-      const top = await tx.ticket.aggregate({ where: { shopId }, _max: { number: true } });
-      number = (top._max.number ?? 0) + 1;
-      await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: number + 1 } });
-    }
-    const t = await tx.ticket.create({
-      data: {
-        shopId,
-        number,
-        machineId: machine.id,
-        viaAccountId: link.accountId,
-        status: "AT_SHOP_AWAITING_PICKUP",
-        serviceRequested: text(d.serviceRequested, 200),
-        problem: text(d.problem, 2000),
-        preApprovedCents: optInt(d.preApprovedCents, 0, MAX_MONEY, "pre-approved"),
-        accessories: strings(d.accessories),
-        taxRatePct: (await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } })).taxRatePct,
-        intakeAt: at,
-        notes: `From ${link.partnerName}: tag ${tag}, customer ${customerName}.${text(d.note, 1000) ? ` ${text(d.note, 1000)}` : ""}`,
-      },
+  const existing = serial ? await tx.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
+  const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
+  // The next free ticket number, taken atomically (a tech may be checking a machine in at the same moment). A counter
+  // behind the tickets goes straight past the highest number, as createTicket does, not one used number at a time.
+  let number = (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
+  if (await tx.ticket.findFirst({ where: { shopId, number }, select: { id: true } })) {
+    const top = await tx.ticket.aggregate({ where: { shopId }, _max: { number: true } });
+    number = (top._max.number ?? 0) + 1;
+    await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: number + 1 } });
+  }
+  const t = await tx.ticket.create({
+    data: {
+      shopId,
+      number,
+      machineId: machine.id,
+      viaAccountId: link.accountId,
+      status: "AT_SHOP_AWAITING_PICKUP",
+      serviceRequested: text(d.serviceRequested, 200),
+      problem: text(d.problem, 2000),
+      preApprovedCents: optInt(d.preApprovedCents, 0, MAX_MONEY, "pre-approved"),
+      accessories: strings(d.accessories),
+      taxRatePct: (await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } })).taxRatePct,
+      intakeAt: at,
+      notes: `From ${link.partnerName}: tag ${tag}, customer ${customerName}.${text(d.note, 1000) ? ` ${text(d.note, 1000)}` : ""}`,
+    },
+  });
+  await tx.repairJob.create({
+    data: {
+      id,
+      shopId,
+      linkId: link.id,
+      side: "repair",
+      tag,
+      status: "AT_SHOP_AWAITING_PICKUP",
+      machineId: machine.id,
+      customerName,
+      brand,
+      model,
+      serial,
+      machineType: text(d.machineType, 60),
+      problem: text(d.problem, 2000),
+      serviceRequested: text(d.serviceRequested, 200),
+      accessories: strings(d.accessories),
+      preApprovedCents: optInt(d.preApprovedCents, 0, MAX_MONEY, "pre-approved"),
+      ticketId: t.id,
+      ticketNumber: number,
+      commissionPct: terms.repairCommissionPct,
+      events: [{ at: at.toISOString(), status: "AT_SHOP_AWAITING_PICKUP", note: `Taken in at ${link.partnerName}` }] as Json,
+      createdAt: at,
+    },
+  });
+  // Photos that don't fit the intake's budget together are left out, the way an odd one is; the ticket still opens.
+  let budget = MAX_INTAKE_PHOTO_CHARS;
+  for (const p of photos) {
+    const mime = String(p.mime ?? "");
+    const b64 = String(p.data ?? "");
+    if (!IMAGE.has(mime) || !b64 || b64.length > 3_000_000 || b64.length > budget) continue;
+    budget -= b64.length;
+    await tx.machinePhoto.create({
+      data: { shopId, machineId: machine.id, ticketId: t.id, kind: "CONDITION", caption: text(p.caption, 200) ?? `At intake, ${link.partnerName}`, mime, data: Buffer.from(b64, "base64") },
     });
-    await tx.repairJob.create({
-      data: {
-        id,
-        shopId,
-        linkId: link.id,
-        side: "repair",
-        tag,
-        status: "AT_SHOP_AWAITING_PICKUP",
-        machineId: machine.id,
-        customerName,
-        brand,
-        model,
-        serial,
-        machineType: text(d.machineType, 60),
-        problem: text(d.problem, 2000),
-        serviceRequested: text(d.serviceRequested, 200),
-        accessories: strings(d.accessories),
-        preApprovedCents: optInt(d.preApprovedCents, 0, MAX_MONEY, "pre-approved"),
-        ticketId: t.id,
-        ticketNumber: number,
-        commissionPct: terms.repairCommissionPct,
-        events: [{ at: at.toISOString(), status: "AT_SHOP_AWAITING_PICKUP", note: `Taken in at ${link.partnerName}` }] as Json,
-        createdAt: at,
-      },
-    });
-    // Photos that don't fit the intake's budget together are left out, the way an odd one is; the ticket still opens.
-    let budget = MAX_INTAKE_PHOTO_CHARS;
-    for (const p of photos) {
-      const mime = String(p.mime ?? "");
-      const b64 = String(p.data ?? "");
-      if (!IMAGE.has(mime) || !b64 || b64.length > 3_000_000 || b64.length > budget) continue;
-      budget -= b64.length;
-      await tx.machinePhoto.create({
-        data: { shopId, machineId: machine.id, ticketId: t.id, kind: "CONDITION", caption: text(p.caption, 200) ?? `At intake, ${link.partnerName}`, mime, data: Buffer.from(b64, "base64") },
-      });
-    }
-  }, { timeout: 30_000, maxWait: 10_000 });
+  }
 }
 
 /** A part number not yet used on this shop, from `number` with a suffix when needed. */
-async function freePartNumber(shopId: string, number: string, suffix: string) {
-  if (!(await db.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: number } }, select: { id: true } }))) return number;
+async function freePartNumber(tx: Prisma.TransactionClient, shopId: string, number: string, suffix: string) {
+  if (!(await tx.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: number } }, select: { id: true } }))) return number;
   for (let i = 1; i < 100; i++) {
     const candidate = `${number} (${suffix}${i > 1 ? ` ${i}` : ""})`;
-    if (!(await db.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: candidate } }, select: { id: true } }))) return candidate;
+    if (!(await tx.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: candidate } }, select: { id: true } }))) return candidate;
   }
   return `${number} (${crypto.randomUUID().slice(0, 8)})`;
 }
 
 /** Consigned stock arriving on the sewing shop's shelf: its own inventory item, marked as the partner's. */
-async function receiveConsigned(shopId: string, link: { id: string; partnerName: string }, it: Obj, at: Date) {
+async function receiveConsigned(shopId: string, link: { id: string; partnerName: string }, it: Obj, at: Date, tx: Prisma.TransactionClient) {
   const itemKey = idOf(it.itemKey, "item");
   const qty = qtyOf(it.qty, "qty");
   if (qty <= 0) return;
@@ -1457,12 +1500,12 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
   const origin = asOrigin(it.origin) ?? "GENUINE";
   // The same item again, or the same number from this partner: one inventory entry.
   let part =
-    (await db.part.findFirst({ where: { shopId, consignLinkId: link.id, consignItemKey: itemKey } })) ??
-    (await db.part.findFirst({ where: { shopId, consignLinkId: link.id, OR: [{ partNumber: number }, { altNumbers: { has: number } }] } }));
+    (await tx.part.findFirst({ where: { shopId, consignLinkId: link.id, consignItemKey: itemKey } })) ??
+    (await tx.part.findFirst({ where: { shopId, consignLinkId: link.id, OR: [{ partNumber: number }, { altNumbers: { has: number } }] } }));
   if (!part) {
-    const partNumber = await freePartNumber(shopId, number, link.partnerName.slice(0, 20));
+    const partNumber = await freePartNumber(tx, shopId, number, link.partnerName.slice(0, 20));
     const kind = KINDS.includes(String(it.kind)) ? String(it.kind) : "ACCESSORY";
-    part = await db.part.create({
+    part = await tx.part.create({
       data: {
         shopId,
         partNumber,
@@ -1481,15 +1524,13 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
       },
     });
   }
-  await db.$transaction([
-    db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: qty }, priceCents: price || part.priceCents, consignItemKey: itemKey, condition, origin } }),
-    db.stockMove.create({ data: { shopId, partId: part.id, qty, reason: "CONSIGNED", note: `Consignment from ${link.partnerName}`, createdAt: at } }),
-    db.consignItem.upsert({
-      where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } },
-      create: { shopId, linkId: link.id, side: "holder", itemKey, partId: part.id, partNumber: part.partNumber, description: part.description, priceCents: price, placed: qty },
-      update: { placed: { increment: qty }, priceCents: price || undefined, partId: part.id },
-    }),
-  ]);
+  await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: qty }, priceCents: price || part.priceCents, consignItemKey: itemKey, condition, origin } });
+  await tx.stockMove.create({ data: { shopId, partId: part.id, qty, reason: "CONSIGNED", note: `Consignment from ${link.partnerName}`, createdAt: at } });
+  await tx.consignItem.upsert({
+    where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } },
+    create: { shopId, linkId: link.id, side: "holder", itemKey, partId: part.id, partNumber: part.partNumber, description: part.description, priceCents: price, placed: qty },
+    update: { placed: { increment: qty }, priceCents: price || undefined, partId: part.id },
+  });
 }
 
 /**
@@ -1503,8 +1544,9 @@ export async function consignReturned(shopId: string, link: { id: string; side: 
     const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
     if (!item) return 0;
     const onShelf = Math.max(0, item.placed - item.sold - item.returned);
-    const back = Math.min(qty, onShelf);
-    if (!(back > 0)) return 0;
+    // Within the register's slack, what's handed back is all that was out there (0.7 placed less 0.4 sold isn't 0.3 exactly).
+    const back = qty <= onShelf + SLACK ? qty : onShelf;
+    if (!(back > SLACK)) return 0;
     // Only counts if the shelf still had it when this ran (two returns at once can't both take the same units).
     const took = await tx.consignItem.updateMany({ where: { id: item.id, returned: item.returned }, data: { returned: { increment: back } } });
     if (!took.count) return 0;

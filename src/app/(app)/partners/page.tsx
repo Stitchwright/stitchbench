@@ -13,6 +13,14 @@ import { isPlatformAdmin } from "@/lib/shops";
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
 
+// ?error= carries one of these fixed codes, set only by this app's own redirects (sign-up's partner code step). It is
+// never echoed as free text, since anyone can put anything after "?error=" in a link they send someone.
+const PARTNER_ERROR_MESSAGES: Record<string, string> = {
+  "need-hub": "Your shop is set up. Enter the partner code here once this StitchBench's administrator has joined the community hub.",
+  "partner-code": "That partner code didn't work. Try it again below.",
+};
+const UNKNOWN_PARTNER_ERROR = "Something didn't go through. Try again below.";
+
 /** Partner shops: the sewing / quilt shops that take machines in for this repair shop, or the repair shop this sewing shop uses. */
 export default async function Partners({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const user = await requireUser();
@@ -57,7 +65,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
       />
       {error && (
         <p className="pill tone-bad" role="alert">
-          {error}
+          {PARTNER_ERROR_MESSAGES[error] ?? UNKNOWN_PARTNER_ERROR}
         </p>
       )}
       {hub?.partnerError && <p className="pill tone-bad">Last partner sync failed: {hub.partnerError}</p>}

@@ -150,6 +150,16 @@ steps in smoke, inventory and market specs; hub smoke test covers a listing's or
 Worth knowing: "compatible, not genuine <Brand>" uses the part's Brand field (the machine maker); a shop number isn't
 marked as one on the partner wire (the partner sees it as an ordinary number).
 
+## 2e. Round-3 tail (30 Sep 2026, evening, branch round3-tail)
+
+Finished the leftovers that needed no owner decision: M12, L22, L51, L90, L117, L121, L130, L133, L139 (statuses in
+`docs/round3/ROUND3_FINDINGS.md`). Hub migration `011_revision_company.sql` (company name on link and cross-reference
+revisions). New e2e setup: `npm run e2e:setup` also makes a tech user and a second company (`scripts/local-test/README.md`),
+with `tests/tenant.spec.ts`, `tests/roles.spec.ts` and more of `tests/auth.spec.ts` (I4, I5, I19, I20). What the owner will
+notice: the register scan box takes a claim tag (T101 or 101) and a receipt (S1004, loaded as a return); check-in has a
+customer search instead of a long list; cross-reference history has "Load older"; the Companies form asks for a time zone.
+Still waiting on owner decisions: L7/L31, L42, L126, L127, L95, L134/I27 (section 2c).
+
 ## 3. What to do next, in order
 
 

@@ -6,6 +6,7 @@ import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
+import { CompanyTimeZoneField } from "@/components/company-timezone-field";
 import { createCompany } from "@/actions/companies";
 
 // Only the StitchBench admin (PLATFORM_ADMIN_EMAILS) sees this: every company on the system, and a form to add one.
@@ -101,6 +102,7 @@ export default async function Companies() {
             </label>
             <input id="c-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
           </div>
+          <CompanyTimeZoneField defaultZone={tz} />
           <div className="field sm:col-span-2">
             <label htmlFor="c-code" className="label">
               Partner code from its repair shop (optional: connects a sewing shop to the repair shop that made the code)

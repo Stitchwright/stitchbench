@@ -6,6 +6,8 @@ Totals: 259 findings (high 6, medium 86, low 139, info 28); 14 refuted by verifi
 
 Status on 30 Sep 2026 (branch claude/remaining-tasks-l5s9q3 in both repos): high 6/6 fixed; medium 79 fixed, 7 partly done; low 116 fixed, 15 partly done, 8 open; info 4 fixed, 13 partly done, 11 open. The open and partly done ones say what is left and why (most need an owner decision, a feature, or a spec that needs more test setup). Verified with a build, every migration, the drift check, the unit tests, the Playwright specs (smoke, auth, hub, inventory, market, partners, register) and the hub smoke test.
 
+Status on 30 Sep 2026, evening (branch round3-tail, after the deploy): high 6/6 fixed; medium 80 fixed, 6 partly done; low 124 fixed, 7 partly done, 8 open; info 6 fixed, 13 partly done, 9 open. The round3-tail pass finished M12, L22, L51, L90, L117, L121, L130, L133 and L139, and added the second company and tech user to the e2e setup with tests/tenant.spec.ts, tests/roles.spec.ts and more of tests/auth.spec.ts (I4, I5, I19, I20).
+
 Status key: FIXED = committed; PARTLY DONE = edits exist but unfinished; OPEN = still to fix. Plan agreed with the owner: fix all high + medium first, then low/info.
 
 
@@ -141,7 +143,7 @@ Ratings and reputation are keyed to the install id (order_ratings.rated_install_
 
 ### M12. Hub quotas are per install, so on a hosted multi-company install one company can use up partner codes and messages for all
 - **Where:** stitchbench `src/actions/partners.ts:37` (partners; security; reproduced; confirmed)
-- **Status:** PARTLY DONE: per-company partner quotas in StitchBench and on the hub (per install + shopRef); shopRef/shopName now also on marketplace, notes and usage (M8/M70). Left: link and cross-reference revision "byShop" still shows the install name
+- **Status:** FIXED (round3-tail: link and cross-reference revisions carry shop_ref/shop_name (hub migration 011); StitchBench sends shopRef + shopName on every link and cross-reference change; history byShop is the company, falling back to the install name; the hub smoke test checks it)
 - **Problem:** All companies on a hosted StitchBench share one hub install key. The hub limits invites (30/h), redeems (20/h) and partner messages (3000/h) per install (stitchhub partners.mjs:111,134,172). The bench has no per-company quota: makePartnerCode, enterPartnerCode and any action that queues a message (countConsigned and returnConsigned only need requireUser) can be repeated freely. One company's admin, or even a TECH user, can exhaust the budget. Every other company's partner messages then get 429 and back off for up to 30 minutes, and their partner codes fail.
 - **Scenario:** A user of company A submits the shelf count form about once a second for an hour. The install's 3000 messages per hour are used up, and company B's job.paid and job.new messages are delayed (429, exponential back-off).
 - **Fix:** Add per-company rate limits on the bench for code creation, redemption and message-producing actions. Have the hub key its limits by (install, shopRef) as well as by install.
@@ -820,7 +822,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L22. Quantities stored as Float drift, so a legitimate consigned return is refused
 - **Where:** stitchbench `src/actions/register.ts:281` (data-model; code; reproduced; confirmed)
-- **Status:** PARTLY DONE: register counts use exact eighths and 1e-6 slack. Left: the float column itself; the same slack in lib/partners.ts consign guards
+- **Status:** FIXED (round3-tail: the consign guards in lib/partners.ts use inEighths + 1e-6 slack like the register; the Float column is left as is by design)
 - **Problem:** Part.qtyOnHand, StockMove.qty and ConsignItem.placed/sold/returned are DOUBLE PRECISION and updated with SQL increments. Yardage is only rounded to 1/1000 on input, and the register's qty box accepts any typed value (step=0.125 is not enforced on a controlled input). So non-binary fractions accumulate error. The consignment guards compare the drifted value exactly: `sold: { gte: -l.qty }` in completeSale, and `if (item.sold < -qty) return bad(...)` on the repair side (src/lib/partners.ts:973).
 - **Scenario:** A sewing shop sells 0.7 yd of a consigned fabric, and the customer returns 0.4 yd: sold = 0.7 + (-0.4) = 0.29999999999999993. The customer then returns the remaining 0.3 yd. The register refuses with 'More of <item> is being returned than was sold on consignment.', and the repair shop would quarantine such a message as bad data.
 - **Fix:** Store quantities as integer thousandths (Int) or Decimal(12,3). Failing that, round after each increment (`ROUND((sold + x)::numeric, 3)`) and compare with a small tolerance (sold >= -qty - 1e-6).
@@ -1023,7 +1025,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L51. Claim-tag and receipt barcodes are printed but nothing reads them, and the StitchShop search box promises 'tag #' but never searches repairs
 - **Where:** stitchbench `src/app/(app)/search/page.tsx:15` (gap; qa; reproduced; confirmed)
-- **Status:** PARTLY DONE: /search opens a claim tag typed as 101 or T101. Left: the register scan box mapping T<tag> and S<number>
+- **Status:** FIXED (round3-tail: the register scan box understands T<tag> / plain-digit claim tags and S<number> receipts, same parsing as /search (src/lib/scan-codes.ts); a receipt loads its lines as a return with an exact refund (src/lib/sale-return.ts, unit-tested))
 - **Problem:** The two-part claim tag prints a barcode `T<tag>` and the register receipt prints `S<sale number>`. No code parses either: scanning a claim tag at the register looks it up as an inventory item ('Nothing matches T101. Add it to inventory...'), or rings up a part whose numberKey happens to be T101. The sidebar search placeholder for a sewing shop reads 'Customer, item, tag #', but /search never queries RepairJob. A tag number is taken as a bench ticket number (and on a 'both' shop jumps to bench ticket #101), then searched as a machine, customer or part. To find a machine the customer came to collect, the clerk has to go through the Repair pickup list or /repairs.
 - **Scenario:** Reproduced on my own retail shop with a READY_FOR_PICKUP repair job tag 101: the search placeholder reads 'Customer, item, tag #'. /search?q=101 and /search?q=T101 both show 'Machines (0) ... Customers (0)'. At /register, scanning or typing T101 gives 'Nothing matches T101. Add it to inventory ...'. Expected: the repair job (and at the register, its balance as a pickup line).
 - **Fix:** In /search, match RepairJob.tag (and strip a leading T). In the register lookup, map T<tag> to the pickup job line and S<number> to the sale being returned.
@@ -1296,7 +1298,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L90. New companies always get time zone America/New_York; the Windows program never sets the PC's own zone
 - **Where:** stitchbench `src/lib/shops.ts:57` (gap; code; confirmed)
-- **Status:** PARTLY DONE: hosted sign-up takes the browser's time zone; the Windows program uses the PC's. Left: the Companies form
+- **Status:** FIXED (round3-tail: the Companies form has a time-zone field (src/components/company-timezone-field.tsx) defaulting to the admin's own shop zone, then the browser's; src/actions/companies.ts validates it like Settings)
 - **Problem:** Shop.timeZone defaults to 'America/New_York' (schema.prisma:55), and createShopWithOwner (used by sign-up, Companies and the Windows first run) never sets it. The Windows program knows the PC's zone (Intl.DateTimeFormat().resolvedOptions().timeZone) but doesn't pass it. Every report that correctly uses the shop zone therefore cuts days at Eastern midnight for shops elsewhere until someone finds the Settings field. That covers the register's 'today', the sales log month, the dashboard 'taken today' and partner statements.
 - **Scenario:** A California shop on the Windows program rings up sales until 9:30 pm. Everything after 9:00 pm PT (midnight ET) lands on the next day's register report and next day's 'taken today', so the end-of-day drawer report never matches the drawer.
 - **Fix:** Set timeZone at creation: the server's resolved zone on the Windows program, and the browser's zone (sent from the sign-up form) on hosted installs. Show it prominently in first-run setup.
@@ -1488,7 +1490,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L117. join-hub.mjs skips the hub-address check, so a plain-http hub gets the install key and all partner traffic
 - **Where:** stitchbench `desktop/join-hub.mjs:21` (files-library-desktop; security; plausible)
-- **Status:** PARTLY DONE: join-hub.mjs applies the hub URL rules. Left: hubFetch could refuse a stored non-https, non-localhost URL
+- **Status:** FIXED (round3-tail: hubFetch and hubReachable refuse a stored hub address that isn't https or this computer, the same rule as checkHubUrl / join-hub.mjs)
 - **Problem:** Settings -> Community hub goes through checkHubUrl (https only, http only for localhost, no credentials, query or hash). The CLI join only strips trailing slashes, POSTs the join key to whatever URL it's given, and stores that URL in HubState. After that, every hubFetch sends `Authorization: Bearer <installKey>` and partner, marketplace and note traffic to that address, including over http:// to a remote host.
 - **Scenario:** The owner runs `node join-hub.mjs http://hub.example.com <key>` (from an old note, or typed without the s). The join key and, from then on, the install key and all partner messages cross the internet in clear text, and anyone on the path can take over the shop's hub identity.
 - **Fix:** Apply the same rules as checkHubUrl in join-hub.mjs (copy the small function, since the script can't import TS), and have hubFetch refuse a stored non-https, non-localhost URL.
@@ -1516,7 +1518,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L121. Internal error text reaches the user: raw exception messages go into a UserError and into a /partners?error= link
 - **Where:** stitchbench `src/actions/companies.ts:30` (auth-accounts; code; plausible)
-- **Status:** PARTLY DONE: companies and sign-up no longer echo raw errors. Left: /partners shows ?error= text from the URL (map to fixed messages)
+- **Status:** FIXED (round3-tail: /partners?error= carries a fixed code mapped to a fixed message in src/app/(app)/partners/page.tsx; the two redirect sites in src/app/signup/page.tsx send a code, not free text)
 - **Problem:** createCompany wraps any error from redeemPartnerCode, including Prisma and network errors, as `UserError(`... ${e.message} ...`)`, so safe() returns internal text (query or constraint details, hub URLs, fetch failure causes) to the browser. Next.js normally hides those in production. Signup does the same through a redirect: `/partners?error=${encodeURIComponent(e.message)}` (signup/page.tsx:54). The partners page renders whatever ?error= contains, so any link can also put arbitrary text inside the app's own error box.
 - **Scenario:** The hub is unreachable or a DB constraint fails during partner-code redemption, and the new owner sees a raw Prisma or fetch error in a toast or banner. Separately, someone sends a signed-in user /partners?error=Your%20account%20is%20suspended%2C%20call%20555-..., which appears in StitchBench's own alert styling.
 - **Fix:** Put e.message in the text only when isUserError(e) (or HubError); otherwise log it and show a generic message. Have the partners page map a short error code to a fixed message instead of echoing free text from the URL.
@@ -1579,7 +1581,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L130. Every ticket page loads (and ships to the browser) the shop's entire parts list for a datalist; check-in loads every customer
 - **Where:** stitchbench `src/app/(app)/tickets/[id]/page.tsx:73` (gap; code; reproduced; plausible)
-- **Status:** PARTLY DONE: the ticket page's part box is a search (part-picker). Left: the check-in customer list still loads every retail customer
+- **Status:** FIXED (round3-tail: the check-in customer box is a live search (src/components/customer-picker.tsx, reuses findCustomers) instead of loading every retail customer; createTicket's customerId field unchanged)
 - **Problem:** The ticket page, the most-used page on the bench, runs an unbounded db.part.findMany({ where: { shopId } }) and renders one <option> per part into the 'parts-list' datalist, which goes in both the HTML and the RSC payload. A 'both' shop that imports a supplier sheet (up to 5,000 rows per import, repeatable) sends hundreds of KB to MBs on every ticket view, and every revalidatePath after each line or payment re-renders it. The list also includes partners' consigned items, which addLine refuses ('isn't in your parts'). /tickets/new loads every RETAIL customer into a <select> the same way (tickets/new/page.tsx:14). This is separate from the reported dashboard low-stock query.
 - **Scenario:** A shop with 15,000 SKUs opens a ticket on a tablet over shop Wi-Fi. Each ticket render transfers several MB and builds a 15,000-option datalist, and adding each part or payment triggers the same full re-render.
 - **Fix:** Replace the datalist with a debounced server search (findItems-style, take 25, own stock only), and do the same for the customer picker on check-in.
@@ -1600,7 +1602,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L133. Partner sync lease has no owner and no renewal; non-idempotent handlers depend on a partnerSeen row written after the apply
 - **Where:** stitchbench `src/lib/partners.ts:580` (partners; security, code; plausible)
-- **Status:** PARTLY DONE: lease has an owner and renewal; job.new machine made in its transaction. Left: the seen row in the same transaction as the apply; message-id idempotency for consign.*
+- **Status:** FIXED (round3-tail: applyOnce writes the partnerSeen row and applies the message in one transaction (seen insert first, skipDuplicates); consign.place/return/count are idempotent by their data id through PartnerSeen keys; the hub link fetch happens before the transaction)
 - **Problem:** withSyncLease takes a fixed 5-minute lease and, in finally, clears partnerLockUntil unconditionally. A sync longer than 5 minutes (many links with a slow hub: up to 300 sends per pushOutbox, each with a 30 s timeout, plus up to 50 pages of pulls) lets a second server process of a hosted install take the lease. When the first finishes, it clears the second's lease as well. Duplicate application is guarded only by a check-then-act on partnerSeen (lines 540-545), and the seen row is written after applyMessage, outside its transaction. Several handlers are not idempotent by themselves: job.paid (817-831) reads paidWhere and then creates a SHOP_COLLECTED payment; consign.place (941-945, receiveConsigned) increments stock and consignItem.placed; job.reply and job.cancel append notes; job.new creates the Machine outside its transaction (1059). The ids that consign.place, consign.return and consign.count carry (`id: crypto.randomUUID()`) are never checked. Two overlapping pulls, or a crash between the apply and the seen row, can apply the same message twice: a double payment on the ticket, or doubled consigned stock at the sewing shop.
 - **Scenario:** On a hosted install with 2+ server processes, one sync runs past 5 minutes, another process acquires the lease and pulls the same page, and both apply a consign.place. The sewing shop's inventory and placed count show twice the stock. A crash or redeploy between applyMessage and partnerSeen.create has the same effect for that one message.
 - **Fix:** Store a random owner token with the lease, extend it while running (for example before each page and each outbox batch), and release it only `WHERE partnerLockOwner = $token`; abort the run when renewal fails. Apply each message and insert its partnerSeen row in one transaction, with the seen insert first so a unique conflict aborts a duplicate. Make handlers idempotent on their own: key consign.place, return and count by message id; make job.paid a conditional update (`updateMany where paidWhere not in ('shop','split')`) before creating the payment; create the Machine inside the job.new transaction.
@@ -1642,7 +1644,7 @@ The same gap exists for repair tickets: removePayment was made admin-only 'like 
 
 ### L139. xpart history is unpaginated; a vandal can make it too large for the app to load (blocking rollback)
 - **Where:** stitchhub `src/parts.mjs:319` (hub-commerce; qa; reproduced; plausible)
-- **Status:** PARTLY DONE: history pages of 50 (before=<id>, X-History-More). Left: a "load older" button in StitchBench's xref history
+- **Status:** FIXED (round3-tail: xref/[id]/history.tsx loads pages of 50 with a "Load older" button (before=<oldest id>, X-History-More); the old src/components/xref-history.tsx is removed)
 - **Problem:** GET /v1/xparts/:id/history returns every revision with its full snapshot (up to 3000 fits each), with no LIMIT. StitchBench's History button fetches it all through a server action into the browser. Each member PUT adds a full snapshot (about 135 KB with 3000 fits). A vandal at the 300 writes/hour limit adds about 40 MB/hour to one part's history, and the History panel, the app's only rollback tool, becomes slow or fails to load for that part.
 - **Scenario:** 20 edits alternating 0 / 3000 fits leave a 2.7 MB history response. 300 edits make it about 40 MB.
 - **Fix:** Paginate history (limit, before) and return snapshot summaries, with the full snapshot fetched per revision for rollback. Collapse repeated edits by the same install within minutes.
@@ -1679,14 +1681,14 @@ The issues above (stale reference data after restore, prune with keep=0/null) wo
 
 ### I4. Untested critical path: ticket lifecycle and role rules (status timestamps, closed-ticket lock, admin-only payment removal, concurrent edits)
 - **Where:** stitchbench `src/actions/tickets.ts:140` (bench-workflow; qa; confirmed)
-- **Status:** PARTLY DONE: smoke.spec does a status round trip. Left: TECH-rule and closed-ticket specs (the e2e setup has no TECH user)
+- **Status:** PARTLY DONE (round3-tail: tests/roles.spec.ts: a tech has no People/company settings/Companies, part money fields are kept, refunds and removing a payment are refused, no void form, readyAt/closedAt/warrantyUntil set and cleared, a collected ticket's bill is locked). Left: voidSale's server-side requireAdmin is only checked through the UI; concurrent saveTicketText edits and the dashboard overdue/storage-fee warning are untested
 - **Problem:** No spec changes ticket status except partners.spec (WAITING_CUSTOMER_OK/READY_FOR_PICKUP on a partner ticket). Nothing tests readyAt/closedAt/warrantyUntil on setStatus, reopening, the dashboard's overdue/storage-fee warning, the TECH closed-ticket rule in removeLine, removePayment's requireAdmin, or saveTicketText under concurrent edits. The bugs above in these paths all went unnoticed.
 - **Scenario:** The round-1 TECH restrictions can be bypassed (addLine, negative addPayment) without any test failing.
 - **Fix:** Add an e2e spec: owner closes a paid ticket; tech tries remove line, add discount, negative payment and remove payment (expect refusals); status round-trips check readyAt/closedAt and the invoice header.
 
 ### I5. Untested critical path: cross-shop isolation of bench pages, actions and photo API
 - **Where:** stitchbench `src/app/api/photos/[id]/route.ts:6` (bench-workflow; qa; confirmed)
-- **Status:** OPEN (low pass: a tenant-isolation spec needs a second shop in the e2e setup)
+- **Status:** FIXED (round3-tail: tests/tenant.spec.ts with the second company from scripts/e2e-setup.ts: bench pages, /api/photos GET and POST, and replayed ticket/machine/customer/part actions with another company's ids all 404 or are refused, rows unchanged). Not covered: /repairs/[id] (needs a partner RepairJob)
 - **Problem:** No spec signs in as a second shop and tries another shop's ids on /tickets/[id], /tickets/[id]/invoice, /machines/[id], /customers/[id], /repairs/[id], /repairs/[id]/tag, /api/photos/[id], /api/photos POST (machineId/ticketId), or the ticket actions (removeLine, removePayment, setStatus, toggleChecklist, deletePhoto, updateMachine, saveCustomer). Scoping is currently correct: my replays of removeLine and toggleChecklist with shop A ids from shop B returned 'Line not found.' / 'Ticket not found.'. But on the hosted multi-shop app this is the highest-impact class of regression and it has no guard.
 - **Scenario:** A future edit that drops a shopId filter from, say, ownTicket or /api/photos/[id] would pass every existing test.
 - **Fix:** Add a tenant-isolation spec that creates two shops (scripts/e2e-setup.ts twice), records shop A's ids, and asserts 404 or 'not found' for each route and replayed action as shop B.
@@ -1790,14 +1792,14 @@ figure.spec.ts needs MANUAL_DIR, wasn't run in the baseline, and fails on the pi
 
 ### I19. Untested critical path: tenant isolation (cross-company reads/writes by id) has no test at all
 - **Where:** stitchbench `tests/smoke.spec.ts:1` (build-test-infra; qa; confirmed)
-- **Status:** OPEN (low pass: needs a new UI-driven or multi-company spec; not attempted in the low pass)
+- **Status:** FIXED (round3-tail: tests/tenant.spec.ts + the second company in scripts/e2e-setup.ts). Not covered: partner-link, listing and order ids, and /api/export/* (per shop, no id)
 - **Problem:** AGENTS.md's first rule, and the main subject of round 1 (8b3e5f2: 'Every market listing/order, image, export and CSV is scoped to the signed-in company'), is that every query filters by shopId and ownership is checked before touching a row by id. No spec signs in as a second company and tries another company's ticket/customer/machine/part/invoice ids, /api/photos/:id, /api/export/*, /api/sales, listing/order ids, partner-link ids or server actions with foreign ids. Every spec runs as a single E2E shop.
 - **Scenario:** A future page or action forgets `shopId: user.shopId` (the pattern round 1 had to fix in ~30 files). No test fails, and a hosted multi-company install leaks or modifies another shop's customers and money records.
 - **Fix:** Add a spec that creates two throwaway companies (scripts/e2e-setup.ts with two emails), records the ids that company A creates, and asserts that company B gets 404/UserError for every page, route handler and server action (replay the Next-Action with foreign ids).
 
 ### I20. Untested critical path: authentication, sessions and roles (login pacing, sessionVersion revocation, TECH/ADMIN limits, signup / first-run SETUP_TOKEN)
 - **Where:** stitchbench `tests/smoke.spec.ts:12` (build-test-infra; qa; confirmed)
-- **Status:** PARTLY DONE: tests/auth.spec.ts (wrong password, callbackUrl, session-end, tech has no People, role change and removal end the session). Left: pacing, TRUST_PROXY, /signup and /companies 404s
+- **Status:** PARTLY DONE (round3-tail: tests/auth.spec.ts: login pacing after 5 wrong passwords, /signup 404, /companies 404 for a tech and for another company's owner; tests/roles.spec.ts for tech limits). Left: the TRUST_PROXY per-address limit (needs a proxy) and SETUP_TOKEN first-run sign-up (Windows program only)
 - **Problem:** Round 1 added sign-in throttling and sessionVersion (sessions end when a user is removed or their password or role changes); round 2 changed it to per-account pacing plus a TRUST_PROXY-gated per-address limit; round 1 restricted Windows first-run sign-up to SETUP_TOKEN and the first company. No spec covers any of these. Specs only log in with valid credentials. walkthrough.spec signs in as a TECH only to take screenshots, and shop-library.spec's `/signup` 404 check runs only against the Windows program.
 - **Scenario:** A regression lets a removed employee's existing session keep working, lets a TECH reach Settings -> People or install-admin hub actions, or reopens /signup on a hosted install with ALLOW_SIGNUP unset. No test notices.
 - **Fix:** Add a spec that removes a user or changes their password or role and asserts that the old browser context is sent back to /login. Add 11 wrong passwords -> pacing message; TECH denied on admin-only actions; /signup 404 when ALLOW_SIGNUP is unset and after the first company.

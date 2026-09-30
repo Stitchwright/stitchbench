@@ -4,9 +4,22 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Camera, CameraOff, Trash2, Undo2, Wrench, Plus } from "lucide-react";
-import { completeSale, findCustomers, findItems, itemByCode, pickupJobs, type CustomerHit, type PickupJob, type RegisterItem } from "@/actions/register";
+import {
+  completeSale,
+  findCustomers,
+  findItems,
+  itemByCode,
+  pickupJobByTag,
+  pickupJobs,
+  saleForReturn,
+  type CustomerHit,
+  type PickupJob,
+  type RegisterItem,
+  type SaleForReturn,
+} from "@/actions/register";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 import { money, toCents } from "@/lib/format";
+import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
 
 type CartLine = {
@@ -117,6 +130,62 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
   }
 
+  // A claim tag's barcode (T<tag>, or plain digits typed by hand) found a repair to pay for: the same line "Repair
+  // pickup" adds, so the tag doesn't have to be found in that list by hand.
+  function addPickupLine(job: PickupJob) {
+    if (cart.some((l) => l.repairJobId === job.id)) {
+      toast.warning(`Tag ${job.tag} is already on this sale.`);
+      return;
+    }
+    setDone(null);
+    setCart((c) => [
+      ...c,
+      {
+        key: newKey(),
+        repairJobId: job.id,
+        pickedUp: !job.pickedUp,
+        handedOver: job.pickedUp,
+        description: `Repair, tag ${job.tag}: ${job.machine}${job.paidCents > 0 ? " (rest of the bill)" : ""}`,
+        unit: null,
+        qty: 1,
+        unitPriceCents: job.dueCents,
+        discountPct: 0,
+        taxable: false,
+      },
+    ]);
+  }
+
+  // A receipt's barcode (S<number>) found the sale it printed on: its lines come back in as a return, priced (and
+  // discounted) exactly as they were sold, ready to adjust or remove before completing the refund.
+  function loadReturnSale(sale: SaleForReturn) {
+    if (!sale.lines.length) {
+      toast.warning(sale.skippedRepairLines ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.` : `Sale #${sale.number} has nothing to return.`);
+      return;
+    }
+    setDone(null);
+    setCart((c) => [
+      ...c,
+      ...sale.lines.map((l) => ({
+        key: newKey(),
+        partId: l.partId ?? undefined,
+        description: l.description,
+        partNumber: l.partNumber ?? undefined,
+        unit: l.unit,
+        // Already the return's own quantity (splitForReturn negates it server-side), not the original sale's.
+        qty: l.qty,
+        unitPriceCents: l.unitPriceCents,
+        priced: true,
+        discountPct: 0,
+        taxable: l.taxable,
+      })),
+    ]);
+    setReturnMode(true);
+    if (sale.customer) setCustomer(sale.customer);
+    toast.success(
+      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}`,
+    );
+  }
+
   async function lookup(raw: string) {
     const c = raw.trim();
     if (!c) return;
@@ -128,6 +197,26 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
         setMissing(null);
         addItem(it);
         return;
+      }
+      const scan = parseScanCode(c);
+      if (scan.kind === "tag") {
+        const job = await pickupJobByTag(scan.tag);
+        if (job) {
+          beep(true);
+          setResults([]);
+          setMissing(null);
+          addPickupLine(job);
+          return;
+        }
+      } else if (scan.kind === "sale") {
+        const sale = await saleForReturn(scan.number);
+        if (sale) {
+          beep(true);
+          setResults([]);
+          setMissing(null);
+          loadReturnSale(sale);
+          return;
+        }
       }
       const hits = await findItems(c);
       beep(hits.length > 0);
@@ -264,7 +353,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
             <label htmlFor="register-code" className="label">
               Scan a barcode or search
             </label>
-            <input id="register-code" ref={code} autoComplete="off" className="input mono text-lg" placeholder="Scan, or type a number or words" />
+            <input id="register-code" ref={code} autoComplete="off" className="input mono text-lg" placeholder="Scan, or type a number, words, a claim tag, or a receipt number" />
           </div>
           <button className="btn btn-primary">Add</button>
           <button type="button" className="btn" onClick={() => (camOn ? camStop() : camStart())}>
@@ -392,21 +481,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       className="btn btn-sm"
                       disabled={cart.some((l) => l.repairJobId === j.id)}
                       onClick={() => {
-                        setCart((c) => [
-                          ...c,
-                          {
-                            key: newKey(),
-                            repairJobId: j.id,
-                            pickedUp: !j.pickedUp,
-                            handedOver: j.pickedUp,
-                            description: `Repair, tag ${j.tag}: ${j.machine}${j.paidCents > 0 ? " (rest of the bill)" : ""}`,
-                            unit: null,
-                            qty: 1,
-                            unitPriceCents: j.dueCents,
-                            discountPct: 0,
-                            taxable: false,
-                          },
-                        ]);
+                        addPickupLine(j);
                         setJobs(null);
                       }}
                     >

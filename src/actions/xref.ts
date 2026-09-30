@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { brandKey, str } from "@/lib/format";
-import { hubFetch, hubId, hubStatus, saveXPart, type HubXPart } from "@/lib/hub";
+import { byWhom, hubFetch, hubId, hubStatus, saveXPart, type HubXPart } from "@/lib/hub";
 import { numberKey, parseFits, parseNumbers, parseSources, partKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 
 const KINDS = ["PART", "ACCESSORY", "SUPPLY"];
@@ -48,7 +48,8 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
     numbers: parseNumbers(str(formData.get("numbers"))),
     fits: parseFits(str(formData.get("fits")), (prev?.fits as XFit[]) ?? []),
     sources: parseSources(str(formData.get("sources")), (prev?.sources as XSource[]) ?? []),
-    byName: user.name,
+    // The person and the company making the change: the hub's history shows the company, not the install.
+    ...(await byWhom(user)),
     note: str(formData.get("note")),
     // The version this form was filled from: the hub refuses the edit when the entry changed since (the whole entry is
     // replaced, so it would undo another shop's fix or the supplier scan's links).
@@ -85,7 +86,7 @@ export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formD
     (await db.xPart.findUnique({ where: { id: target }, select: { id: true } })) ??
     (await db.xPart.findFirst({ where: { numberKeys: { has: numberKey(target) }, id: { not: id } }, select: { id: true } }));
   if (!into || into.id === id) throw new UserError("No other cross-reference entry has that part number.");
-  const merged = (await (await hubFetch(`/v1/xparts/${hubId(id)}/merge`, { method: "POST", json: { intoId: into.id, byName: user.name, note: str(formData.get("note")) } })).json()) as HubXPart;
+  const merged = (await (await hubFetch(`/v1/xparts/${hubId(id)}/merge`, { method: "POST", json: { intoId: into.id, ...(await byWhom(user)), note: str(formData.get("note")) } })).json()) as HubXPart;
   await saveXPart(merged);
   await db.xPart.deleteMany({ where: { id } });
   refresh(merged.id);
@@ -94,7 +95,7 @@ export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formD
 
 export const removeCrossRef = safe(async function removeCrossRef(id: string) {
   const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: { byName: user.name } })).json()) as HubXPart;
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: await byWhom(user) })).json()) as HubXPart;
   // Kept aside as removed (listed on the cross-reference page, where it can be put back).
   await saveXPart({ ...x, deleted: true });
   refresh();
@@ -104,7 +105,7 @@ export const removeCrossRef = safe(async function removeCrossRef(id: string) {
 /** Put back an entry someone removed, with its numbers, fits and links as they were. */
 export const restoreCrossRef = safe(async function restoreCrossRef(id: string) {
   const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/restore`, { method: "POST", json: { byName: user.name } })).json()) as HubXPart;
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/restore`, { method: "POST", json: await byWhom(user) })).json()) as HubXPart;
   await saveXPart(x);
   refresh(x.id);
   redirect(`/xref/${x.id}`);
@@ -112,17 +113,23 @@ export const restoreCrossRef = safe(async function restoreCrossRef(id: string) {
 
 export const revertCrossRef = safe(async function revertCrossRef(id: string, revisionId: string) {
   const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/revert`, { method: "POST", json: { revisionId, byName: user.name } })).json()) as HubXPart;
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/revert`, { method: "POST", json: { revisionId, ...(await byWhom(user)) } })).json()) as HubXPart;
   await saveXPart(x);
   refresh(id);
 });
 
 export type XRevision = { id: string; action: string; snapshot: HubXPart; byName: string | null; byShop: string | null; note: string | null; createdAt: string };
 
-export async function crossRefHistory(id: string): Promise<{ revisions: XRevision[] } | { error: string }> {
+/**
+ * A page of an entry's versions, newest first, straight from the hub: 50 at a time (each holds the whole entry, and one
+ * shop can add hundreds an hour). `before` is the id of the oldest one already shown; `more` says older ones exist.
+ * An older hub sends everything at once and no such header: then there's never more.
+ */
+export async function crossRefHistory(id: string, before?: string | null): Promise<{ revisions: XRevision[]; more: boolean } | { error: string }> {
   try {
     await requireUser();
-    return { revisions: (await (await hubFetch(`/v1/xparts/${hubId(id)}/history`)).json()) as XRevision[] };
+    const r = await hubFetch(`/v1/xparts/${hubId(id)}/history${before ? `?before=${hubId(before)}` : ""}`);
+    return { revisions: (await r.json()) as XRevision[], more: r.headers.get("x-history-more") === "1" };
   } catch (e) {
     return { error: isUserError(e) ? e.message : "Couldn't load the history from the hub." };
   }
