@@ -7,7 +7,16 @@ export const TENDER_LABEL: Record<TenderMethod, string> = { CASH: "Cash", CARD: 
 
 type Line = { qty: number; unitPriceCents: number; discountCents?: number; taxable: boolean; discountable?: boolean };
 
-export const lineNet = (l: Line) => Math.round(l.qty * l.unitPriceCents) - (l.qty < 0 ? -1 : 1) * (l.discountCents ?? 0);
+/**
+ * Cents, half a cent rounded away from zero. Math.round rounds -649.5 up to -649, so a return would refund a cent less
+ * than the same sale charged (650); this gives -650.
+ */
+export function roundCents(x: number) {
+  const r = Math.round(Math.abs(x));
+  return x < 0 && r ? -r : r;
+}
+
+export const lineNet = (l: Line) => roundCents(l.qty * l.unitPriceCents) - (l.qty < 0 ? -1 : 1) * (l.discountCents ?? 0);
 
 /** What a whole-sale discount can come off: items being bought (not returns, not a partner's repair bill). */
 export function discountBase(lines: Line[]) {
@@ -27,7 +36,8 @@ export function saleTotals(lines: Line[], orderDiscountCents: number, taxRatePct
   const orderDiscount = Math.max(0, Math.min(Math.round(orderDiscountCents), base));
   const eligibleTaxable = eligible.filter((l) => l.taxable).reduce((a, l) => a + lineNet(l), 0);
   const taxReduction = base > 0 ? Math.min(eligibleTaxable, Math.round((orderDiscount * eligibleTaxable) / base)) : 0;
-  const tax = Math.round(((taxableNet - taxReduction) * taxRatePct) / 100);
+  // The rate in millionths (6.35% is 63500), so the cents come out exact and a return's tax mirrors the sale's.
+  const tax = roundCents(((taxableNet - taxReduction) * Math.round(taxRatePct * 10_000)) / 1_000_000);
   const total = subtotal - orderDiscount + tax;
   const paid = tenders.reduce((a, t) => a + t.amountCents, 0);
   const change = total >= 0 ? Math.max(0, paid - total) : 0;
@@ -59,7 +69,10 @@ export function orderDiscountShares(lines: Line[], orderDiscountCents: number) {
 export function tenderProblem(totals: { total: number; paid: number }, tenders: Tender[]): string | null {
   const refund = totals.total < 0;
   if (!refund && totals.paid < totals.total) return `Still due: $${((totals.total - totals.paid) / 100).toFixed(2)}.`;
-  if (refund && totals.paid !== totals.total) return `Refund the full $${(-totals.total / 100).toFixed(2)} (a negative payment).`;
+  if (refund && totals.paid !== totals.total) {
+    const left = totals.paid - totals.total; // above 0: still to pay back; below 0: paid back too much
+    return left > 0 ? `Still to refund: $${(left / 100).toFixed(2)}.` : `Refunded $${(-left / 100).toFixed(2)} too much. Take a payment off or lower it.`;
+  }
   if (tenders.some((t) => (refund ? t.amountCents > 0 : t.amountCents < 0))) return refund ? "A refund is paid out as negative amounts." : "Payments are positive amounts on a sale.";
   const cash = tenders.filter((t) => t.method === "CASH").reduce((a, t) => a + t.amountCents, 0);
   if (!refund && totals.paid - cash > totals.total) return "Card, check and gift amounts can't be more than the total. Only cash gives change.";

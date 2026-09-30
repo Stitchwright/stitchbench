@@ -4,7 +4,7 @@
 // time zone), as "YYYY-MM-DD HH:MM", which spreadsheets read as a date.
 import { db } from "@/lib/db";
 import { sessionUser } from "@/lib/session";
-import { csvCell as csv } from "@/lib/csv";
+import { csvResponse } from "@/lib/csv";
 import { lineNet, type Tender } from "@/lib/register-math";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { PAYMENT_LABEL, STATUS_LABEL } from "@/lib/constants";
@@ -222,7 +222,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ what: s
   const data = await rows(shopId, what, tz);
   if (!data) return new Response("Unknown export.", { status: 404 });
   const day = todayIn(tz);
-  return new Response(data.map((r) => r.map(csv).join(",")).join("\n") + "\n", {
-    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${what}_${day}.csv"` },
-  });
+  return csvResponse(data, `${what}_${day}.csv`);
 }
