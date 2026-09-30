@@ -7,6 +7,8 @@ set JOIN_KEY=join-local-test
 set HUB_NAME=StitchHub (local test)
 set PORT=3200
 set LINK_CHECKER=off
+rem The community most-used list shows a part once this many shops report it (3 on a real hub; the test hub has one).
+set USAGE_MIN_SHOPS=1
 set HUB_ALLOW_PRIVATE_LINKS=true
 if not exist "%~dp0.run" mkdir "%~dp0.run"
 node src/server.mjs > "%~dp0.run\hub.log" 2>&1
