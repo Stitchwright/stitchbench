@@ -1,30 +1,31 @@
 # Handoff: where the work stands (30 Sep 2026)
 
-Read this first in a new Claude Code session. It picks up work started in a cloud session: a code/QA/security
-review, fixes, and the design of several new features. Everything below is on the branch
-`claude/code-qa-security-review-agqf4z` in both repos (bwattendorf/stitchbench and bwattendorf/stitchhub).
+Read this first in a new Claude Code session. Everything below is on `main` in both repos (bwattendorf/stitchbench
+and bwattendorf/stitchhub): the round-3 review fixes, the parts condition feature and Windows program 1.6.0 were
+merged on 30 Sep 2026 (pull request #1 in each repo). **Merged is not deployed**: until section 0 is done, the hub,
+hosted StitchShop and hosted StitchBench still run the old code and this PC still has StitchBench 1.5.0.
 
-## 0. First steps on the owner's PC (do these before anything else)
+## 0. First steps on the owner's PC (30 Sep 2026)
 
-The PC may have work that was never committed. Save it before switching branches. Run in the StitchBench
-folder, then the same in the StitchHub folder:
-
-1. See what's uncommitted: `git status` and `git branch --show-current`.
-2. If anything is modified or untracked, put it on its own branch (check `.env` and other secrets are NOT listed):
-   ```
-   git switch -c my-pc-work
-   git add -A
-   git commit -m "Work from my PC before merging the review branch"
-   git push -u origin my-pc-work
-   ```
-3. Get the review branch: `git fetch origin` then `git switch claude/code-qa-security-review-agqf4z`.
-4. If step 2 saved anything: `git merge my-pc-work`. On conflicts (likely in register.ts, tickets.ts,
-   settings.ts), resolve them keeping both the PC work and the round-3 fixes, and ask the owner what the PC
-   work was for if unclear.
-5. `npm install` (not `npm ci`), `docker compose up -d` if the dev DB runs in Docker, `npx prisma migrate deploy`,
-   `npm run dev`.
-6. Don't merge into `main` until the build and tests pass (section 3.2). Before installing a new Windows program
-   build, make a backup from the tray menu.
+1. The PC may have work that was never committed. In the StitchBench folder, then the StitchHub folder: `git status`
+   and `git branch --show-current`. If anything is modified or untracked (check `.env` and other secrets are NOT
+   listed), save it on its own branch (`git switch -c my-pc-work`, `git add -A`, `git commit`,
+   `git push -u origin my-pc-work`) and ask the owner what it was for before merging it into `main`.
+2. Get `main`: `git switch main` and `git pull` in both folders. In StitchBench: `npm ci` (it works again),
+   `npx prisma migrate deploy` for the dev database, and `npm install` in `desktop/`.
+3. Deploy, hub first (old and new installs and hubs work with each other):
+   - Hub: `railway up --ci` in the stitchhub folder. Its migrations 008-010 run at start.
+   - Hosted StitchShop: `railway up --service stitchshop --ci` in the stitchbench folder.
+   - Hosted StitchBench: `railway link --project stitchbench`, `railway up --service stitchbench --ci`, then
+     `railway link --project stitchshop --service stitchshop`.
+   - Each app applies its migrations on start and reloads the shipped specs once (a few seconds); Railway now
+     health-checks `/api/health`. Open each address and sign in to check.
+4. Windows program 1.6.0: make a backup from the tray menu first. Build the installers with the "Windows installers"
+   workflow (GitHub, Actions tab, Run workflow on `main`; the cloud session wasn't allowed to start it), or update this
+   PC in place: `npm run prepare-app` in `desktop/`, then `scripts/local-test/update_installed.ps1 -Version 1.6.0`.
+   Everyone on the program signs in once after this update.
+5. Then carry on with section 3. Sections 2b-2d list what changed for the shops, so the owner knows what they'll
+   notice.
 
 ## 0b. Where things run (27 Sep 2026)
 
@@ -40,8 +41,8 @@ folder, then the same in the StitchHub folder:
 
 ```
 git clone https://github.com/bwattendorf/stitchbench && cd stitchbench
-git checkout claude/code-qa-security-review-agqf4z
-npm install            # not `npm ci`: package-lock.json is missing @emnapi/core and @emnapi/runtime (review finding)
+git checkout main
+npm ci                 # works again (H1 fixed)
 docker compose up -d   # Postgres on localhost:5433 (see .env.example)
 copy .env.example .env # set AUTH_SECRET, SEED_OWNER_PASSWORD
 npx prisma migrate deploy && npm run db:seed
@@ -147,7 +148,7 @@ marked as one on the partner wire (the partner sees it as an ordinary number).
 
 
 
-Steps 1-3 below are done (sections 2b and 2c): next is merging to `main` and deploying (hub first), then step 4.
+Steps 1-3 below are done and merged to `main` (sections 2b-2d). Next: deploy (section 0), then step 4.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
@@ -278,4 +279,9 @@ Steps 1-3 below are done (sections 2b and 2c): next is merging to `main` and dep
 - Project rules are in AGENTS.md (shopId on every query, safe()/UserError, integer cents, Next.js 16 differs
   from what you know: read `node_modules/next/dist/docs/`).
 - Manuals stay local; never add manual upload to the server.
-- The Windows program (`desktop/`) was never run during the review, only read.
+- The Windows program (`desktop/`) has never been run in a cloud session. Its backup and migrate code has tests
+  (`cd desktop && npm test`, needs Postgres; they run in the Checks workflow); the Electron parts were only read.
+- How the 30 Sep cloud work was run, and worth repeating: one helper agent per fix package, each in its own git
+  worktree and database, split so no two touched the same files; then everything merged, built and tested together
+  (Playwright specs, hub smoke test) and the risky parts read line by line. Well-scoped work went to a cheaper model
+  (Sonnet) to save usage. Start a fresh session for new work: a long one costs more per step.
