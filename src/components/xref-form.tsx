@@ -3,12 +3,25 @@ import { ActionForm, Submit } from "@/components/action-form";
 import { saveCrossRef } from "@/actions/xref";
 import { fitsText, numbersText, sourcesText, type XFit, type XNumber, type XSource } from "@/lib/parts";
 
-type X = { id: string; name: string; kind: string; category: string | null; specs: string | null; notes: string | null; numbers: unknown; fits: unknown; sources: unknown };
+type X = {
+  id: string;
+  name: string;
+  kind: string;
+  category: string | null;
+  specs: string | null;
+  notes: string | null;
+  numbers: unknown;
+  fits: unknown;
+  sources: unknown;
+  updatedAt: Date;
+};
 
-export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; numbers?: string; fits?: string } }) {
+export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; kind?: string; numbers?: string; fits?: string } }) {
   const id = x?.id ?? "new";
   return (
     <ActionForm action={saveCrossRef.bind(null, x?.id ?? null)} success={x ? "Saved for every shop" : undefined} className="space-y-3">
+      {/* The version shown: the hub refuses the save when someone changed the entry since. */}
+      {x && <input type="hidden" name="baseUpdatedAt" value={x.updatedAt.toISOString()} />}
       <div className="grid-form">
         <div className="field">
           <label htmlFor={`xn-${id}`} className="label">
@@ -20,7 +33,7 @@ export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; n
           <label htmlFor={`xk-${id}`} className="label">
             Type
           </label>
-          <select id={`xk-${id}`} name="kind" defaultValue={x?.kind ?? "PART"} className="select">
+          <select id={`xk-${id}`} name="kind" defaultValue={x?.kind ?? defaults?.kind ?? "PART"} className="select">
             <option value="PART">Part</option>
             <option value="ACCESSORY">Accessory</option>
             <option value="SUPPLY">Supply</option>

@@ -43,6 +43,8 @@ model Shop {
   priceListNote      String?
   // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
   payInstructions    String?
+  // Send the hub this company's monthly parts counts for the community's most-used list (counts only; off unless turned on)
+  shareUsage         Boolean  @default(false)
   // What this company does: a repair bench (StitchBench), a sewing / quilt shop counter (StitchShop), or both
   doesRepair         Boolean  @default(true)
   sellsRetail        Boolean  @default(false)
@@ -623,6 +625,8 @@ model HubPost {
   title      String
   body       String
   mine       Boolean    @default(false) // shared from this install
+  // The company on the sharing install that shared it (from hubs that say; several companies can share one install)
+  shopRef    String?
   createdAt  DateTime
   photos     HubPhoto[]
 
@@ -690,6 +694,16 @@ model XPart {
   @@index([fitKeys], type: Gin)
 }
 
+// Cross-reference entries someone removed (from any shop), so they can be found and put back.
+model RemovedXPart {
+  id        String   @id // the hub's id
+  name      String
+  numbers   Json // [{ brand, number }] as they were
+  removedAt DateTime
+
+  @@index([removedAt])
+}
+
 // Marketplace listings from every shop on the hub (synced copy).
 model Listing {
   id            String   @id // the hub's id
@@ -718,6 +732,8 @@ model Listing {
   sellerId      String?
   sellerAvg     Float?
   sellerCount   Int      @default(0)
+  // The company on the seller's install that listed it (from hubs that say), for its own ratings and shop page
+  sellerRef     String?
   // The company on this install that listed it (mine listings only; several companies can share one install)
   shopId        String?
 
