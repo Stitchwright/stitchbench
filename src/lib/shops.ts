@@ -32,11 +32,13 @@ export function shopModes(kind: string | null | undefined) {
  */
 /**
  * A new company and its owner login. With firstOnly (the Windows program's first-run sign-up) it is made only when the
- * install has no company yet, checked and created under one lock.
+ * install has no company yet, checked and created under one lock. `first` says whether it is the install's first.
+ * The StitchBench administrator's addresses (PLATFORM_ADMIN_EMAILS) carry install-wide rights: only the first company
+ * or a platform admin (allowReserved) may give one to a new owner.
  */
 export async function createShopWithOwner(
   input: { shopName: string; name: string; email: string; password: string; kind?: ShopKind },
-  opts: { firstOnly?: boolean } = {},
+  opts: { firstOnly?: boolean; allowReserved?: boolean } = {},
 ) {
   const email = normalizeEmail(input.email);
   if (!input.shopName.trim() || !input.name.trim() || !email || input.password.length < 8) {
@@ -46,12 +48,14 @@ export async function createShopWithOwner(
   if (await db.user.findUnique({ where: { email } })) throw new UserError("That email already has an account.");
   const modes = shopModes(input.kind);
   const passwordHash = await bcrypt.hash(input.password, 10);
+  const reserved = isPlatformAdmin(email) && !opts.allowReserved;
   return db.$transaction(async (tx) => {
-    if (opts.firstOnly) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(7710001)`;
-      if (await tx.shop.count()) throw new UserError("This program already has its company. Sign in instead.");
-    }
-    return tx.shop.create({
+    // One company at a time: which one is first is decided under the lock.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(7710001)`;
+    const first = (await tx.shop.count()) === 0;
+    if (opts.firstOnly && !first) throw new UserError("This program already has its company. Sign in instead.");
+    if (reserved && !first) throw new UserError(RESERVED_EMAIL);
+    const shop = await tx.shop.create({
       data: {
         name: input.shopName.trim(),
         ...modes,
@@ -61,8 +65,11 @@ export async function createShopWithOwner(
       },
       select: { id: true, name: true },
     });
+    return { ...shop, first };
   });
 }
+
+export const RESERVED_EMAIL = "That email is reserved on this StitchBench.";
 
 /** Whoever runs StitchBench itself (PLATFORM_ADMIN_EMAILS, comma-separated) can create companies for other shops. */
 export function isPlatformAdmin(email: string | null | undefined) {

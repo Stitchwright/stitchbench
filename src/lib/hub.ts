@@ -645,10 +645,14 @@ async function doSync(): Promise<SyncResult> {
     // The hub's name and Discord link can change; keep them current.
     const me = (await (await hubFetch("/v1/me")).json()) as { hubName?: string; discordInvite?: string | null; scope?: string };
     // The hub's Discord link wins when it has one; otherwise keep the one that came with the invite.
-    const still = await writeState(run, { hubName: me.hubName ?? null, scope: me.scope ?? "member", ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) });
+    // Joined for partner shops only, the install stays that way whatever the hub says: only joinHub (a join key, from
+    // someone allowed to join the whole install) makes it a member.
+    const scope = s.scope === "partner" || me.scope === "partner" ? "partner" : "member";
+    // Not written while partner-only here: a join key being used right now (joinHub) may be making it a member.
+    const still = await writeState(run, { hubName: me.hubName ?? null, ...(s.scope !== "partner" ? { scope } : {}), ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) });
     if (!still) return { skipped: true };
     // On the hub for partner shops only: nothing of the community's to sync.
-    if (me.scope === "partner") {
+    if (scope === "partner") {
       await writeState(run, { lastSyncAt: new Date(), lastError: null });
       return { skipped: true };
     }

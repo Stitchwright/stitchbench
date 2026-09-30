@@ -104,8 +104,9 @@ Opt-in suites:
 - **Companies:** one **Shop** per business. Every business table carries `shopId`, and every query filters by the
   signed-in user's shop.
 - **Specs:** factory specs are shared reference data (`prisma/seed-data/`). They're matched to machines by a
-  normalized model key (`BES-1216AC` → `BES1216AC`). `npm start` applies database migrations and loads any
-  missing reference data before the server starts.
+  normalized model key (`BES-1216AC` → `BES1216AC`). `npm start` applies database migrations and loads the
+  shipped reference data when it is new or changed (a hash of each file is kept as the table's comment) before the
+  server starts.
 - **Manuals:**
   - Hosted: the browser keeps the folder handle and a file-name index in IndexedDB (`src/lib/local-manuals.ts`).
   - Windows program: the server reads `LIBRARY_DIR` (`src/lib/library-dir.ts`, `/api/library/*`).
