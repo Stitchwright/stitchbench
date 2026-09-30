@@ -15,6 +15,24 @@ export function libraryDir(): string | null {
 // and guides the shop writes to sell (_own-notes, one per category). Never served to anyone, whoever is signed in.
 const PRIVATE_FOLDERS = new Set(["_business-notes", "_own-notes"]);
 
+/**
+ * Save a PDF in `dir` as "<stem>.pdf", or "<stem> (2).pdf" and so on when the name is taken. The write itself is the
+ * test for a free name ("wx" refuses an existing file), so two saves of the same name at the same moment each get a
+ * file of their own instead of one of them failing. Returns the name it used.
+ */
+export async function writeUnusedPdf(dir: string, stem: string, bytes: Uint8Array): Promise<string> {
+  for (let i = 1; i < 1000; i++) {
+    const name = i === 1 ? `${stem}.pdf` : `${stem} (${i}).pdf`;
+    try {
+      await fs.promises.writeFile(path.join(dir, name), bytes, { flag: "wx" });
+      return name;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+  }
+  throw new Error("Too many files with that name in the inbox.");
+}
+
 /** A PDF path inside the library (and not in a private folder), or null if it points anywhere else. */
 export function resolveInLibrary(root: string, rel: string): string | null {
   if (!rel || rel.includes("\0")) return null;

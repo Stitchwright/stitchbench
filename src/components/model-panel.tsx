@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Pin, Trash2 } from "lucide-react";
 import { specsFor, settingsFor, notesFor, gRange, pictureFor, libraryFor, type SpecRow } from "@/lib/model-info";
 import { db } from "@/lib/db";
+import { fmtDate } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { MachineInfo } from "@/components/machine-info";
 import { LibraryManuals } from "@/components/library-manuals";
 import { FactorySettings } from "@/components/factory-settings";
@@ -63,7 +65,7 @@ export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compa
                     <span className="max-w-full truncate" title={s.sourceFile}>
                       {s.sourceFile}
                     </span>
-                    <OpenSpecSource file={s.sourceFile} pages={s.pages} />
+                    <OpenSpecSource file={s.sourceFile} sourcePath={s.sourcePath} pages={s.pages} />
                   </div>
                 )}
                 {s.confidence && s.confidence !== "high" && (
@@ -77,7 +79,7 @@ export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compa
                   <div className="max-w-56 truncate" title={s.sourceFile}>
                     {s.sourceFile}
                   </div>
-                  <OpenSpecSource file={s.sourceFile} pages={s.pages} />
+                  <OpenSpecSource file={s.sourceFile} sourcePath={s.sourcePath} pages={s.pages} />
                 </td>
               )}
             </tr>
@@ -89,7 +91,7 @@ export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compa
 }
 
 export async function Gotchas({ shopId, brand, model }: { shopId: string; brand: string; model: string }) {
-  const notes = await notesFor(shopId, brand, model);
+  const [notes, tz] = await Promise.all([notesFor(shopId, brand, model), shopTimeZone(shopId)]);
   return (
     <div className="space-y-3">
       {notes.length === 0 && <p className="muted text-sm">No notes yet for the {model}. Add what the next tech should know.</p>}
@@ -107,7 +109,7 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
               </ActionButton>
             </div>
             <div className="muted mt-1 text-xs">
-              {n.author?.name ?? "Someone"}, {n.createdAt.toLocaleDateString()}
+              {n.author?.name ?? "Someone"}, {fmtDate(n.createdAt, tz)}
             </div>
           </li>
         ))}

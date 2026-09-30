@@ -4,9 +4,11 @@ import { db } from "@/lib/db";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
-import { appName, createShopWithOwner, defaultShopKind, type ShopKind } from "@/lib/shops";
+import { appName, createShopWithOwner, defaultShopKind, isPlatformAdmin, RESERVED_EMAIL, type ShopKind } from "@/lib/shops";
+import { hubJoined } from "@/lib/hub";
 import { redeemPartnerCode } from "@/lib/partners";
-import { UserError, isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/action";
+import { TimeZoneField } from "@/components/time-zone-field";
 
 /**
  * The Windows program's first run passes SETUP_TOKEN: sign-up then only works from the program's own window (it opens
@@ -40,24 +42,31 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     if (!shopName || !name || !email || password.length < 8) redirect(back("missing"));
     if (!isValidEmail(email)) redirect(back("email"));
     if (await db.user.findUnique({ where: { email } })) redirect(back("taken"));
+    // The StitchBench administrator's address: only the install's first company may take it (createShopWithOwner checks).
+    if (isPlatformAdmin(email) && (await db.shop.count())) redirect(back("reserved"));
     const kind = (String(fd.get("kind") ?? "repair") || "repair") as ShopKind;
-    let shop: { id: string; name: string };
+    let shop: { id: string; name: string; first: boolean };
     try {
-      shop = await createShopWithOwner({ shopName, name, email, password, kind }, { firstOnly });
+      shop = await createShopWithOwner({ shopName, name, email, password, kind, timeZone: String(fd.get("tz") ?? "") }, { firstOnly });
     } catch (e) {
       // The first company already exists (this install's sign-up is closed), or the email was just taken.
-      if (isUserError(e)) redirect(firstOnly ? "/login" : back("taken"));
+      if (isUserError(e)) redirect(firstOnly ? "/login" : back(e.message === RESERVED_EMAIL ? "reserved" : "taken"));
       throw e;
     }
     // A partner code from the repair shop (or sewing shop) connects the two right away.
     const code = String(fd.get("partnerCode") ?? "").trim();
     let next = kind === "retail" ? "/register" : "/settings";
-    if (code) {
+    if (code && !shop.first && !(await hubJoined())) {
+      // The code would connect the whole install to a hub, which is its administrator's call, not a new sign-up's.
+      next = `/partners?error=${encodeURIComponent("Your shop is set up. Enter the partner code here once this StitchBench's administrator has joined the community hub.")}`;
+    } else if (code) {
       try {
         await redeemPartnerCode(shop.id, shop.name, email, code);
         next = "/partners";
       } catch (e) {
-        next = `/partners?error=${encodeURIComponent(e instanceof Error ? e.message : "That partner code didn't work.")}`;
+        // Only what a person can act on goes in the address; anything else (a database or network error) stays in the log.
+        if (!isUserError(e)) console.error("partner code at sign-up:", e);
+        next = `/partners?error=${encodeURIComponent(isUserError(e) ? e.message : "That partner code didn't work. Try it again under Partner shops.")}`;
       }
     }
     try {
@@ -73,12 +82,19 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     <div className="flex min-h-screen items-center justify-center px-4">
       <form action={create} className="card card-pad w-full max-w-sm space-y-4">
         {setup && <input type="hidden" name="setup" value={setup} />}
+        <TimeZoneField />
         <div className="text-2xl font-bold tracking-tight">
           Stitch<span className="text-thread">{appName() === "StitchShop" ? "Shop" : "Bench"}</span>
         </div>
         {error && (
           <p className="pill tone-bad" role="alert">
-            {error === "taken" ? "That email already has an account." : error === "email" ? EMAIL_HELP : "Fill in every field; password 8+ characters."}
+            {error === "taken"
+              ? "That email already has an account."
+              : error === "reserved"
+                ? RESERVED_EMAIL
+                : error === "email"
+                  ? EMAIL_HELP
+                  : "Fill in every field; password 8+ characters."}
           </p>
         )}
         {[

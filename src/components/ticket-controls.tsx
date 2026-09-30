@@ -4,9 +4,12 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
+import { fmtDateTime } from "@/lib/format";
 import { setStatus, toggleChecklist } from "@/actions/tickets";
+import { runAction } from "@/components/action-form";
 
-export function StatusSelect({ ticketId, status }: { ticketId: string; status: TicketStatus }) {
+// partnerOwns: a partner sewing shop's machine that hasn't been picked up. They mark it collected, not the bench.
+export function StatusSelect({ ticketId, status, partnerOwns }: { ticketId: string; status: TicketStatus; partnerOwns?: boolean }) {
   const [pending, start] = useTransition();
   return (
     <div className="field">
@@ -19,20 +22,24 @@ export function StatusSelect({ ticketId, status }: { ticketId: string; status: T
         defaultValue={status}
         disabled={pending}
         onChange={(e) => {
-          const next = e.target.value as TicketStatus;
+          const el = e.currentTarget;
+          const next = el.value as TicketStatus;
           start(async () => {
-            const r = await setStatus(ticketId, next);
-            if (r?.error) toast.error(r.error);
-            else toast.success(`Status: ${STATUS_LABEL[next]}`);
+            const r = await runAction(() => setStatus(ticketId, next));
+            if (r?.error) {
+              toast.error(r.error);
+              el.value = status; // not saved: show what the ticket still says
+            } else toast.success(`Status: ${STATUS_LABEL[next]}`);
           });
         }}
       >
         {STATUS_ORDER.map((s) => (
-          <option key={s} value={s}>
+          <option key={s} value={s} disabled={partnerOwns && s === "COLLECTED" && s !== status}>
             {STATUS_LABEL[s]}
           </option>
         ))}
       </select>
+      {partnerOwns && <p className="muted mt-1 text-xs">The partner shop marks it collected when their customer picks it up.</p>}
     </div>
   );
 }
@@ -43,10 +50,12 @@ export function Checklist({
   ticketId,
   items,
   state,
+  timeZone,
 }: {
   ticketId: string;
   items: string[];
   state: Record<string, Done>;
+  timeZone: string;
 }) {
   const [pending, start] = useTransition();
   const doneCount = items.filter((i) => state[i]?.done).length;
@@ -73,10 +82,14 @@ export function Checklist({
                 defaultChecked={!!s?.done}
                 disabled={pending}
                 onChange={(e) => {
-                  const done = e.target.checked;
+                  const el = e.currentTarget;
+                  const done = el.checked;
                   start(async () => {
-                    const r = await toggleChecklist(ticketId, item, done);
-                    if (r?.error) toast.error(r.error);
+                    const r = await runAction(() => toggleChecklist(ticketId, item, done));
+                    if (r?.error) {
+                      toast.error(r.error);
+                      el.checked = !done;
+                    }
                   });
                 }}
               />
@@ -84,7 +97,7 @@ export function Checklist({
                 <span className={s?.done ? "text-ink" : ""}>{item}</span>
                 {s?.done && (
                   <span className="muted block text-xs">
-                    {s.by || "Someone"}, {s.at ? new Date(s.at).toLocaleString() : ""}
+                    {s.by || "Someone"}, {fmtDateTime(s.at, timeZone)}
                   </span>
                 )}
               </label>

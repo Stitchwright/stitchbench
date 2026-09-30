@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { brandKey, modelKey } from "@/lib/format";
 import { ADJ_ORDER } from "@/lib/adjustments";
 import { figureId } from "@/lib/figures";
+import { sameText } from "@/lib/input";
 
 // Some brands are filed under more than one spelling, and some machines are rebadges.
 const BRAND_ALIASES: Record<string, string[]> = {
@@ -109,7 +110,7 @@ export async function libraryFor(brand: string, model: string) {
 
 export async function notesFor(shopId: string, brand: string, model: string) {
   return db.modelNote.findMany({
-    where: { shopId, modelKey: modelKey(model), brand: { equals: brand, mode: "insensitive" } },
+    where: { shopId, modelKey: modelKey(model), brand: sameText(brand) },
     orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
     include: { author: { select: { name: true } } },
   });

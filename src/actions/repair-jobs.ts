@@ -8,8 +8,9 @@ import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { modelKey, str, toCents } from "@/lib/format";
 import { normalizeTerms } from "@/lib/partner-terms";
-import { kickPartnerSync, sendToPartner, type JobEvent } from "@/lib/partners";
+import { kickPartnerSync, MAX_MONEY, sendToPartner, type JobEvent } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
+import { sameText } from "@/lib/input";
 
 const IMAGE = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -41,20 +42,22 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     if (!link || link.side !== "retail") throw new UserError("Pick the repair shop the machine goes to.");
     if (link.status !== "ACTIVE") throw new UserError(`The partnership with ${link.partnerName} has ended.`);
 
+    // Everything is checked before anything is written, and a new customer is made in the same transaction as the job:
+    // a refused intake leaves no customer behind for the corrected retry to duplicate.
     // Customer: an existing one, or a new one typed in.
-    let customerId = str(formData.get("customerId"));
+    const pickedCustomerId = str(formData.get("customerId"));
     let customerName: string;
-    if (customerId) {
-      const c = await db.customer.findFirst({ where: { id: customerId, shopId } });
+    let newCustomer: { name: string; phone: string; email: string | null } | null = null;
+    if (pickedCustomerId) {
+      const c = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId } });
       if (!c) throw new UserError("Customer not found.");
       customerName = c.name;
     } else {
       const name = str(formData.get("customerName"));
       const phone = str(formData.get("customerPhone"));
       if (!name || !phone) throw new UserError("Enter the customer's name and phone, so you can call them when it's ready.");
-      const c = await db.customer.create({ data: { shopId, name, phone, email: str(formData.get("customerEmail")) } });
-      customerId = c.id;
-      customerName = c.name;
+      newCustomer = { name, phone, email: str(formData.get("customerEmail")) };
+      customerName = name;
     }
     const brand = str(formData.get("brand"));
     const model = str(formData.get("model"));
@@ -76,13 +79,16 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     if (photos.reduce((a, p) => a + p.data.length, 0) > 2_600_000) throw new UserError("The photos are too large together. Take fewer, or smaller ones.");
 
     const terms = normalizeTerms(link.terms);
-    const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
+    const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
     const id = crypto.randomUUID();
     const at = new Date();
     const machineType = str(formData.get("machineType"));
     const serviceRequested = str(formData.get("serviceRequested"));
     const preApprovedCents = toCents(formData.get("preApproved"));
+    // Checked as the repair shop's install checks it: past that, it would refuse the job after the tag was printed.
+    if (preApprovedCents != null && (preApprovedCents < 0 || preApprovedCents > MAX_MONEY)) throw new UserError("Check the pre-approved amount.");
     await db.$transaction(async (tx) => {
+      const customerId = pickedCustomerId ?? (await tx.customer.create({ data: { shopId, ...newCustomer! } })).id;
       const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType, customerId } }));
       const sh = await tx.shop.update({ where: { id: shopId }, data: { nextTagNumber: { increment: 1 } }, select: { nextTagNumber: true } });
       const tag = String(sh.nextTagNumber - 1);
@@ -150,7 +156,7 @@ export const answerEstimate = safe(async function answerEstimate(jobId: string, 
   const job = await retailJob(user.shopId, jobId);
   if (job.status !== "WAITING_CUSTOMER_OK") throw new UserError("The repair shop isn't waiting for an answer on this one.");
   const approvedCents = approval === "APPROVED" ? (toCents(formData.get("approved")) ?? job.totalCents) : null;
-  if (approvedCents != null && (approvedCents < 0 || approvedCents > 10_000_000)) throw new UserError("Check the approved amount.");
+  if (approvedCents != null && (approvedCents < 0 || approvedCents > MAX_MONEY)) throw new UserError("Check the approved amount.");
   const note = str(formData.get("note"));
   const at = new Date();
   const events = [...((job.events as JobEvent[]) ?? []), { at: at.toISOString(), note: `Customer ${approval === "APPROVED" ? "approved" : "declined"}${note ? `: ${note}` : ""} (${user.name})` }];

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { PageHeader, Empty, StatusPill } from "@/components/ui";
 
@@ -15,10 +17,12 @@ const LIMIT = 500;
 
 export default async function Invoices({ searchParams }: { searchParams: Promise<{ show?: string; q?: string }> }) {
   const user = await requireUser();
-  const sp = await searchParams;
+  const tz = await shopTimeZone(user.shopId);
+  const sp = firstValues(await searchParams);
   const show: Tab = TABS.some((t) => t.key === sp.show) ? (sp.show as Tab) : "unpaid";
   const term = sp.q?.trim() ?? "";
-  const num = /^\d+$/.test(term) ? Number(term) : null;
+  // Up to 9 digits can be a ticket number (the column holds a little over 2 billion); a longer number is a serial.
+  const num = /^\d{1,9}$/.test(term) ? Number(term) : null;
 
   // An invoice is a ticket with something billed on it. Every one's amounts are read (just the money columns), so
   // Unpaid and the totals take in old debts too; the list itself shows the newest LIMIT of them.
@@ -140,7 +144,7 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
                         #{ticketNo(t.number)}
                       </Link>
                     </td>
-                    <td className="num whitespace-nowrap">{fmtDate(t.closedAt ?? t.readyAt ?? t.intakeAt)}</td>
+                    <td className="num whitespace-nowrap">{fmtDate(t.closedAt ?? t.readyAt ?? t.intakeAt, tz)}</td>
                     <td>{t.customer ? <Link href={`/customers/${t.customer.id}`} className="link">{t.customer.name}</Link> : "-"}</td>
                     <td>
                       {t.machine.brand} {t.machine.model}

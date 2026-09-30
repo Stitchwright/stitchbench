@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDateTime } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { acceptedBoth, normalizeTerms, type Accepted } from "@/lib/partner-terms";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, ActionButton, Submit } from "@/components/action-form";
@@ -10,9 +11,12 @@ import { TermsFields } from "@/components/terms-fields";
 import { enterPartnerCode, resendPartnerMessage, setUpSewingShop, syncPartnersNow } from "@/actions/partners";
 import { isPlatformAdmin } from "@/lib/shops";
 
+const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
+
 /** Partner shops: the sewing / quilt shops that take machines in for this repair shop, or the repair shop this sewing shop uses. */
 export default async function Partners({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { error } = await searchParams;
   const [shop, links, hub] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { doesRepair: true } }),
@@ -31,7 +35,12 @@ export default async function Partners({ searchParams }: { searchParams: Promise
   // What didn't get through, either way: shown so nothing is lost quietly.
   const [failures, stuck] = await Promise.all([
     db.partnerFailure.findMany({ where: { shopId: user.shopId }, orderBy: { at: "desc" }, take: 30 }),
-    db.partnerOutbox.findMany({ where: { shopId: user.shopId, sentAt: null, OR: [{ deadAt: { not: null } }, { tries: { gte: 3 } }] }, orderBy: { createdAt: "asc" }, take: 30 }),
+    // Refused by the hub (or still failing), or delivered and refused by the partner (sent, then set aside there).
+    db.partnerOutbox.findMany({
+      where: { shopId: user.shopId, OR: [{ sentAt: null, OR: [{ deadAt: { not: null } }, { tries: { gte: 3 } }] }, { sentAt: { not: null }, deadAt: { gte: daysAgo(30) } }] },
+      orderBy: { createdAt: "asc" },
+      take: 30,
+    }),
   ]);
   const nameOf = new Map(links.map((l) => [l.id, l.partnerName]));
 
@@ -52,7 +61,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
         </p>
       )}
       {hub?.partnerError && <p className="pill tone-bad">Last partner sync failed: {hub.partnerError}</p>}
-      {hub?.partnerSyncAt && <p className="muted text-xs">Last synced {hub.partnerSyncAt.toLocaleString("en-US")}</p>}
+      {hub?.partnerSyncAt && <p className="muted text-xs">Last synced {fmtDateTime(hub.partnerSyncAt, tz)}</p>}
 
       <Section title="Partners">
         {links.length === 0 ? (
@@ -89,7 +98,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
                       </td>
                       <td className="num text-right">{openJobs.get(l.id) ?? 0}</td>
                       <td className="num text-right">{openOrders.get(l.id) ?? 0}</td>
-                      <td>{fmtDate(l.createdAt)}</td>
+                      <td>{fmtDate(l.createdAt, tz)}</td>
                     </tr>
                   );
                 })}
@@ -105,10 +114,10 @@ export default async function Partners({ searchParams }: { searchParams: Promise
             {stuck.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  To {nameOf.get(m.linkId) ?? "a partner"}: <span className="mono">{m.type}</span> from {fmtDate(m.createdAt)} —{" "}
-                  {m.deadAt ? "refused by the hub" : `still trying (${m.tries} tries)`}: {m.error}
+                  To {nameOf.get(m.linkId) ?? "a partner"}: <span className="mono">{m.type}</span> from {fmtDate(m.createdAt, tz)} —{" "}
+                  {m.sentAt ? "refused by the partner" : m.deadAt ? "refused by the hub" : `still trying (${m.tries} tries)`}: {m.error}
                 </span>
-                {m.deadAt && admin && (
+                {m.deadAt && !m.sentAt && admin && (
                   <ActionButton action={resendPartnerMessage.bind(null, m.id)} success="Queued again">
                     Send again
                   </ActionButton>
@@ -117,7 +126,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
             ))}
             {failures.map((f) => (
               <li key={f.key}>
-                From {nameOf.get(f.linkId) ?? "a partner"}: <span className="mono">{f.type}</span> on {fmtDate(f.at)} —{" "}
+                From {nameOf.get(f.linkId) ?? "a partner"}: <span className="mono">{f.type}</span> on {fmtDate(f.at, tz)} —{" "}
                 {f.skipped ? "set aside, not applied" : `failing (${f.tries} tries)`}: {f.error}
               </li>
             ))}

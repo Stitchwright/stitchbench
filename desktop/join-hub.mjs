@@ -5,8 +5,24 @@
 import pg from "pg";
 import { programConfig } from "./cli-config.mjs";
 
+/** The same rule as Settings → Community hub (checkHubUrl in src/lib/hub.ts, which a script can't import): https, or http only for this computer. */
+function checkHubUrl(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error("The hub address starts with https://");
+  }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) throw new Error("The hub address starts with https://");
+  if (u.username || u.password || u.search || u.hash) throw new Error("That hub address doesn't look right.");
+  return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+}
+
 const [url, joinKey] = process.argv.slice(2);
 if (!url || !joinKey) throw new Error("usage: node join-hub.mjs <hub url> <join key>");
+// Before anything is sent: the join key, and after it the install key and every partner message, go to this address.
+const base = checkHubUrl(url.trim());
 const cfg = programConfig();
 const db = new pg.Client({ host: "127.0.0.1", port: cfg.dbPort, user: "stitchbench", password: cfg.dbPassword, database: "stitchbench" });
 await db.connect();
@@ -18,7 +34,6 @@ try {
     throw new Error(`This install has ${active} active partner shop(s) on ${cur.url}. Join from Settings → Community hub, or end those partnerships first.`);
   }
   const shop = (await db.query(`SELECT name, email FROM "Shop" ORDER BY "createdAt" LIMIT 1`)).rows[0];
-  const base = url.replace(/\/+$/, "");
   const r = await fetch(`${base}/v1/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

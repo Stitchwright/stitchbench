@@ -1,4 +1,4 @@
-# Handoff: where the work stands (27 Sep 2026)
+# Handoff: where the work stands (30 Sep 2026)
 
 Read this first in a new Claude Code session. It picks up work started in a cloud session: a code/QA/security
 review, fixes, and the design of several new features. Everything below is on the branch
@@ -79,7 +79,76 @@ copied into `public/` (the eslint config should ignore `public/`).
     finish/check each one.
   - None of these fixes has had the independent re-test yet (see step 3.2).
 
+## 2b. Round-3 high + medium fixes finished (30 Sep 2026, cloud session)
+
+On branch `claude/remaining-tasks-l5s9q3` in both repos (not merged into `main`, not deployed). Every high and medium
+finding is fixed or partly done; the statuses in `docs/round3/ROUND3_FINDINGS.md` say what is left for the 7 partly
+done ones (M12, M44, M53, M56, M58, M68, M71). Checked on Linux: `npm ci`, tsc, lint (0 errors), `next build`, all
+migrations on an empty and on a used database, drift check empty, Playwright specs smoke, hub, inventory, market,
+partners and register all pass, hub smoke test passes.
+
+- New migrations: StitchBench `20260927110100_round3_bench-tickets-2`, `20260927120000_round3_partners`,
+  `20260927140000_round3_hub-market-parts`, `20260927160000_round3_time-zone` (data only); StitchHub
+  `008_round3_partners.sql`, `009_round3_hub-market-parts.sql`. Deploy the hub first; old and new installs and hubs
+  work with each other (new fields are optional).
+- Behaviour the owner will notice:
+  - The monthly most-used-parts report is off for every company until it's turned on (Parts > Most used > "Offer our
+    counts"), per the sharing decision.
+  - A settlement payment a partner reports counts once someone clicks "Confirm it arrived" on the statement.
+  - Leaving the hub is refused while marketplace orders are open; an ended partnership takes no new work (updates and
+    payments still go through).
+  - Every date prints in the company's time zone (Settings). The Windows program's one company gets the PC's zone
+    once, if it was still on the New York default.
+  - "Add it to the cross-reference" opens the cross-reference form filled in from the part (no notes) instead of
+    posting at once.
+  - Settings > Your data exports tickets (with lines and readings), machines, payments and model notes too.
+  - Sign-up with a partner code only connects to a hub when the install is already on one (or it's the first company).
+  - Hosted installs load the shipped specs and factory settings again whenever the shipped files change.
+- Follow-ups noted during the work: use `assertId` (src/lib/input.ts) at the top of every server action that takes
+  an id (done in parts and scan); a held partner message makes each sync re-read the backlog after it (bandwidth);
+  "byShop" on hub link and cross-reference revisions per company; the Settings time-zone field is free text; hosted
+  sign-up could take the browser's time zone; the typed paper ticket number is unbounded (L35).
+- Testing in a Linux cloud session: Postgres 16 is installed (`/usr/lib/postgresql/16/bin`), Node 24 via nvm, and
+  Playwright needs `executablePath: "/opt/pw-browsers/chromium"` (a local config that spreads playwright.config.ts).
+  The hub spec loads its catalog links itself when HUB_ADMIN_TOKEN is set.
+
+## 2c. Round-3 low and info pass (30 Sep 2026, same branch)
+
+Low: 116 fixed, 15 partly done, 8 open; info: 4 fixed, 13 partly, 11 open (statuses say what is left). Everything
+passes: `npm ci`, tsc, lint, `npm run test:unit` (33 tests), `next build`, migrations + drift check, every Playwright
+spec (smoke, auth, hub, inventory, market, partners, register), hub `npm run check` and smoke test.
+
+- New migrations: `20260930120000_round3_lo-infra` (12 indexes), `20260930130000_round3_lo-tickets`
+  (PartnerLink.endNote/endedBy). No hub migration.
+- Behaviour the owner will notice:
+  - Techs can't change a part's cost or price (same rule as the register); say if techs should.
+  - Everyone on the Windows program signs in once after the update (each program now has its own cookies, so
+    StitchBench and StitchShop on one PC no longer sign each other out).
+  - The community most-used list shows a part once 3 shops report it (hub `USAGE_MIN_SHOPS`; the local test hub uses 1).
+  - A partner ticket can't be marked Collected until the sewing shop has picked it up; the register hands a repair
+    over only once it's back from the repair shop; consigned items can't be sold past what's on the shelf.
+  - Settings > People has "Change role". Railway health-checks `/api/health`. The hub needs Node 20.12+ and reads `.env`.
+  - The note typed when a partnership is ended now shows on the other shop's partner page.
+- New tests: `npm run test:unit`; `cd desktop && npm test` (needs Postgres; runs in the Checks workflow); hub
+  `npm run test:db` (scratch database) and, with IMPORT_HUB_URL, a hub-move check in the smoke test.
+- Owner decisions the open ones wait on: per-company email uniqueness (L7, L31); signing out other devices (L42);
+  merging customer/machine records (L126); reversing payments instead of deleting (L127); a single-writer lock on the
+  hub (L95); signed partner invites/messages (L134, I27).
+
+## 2d. Parts: condition, who made it, shop numbers (30 Sep 2026, same branch)
+
+Built from `docs/plans/part-condition-origin.md` (owner's decisions are in it). Migrations
+`20260930200000_part_condition_origin` and hub `010_listing_origin.sql`. Every check and Playwright spec passes (new
+steps in smoke, inventory and market specs; hub smoke test covers a listing's origin, old-style listings too).
+Worth knowing: "compatible, not genuine <Brand>" uses the part's Brand field (the machine maker); a shop number isn't
+marked as one on the partner wire (the partner sees it as an ordinary number).
+
 ## 3. What to do next, in order
+
+
+
+Steps 1-3 below are done (sections 2b and 2c): next is merging to `main` and deploying (hub first), then step 4.
+
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
    lists that package's findings (title, file:line, problem, scenario, suggested fix, evidence). Order and

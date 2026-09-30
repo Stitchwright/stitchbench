@@ -19,9 +19,11 @@ const MODES: { key: Mode; label: string; hint: string }[] = [
 ];
 
 /** USB/Bluetooth scanners type the code and press Enter; phones and tablets can use the camera. */
-export function ScanStation({ tickets }: { tickets: Ticket[] }) {
+export function ScanStation({ tickets, shopId }: { tickets: Ticket[]; shopId: string }) {
   const [mode, setMode] = useState<Mode>("lookup");
-  const [qty, setQty] = useState(1);
+  // Kept as typed ("2." on the way to "2.5"); fabric goes by the yard, so a fraction is a real quantity.
+  const [qtyText, setQtyText] = useState("1");
+  const qty = Number(qtyText) > 0 ? Number(qtyText) : 1;
   const [ticketId, setTicketId] = useState(tickets[0]?.id ?? "");
   const [log, setLog] = useState<LogEntry[]>([]);
   const [counts, setCounts] = useState<Map<string, { part: ScannedPart; n: number }>>(new Map());
@@ -29,6 +31,38 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => input.current?.focus(), [mode]);
+
+  // A shelf count takes a while: it is kept in this tab (a reload, or a click on a log link, brings it back) and
+  // closing the tab with counts unsaved asks first. Per company, so another sign-in in the same tab doesn't see it.
+  const saved = `stitchbench-scan-count:${shopId}`;
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(saved);
+    } catch {
+      /* no storage here: the count just isn't kept */
+    }
+    if (!raw) return;
+    const stored = raw;
+    queueMicrotask(() => {
+      try {
+        setCounts(new Map(JSON.parse(stored) as [string, { part: ScannedPart; n: number }][]));
+      } catch {
+        /* not a count of ours */
+      }
+    });
+  }, [saved]);
+  useEffect(() => {
+    if (!counts.size) return;
+    try {
+      sessionStorage.setItem(saved, JSON.stringify([...counts]));
+    } catch {
+      /* no storage here */
+    }
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [counts, saved]);
 
   async function handle(raw: string) {
     const code = raw.trim();
@@ -39,6 +73,12 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
       if (r.ok && mode === "count" && r.part.unit === "yd") {
         // Fabric is counted in yards, not bolts: this scan doesn't count.
         setLog((l) => [{ at: Date.now(), ok: false, text: `${r.part.partNumber} is sold by the yard: enter its yardage on the item page (Count)`, code, partId: r.part.id }, ...l].slice(0, 50));
+        beep(false);
+        return;
+      }
+      if (r.ok && mode === "count" && r.part.consigned) {
+        // A partner's consigned stock is counted by the partner (saveCounts skips it).
+        setLog((l) => [{ at: Date.now(), ok: false, text: `${r.part.partNumber} is a partner's consigned stock: it isn't counted here`, code, partId: r.part.id }, ...l].slice(0, 50));
         beep(false);
         return;
       }
@@ -69,7 +109,7 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   };
   // The camera reports a code once while it's in view (see useBarcodeCamera), so every code that arrives counts, as
   // does every handheld scan.
-  const cam = useBarcodeCamera(enqueue);
+  const { video: camVideo, on: camOn, start: camStart, stop: camStop } = useBarcodeCamera(enqueue);
 
   async function save() {
     const r = await saveCounts([...counts.values()].map((c) => ({ partId: c.part.id, qty: c.n })));
@@ -77,6 +117,11 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
     else {
       toast.success(`Saved ${r.saved} count${r.saved === 1 ? "" : "s"}`);
       setCounts(new Map());
+      try {
+        sessionStorage.removeItem(saved);
+      } catch {
+        /* no storage here */
+      }
     }
   }
 
@@ -118,7 +163,7 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
             <label htmlFor="scan-qty" className="label">
               Qty each
             </label>
-            <input id="scan-qty" type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value) || 1)} className="input num" />
+            <input id="scan-qty" type="number" min={0.125} step="any" inputMode="decimal" value={qtyText} onChange={(e) => setQtyText(e.target.value)} className="input num" />
           </div>
         )}
         {mode === "ticket" && (
@@ -137,11 +182,11 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
           </div>
         )}
         <button className="btn btn-primary">Go</button>
-        <button type="button" className="btn" onClick={() => (cam.on ? cam.stop() : cam.start())}>
-          {cam.on ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {cam.on ? "Stop camera" : "Use camera"}
+        <button type="button" className="btn" onClick={() => (camOn ? camStop() : camStart())}>
+          {camOn ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camOn ? "Stop camera" : "Use camera"}
         </button>
       </form>
-      <video ref={cam.video} className={cam.on ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
+      <video ref={camVideo} className={camOn ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
       {mode === "count" && (
         <div className="card card-pad space-y-2">

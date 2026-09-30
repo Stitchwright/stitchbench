@@ -9,6 +9,11 @@ on:
   push:
     tags: ["v*"]
 
+# The build runs every dependency's install scripts: it gets a read-only token, the checkout doesn't leave it in
+# .git/config, and the actions are pinned to the commits their tags point at (update them on purpose, not by surprise).
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
@@ -17,9 +22,11 @@ jobs:
       # Not used while building, but Prisma's config reads it.
       DATABASE_URL: postgresql://build:build@localhost:5432/build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -27,10 +34,10 @@ jobs:
             package-lock.json
             desktop/package-lock.json
 
-      # npm install, not npm ci: a lock file written on Windows leaves out helpers that Tailwind's optional WebAssembly
-      # build lists, and npm ci refuses that. Everything else still comes from the lock file.
+      # @emnapi/core and @emnapi/runtime are listed as optional dependencies so every platform's npm keeps them in the
+      # lock file (Tailwind's and sharp's WebAssembly builds need them); the checks workflow runs npm ci on Linux too.
       - name: Install the app's packages
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Install the program's packages
         working-directory: desktop
@@ -49,7 +56,7 @@ jobs:
         run: npm run installer:stitchshop
 
       - name: Keep the installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: installers
           path: |

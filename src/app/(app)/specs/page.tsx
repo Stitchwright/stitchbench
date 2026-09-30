@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { modelKey } from "@/lib/format";
 import { ADJUSTMENTS, ADJ_NAME, valueRange } from "@/lib/adjustments";
 import { PageHeader } from "@/components/ui";
@@ -12,7 +13,7 @@ type SP = { q?: string; brand?: string; tab?: string; adj?: string };
 
 export default async function Specs({ searchParams }: { searchParams: Promise<SP> }) {
   await requireUser();
-  const sp = await searchParams;
+  const sp = firstValues(await searchParams);
   const tab = sp.tab === "settings" ? "settings" : "tension";
   const [tCount, sCount] = await Promise.all([db.tensionSpec.count(), db.factorySetting.count()]);
 

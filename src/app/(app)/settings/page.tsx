@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { isInstallAdmin, requireUser } from "@/lib/session";
-import { money } from "@/lib/format";
+import { fmtDate, fmtDateTime, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
@@ -14,6 +15,7 @@ import {
   saveServiceItem,
   saveShop,
   setUserActive,
+  setUserRole,
 } from "@/actions/settings";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
@@ -22,7 +24,7 @@ import { saveCompanyMode } from "@/actions/partners";
 const d = (c: number) => (c / 100).toFixed(2);
 
 /** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
-async function CommunityHub({ admin }: { admin: boolean }) {
+async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: string }) {
   const [s, links, notes, figures] = await Promise.all([db.hubState.findUnique({ where: { id: 1 } }), db.manualLink.count(), db.hubPost.count(), db.hubFigure.count()]);
   const joined = Boolean(s?.url && s.installKey);
   return (
@@ -31,10 +33,10 @@ async function CommunityHub({ admin }: { admin: boolean }) {
         <div className="space-y-3 text-sm">
           <p>
             Connected to {s!.hubName ? <strong>{s!.hubName}</strong> : null} <span className="mono">{s!.url}</span>
-            {s!.joinedAt && <> since {s!.joinedAt.toLocaleDateString()}</>}. Syncs every 10 minutes.
+            {s!.joinedAt && <> since {fmtDate(s!.joinedAt, timeZone)}</>}. Syncs every 10 minutes.
           </p>
           <p className="muted">
-            {links} manual links · {notes} shared notes · {figures} figure snapshots · last sync {s!.lastSyncAt ? s!.lastSyncAt.toLocaleString() : "not yet"}
+            {links} manual links · {notes} shared notes · {figures} figure snapshots · last sync {s!.lastSyncAt ? fmtDateTime(s!.lastSyncAt, timeZone) : "not yet"}
           </p>
           {s!.discordUrl && (
             <p>
@@ -108,7 +110,7 @@ export default async function SettingsPage() {
       <PageHeader title="Settings" />
 
       <div id="hub">
-        <CommunityHub admin={await isInstallAdmin(user)} />
+        <CommunityHub admin={await isInstallAdmin(user)} timeZone={await shopTimeZone(user.shopId)} />
       </div>
 
       {admin && (
@@ -139,20 +141,38 @@ export default async function SettingsPage() {
         <Section title="Your data">
           <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
           <div className="flex flex-wrap gap-2">
+            {/* A file download, not a page: a plain link. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/customers" className="btn btn-sm">
               Customers
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/tickets" className="btn btn-sm">
+              Repair tickets and their lines
+            </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/machines" className="btn btn-sm">
+              Machines
+            </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/model-notes" className="btn btn-sm">
+              Model notes
+            </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/inventory" className="btn btn-sm">
               Inventory
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/register-sales" className="btn btn-sm">
               Register sales
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/repairs" className="btn btn-sm">
               Repairs sent out / from partners
             </a>
-            <a href="/api/sales" className="btn btn-sm">
-              Repair payments (sales log)
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/payments" className="btn btn-sm">
+              Repair payments (all dates)
             </a>
           </div>
         </Section>
@@ -313,7 +333,23 @@ export default async function SettingsPage() {
                     </ActionButton>
                   )}
                 </div>
-                {(u.role !== "OWNER" || u.id === user.id) && (
+                {u.role !== "OWNER" && u.id !== user.id && (
+                  <details className="mt-1">
+                    <summary className="link cursor-pointer text-xs">Change role</summary>
+                    <ActionForm action={setUserRole.bind(null, u.id)} success="Role changed. They sign in again." className="mt-2 flex flex-wrap gap-2">
+                      <label className="sr-only" htmlFor={`role-${u.id}`}>
+                        Role for {u.name}
+                      </label>
+                      <select id={`role-${u.id}`} name="role" className="select w-64" defaultValue={u.role}>
+                        <option value="TECH">Tech</option>
+                        <option value="ADMIN">Admin (can change settings)</option>
+                      </select>
+                      <Submit className="btn btn-sm">Set role</Submit>
+                    </ActionForm>
+                  </details>
+                )}
+                {/* Your own password is changed under My password below, which asks for the current one. */}
+                {u.role !== "OWNER" && u.id !== user.id && (
                   <details className="mt-1">
                     <summary className="link cursor-pointer text-xs">Reset password</summary>
                     <ActionForm action={resetUserPassword.bind(null, u.id)} reset success="Password reset. Give them the new one." className="mt-2 flex flex-wrap gap-2">

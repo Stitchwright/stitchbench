@@ -5,9 +5,14 @@ import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/con
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
-import { PAID_ELSEWHERE, startOfToday } from "@/lib/sales";
+import { PAID_ELSEWHERE } from "@/lib/sales";
+import { startOfToday } from "@/lib/time-zone";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { PartnerTodo } from "@/components/partner-todo";
 import { redirect } from "next/navigation";
+
+// The low-stock list shows this many; the rest is one click away on the Parts page.
+const LOW_STOCK_SHOWN = 50;
 
 function daysSince(d: Date) {
   return (Date.now() - d.getTime()) / 86400000;
@@ -16,23 +21,26 @@ function daysSince(d: Date) {
 export default async function Dashboard() {
   const user = await requireUser();
   const shopId = user.shopId;
-  const tz = (await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
-  const [shop, open, lowStock, todayPay] = await Promise.all([
-    db.shop.findUniqueOrThrow({ where: { id: shopId } }),
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
+  // A sewing shop without a repair bench starts at the register, before any of the bench's queries run.
+  if (!shop.doesRepair) redirect("/register");
+  const tz = await shopTimeZone(shopId);
+  const low = { shopId, qtyOnHand: { lte: db.part.fields.reorderAt } };
+  const [open, lowStock, lowCount, todayPay] = await Promise.all([
     db.ticket.findMany({
       where: { shopId, status: { in: OPEN_STATUSES } },
       include: { machine: true, customer: true, viaAccount: true },
       orderBy: { intakeAt: "asc" },
     }),
-    db.part.findMany({ where: { shopId }, orderBy: { partNumber: "asc" } }).then((ps) => ps.filter((p) => p.qtyOnHand <= p.reorderAt)),
+    // At or below the reorder point, found in the database, and only what the list shows.
+    db.part.findMany({ where: low, select: { id: true, partNumber: true, description: true, qtyOnHand: true }, orderBy: { partNumber: "asc" }, take: LOW_STOCK_SHOWN }),
+    db.part.count({ where: low }),
     // "Taken today" is the drawer and card reader: not what a partner shop collected at its counter or billed on account.
     db.payment.aggregate({
       where: { ticket: { shopId }, paidAt: { gte: startOfToday(tz) }, method: { notIn: PAID_ELSEWHERE } },
       _sum: { amountCents: true },
     }),
   ]);
-  // A sewing shop without a repair bench starts at the register.
-  if (!shop.doesRepair) redirect("/register");
 
   const byStatus = new Map(STATUS_ORDER.map((s) => [s, 0]));
   for (const t of open) byStatus.set(t.status, (byStatus.get(t.status) ?? 0) + 1);
@@ -144,6 +152,14 @@ export default async function Dashboard() {
                 </li>
               ))}
             </ul>
+          )}
+          {lowCount > lowStock.length && (
+            <p className="muted mt-2 text-sm">
+              and {lowCount - lowStock.length} more.{" "}
+              <Link href="/parts?low=1" className="link">
+                See them all
+              </Link>
+            </p>
           )}
         </Section>
       </div>

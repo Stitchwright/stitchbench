@@ -1,8 +1,9 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 
-// Singleton: Next.js dev mode hot-reloads modules, which would otherwise
-// create a new PrismaClient (and a new pg pool) on every reload.
+// Singleton on globalThis: Next.js dev mode hot-reloads modules, and a production build loads separate copies of this
+// file for the pages, route handlers, actions and background timers. Each would otherwise make its own PrismaClient
+// with its own pg pool, and the pools add up against Postgres' connection limit.
 const globalForPrisma = globalThis as unknown as { db?: PrismaClient };
 
 function createClient(): PrismaClient {
@@ -17,8 +18,4 @@ function createClient(): PrismaClient {
   });
 }
 
-export const db = globalForPrisma.db ?? createClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.db = db;
-}
+export const db = (globalForPrisma.db ??= createClient());

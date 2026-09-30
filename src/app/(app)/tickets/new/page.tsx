@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { ACCESSORIES, MACHINE_TYPES } from "@/lib/constants";
 import { money, ticketNo } from "@/lib/format";
 import { PageHeader, Section } from "@/components/ui";
@@ -8,7 +9,7 @@ import { createTicket } from "@/actions/tickets";
 
 export default async function NewTicket({ searchParams }: { searchParams: Promise<{ machineId?: string; customerId?: string }> }) {
   const user = await requireUser();
-  const sp = await searchParams;
+  const sp = firstValues(await searchParams);
   const [shop, customers, accounts, services, brands, machine] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId } }),
     db.customer.findMany({ where: { shopId: user.shopId, kind: "RETAIL" }, orderBy: { name: "asc" } }),

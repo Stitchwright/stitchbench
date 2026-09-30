@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { safe, UserError } from "@/lib/action";
+import { isUserError, safe, UserError } from "@/lib/action";
 import { requirePlatformAdmin } from "@/lib/session";
 import { createShopWithOwner, type ShopKind } from "@/lib/shops";
 import { normalizeEmail } from "@/lib/email";
@@ -21,14 +21,17 @@ export const createCompany = safe(async function createCompany(formData: FormDat
     email,
     password: String(formData.get("password") ?? ""),
     kind: (String(formData.get("kind") ?? "repair") as ShopKind) || "repair",
-  });
+  }, { allowReserved: true });
   revalidatePath("/companies");
   const code = String(formData.get("partnerCode") ?? "").trim();
   if (code) {
     try {
       await redeemPartnerCode(shop.id, shop.name, email, code);
     } catch (e) {
-      throw new UserError(`The company was created, but the partner code didn't connect it: ${e instanceof Error ? e.message : e}. Its owner can enter a new code under Partner shops.`);
+      // Only a message meant for people goes to the browser; a database or network error stays in the server's log.
+      if (!isUserError(e)) console.error("partner code for a new company:", e);
+      const why = isUserError(e) ? e.message : "something went wrong on the server, and its log has the details";
+      throw new UserError(`The company was created, but the partner code didn't connect it: ${why}. Its owner can enter a new code under Partner shops.`);
     }
   }
 });

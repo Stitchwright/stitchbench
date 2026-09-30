@@ -74,9 +74,26 @@ async function getRoot(): Promise<DirHandle | undefined> {
   return idbGet<DirHandle>("root");
 }
 
+/**
+ * Whether the folder may be read (or written). Asking needs a fresh click: the browser refuses once the click has been
+ * used (e.g. by opening a tab) or has expired (a few seconds), and that counts as not allowed.
+ */
 async function ensurePermission(h: DirHandle, mode: "read" | "readwrite"): Promise<boolean> {
-  if ((await h.queryPermission({ mode })) === "granted") return true;
-  return (await h.requestPermission({ mode })) === "granted";
+  try {
+    if ((await h.queryPermission({ mode })) === "granted") return true;
+    return (await h.requestPermission({ mode })) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ask for write access to the manuals folder while the Save click still counts, before the slow work (building a
+ * scanned PDF) that saveToLibrary follows. Without it the save falls back to a download.
+ */
+export async function askToSaveToLibrary(): Promise<void> {
+  const root = await getRoot().catch(() => undefined);
+  if (root) await ensurePermission(root, "readwrite");
 }
 
 async function walk(dir: DirHandle, prefix: string, out: IndexedFile[], onProgress?: (n: number) => void, depth = 0) {
@@ -173,10 +190,15 @@ function serverUrl(path: string) {
 
 /** Where to read a library manual from: this PC's connected folder first, then the shop PC. */
 export async function manualPath(index: LibraryIndex | undefined, libPath: string): Promise<string | null> {
-  const local = findByPath(index, libPath)?.path;
-  if (local) return local;
+  return (await manualSource(index, libPath))?.path ?? null;
+}
+
+/** manualPath, saying whether it is the manual meant (`exact`) or only one with the same file name, which may be another. */
+export async function manualSource(index: LibraryIndex | undefined, libPath: string): Promise<{ path: string; exact: boolean } | null> {
+  const local = matchByPath(index, libPath);
+  if (local) return { path: local.file.path, exact: local.exact };
   // The shop PC needs the path inside the library (Category\Brand\File.pdf), not just a file name.
-  return /[\\/]/.test(libPath) && (await serverLibrary()) ? SERVER_PREFIX + libPath : null;
+  return /[\\/]/.test(libPath) && (await serverLibrary()) ? { path: SERVER_PREFIX + libPath, exact: true } : null;
 }
 
 async function fileAt(path: string): Promise<File> {
@@ -202,7 +224,14 @@ export async function openLocal(path: string, page?: number | null): Promise<voi
     window.open(serverUrl(path) + (page ? `#page=${page}` : ""), "_blank");
     return;
   }
-  // Open the tab first, while the click still counts as a user action, then point it at the file.
+  // Browsers re-ask for the folder after a restart. Ask before opening the tab: opening it uses up the click, and
+  // asking without one fails.
+  if (!sessionFiles.has(path)) {
+    const root = await getRoot().catch(() => undefined);
+    if (root && !(await ensurePermission(root, "read"))) throw new Error("The browser was not allowed to read the manuals folder. Click Open again and allow it.");
+  }
+  // Open the tab while the click still counts as a user action, then point it at the file (the same tab if the browser
+  // blocked a new one after asking).
   const w = window.open("", "_blank");
   try {
     const f = await fileAt(path);
@@ -299,6 +328,11 @@ export function findByName(index: LibraryIndex | undefined, name: string): Index
  * Works whether the tech connected the whole library folder or a sub-folder of it; falls back to the file name.
  */
 export function findByPath(index: LibraryIndex | undefined, libPath: string): IndexedFile | undefined {
+  return matchByPath(index, libPath)?.file;
+}
+
+/** findByPath, saying whether the match is by path (the manual meant) or only by file name (maybe another manual that shares the name). */
+export function matchByPath(index: LibraryIndex | undefined, libPath: string): { file: IndexedFile; exact: boolean } | undefined {
   if (!index) return undefined;
   const want = libPath.split("\\").join("/").toLowerCase();
   const name = want.split("/").pop()!;
@@ -306,10 +340,10 @@ export function findByPath(index: LibraryIndex | undefined, libPath: string): In
   for (const f of index.files) {
     if (f.name.toLowerCase() !== name) continue;
     const have = f.path.toLowerCase();
-    if (want === have || want.endsWith("/" + have) || have.endsWith("/" + want)) return f;
+    if (want === have || want.endsWith("/" + have) || have.endsWith("/" + want)) return { file: f, exact: true };
     byName ??= f;
   }
-  return byName;
+  return byName ? { file: byName, exact: false } : undefined;
 }
 
 export function firstPage(pages: string | null | undefined): number | null {

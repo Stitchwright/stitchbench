@@ -15,12 +15,15 @@ import "server-only";
 // aside (PartnerFailure, shown on the Partners page) instead of stopping every message after it.
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { isUserError, UserError } from "@/lib/action";
 import { checkHubUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms, repairCommission, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
 import { Prisma } from "@/generated/prisma/client";
+import { sameText } from "@/lib/input";
+import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
 
 export const DEFAULT_HUB_URL = (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
 const FINAL = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
@@ -28,8 +31,8 @@ const READY = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
 const STATUSES = ["AT_SHOP_AWAITING_PICKUP", "IN_TRUCK", "ON_BENCH", "WAITING_CUSTOMER_OK", "WAITING_PARTS", "READY_IN_TRUCK", "READY_FOR_PICKUP", "COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
 const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 const IMAGE = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_MONEY = 10_000_000; // $100,000 in cents: far above any real repair, order or statement
-const MAX_QTY = 100_000;
+export const MAX_MONEY = 10_000_000; // $100,000 in cents: far above any real repair, order or statement
+export const MAX_QTY = 100_000;
 const MAX_EVENTS = 200;
 // A partnership brings in a few machines a day and a shelf of consigned stock at a time. Far more than that within an
 // hour is a fault or an attack (each intake opens a ticket and can carry megabytes of photos, into the database every
@@ -58,7 +61,8 @@ const idOf = (v: unknown, what: string) => {
 /** Text, trimmed and cut to max; null when empty. */
 const text = (v: unknown, max: number) => {
   if (v == null) return null;
-  const t = String(v).trim();
+  // Postgres refuses a NUL in text, which would fail the whole message after it was checked.
+  const t = String(v).replace(/\0/g, "").trim();
   return t ? t.slice(0, max) : null;
 };
 const need = (v: unknown, max: number, what: string) => text(v, max) ?? bad(`${what} is missing`);
@@ -71,9 +75,11 @@ const qtyOf = (v: unknown, what: string) => {
   const x = Number(v);
   return Number.isFinite(x) && Math.abs(x) <= MAX_QTY ? Math.round(x * 1000) / 1000 : bad(`${what} is out of range`);
 };
+/** A date from 2000 to a year from now: JavaScript takes years like -100000, which the database refuses. */
 const dateOf = (v: unknown, what: string) => {
   const d = new Date(String(v ?? ""));
-  return Number.isNaN(d.getTime()) ? bad(`${what} isn't a date`) : d;
+  const t = d.getTime();
+  return Number.isNaN(t) || t < Date.UTC(2000, 0, 1) || t > Date.now() + 366 * 86400_000 ? bad(`${what} isn't a date`) : d;
 };
 /**
  * A time the partner reports (when it sold, took payment, handed a machine over), as long as its clock is near the hub's:
@@ -123,11 +129,23 @@ export type CatalogItem = {
   wholesaleCents: number;
   retailCents: number | null;
   inStock: number;
+  // Left out when New / Genuine; installs from before these existed don't send them (see labelFields)
+  condition?: string;
+  origin?: string;
 };
 
 export type JobEvent = { at: string; status?: string; note?: string };
 export type JobLine = { description: string; qty: number; amountCents: number; kind: string };
-export type OrderLine = { itemKey: string; partNumber: string; description: string; qty: number; unitCents: number };
+export type OrderLine = { itemKey: string; partNumber: string; description: string; qty: number; unitCents: number; condition?: string; origin?: string };
+
+/** Order lines to compare, whatever order their keys are in (the database keeps a JSON column's keys in its own order). */
+const linesKey = (lines: unknown) =>
+  JSON.stringify(((lines as OrderLine[] | null) ?? []).map((l) => [l.itemKey, l.partNumber, l.description, l.qty, l.unitCents, l.condition ?? null, l.origin ?? null]));
+
+/** What the customer still owes on a repair: the bill, less anything already paid to either shop (the register's figure). */
+export function repairDue(j: { totalCents: number | null; repairPaidCents: number | null; paidCents: number | null }) {
+  return Math.max(0, (j.totalCents ?? 0) - (j.repairPaidCents ?? 0) - (j.paidCents ?? 0));
+}
 
 export async function partnerLink(shopId: string, id: string) {
   const l = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id } } });
@@ -148,8 +166,27 @@ export function kickPartnerSync() {
   }, 1500);
 }
 
-/** Queue a message for the partner on the other side of `linkId`; it goes out on the next partner sync. */
-export async function sendToPartner(shopId: string, linkId: string, type: string, data: Json, tx: Prisma.TransactionClient = db) {
+// The hub limits partner codes and messages per install, and a hosted install serves many companies: each company
+// gets its own share here, so one (or one of its users, clicking a form over and over) can't use up the others'. Kept
+// per server process; the hub also counts per company.
+const quotas = globalThis as unknown as { __partnerQuota?: Map<string, { n: number; since: number }> };
+export function partnerQuota(shopId: string, what: string, perHour: number, message: string) {
+  const map = (quotas.__partnerQuota ??= new Map());
+  const now = Date.now();
+  for (const [k, b] of map) if (now - b.since > 3600_000) map.delete(k);
+  const key = `${what}:${shopId}`;
+  const b = map.get(key) ?? { n: 0, since: now };
+  if (b.n >= perHour) throw new UserError(message);
+  b.n++;
+  map.set(key, b);
+}
+
+/**
+ * Queue a message for the partner on the other side of `linkId`; it goes out on the next partner sync. `limited: false`
+ * for the record of a sale at the register (a consigned item sold, a repair paid): a busy counter is never turned away.
+ */
+export async function sendToPartner(shopId: string, linkId: string, type: string, data: Json, tx: Prisma.TransactionClient = db, limited = true) {
+  if (limited) partnerQuota(shopId, "message", 600, "This company has sent its partners a lot in the last hour. Wait a while and try again.");
   await tx.partnerOutbox.create({ data: { shopId, linkId, type, data } });
   kickPartnerSync();
 }
@@ -253,7 +290,7 @@ export async function endPartnership(shopId: string, linkId: string, note: strin
  * if no other partnership already uses it, and its commission is left as the shop set it.
  */
 async function tradeAccountFor(shopId: string, name: string, terms: PartnerTerms) {
-  const found = await db.customer.findFirst({ where: { shopId, kind: "TRADE", name: { equals: name, mode: "insensitive" } } });
+  const found = await db.customer.findFirst({ where: { shopId, kind: "TRADE", name: sameText(name) } });
   if (found && !(await db.partnerLink.findFirst({ where: { shopId, accountId: found.id } }))) return found.id;
   const c = await db.customer.create({
     data: {
@@ -333,7 +370,7 @@ export async function proposeTerms(shopId: string, linkId: string, terms: Partne
 }
 
 /** This shop accepts the current terms, or the change the partner proposed. */
-export async function acceptTerms(shopId: string, linkId: string, byName: string) {
+export async function acceptTerms(shopId: string, linkId: string, byName: string, shown?: { version: number | null; key: string | null }) {
   const l = await partnerLink(shopId, linkId);
   const at = new Date().toISOString();
   const accepted = { ...((l.accepted as Accepted) ?? {}) };
@@ -351,6 +388,10 @@ export async function acceptTerms(shopId: string, linkId: string, byName: string
     accepted[l.side as Side] = { name: byName, at, version };
     data = { accepted: accepted as Json };
   }
+  // Only what the person read: a newer proposal that arrived after the page was opened is shown to them first.
+  if (shown && ((shown.version != null && shown.version !== version) || (shown.key != null && shown.key !== termsKey(terms)))) {
+    throw new UserError("The terms changed since this page was opened. Read them again, then accept.");
+  }
   await db.$transaction(async (tx) => {
     await tx.partnerLink.update({ where: { shopId_id: { shopId, id: linkId } }, data });
     // The key lets the partner check these are the very terms it has; a mismatch is shown rather than recorded.
@@ -365,7 +406,9 @@ type JobRow = Prisma.RepairJobGetPayload<object>;
 
 /**
  * What the sewing shop hears about a job. Once a job is fully paid its commission and paid date are fixed: later
- * payments or new terms don't move a settled job to another month or change what it earned.
+ * payments or new terms don't move a settled job to another month or change what it earned. A job paid against a bill
+ * that has since gone up isn't fully paid: its commission follows the bill until the rest is paid (the sewing shop
+ * works it out the same way from the same lines).
  */
 function jobSnapshot(job: JobRow, t: TicketForJob, terms: PartnerTerms) {
   const lines: JobLine[] = t.lines.map((l) => ({ description: l.description, qty: l.qty, amountCents: lineTotal(l), kind: l.kind }));
@@ -377,9 +420,13 @@ function jobSnapshot(job: JobRow, t: TicketForJob, terms: PartnerTerms) {
   const taxBase = gross > 0 ? Math.max(0, taxable - Math.round((discount * taxable) / gross)) : taxable;
   const tax = Math.round((taxBase * t.taxRatePct) / 100);
   const total = subtotal + tax;
-  const direct = t.payments.filter((p) => p.method !== "SHOP_COLLECTED").reduce((a, p) => a + p.amountCents, 0);
+  // Put on account (INVOICE) isn't money received, as in ticket-math.
+  const direct = t.payments.filter((p) => p.method !== "SHOP_COLLECTED" && p.method !== "INVOICE").reduce((a, p) => a + p.amountCents, 0);
   const atShop = t.payments.filter((p) => p.method === "SHOP_COLLECTED").reduce((a, p) => a + p.amountCents, 0);
   const paidAt = job.paidAt ?? (total > 0 && direct + atShop >= total ? new Date() : null);
+  // Frozen while it's paid in full, or while the bill is what it was when it was paid (a job paid before on-account
+  // payments stopped counting as paid keeps what it earned); only a bill that went up afterwards is worked out again.
+  const settled = job.paidAt != null && (direct + atShop >= total || total <= (job.totalCents ?? 0));
   return {
     id: job.id,
     status: t.status,
@@ -387,8 +434,8 @@ function jobSnapshot(job: JobRow, t: TicketForJob, terms: PartnerTerms) {
     lines,
     totalCents: total,
     taxCents: tax,
-    commissionPct: job.paidAt ? job.commissionPct : terms.repairCommissionPct,
-    commissionCents: job.paidAt && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms),
+    commissionPct: settled ? job.commissionPct : terms.repairCommissionPct,
+    commissionCents: settled && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms),
     repairNote: job.repairNote,
     repairPaidCents: direct || null,
     paidAt: paidAt?.toISOString() ?? null,
@@ -414,6 +461,8 @@ async function pushJobUpdates() {
       const h = hash({ ...snap, paidAt: snap.paidAt ? "paid" : null });
       if (h === job.sentHash) continue;
       const events = snap.status !== job.status ? withEvent(job.events, { at: new Date().toISOString(), status: snap.status }) : (job.events as Json);
+      // Asking for the customer's OK again (a second estimate): the last answer was to the first one.
+      const askAgain = snap.status === "WAITING_CUSTOMER_OK" && job.status !== "WAITING_CUSTOMER_OK" && job.approval != null;
       await db.$transaction(async (tx) => {
         await tx.repairJob.update({
           where: { shopId_id: { shopId: job.shopId, id: job.id } },
@@ -428,6 +477,7 @@ async function pushJobUpdates() {
             repairPaidCents: snap.repairPaidCents,
             events,
             sentHash: h,
+            ...(askAgain ? { approval: null, approvedCents: null } : {}),
             ...(snap.paidAt && !job.paidAt ? { paidAt: new Date(snap.paidAt), paidWhere: job.paidCents ? "split" : "repair" } : {}),
             ...(snap.status === "COLLECTED" && !job.pickedUpAt ? { pickedUpAt: new Date() } : {}),
           },
@@ -458,7 +508,9 @@ export async function catalogFor(shopId: string): Promise<CatalogItem[]> {
     unit: p.unit,
     wholesaleCents: p.wholesaleCents!,
     retailCents: p.priceCents,
-    inStock: p.qtyOnHand,
+    // Stock gone below zero (sold before it was received) shows as none; the partner refuses counts past its range.
+    inStock: Math.min(MAX_QTY, Math.max(0, p.qtyOnHand)),
+    ...labelFields(p),
   }));
 }
 
@@ -469,13 +521,19 @@ async function pushCatalogs() {
     try {
       if (!byShop.has(l.shopId)) {
         const items = await catalogFor(l.shopId);
-        byShop.set(l.shopId, { items, h: hash(items) });
+        // Prices and what's offered, then everything (stock counts too).
+        byShop.set(l.shopId, { items, h: `${hash(items.map((i) => ({ ...i, inStock: 0 })))}:${hash(items)}` });
       }
       const c = byShop.get(l.shopId)!;
       if (c.h === l.catalogHash) continue;
-      // Stock counts change with every sale; send at most every 10 minutes unless it's the first time.
-      if (l.catalogHash && l.catalogAt && Date.now() - l.catalogAt.getTime() < 10 * 60_000) continue;
+      // Stock counts change with every sale; send at most every 10 minutes unless it's the first time. A price or an
+      // item offered or taken off goes at once: the partner orders at the prices it has.
+      const samePrices = l.catalogHash?.split(":")[0] === c.h.split(":")[0];
+      if (samePrices && l.catalogAt && Date.now() - l.catalogAt.getTime() < 10 * 60_000) continue;
       await db.$transaction([
+        // Only the newest catalog matters: one still waiting to go (the hub or the partner was away) is replaced, not
+        // left to be sent and applied ahead of this one.
+        db.partnerOutbox.deleteMany({ where: { shopId: l.shopId, linkId: l.id, type: "catalog", sentAt: null, deadAt: null } }),
         db.partnerOutbox.create({ data: { shopId: l.shopId, linkId: l.id, type: "catalog", data: { items: c.items, at: new Date().toISOString() } as Json } }),
         db.partnerLink.update({ where: { shopId_id: { shopId: l.shopId, id: l.id } }, data: { catalogHash: c.h, catalogAt: new Date() } }),
       ]);
@@ -487,6 +545,16 @@ async function pushCatalogs() {
 }
 
 // ---------- sync ----------
+
+const OUTBOX_KEPT_DAYS = 30; // as long as a message the partner refused stays listed on the Partners page
+let outboxPrunedAt = 0;
+
+/** Messages sent long ago go (catalogs and intakes with photos would otherwise fill the database and every backup). */
+async function pruneOutbox() {
+  if (Date.now() - outboxPrunedAt < 3600_000) return;
+  outboxPrunedAt = Date.now();
+  await db.partnerOutbox.deleteMany({ where: { sentAt: { lt: new Date(Date.now() - OUTBOX_KEPT_DAYS * 86400_000) } } }).catch(() => {});
+}
 
 /**
  * Send what's waiting, oldest first per partnership. A message the hub refuses for good (bad data, too large) is set
@@ -570,22 +638,51 @@ type HubMessage = {
   createdAt: string;
 };
 
+/** A database refusal that will be the same every time (a value it can't store), not a moment's trouble (P1xxx: can't
+ * reach it; a busy pool, a write conflict, a transaction that timed out). */
+function refusedForGood(e: unknown) {
+  if (e instanceof Prisma.PrismaClientValidationError) return true;
+  return e instanceof Prisma.PrismaClientKnownRequestError && !e.code.startsWith("P1") && !["P2024", "P2028", "P2034", "P2037"].includes(e.code);
+}
+
+// Messages per page of the feed. A newer hub also cuts a page by size; an older one doesn't, and with messages of up
+// to 4 MB a page of 200 can be more than it can build: a page that fails is asked for again one message at a time.
+const PAGE = 50;
+const MAX_REJECTS_PER_HOUR = 30; // "couldn't take it" answers to one partner: a flood of bad messages isn't echoed
+
 /**
- * Apply what partners sent, in order. A message with bad data is set aside at once; one whose apply keeps failing
- * (3 syncs) is set aside too, so nothing stops every later message. Until then a failure stops here and the cursor
- * stays just before it, and the message is tried again on the next sync.
+ * Apply what partners sent, in order. A message with bad data, or one the database can't store, is set aside at once
+ * and the partner is told; one whose apply fails for a passing reason holds back only the rest of its own partnership
+ * (everyone else's go on), and after 3 syncs it is set aside too, so nothing stops every later message. The cursor
+ * stays just before the oldest message held back, so it comes again next time; those already applied are skipped.
  */
 async function pullMessages(cursor: string) {
-  let since = cursor;
+  let since = /^\d+$/.test(cursor) ? cursor : "0";
+  let keep: string | null = null;
+  const held = new Set<string>();
   let received = 0;
+  let limit = PAGE;
   for (let page = 0; page < 50; page++) {
-    const r = (await (await hubFetch(`/v1/partners/messages?since=${/^\d+$/.test(since) ? since : "0"}&limit=200`)).json()) as { messages: HubMessage[]; next: string; more: boolean };
+    let r: { messages: HubMessage[]; next: string; more: boolean };
+    try {
+      r = (await (await hubFetch(`/v1/partners/messages?since=${since}&limit=${limit}`, { signal: AbortSignal.timeout(120_000) })).json()) as typeof r;
+    } catch (e) {
+      const status = hubStatus(e);
+      if (limit > 1 && !(status >= 400 && status < 500)) {
+        limit = 1;
+        continue;
+      }
+      throw e;
+    }
+    limit = Math.min(PAGE, limit * 2);
+    const next = /^\d+$/.test(String(r.next)) ? String(r.next) : since;
     // A hub message goes to both shops when both are on this install: rows of one seq move the cursor together.
     let doneThrough = since;
     for (let i = 0; i < r.messages.length; i++) {
       const m = r.messages[i];
       const shop = typeof m.toShopRef === "string" ? await db.shop.findUnique({ where: { id: m.toShopRef }, select: { id: true } }) : null;
-      if (shop) {
+      const hold = `${shop?.id}|${m.linkId}`;
+      if (shop && !held.has(hold)) {
         const key = `${m.linkId}:${m.fromSide}:${m.id}:${m.toSide}`.slice(0, 300);
         const seen = await db.partnerSeen.findUnique({ where: { shopId_key: { shopId: shop.id, key } } });
         if (!seen) {
@@ -596,10 +693,14 @@ async function pullMessages(cursor: string) {
             await db.partnerFailure.deleteMany({ where: { shopId: shop.id, key } }).catch(() => {});
             received++;
           } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
+            const dataError = e instanceof PartnerDataError;
+            const dbError = !dataError && refusedForGood(e);
+            // The database's own words name source files and values: they go to the log, and the shop sees plain words.
+            if (!dataError) console.error(`partner sync: ${m.type} from a partner couldn't be applied:`, e instanceof Error ? e.message : e);
+            const msg = dataError ? (e as Error).message : dbError ? "this install couldn't store what was sent (a value out of range)" : "it couldn't be applied yet";
             const prior = await db.partnerFailure.findUnique({ where: { shopId_key: { shopId: shop.id, key } } });
             const tries = (prior?.tries ?? 0) + 1;
-            const skip = e instanceof PartnerDataError || tries >= 3;
+            const skip = dataError || dbError || tries >= 3;
             const data = storable(m.data);
             await db.partnerFailure
               .upsert({
@@ -610,22 +711,36 @@ async function pullMessages(cursor: string) {
               .catch(() => ({ skipped: true }));
             if (skip) {
               await db.partnerSeen.create({ data: { shopId: shop.id, key } }).catch(() => {});
+              await tellRejected(shop.id, m, msg).catch(() => {});
             } else {
-              await db.hubState.update({ where: { id: 1 }, data: { partnerCursor: doneThrough } });
-              // What went wrong is kept with the company it's for (PartnerFailure, on its Partners page); the sync
-              // status is one line for the whole install, which every company here sees.
-              throw new Error(`a message from a partner couldn't be applied yet (try ${tries} of 3); it's tried again next time. The company it's for sees it under "Messages that didn't get through".`);
+              // Everything else of this partnership waits behind it (an update mustn't overtake its job).
+              held.add(hold);
+              keep ??= doneThrough;
             }
           }
         }
       }
       if (r.messages[i + 1]?.seq !== m.seq) doneThrough = m.seq;
     }
-    await db.hubState.update({ where: { id: 1 }, data: { partnerCursor: r.next } });
-    since = r.next;
-    if (!r.more) break;
+    await db.hubState.update({ where: { id: 1 }, data: { partnerCursor: keep ?? next } });
+    if (!r.more || next === since) break;
+    since = next;
   }
   return received;
+}
+
+/**
+ * The partner sent something this shop can't take: tell it, so the sender sees it under "Messages that didn't get
+ * through" instead of a job or order that silently never arrived. Not for the hub's own messages or another answer.
+ */
+async function tellRejected(shopId: string, m: HubMessage, reason: string) {
+  if (m.fromSide === "hub" || m.type === "msg.rejected" || !/^[A-Za-z0-9_-]{1,80}$/.test(String(m.linkId))) return;
+  if (!(await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: m.linkId } }, select: { id: true } }))) return;
+  const lately = await db.partnerOutbox.count({ where: { shopId, linkId: m.linkId, type: "msg.rejected", createdAt: { gte: new Date(Date.now() - 3600_000) } } });
+  if (lately >= MAX_REJECTS_PER_HOUR) return;
+  await db.partnerOutbox.create({
+    data: { shopId, linkId: m.linkId, type: "msg.rejected", data: { id: String(m.id).slice(0, 80), type: String(m.type).slice(0, 40), reason: reason.slice(0, 500), at: new Date().toISOString() } },
+  });
 }
 
 export type PartnerSyncResult = { sent: number; received: number } | { skipped: true } | { busy: true };
@@ -678,9 +793,14 @@ async function doPartnerSync(): Promise<PartnerSyncResult> {
       // This status line is one for the whole install, so it only says what concerns every company here (the hub out
       // of reach, a sync that broke off). Messages one company couldn't send are listed on that company's Partners page.
       await db.hubState.update({ where: { id: 1 }, data: { partnerSyncAt: new Date(), partnerError: null } });
+      await pruneOutbox();
       return { sent: sent + more, received };
     } catch (e) {
-      await db.hubState.update({ where: { id: 1 }, data: { partnerError: e instanceof Error ? e.message : String(e) } }).catch(() => {});
+      // Every company's Partners page shows this line: the hub's own words (out of reach, refused) are fine there; what
+      // the database said may name one company's data, so that stays in the log.
+      if (!isUserError(e)) console.error("partner sync stopped:", e);
+      const plain = isUserError(e) ? e.message : "The sync stopped on an error. Try again in a minute; if it keeps happening, tell whoever runs this install.";
+      await db.hubState.update({ where: { id: 1 }, data: { partnerError: plain } }).catch(() => {});
       throw e;
     }
   });
@@ -721,6 +841,7 @@ const FROM: Record<string, "repair" | "retail" | "either" | "hub"> = {
   "consign.sale": "retail",
   "consign.count": "retail",
   "consign.return": "retail",
+  "msg.rejected": "either",
 };
 
 // New work isn't taken from a partnership that has ended; updates and settlements still are (the last statement).
@@ -743,7 +864,13 @@ async function applyMessage(m: HubMessage) {
       if (l.id !== linkId) return bad("link.created names another link");
       return saveLinkFromHub(shopId, toSide, l);
     }
-    await db.partnerLink.updateMany({ where: { shopId, id: linkId }, data: { status: "ENDED", endedAt: d.endedAt ? dateOf(d.endedAt, "endedAt") : new Date() } });
+    // The note typed with the ending and who ended it are kept for the shop to read on the partner's page.
+    const endNote = text(d.note, 500);
+    const endedBy = text(d.endedBy, 120);
+    await db.partnerLink.updateMany({
+      where: { shopId, id: linkId },
+      data: { status: "ENDED", endedAt: d.endedAt ? dateOf(d.endedAt, "endedAt") : new Date(), ...(endNote ? { endNote } : {}), ...(endedBy ? { endedBy } : {}) },
+    });
     return;
   }
 
@@ -760,7 +887,8 @@ async function applyMessage(m: HubMessage) {
   const partnerSide: Side = link.side === "repair" ? "retail" : "repair";
   if (m.fromSide !== partnerSide) return bad(`${m.type} came from the wrong side`);
   if (allowed !== "either" && allowed !== partnerSide) return bad(`${m.type} can't come from the ${partnerSide === "repair" ? "repair shop" : "sewing shop"}`);
-  if (link.status !== "ACTIVE" && NEW_WORK.has(m.type)) return; // ended: no new work
+  // Ended: no new work. Said so (set aside, and the sender told), except for a catalog still on its way.
+  if (link.status !== "ACTIVE" && NEW_WORK.has(m.type)) return m.type === "catalog" ? undefined : bad(`the partnership has ended; ${m.type} isn't taken any more`);
   const lk = { shopId_id: { shopId, id: link.id } };
   const hubAt = dateOf(m.createdAt, "createdAt"); // when the hub got it: the one clock both shops can trust
   const at = d.at != null ? nearHub(dateOf(d.at, "at"), hubAt) : hubAt;
@@ -795,6 +923,9 @@ async function applyMessage(m: HubMessage) {
           where: lk,
           data: { terms: normalizeTerms(prop.terms), termsVersion: version, accepted: accepted as Json, proposedTerms: Prisma.DbNull, proposedBy: null },
         });
+      } else if (prop && link.proposedBy === link.side && version < prop.version && version > link.termsVersion) {
+        // They accepted a proposal we had already replaced: nothing is agreed, and they're told (they have the new one).
+        return bad(`the partner accepted version ${version}, which was replaced by version ${prop.version} before it arrived; accept that one instead`);
       } else if (version === link.termsVersion) {
         if (key && key !== termsKey(terms)) return bad("the partner accepted different terms from these; propose them again");
         await db.partnerLink.update({ where: lk, data: { accepted: { ...((link.accepted as Accepted) ?? {}), [m.fromSide]: who } as Json } });
@@ -815,6 +946,7 @@ async function applyMessage(m: HubMessage) {
           wholesaleCents: int(it.wholesaleCents, 0, MAX_MONEY, "partner price"),
           retailCents: optInt(it.retailCents, 0, MAX_MONEY, "retail price"),
           inStock: qtyOf(it.inStock ?? 0, "stock"),
+          ...labelFields(it),
         } satisfies CatalogItem;
       });
       await db.partnerLink.update({ where: lk, data: { catalog: items as Json, catalogAt: at } });
@@ -841,19 +973,26 @@ async function applyMessage(m: HubMessage) {
       if (note && note !== job.repairNote) events = withEvent(events, { at: at.toISOString(), note });
       const repairPaid = optInt(d.repairPaidCents, 0, MAX_MONEY, "paid");
       const paidAt = d.paidAt ? nearHub(dateOf(d.paidAt, "paidAt"), hubAt) : null;
+      const totalCents = optInt(d.totalCents, 0, MAX_MONEY, "total");
       // The commission is worked out here from the bill and our copy of the terms, not taken from the partner; once the
-      // job is paid it stays as it was.
-      const commission = job.paidAt && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms);
+      // job is fully paid it stays as it was. Paid against a bill that has since gone up, it follows the bill until the
+      // rest is paid, as the repair shop's does.
+      const settled = job.paidAt != null && ((job.paidCents ?? 0) + (repairPaid ?? 0) >= (totalCents ?? 0) || (totalCents ?? 0) <= (job.totalCents ?? 0));
+      const commission = settled && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms);
+      // The repair shop asks for the customer's OK again (a second estimate): the last answer was to the first one, so
+      // the question is shown again.
+      const askAgain = status === "WAITING_CUSTOMER_OK" && job.status !== "WAITING_CUSTOMER_OK" && job.approval != null;
       await db.repairJob.update({
         where: { shopId_id: { shopId, id: job.id } },
         data: {
           status,
           ticketNumber: optInt(d.ticketNumber, 0, 100_000_000, "ticket"),
-          totalCents: optInt(d.totalCents, 0, MAX_MONEY, "total"),
+          totalCents,
           taxCents: optInt(d.taxCents, 0, MAX_MONEY, "tax"),
           lines: lines as Json,
-          commissionPct: job.paidAt ? job.commissionPct : terms.repairCommissionPct,
+          commissionPct: settled ? job.commissionPct : terms.repairCommissionPct,
           commissionCents: commission,
+          ...(askAgain ? { approval: null, approvedCents: null } : {}),
           repairNote: note,
           repairPaidCents: repairPaid,
           events,
@@ -873,7 +1012,7 @@ async function applyMessage(m: HubMessage) {
       const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
       if (!t) return;
       const who = text(d.name, 80);
-      const line = `${at.toLocaleDateString("en-US")} ${link.partnerName}${who ? ` (${who})` : ""}: customer ${approval === "APPROVED" ? `approved${approvedCents != null ? ` up to $${(approvedCents / 100).toFixed(2)}` : ""}` : "declined the work"}${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
+      const line = `${at.toLocaleDateString("en-US", { timeZone: await shopTimeZone(shopId) })} ${link.partnerName}${who ? ` (${who})` : ""}: customer ${approval === "APPROVED" ? `approved${approvedCents != null ? ` up to $${(approvedCents / 100).toFixed(2)}` : ""}` : "declined the work"}${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
       await db.$transaction([
         db.ticket.update({
           where: { id: t.id },
@@ -934,7 +1073,7 @@ async function applyMessage(m: HubMessage) {
       if (!job?.ticketId) return;
       const t = await db.ticket.findUnique({ where: { id: job.ticketId } });
       if (!t) return;
-      const line = `${at.toLocaleDateString("en-US")} ${link.partnerName}: customer took the machine back before pickup${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
+      const line = `${at.toLocaleDateString("en-US", { timeZone: await shopTimeZone(shopId) })} ${link.partnerName}: customer took the machine back before pickup${text(d.note, 500) ? ` - ${text(d.note, 500)}` : ""}`;
       await db.ticket.update({
         where: { id: t.id },
         data: {
@@ -963,23 +1102,32 @@ async function applyMessage(m: HubMessage) {
         const qty = part.unit === "yd" ? raw : Math.round(raw);
         if (!(qty > 0)) continue;
         if (optInt(a.unitCents, 0, MAX_MONEY, "price") !== part.wholesaleCents) notes.push(`${part.partNumber}: the order showed a different price; your partner price is used.`);
-        lines.push({ itemKey: part.id, partNumber: part.partNumber, description: part.description, qty, unitCents: part.wholesaleCents! });
+        lines.push({ itemKey: part.id, partNumber: part.partNumber, description: part.description, qty, unitCents: part.wholesaleCents!, ...labelFields(part) });
       }
       if (!lines.length) return bad("the order has nothing we offer");
-      await db.partnerOrder.create({
-        data: {
-          id,
-          shopId,
-          linkId: link.id,
-          side: "seller",
-          number: text(d.number, 30) ?? id.slice(-6),
-          lines: lines as Json,
-          totalCents: orderTotal(lines),
-          note: [text(d.note, 1000), ...notes].filter(Boolean).join("\n") || null,
-          events: [{ at: at.toISOString(), status: "PLACED", note: text(d.name, 80) ? `by ${text(d.name, 80)}` : undefined }] as Json,
-          createdAt: at,
-        },
-      });
+      const note = [text(d.note, 1000), ...notes].filter(Boolean).join("\n") || null;
+      await db.$transaction([
+        db.partnerOrder.create({
+          data: {
+            id,
+            shopId,
+            linkId: link.id,
+            side: "seller",
+            number: text(d.number, 30) ?? id.slice(-6),
+            lines: lines as Json,
+            totalCents: orderTotal(lines),
+            note,
+            events: [{ at: at.toISOString(), status: "PLACED", note: text(d.name, 80) ? `by ${text(d.name, 80)}` : undefined }] as Json,
+            createdAt: at,
+          },
+        }),
+        // Our copy goes back, so the sewing shop's order shows the same lines, prices and total as ours (its catalog
+        // may have been out of date). An older sewing shop install ignores it.
+        db.partnerOutbox.create({
+          data: { shopId, linkId: link.id, type: "order.update", data: { id, status: "PLACED", lines, totalCents: orderTotal(lines), eventNote: notes.filter((n) => n.startsWith("Left out")).join(" ") || undefined, at: new Date().toISOString() } as Json },
+        }),
+      ]);
+      kickPartnerSync();
       return;
     }
 
@@ -988,13 +1136,46 @@ async function applyMessage(m: HubMessage) {
       if (!o || o.linkId !== link.id) return;
       const to = String(d.status ?? "");
       // What each side may do to an order, from where it stands on our copy.
+      // Both shops can move a placed order at the same moment (a cancel and an acceptance cross on the way). The buyer's
+      // screen only offers Cancel on a placed order, so a cancel that finds it accepted is one sent before the buyer
+      // heard: nothing has shipped, so it stands. Once the repair shop has delivered, what it did stands, and the
+      // buyer's cancelled copy takes the delivery. Either way the two copies end up the same.
       const legal =
         m.fromSide === "retail"
-          ? (o.status === "PLACED" && to === "CANCELLED") || (o.status === "DELIVERED" && to === "RECEIVED")
-          : (o.status === "PLACED" && ["ACCEPTED", "DELIVERED", "CANCELLED"].includes(to)) || (o.status === "ACCEPTED" && ["DELIVERED", "CANCELLED"].includes(to));
+          ? ((o.status === "PLACED" || o.status === "ACCEPTED") && to === "CANCELLED") || (o.status === "DELIVERED" && to === "RECEIVED")
+          : (o.status === "PLACED" && ["ACCEPTED", "DELIVERED", "CANCELLED"].includes(to)) ||
+            (o.status === "ACCEPTED" && ["DELIVERED", "CANCELLED"].includes(to)) ||
+            (o.side === "buyer" && o.status === "CANCELLED" && to === "DELIVERED");
       const who = m.fromSide === "retail" ? "the sewing shop" : "the repair shop";
+      // The repair shop's copy of the order (its lines at its prices, items it no longer offers left out): ours takes
+      // it, so both statements show the same total and only what was delivered is received here.
+      let theirs: { lines: Json; totalCents: number } | null = null;
+      if (m.fromSide === "repair" && d.lines != null && o.side === "buyer" && o.status !== "RECEIVED" && o.status !== "CANCELLED") {
+        const lines: OrderLine[] = arr(d.lines, 500, "order").map((x) => {
+          const l = obj(x, "order line");
+          const qty = Math.abs(qtyOf(l.qty, "qty"));
+          return {
+            itemKey: idOf(l.itemKey, "item"),
+            partNumber: need(l.partNumber, 80, "part number"),
+            description: text(l.description, 300) ?? "",
+            qty,
+            unitCents: int(l.unitCents, 0, MAX_MONEY, "price"),
+            ...labelFields(l),
+          };
+        });
+        theirs = { lines: lines.filter((l) => l.qty > 0) as Json, totalCents: orderTotal(lines) };
+      }
+      if (theirs && (to === o.status || to === "PLACED")) {
+        const changed = theirs.totalCents !== o.totalCents || linesKey(theirs.lines) !== linesKey(o.lines);
+        if (!changed) return;
+        const note = `${who}'s copy comes to $${(theirs.totalCents / 100).toFixed(2)} at its prices${text(d.eventNote, 500) ? `: ${text(d.eventNote, 500)}` : ""}`;
+        await db.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { ...theirs, events: withEvent(o.events, { at: at.toISOString(), note }) } });
+        return;
+      }
       if (!legal) {
-        if (to !== o.status) {
+        // The repair shop's copy sent just after an order arrives says PLACED: an order already moved on here (cancelled,
+        // received) has nothing to sort out.
+        if (to !== o.status && to !== "PLACED") {
           await db.partnerOrder.update({
             where: { shopId_id: { shopId, id: o.id } },
             data: { events: withEvent(o.events, { at: at.toISOString(), note: `${who} marked it ${to.toLowerCase() || "?"}, but it was already ${o.status.toLowerCase()} here: sort it out with them` }) },
@@ -1006,6 +1187,7 @@ async function applyMessage(m: HubMessage) {
         where: { shopId_id: { shopId, id: o.id } },
         data: {
           status: to,
+          ...(theirs ?? {}),
           ...(m.fromSide === "repair" && d.sellerNote !== undefined ? { sellerNote: text(d.sellerNote, 1000) } : {}),
           ...(m.fromSide === "repair" && d.carrier !== undefined ? { carrier: text(d.carrier, 40) } : {}),
           ...(m.fromSide === "repair" && d.tracking !== undefined ? { tracking: text(d.tracking, 80) } : {}),
@@ -1047,14 +1229,18 @@ async function applyMessage(m: HubMessage) {
       if (!item) return bad("a consigned sale for an item that isn't on consignment");
       // A negative sale takes back sales we have: a void of one sale on their register ("<sale>-void"), or a customer's
       // return rung up at their counter. Never more than we've counted as sold of this item.
+      let voided: { itemKey: string; shopKeepsCents: number | null; qty: number; priceCents: number } | null = null;
       if (qty < 0) {
         if (id.endsWith("-void")) {
-          const original = await db.consignSale.findUnique({ where: { shopId_id: { shopId, id: id.slice(0, -5) } } });
-          if (!original || original.itemKey !== itemKey || original.qty < -qty) return bad("a voided consigned sale doesn't match a sale");
+          voided = await db.consignSale.findUnique({ where: { shopId_id: { shopId, id: id.slice(0, -5) } } });
+          if (!voided || voided.itemKey !== itemKey || voided.qty < -qty) return bad("a voided consigned sale doesn't match a sale");
         }
         if (item.sold < -qty) return bad("a consigned return is more than was sold");
       }
       const gross = Math.round(qty * priceCents);
+      // A void takes back exactly the share the sale gave (as the sewing shop's register does), not one worked out
+      // again from today's terms and rounded the other way.
+      const voidedKeeps = voided && voided.qty === -qty ? (voided.shopKeepsCents ?? Math.round((Math.round(voided.qty * voided.priceCents) * terms.consignSharePct) / 100)) : null;
       await db.$transaction([
         db.consignSale.create({
           data: {
@@ -1066,7 +1252,7 @@ async function applyMessage(m: HubMessage) {
             priceCents,
             saleNumber: optInt(d.saleNumber, 0, 100_000_000, "sale number"),
             soldAt: at,
-            shopKeepsCents: Math.round((gross * terms.consignSharePct) / 100),
+            shopKeepsCents: voidedKeeps != null ? -voidedKeeps : Math.round((gross * terms.consignSharePct) / 100),
           },
         }),
         db.consignItem.update({ where: { id: item.id }, data: { sold: { increment: qty } } }),
@@ -1085,6 +1271,35 @@ async function applyMessage(m: HubMessage) {
       return;
     }
 
+    case "msg.rejected": {
+      // The partner couldn't take something we sent: it's shown with what we sent, and on the job or order it was about.
+      const sent = await db.partnerOutbox.findFirst({ where: { shopId, linkId: link.id, id: idOf(d.id, "message") } });
+      if (!sent?.sentAt) return;
+      const reason = `${link.partnerName} couldn't take it: ${text(d.reason, 500) ?? "no reason given"}`;
+      await db.partnerOutbox.update({ where: { id: sent.id }, data: { deadAt: sent.deadAt ?? hubAt, error: reason } });
+      const sentData = sent.data && typeof sent.data === "object" && !Array.isArray(sent.data) ? (sent.data as Obj) : {};
+      if (sent.type === "terms.accept") {
+        // Our acceptance didn't take on their side: these terms aren't agreed by both, whatever we recorded for them.
+        const accepted = { ...((link.accepted as Accepted) ?? {}) };
+        if (Number(sentData.version) === link.termsVersion && accepted[partnerSide]?.version === link.termsVersion) {
+          delete accepted[partnerSide];
+          await db.partnerLink.update({ where: lk, data: { accepted: accepted as Json } });
+        }
+        return;
+      }
+      const about = String(sentData.id ?? "");
+      if (!about) return;
+      const note = `${sent.type} ${reason}`;
+      if (sent.type.startsWith("job.")) {
+        const job = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id: about } } });
+        if (job?.linkId === link.id) await db.repairJob.update({ where: { shopId_id: { shopId, id: job.id } }, data: { events: withEvent(job.events, { at: hubAt.toISOString(), note }) } });
+      } else if (sent.type.startsWith("order.")) {
+        const o = await db.partnerOrder.findUnique({ where: { shopId_id: { shopId, id: about } } });
+        if (o?.linkId === link.id) await db.partnerOrder.update({ where: { shopId_id: { shopId, id: o.id } }, data: { events: withEvent(o.events, { at: hubAt.toISOString(), note }) } });
+      }
+      return;
+    }
+
     case "settle.paid": {
       const id = idOf(d.id, "payment");
       if (await db.settlement.findUnique({ where: { shopId_id: { shopId, id } } })) return;
@@ -1092,6 +1307,8 @@ async function applyMessage(m: HubMessage) {
       // settlement claiming the other shop paid can't come from it.
       const netCents = int(d.netCents, -MAX_MONEY, MAX_MONEY, "amount");
       if (m.fromSide === "retail" ? netCents <= 0 : netCents >= 0) return bad("a settlement can only record a payment the shop sending it made");
+      // Stored as the partner's word (confirmedAt empty): it counts in the balance once someone here confirms the money
+      // arrived, so a payment claimed and never made doesn't wipe out what the partner owes.
       await db.settlement.create({
         data: {
           id,
@@ -1124,6 +1341,7 @@ export function orderLines(v: unknown): OrderLine[] {
       description: String(l.description ?? ""),
       qty: Math.max(0, Number(l.qty) || 0),
       unitCents: Math.max(0, Math.round(Number(l.unitCents) || 0)),
+      ...labelFields(l),
     }))
     .filter((l) => l.itemKey && l.qty > 0);
 }
@@ -1148,13 +1366,18 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
     ? await db.ticket.count({ where: { shopId, viaAccountId: link.accountId, createdAt: { gte: hourAgo } } })
     : await db.repairJob.count({ where: { shopId, linkId: link.id, side: "repair", createdAt: { gte: hourAgo } } });
   if (lately >= MAX_INTAKES_PER_HOUR) return bad(`${link.partnerName} sent more than ${MAX_INTAKES_PER_HOUR} machines within an hour`);
-  const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
-  const machine = existing ?? (await db.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
+  const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
+  // (Several MB of photos written on a busy PC can take longer than the default 5 seconds, which would fail every try.)
   await db.$transaction(async (tx) => {
-    // The next free ticket number, taken atomically (a tech may be checking a machine in at the same moment).
+    // In the same transaction as the ticket: a try that fails leaves no machine behind for the next try to repeat.
+    const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType: text(d.machineType, 60) } }));
+    // The next free ticket number, taken atomically (a tech may be checking a machine in at the same moment). A counter
+    // behind the tickets goes straight past the highest number, as createTicket does, not one used number at a time.
     let number = (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
-    while (await tx.ticket.findFirst({ where: { shopId, number }, select: { id: true } })) {
-      number = (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
+    if (await tx.ticket.findFirst({ where: { shopId, number }, select: { id: true } })) {
+      const top = await tx.ticket.aggregate({ where: { shopId }, _max: { number: true } });
+      number = (top._max.number ?? 0) + 1;
+      await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: number + 1 } });
     }
     const t = await tx.ticket.create({
       data: {
@@ -1208,7 +1431,7 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
         data: { shopId, machineId: machine.id, ticketId: t.id, kind: "CONDITION", caption: text(p.caption, 200) ?? `At intake, ${link.partnerName}`, mime, data: Buffer.from(b64, "base64") },
       });
     }
-  });
+  }, { timeout: 30_000, maxWait: 10_000 });
 }
 
 /** A part number not yet used on this shop, from `number` with a suffix when needed. */
@@ -1229,6 +1452,9 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
   const price = int(it.priceCents, 0, MAX_MONEY, "shelf price");
   const number = need(it.partNumber, 80, "part number");
   const unit = it.unit === "yd" ? "yd" : null;
+  // As the owner has the item now; an owner from before these were sent has only new, genuine items.
+  const condition = asCondition(it.condition) ?? "NEW";
+  const origin = asOrigin(it.origin) ?? "GENUINE";
   // The same item again, or the same number from this partner: one inventory entry.
   let part =
     (await db.part.findFirst({ where: { shopId, consignLinkId: link.id, consignItemKey: itemKey } })) ??
@@ -1244,6 +1470,8 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
         brand: text(it.brand, 80),
         kind: kind as "ACCESSORY",
         unit,
+        condition,
+        origin,
         priceCents: price,
         altNumbers: partNumber !== number ? [number] : [],
         numberKeys: [...new Set([partNumber, number].map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, "")))].filter((k) => k.length >= 3),
@@ -1254,7 +1482,7 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
     });
   }
   await db.$transaction([
-    db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: qty }, priceCents: price || part.priceCents, consignItemKey: itemKey } }),
+    db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: qty }, priceCents: price || part.priceCents, consignItemKey: itemKey, condition, origin } }),
     db.stockMove.create({ data: { shopId, partId: part.id, qty, reason: "CONSIGNED", note: `Consignment from ${link.partnerName}`, createdAt: at } }),
     db.consignItem.upsert({
       where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } },
@@ -1268,9 +1496,10 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
  * Consigned stock going back to the repair shop, recorded by the sewing shop (which hands it over) and applied on both
  * sides; never more than is still out on the shelf.
  */
-export async function consignReturned(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, qty: number, at: Date) {
+export async function consignReturned(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, qty: number, at: Date, outer?: Prisma.TransactionClient) {
   if (!(qty > 0)) return 0;
-  return db.$transaction(async (tx) => {
+  // Inside the caller's transaction when it has one (so the message to the other shop is queued with the change).
+  const run = async (tx: Prisma.TransactionClient) => {
     const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
     if (!item) return 0;
     const onShelf = Math.max(0, item.placed - item.sold - item.returned);
@@ -1289,7 +1518,8 @@ export async function consignReturned(shopId: string, link: { id: string; side: 
       });
     }
     return back;
-  });
+  };
+  return outer ? run(outer) : db.$transaction(run);
 }
 
 // ---------- statements ----------
@@ -1324,6 +1554,7 @@ export async function statementFor(shopId: string, linkId: string, from: Date, t
     db.partnerOrder.findMany({ where: { shopId, linkId, deliveredAt: range, status: { in: ["DELIVERED", "RECEIVED"] } }, orderBy: { deliveredAt: "asc" } }),
     db.settlement.findMany({ where: { shopId, linkId, paidAt: range }, orderBy: { paidAt: "asc" } }),
   ]);
+  const confirmed = settlements.filter((x) => x.confirmedAt);
   const repairs = jobs.map((j) => ({
     id: j.id,
     tag: j.tag,
@@ -1362,57 +1593,24 @@ export async function statementFor(shopId: string, linkId: string, from: Date, t
       consignCents: sum(consign),
       ordersCents: sum(orderRows),
       periodNetCents: periodNet,
-      paidInPeriodCents: settlements.reduce((a, x) => a + x.netCents, 0),
+      paidInPeriodCents: confirmed.reduce((a, x) => a + x.netCents, 0),
     },
     balanceCents: balance,
   };
 }
 
-/** Everything owed since the partnership began, less what was settled. + = the sewing shop owes the repair shop. */
+/** Everything owed since the partnership began, less what was settled (and confirmed). + = the sewing shop owes the repair shop. */
 async function runningBalance(shopId: string, linkId: string, terms: PartnerTerms) {
   const [jobs, sales, orders, settled] = await Promise.all([
     db.repairJob.findMany({ where: { shopId, linkId, paidAt: { not: null } }, select: { paidCents: true, commissionCents: true } }),
     db.consignSale.findMany({ where: { shopId, linkId }, select: { qty: true, priceCents: true, shopKeepsCents: true } }),
     db.partnerOrder.aggregate({ where: { shopId, linkId, status: { in: ["DELIVERED", "RECEIVED"] } }, _sum: { totalCents: true } }),
-    db.settlement.aggregate({ where: { shopId, linkId }, _sum: { netCents: true } }),
+    db.settlement.aggregate({ where: { shopId, linkId, confirmedAt: { not: null } }, _sum: { netCents: true } }),
   ]);
   const repairs = jobs.reduce((a, j) => a + jobOwed(j), 0);
   const consign = sales.reduce((a, x) => a + consignShare(x, terms).owed, 0);
   return repairs + consign + (orders._sum.totalCents ?? 0) - (settled._sum.netCents ?? 0);
 }
 
-/** Month boundaries for statements, in the shop's time zone: "2026-09" -> [Sep 1, Oct 1). */
-export function monthPeriod(month?: string | null, timeZone = "America/New_York") {
-  const now = zonedParts(new Date(), timeZone);
-  const m = /^(\d{4})-(\d{2})$/.exec(month ?? "");
-  const y = m ? Number(m[1]) : now.year;
-  const mo = m ? Number(m[2]) - 1 : now.month - 1;
-  const from = zonedMidnight(y, mo, 1, timeZone);
-  const to = zonedMidnight(y, mo + 1, 1, timeZone);
-  const key = (yy: number, mm: number) => {
-    const d = new Date(Date.UTC(yy, mm, 1));
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-  };
-  return { from, to, month: key(y, mo), prev: key(y, mo - 1), next: key(y, mo + 1) };
-}
-
-/** Year, month (1-12) and day of an instant, as the clock on the wall in `timeZone` shows it. */
-export function zonedParts(d: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "numeric", day: "numeric" }).formatToParts(d);
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-  return { year: get("year"), month: get("month"), day: get("day") };
-}
-
-/** The instant a day starts in `timeZone` (month is 0-based and may overflow, like Date). */
-export function zonedMidnight(year: number, month: number, day: number, timeZone: string) {
-  const guess = new Date(Date.UTC(year, month, day));
-  // How far the zone's wall clock is from UTC at that moment, applied twice to settle around a DST change.
-  let t = guess.getTime();
-  for (let i = 0; i < 2; i++) {
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(t));
-    const get = (k: string) => Number(parts.find((p) => p.type === k)?.value);
-    const wall = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
-    t = guess.getTime() - (wall - t);
-  }
-  return new Date(t);
-}
+// Statement months and the zone helpers live with the other shop-time-zone helpers.
+export { monthPeriod, zonedMidnight, zonedParts } from "@/lib/time-zone";

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { placePartnerOrder } from "@/actions/partner-orders";
 import { money } from "@/lib/format";
 import { qtyText } from "@/lib/register-math";
+import { partTags } from "@/lib/part-labels";
 import type { CatalogItem } from "@/lib/partners";
 
 /** The repair shop's catalog with a quantity box per item; the order goes to the repair shop. */
@@ -47,6 +48,11 @@ export function PartnerOrderForm({ linkId, items, kindLabel }: { linkId: string;
               <tr key={i.itemKey}>
                 <td>
                   <span className="mono">{i.partNumber}</span> {i.description}
+                  {partTags(i).map((t) => (
+                    <span key={t} className="pill tone-wait ml-1">
+                      {t}
+                    </span>
+                  ))}
                   {i.brand && <span className="muted"> · {i.brand}</span>}
                 </td>
                 <td className="text-xs">{kindLabel[i.kind] ?? i.kind}</td>

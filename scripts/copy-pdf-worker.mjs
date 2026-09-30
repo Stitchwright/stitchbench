@@ -7,7 +7,8 @@ import { dirname, join } from "node:path";
 const require = createRequire(import.meta.url);
 const root = dirname(require.resolve("pdfjs-dist/package.json"));
 mkdirSync("public", { recursive: true });
-copyFileSync(join(root, "build", "pdf.worker.min.mjs"), join("public", "pdf.worker.min.mjs"));
+// The legacy build, the one the page loads (src/components/manual-figure.tsx): it works in browsers that lack newer features.
+copyFileSync(join(root, "legacy", "build", "pdf.worker.min.mjs"), join("public", "pdf.worker.min.mjs"));
 for (const dir of ["wasm", "cmaps", "standard_fonts", "iccs"]) {
   cpSync(join(root, dir), join("public", "pdfjs", dir), { recursive: true });
 }

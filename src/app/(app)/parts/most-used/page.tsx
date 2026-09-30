@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { shopTimeZone } from "@/lib/shop-zone";
+import { startOfMonth } from "@/lib/time-zone";
 import { hubFetch, hubJoined } from "@/lib/hub";
 import { numberKey } from "@/lib/parts";
 import { PageHeader, Empty } from "@/components/ui";
+import { ActionButton } from "@/components/action-form";
+import { setUsageSharing } from "@/actions/hub";
 
 type Top = {
   from: string;
@@ -21,13 +25,14 @@ export default async function MostUsed({ searchParams }: { searchParams: Promise
   const view = sp.view === "community" ? "community" : "shop";
   const months = PERIODS.includes(Number(sp.months)) ? Number(sp.months) : 12;
   const brand = sp.brand?.trim() ?? "";
-  const since = new Date(new Date().getFullYear(), new Date().getMonth() - months + 1, 1);
+  const since = startOfMonth(await shopTimeZone(user.shopId), months - 1);
   const qs = (o: Record<string, string>) => `/parts/most-used?${new URLSearchParams({ view, months: String(months), ...(brand ? { brand } : {}), ...o })}`;
 
   let shopRows: { id: string; partNumber: string; description: string; brand: string | null; qtyOnHand: number; reorderAt: number; location: string | null; used: number; tickets: number; supplier: string | null }[] = [];
   let top: Top | null = null;
   let topError: string | null = null;
   const joined = await hubJoined();
+  const { shareUsage } = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { shareUsage: true } });
 
   if (view === "shop") {
     const rows = await db.$queryRaw<{ partId: string; used: bigint; tickets: bigint }[]>`
@@ -214,7 +219,23 @@ export default async function MostUsed({ searchParams }: { searchParams: Promise
           </>
         )}
       </div>
-      <p className="muted text-xs">Only part numbers and counts are shared with the hub: no customers, tickets or prices.</p>
+      {joined ? (
+        <div className="card card-pad flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span>
+            {shareUsage
+              ? "Your shop offers its monthly counts to the community list."
+              : "Your shop's counts stay here: they're added to the community list only if you offer them."}{" "}
+            <span className="muted">Only part numbers and counts go to the hub: no customers, tickets or prices.</span>
+          </span>
+          {user.role !== "TECH" && (
+            <ActionButton action={setUsageSharing.bind(null, !shareUsage)} className="btn btn-sm" success={shareUsage ? "Counts no longer offered" : "Counts offered"}>
+              {shareUsage ? "Stop offering our counts" : "Offer our counts"}
+            </ActionButton>
+          )}
+        </div>
+      ) : (
+        <p className="muted text-xs">Only part numbers and counts would be shared with the hub, and only if you offer them: no customers, tickets or prices.</p>
+      )}
     </div>
   );
 }

@@ -86,13 +86,18 @@ test("cross-reference and marketplace", async ({ page }) => {
   await page.locator("#ls-brand").fill("Brother");
   await page.locator("#ls-price").fill("5.00");
   await page.locator("#ls-qty").fill("3");
+  await page.locator("#ls-origin").selectOption("COMPATIBLE");
   await page.getByRole("button", { name: "List it for sale" }).click();
   await expect(page.getByRole("heading", { name: `Test listing ${run}` })).toBeVisible({ timeout: 60_000 });
+  // Who made it comes back from the hub and shows on the listing.
+  await expect(page.getByText("Compatible", { exact: true })).toBeVisible();
   const listingId = page.url().split("/").pop()!;
   await api("/v1/orders", bKey, { json: { listingId, qty: 2, shipTo: "Test Seller Shop\n1 Main St\nTown, ST 00000", buyerNote: "test order", buyerContact: { name: "B" } } });
   await page.goto("/market/orders?role=seller");
   await refresh(page);
   await page.getByRole("link", { name: /^SH-/ }).first().click();
+  // The order's item says who made it.
+  await expect(page.getByText("Compatible", { exact: true })).toBeVisible();
   await page.locator("#ac-ship").fill("4.00");
   await page.locator("#ac-pay").fill("PayPal: test@example.com");
   await page.getByRole("button", { name: "Accept" }).click();

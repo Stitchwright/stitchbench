@@ -14,6 +14,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "e2e": "playwright test",
+    "test:unit": "tsx --conditions=react-server --test \"src/**/*.test.ts\" \"tests/unit/*.test.ts\"",
     "e2e:setup": "tsx scripts/e2e-setup.ts",
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
@@ -56,5 +57,9 @@
   },
   "engines": {
     "node": ">=22.13"
+  },
+  "optionalDependencies": {
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3"
   }
 }

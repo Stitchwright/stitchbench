@@ -5,19 +5,26 @@ import { hubJoined } from "@/lib/hub";
 import { numberKey } from "@/lib/parts";
 import { PageHeader, Empty } from "@/components/ui";
 import { ListingCard, MarketNav } from "@/components/market-ui";
+import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME } from "@/lib/part-labels";
 
 const KINDS = [
   { key: "", label: "Everything" },
   { key: "PART", label: "Parts" },
   { key: "ACCESSORY", label: "Accessories" },
   { key: "SUPPLY", label: "Supplies" },
+  { key: "NOTION", label: "Notions" },
+  { key: "FABRIC", label: "Fabric" },
+  { key: "THREAD", label: "Thread" },
+  { key: "PATTERN", label: "Patterns / books" },
 ] as const;
 
-export default async function Market({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
+export default async function Market({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; condition?: string; origin?: string }> }) {
   await requireUser();
   const sp = await searchParams;
   const term = sp.q?.trim() ?? "";
   const kind = KINDS.some((k) => k.key && k.key === sp.kind) ? sp.kind : "";
+  const condition = CONDITIONS.find((c) => c === sp.condition) ?? "";
+  const origin = ORIGINS.find((o) => o === sp.origin) ?? "";
   const nk = numberKey(term);
   const t = { contains: term, mode: "insensitive" as const };
   const [joined, listings] = await Promise.all([
@@ -27,6 +34,8 @@ export default async function Market({ searchParams }: { searchParams: Promise<{
         status: "ACTIVE",
         mine: false,
         ...(kind ? { kind } : {}),
+        ...(condition ? { condition } : {}),
+        ...(origin ? { origin } : {}),
         ...(term ? { OR: [{ title: t }, { brand: t }, { fits: t }, { description: t }, ...(nk.length >= 3 ? [{ numberKey: nk }] : [])] } : {}),
       },
       orderBy: { createdAt: "desc" },
@@ -64,6 +73,28 @@ export default async function Market({ searchParams }: { searchParams: Promise<{
               {KINDS.map((k) => (
                 <option key={k.key} value={k.key}>
                   {k.label}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="mc" className="sr-only">
+              Condition
+            </label>
+            <select id="mc" name="condition" defaultValue={condition} className="select w-40">
+              <option value="">Any condition</option>
+              {CONDITIONS.map((c) => (
+                <option key={c} value={c}>
+                  {CONDITION_NAME[c]}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="mo" className="sr-only">
+              Made by
+            </label>
+            <select id="mo" name="origin" defaultValue={origin} className="select w-40">
+              <option value="">Made by anyone</option>
+              {ORIGINS.map((o) => (
+                <option key={o} value={o}>
+                  {ORIGIN_NAME[o]}
                 </option>
               ))}
             </select>

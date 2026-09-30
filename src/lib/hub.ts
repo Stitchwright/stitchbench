@@ -5,6 +5,9 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
+import { baseNumber } from "@/lib/parts";
+import { readUpTo } from "@/lib/read-body";
+import { monthPeriod } from "@/lib/time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 import type { NoteKind, PhotoKind } from "@/generated/prisma/enums";
 
@@ -38,6 +41,8 @@ type HubPostIn = {
   body: string;
   deleted: boolean;
   mine: boolean;
+  // The company on the sharing install (hubs from before per-company identity don't send it)
+  shopRef?: string | null;
   createdAt: string;
   photos: { id: string; kind: PhotoKind; caption: string | null; mime: string; sortOrder: number }[];
 };
@@ -131,34 +136,51 @@ function heardFromHub() {
   net.lastOk = Date.now();
 }
 
+/**
+ * Someone is waiting on the hub. Known to be down: one short check, shared for 15 seconds, before anyone waits on a
+ * full request. Not heard from lately: the same short check first, so a line that just went dead costs 4 seconds
+ * here, not the 30 a full request would wait.
+ */
+async function quickCheck(base: string) {
+  if (net.offlineSince && Date.now() - net.checkedAt < 15_000) throw new UserError(OFFLINE);
+  if (net.offlineSince || Date.now() - net.lastOk > 90_000) {
+    net.checkedAt = Date.now();
+    const up = await fetch(`${base}/health`, { redirect: "manual", signal: AbortSignal.timeout(4000) })
+      .then((r) => r.ok)
+      .catch(() => false);
+    if (!up) {
+      wentOffline("no answer to a quick check");
+      throw new UserError(OFFLINE);
+    }
+    heardFromHub();
+  }
+}
+
+/** Before a sync a person asked for ("Sync now", "Check for updates"): says there's no connection in seconds. */
+export async function hubReachable() {
+  const s = await hubState();
+  if (s?.url && s.installKey) await quickCheck(s.url);
+}
+
 /** quick: someone is waiting on a page for this (a picture, ratings): give up sooner. */
 async function reach(url: string, init: RequestInit & { quick?: boolean }, base: string) {
   const { quick, ...rest } = init;
-  if (!net.background.getStore()) {
-    // Someone is waiting on this. Known to be down: one short check, shared for 15 seconds, before anyone waits on a
-    // full request. Not heard from lately: the same short check first, so a line that just went dead costs 4 seconds
-    // here, not the 30 a full request would wait.
-    if (net.offlineSince && Date.now() - net.checkedAt < 15_000) throw new UserError(OFFLINE);
-    if (net.offlineSince || Date.now() - net.lastOk > 90_000) {
-      net.checkedAt = Date.now();
-      const up = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4000) })
-        .then((r) => r.ok)
-        .catch(() => false);
-      if (!up) {
-        wentOffline("no answer to a quick check");
-        throw new UserError(OFFLINE);
-      }
-      heardFromHub();
-    }
-  }
+  if (!net.background.getStore()) await quickCheck(base);
+  let r: Response;
   try {
-    const r = await fetch(url, { ...rest, signal: rest.signal ?? AbortSignal.timeout(quick ? 8000 : 30_000) });
+    // Never follow a redirect: the hub has no reason to send one, and following it would let a hub (or whoever took
+    // over its address) make this server fetch any address, the shop's own network or the cloud's included.
+    r = await fetch(url, { ...rest, redirect: "manual", signal: rest.signal ?? AbortSignal.timeout(quick ? 8000 : 30_000) });
     heardFromHub();
-    return r;
   } catch (e) {
     wentOffline(e instanceof Error ? e.name : "error");
     throw new UserError(OFFLINE);
   }
+  if (r.status >= 300 && r.status < 400) {
+    await r.body?.cancel().catch(() => {});
+    throw new HubError("The community hub answered with a move to another address, which this program doesn't follow. Check the hub address with the hub admin.", 502);
+  }
+  return r;
 }
 
 /** The hub said no; status tells a refusal for good (most 4xx) from a busy or broken moment (429, 5xx). */
@@ -271,6 +293,10 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
     scope: "member",
   };
   await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+  // What the old connection synced goes: the first sync brings this hub's copy from the start. Kept, a listing of the
+  // shop's own would come back as another shop's (the new install is someone else to the hub), and one the new hub
+  // doesn't have would stay on show with nothing behind it.
+  await clearHubCopies();
   // The notes this shop shared went to the old connection; another hub (or this one rebuilt) doesn't have them, so
   // the first sync sends them again. The hub tells copies apart per install, so a hub that kept the old install's
   // posts (one moved whole to a new address) would hold them twice; a re-join like that is rare.
@@ -278,11 +304,33 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
   return j;
 }
 
+/** The synced copies of what the hub holds (links, notes, parts, listings), for a fresh start on another connection. */
+async function clearHubCopies() {
+  await db.$transaction([
+    db.manualLink.deleteMany(),
+    db.hubPost.deleteMany(),
+    db.xPart.deleteMany(),
+    db.removedXPart.deleteMany(),
+    db.listing.deleteMany(),
+    db.listingPhoto.deleteMany(),
+  ]);
+}
+
 export async function leaveHub() {
   // Partner shops talk through the hub too: leaving only stops the community part while partnerships are active.
   if (await db.partnerLink.count({ where: { status: "ACTIVE" } })) {
     throw new UserError("Your partner shops are connected through this hub. End those partnerships first (Partners), then leave.");
   }
+  // An open order belongs to this connection: after leaving, nobody here could answer it. (A hub that's gone for good
+  // doesn't hold anyone here.)
+  const open = await db.marketOrder.count({ where: { status: { in: ["REQUESTED", "ACCEPTED", "PAID"] } } });
+  if (open && !net.offlineSince) {
+    throw new UserError(`${open === 1 ? "An order on the marketplace is" : `${open} orders on the marketplace are`} still open. Finish or cancel ${open === 1 ? "it" : "them"} (Marketplace → Orders), then leave.`);
+  }
+  // Listings still for sale would take orders nobody here sees: they come off the marketplace (when the hub answers).
+  const selling = await db.listing.findMany({ where: { mine: true, status: { in: ["ACTIVE", "PAUSED"] } }, select: { id: true } });
+  for (const l of selling) await hubFetch(`/v1/listings/${hubId(l.id)}`, { method: "DELETE" }).catch(() => {});
+  await db.$transaction([db.listing.deleteMany(), db.listingPhoto.deleteMany()]);
   await db.hubState.updateMany({
     where: { id: 1 },
     data: { url: null, installId: null, installKey: null, cursor: null, orderCursor: null, discordUrl: null, scope: "member", partnerCursor: null },
@@ -331,6 +379,7 @@ async function savePost(p: HubPostIn) {
     title: p.title,
     body: p.body,
     mine: p.mine,
+    shopRef: p.shopRef ?? null,
     createdAt: new Date(p.createdAt),
   };
   await db.hubPost.upsert({ where: { id: p.id }, create: { id: p.id, ...row }, update: row });
@@ -361,10 +410,14 @@ export type HubListing = {
   id: string;
   shopName: string;
   mine: boolean;
+  // The company on the seller's install that listed it (hubs from before per-company identity don't send it)
+  shopRef?: string | null;
   title: string;
   description: string | null;
   kind: string;
   condition: string;
+  // GENUINE | COMPATIBLE | PRINTED; null = the seller's install didn't say (hubs from before this don't send it at all)
+  origin?: string | null;
   brand: string | null;
   partNumber: string | null;
   xpartId: string | null;
@@ -391,9 +444,12 @@ export type HubOrder = {
   number: string;
   role: "buyer" | "seller";
   listingId: string;
-  item: { title: string; brand: string | null; partNumber: string | null; condition: string };
+  item: { title: string; brand: string | null; partNumber: string | null; condition: string; origin?: string | null };
   sellerShop: string;
   buyerShop: string;
+  // Which company on each install (hubs from before per-company identity don't send them)
+  sellerShopRef?: string | null;
+  buyerShopRef?: string | null;
   qty: number;
   unitPriceCents: number;
   shippingCents: number | null;
@@ -459,7 +515,22 @@ function xpartRow(x: HubXPart) {
   };
 }
 
+/**
+ * Removed entries are kept aside (name and numbers) so the cross-reference page can list them and put them back. One
+ * merged into another has no numbers left of its own: there's nothing to put back.
+ */
+async function noteRemoved(xs: HubXPart[]) {
+  const back = xs.filter((x) => !x.deleted).map((x) => x.id);
+  const gone = xs.filter((x) => x.deleted && x.numbers.length);
+  const ids = [...back, ...gone.map((x) => x.id)];
+  if (ids.length) await db.removedXPart.deleteMany({ where: { id: { in: ids } } });
+  if (gone.length) {
+    await db.removedXPart.createMany({ data: gone.map((x) => ({ id: x.id, name: x.name, numbers: x.numbers, removedAt: new Date(x.updatedAt) })), skipDuplicates: true });
+  }
+}
+
 async function saveXParts(xs: HubXPart[]) {
+  await noteRemoved(xs);
   const gone = xs.filter((x) => x.deleted).map((x) => x.id);
   if (gone.length) await db.xPart.deleteMany({ where: { id: { in: gone } } });
   const rows = xs.filter((x) => !x.deleted).map((x) => ({ id: x.id, ...xpartRow(x) }));
@@ -475,6 +546,7 @@ async function saveXParts(xs: HubXPart[]) {
 }
 
 export async function saveXPart(x: HubXPart) {
+  await noteRemoved([x]);
   if (x.deleted) {
     await db.xPart.deleteMany({ where: { id: x.id } });
     return;
@@ -495,6 +567,7 @@ export async function saveListing(l: HubListing) {
     description: l.description,
     kind: l.kind,
     condition: l.condition,
+    origin: l.origin ?? null,
     brand: l.brand,
     partNumber: l.partNumber,
     numberKey: l.partNumber ? key(l.partNumber) : null,
@@ -513,11 +586,22 @@ export async function saveListing(l: HubListing) {
     sellerId: l.sellerId ?? null,
     sellerAvg: l.sellerRating?.avg ?? null,
     sellerCount: l.sellerRating?.count ?? 0,
+    sellerRef: l.shopRef ?? null,
   };
-  // A listing of this install's that arrives from the hub (e.g. after a restore onto a new PC) belongs to the only
-  // company when there is just one; with several, it stays unassigned (the company that made it set it on creation).
-  const shopId = l.mine ? await soleShopId() : null;
-  await db.listing.upsert({ where: { id: l.id }, create: { id: l.id, ...row, shopId }, update: row });
+  // A listing of this install's belongs to the company the hub says listed it, so one whose answer was lost when it
+  // was made still finds its company. From an older hub, the only company when there is just one; with several, it
+  // stays as it was (the company that made it set it on creation).
+  const shopId = l.mine ? await ownCompany(l.shopRef) : null;
+  await db.listing.upsert({ where: { id: l.id }, create: { id: l.id, ...row, shopId }, update: { ...row, ...(shopId ? { shopId } : {}) } });
+}
+
+/** The company on this install a hub row names (its shopRef), else the only company when there is just one. */
+async function ownCompany(shopRef: string | null | undefined) {
+  if (shopRef) {
+    const s = await db.shop.findUnique({ where: { id: shopRef }, select: { id: true } });
+    if (s) return s.id;
+  }
+  return soleShopId();
 }
 
 /** The company's id when the install has exactly one (a single-shop desktop install); otherwise null. */
@@ -534,6 +618,10 @@ export async function saveOrder(o: HubOrder, shopId?: string) {
   const row = { number: o.number, role: o.role, status: o.status, data: o, updatedAt: new Date(o.updatedAt) };
   const have = await db.marketOrder.findUnique({ where: { id: o.id }, select: { shopId: true } });
   let owner = have?.shopId ?? shopId ?? null;
+  // The hub says which company on this install is the seller or the buyer (a sale on a listing already removed here,
+  // an order whose answer was lost when it was placed).
+  const ref = o.role === "seller" ? o.sellerShopRef : o.buyerShopRef;
+  if (!owner && ref) owner = (await db.shop.findUnique({ where: { id: ref }, select: { id: true } }))?.id ?? null;
   if (!owner && o.role === "seller") owner = (await db.listing.findUnique({ where: { id: o.listingId }, select: { shopId: true } }))?.shopId ?? null;
   owner ??= await soleShopId();
   await db.marketOrder.upsert({ where: { id: o.id }, create: { id: o.id, ...row, shopId: owner }, update: { ...row, shopId: owner } });
@@ -561,29 +649,104 @@ export function reportUsageNextSync() {
   lastUsagePush = 0;
 }
 
-/** Tell the hub how many of each part this shop used this month and last (counts only), for the community's most-used list. */
+// Companies whose counts the hub was told to drop since this program started (once is enough).
+const usageOff = new Set<string>();
+
+/**
+ * Tell the hub how many of each part each company used this month and last (counts only), for the community's
+ * most-used list: only the companies that turned it on (Parts → Most used). The others' earlier reports, and what the
+ * install sent before companies chose, are taken back. Months start and end on each company's own clock.
+ */
 async function pushUsage() {
   if (Date.now() - lastUsagePush < 3600_000) return;
   // Once an hour whether or not the hub takes it: a report it refuses isn't tried again every ten minutes.
   lastUsagePush = Date.now();
-  const now = new Date();
-  for (const back of [0, 1]) {
-    const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() - back + 1, 1);
-    const rows = await db.$queryRaw<{ number: string; brand: string | null; qty: bigint; tickets: bigint }[]>`
-      SELECT p."partNumber" AS number, p.brand, SUM(-sm.qty) AS qty, COUNT(DISTINCT sm."ticketId") AS tickets
-      FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
-      WHERE sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${start} AND sm."createdAt" < ${end}
-      GROUP BY p."partNumber", p.brand`;
-    // The hub counts by the letters and digits of a number; one with none ("-", a part named only in Chinese) would
-    // make it refuse the whole month, so those stay out.
-    const items = rows
-      .map((r) => ({ number: r.number, brand: r.brand ?? "", qty: Math.round(Number(r.qty)), tickets: Number(r.tickets) }))
-      .filter((i) => i.qty > 0 && key(i.number))
-      .slice(0, 5000);
-    const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
-    await hubFetch("/v1/usage", { method: "POST", json: { month, items } });
+  // The hub refuses a month later than its own (UTC) month. For the first hours of a month east of UTC the company's
+  // month has begun and the hub's hasn't: that month waits for a later report.
+  const hubMonth = new Date().toISOString().slice(0, 7);
+  type Item = { number: string; brand: string; qty: number; tickets: number };
+  const offered: { id: string; name: string; months: { month: string; items: Item[] }[] }[] = [];
+  for (const shop of await db.shop.findMany({ select: { id: true, name: true, shareUsage: true, timeZone: true } })) {
+    if (!shop.shareUsage) {
+      if (usageOff.has(shop.id)) continue;
+      // An older hub doesn't know "off" (400): it keeps what this install sent before, as it did.
+      await hubFetch("/v1/usage", { method: "POST", json: { shopRef: shop.id, off: true } }).catch((e: unknown) => {
+        if (hubStatus(e) !== 400) throw e;
+      });
+      usageOff.add(shop.id);
+      continue;
+    }
+    usageOff.delete(shop.id);
+    const months: { month: string; items: Item[] }[] = [];
+    const thisMonth = monthPeriod(undefined, shop.timeZone);
+    for (const { from, to, month } of [thisMonth, monthPeriod(thisMonth.prev, shop.timeZone)]) {
+      if (month > hubMonth) continue;
+      const rows = await db.$queryRaw<{ number: string; brand: string | null; qty: number; tickets: bigint }[]>`
+        SELECT p."partNumber" AS number, p.brand, SUM(-sm.qty) AS qty, COUNT(DISTINCT sm."ticketId") AS tickets
+        FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
+        WHERE sm."shopId" = ${shop.id} AND sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${from} AND sm."createdAt" < ${to}
+          AND NOT p."ownNumber"
+        GROUP BY p."partNumber", p.brand`;
+      // The community counts a part by its number, not by how this shop tells its stock apart ("X (own)", "X (used)",
+      // "X (Partner)"), and by the letters and digits of it: one with none ("-", a part named only in Chinese) would
+      // make the hub refuse the whole month, so those stay out. A shop number (a part the maker gave none) isn't the
+      // maker's number, so it is never reported.
+      const byPart = new Map<string, { number: string; brand: string; qty: number; tickets: number }>();
+      for (const r of rows) {
+        const number = baseNumber(r.number).slice(0, 60);
+        if (!key(number)) continue;
+        const brand = r.brand ?? "";
+        const k = `${key(number)}|${brand}`;
+        const had = byPart.get(k) ?? { number, brand, qty: 0, tickets: 0 };
+        had.qty += Number(r.qty);
+        had.tickets += Number(r.tickets);
+        byPart.set(k, had);
+      }
+      const items = [...byPart.values()].map((i) => ({ ...i, qty: Math.round(i.qty) })).filter((i) => i.qty > 0);
+      months.push({ month, items: items.slice(0, 5000) });
+    }
+    offered.push({ id: shop.id, name: shop.name, months });
   }
+  let refused: unknown = null;
+  for (const shop of offered) {
+    let perCompany = true;
+    for (const { month, items } of shop.months) {
+      try {
+        const r = await hubFetch("/v1/usage", { method: "POST", json: { month, items, shopRef: shop.id, shopName: shop.name } });
+        perCompany = !!((await r.json().catch(() => null)) as { shopRef?: string } | null)?.shopRef;
+      } catch (e) {
+        // A month the hub refuses mustn't keep the other month, or the other companies, from arriving.
+        refused ??= e;
+      }
+    }
+    // An older hub keeps one report per install and month, so each company's would replace the one before: it gets
+    // every offering company's counts together instead, as one report.
+    if (!perCompany) {
+      const all = new Map<string, Map<string, Item>>();
+      for (const s of offered)
+        for (const { month, items } of s.months) {
+          const sum = all.get(month) ?? new Map<string, Item>();
+          all.set(month, sum);
+          for (const it of items) {
+            const k = `${key(it.number)}|${it.brand}`;
+            const had = sum.get(k);
+            if (had) {
+              had.qty += it.qty;
+              had.tickets += it.tickets;
+            } else sum.set(k, { ...it });
+          }
+        }
+      for (const [month, sum] of all) await hubFetch("/v1/usage", { method: "POST", json: { month, items: [...sum.values()].slice(0, 5000) } });
+      return;
+    }
+  }
+  if (refused) throw refused;
+}
+
+/** Report usage again on the next sync (a company just changed its setting). */
+export function usageSettingChanged(shopId: string) {
+  usageOff.delete(shopId);
+  lastUsagePush = 0;
 }
 
 /**
@@ -593,7 +756,7 @@ async function pushUsage() {
 async function pushPending() {
   const pending = await db.sharedPost.findMany({
     where: { hubId: null },
-    include: { photos: { orderBy: { sortOrder: "asc" } }, author: { select: { name: true } } },
+    include: { photos: { orderBy: { sortOrder: "asc" } }, author: { select: { name: true } }, shop: { select: { name: true } } },
     take: 50,
   });
   for (const p of pending) {
@@ -607,6 +770,9 @@ async function pushPending() {
         title: p.title,
         body: p.body,
         authorName: p.author?.name ?? null,
+        // The company that shared it, on an install that may hold several.
+        shopRef: p.shopId,
+        shopName: p.shop.name,
         clientId: p.id,
         photos: p.photos.map((ph) => ({ kind: ph.kind, caption: ph.caption })),
       }),
@@ -614,7 +780,9 @@ async function pushPending() {
     for (const ph of p.photos) fd.append("photo", new Blob([new Uint8Array(ph.data)], { type: ph.mime }), "photo.jpg");
     // Photos take a while on a slow connection.
     const { id } = (await (await hubFetch("/v1/posts", { method: "POST", body: fd, signal: AbortSignal.timeout(180_000) })).json()) as { id: string };
-    await db.sharedPost.update({ where: { id: p.id }, data: { hubId: id } });
+    // Removed here while it was on its way: it is on the hub now, so it comes down again (and the rest still go).
+    const kept = await db.sharedPost.updateMany({ where: { id: p.id }, data: { hubId: id } });
+    if (!kept.count) await hubFetch(`/v1/posts/${hubId(id)}`, { method: "DELETE" }).catch((e: unknown) => console.error("community hub: a removed note is still up:", e instanceof Error ? e.message : e));
   }
   return pending.length;
 }
@@ -645,13 +813,18 @@ async function doSync(): Promise<SyncResult> {
     // The hub's name and Discord link can change; keep them current.
     const me = (await (await hubFetch("/v1/me")).json()) as { hubName?: string; discordInvite?: string | null; scope?: string };
     // The hub's Discord link wins when it has one; otherwise keep the one that came with the invite.
-    const still = await writeState(run, { hubName: me.hubName ?? null, scope: me.scope ?? "member", ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) });
+    // Joined for partner shops only, the install stays that way whatever the hub says: only joinHub (a join key, from
+    // someone allowed to join the whole install) makes it a member.
+    const scope = s.scope === "partner" || me.scope === "partner" ? "partner" : "member";
+    // Not written while partner-only here: a join key being used right now (joinHub) may be making it a member.
+    const still = await writeState(run, { hubName: me.hubName ?? null, ...(s.scope !== "partner" ? { scope } : {}), ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) });
     if (!still) return { skipped: true };
     // On the hub for partner shops only: nothing of the community's to sync.
-    if (me.scope === "partner") {
+    if (scope === "partner") {
       await writeState(run, { lastSyncAt: new Date(), lastError: null });
       return { skipped: true };
     }
+    await claimShop(run);
     // A note that won't upload mustn't stop everything else from syncing; it's tried again next time.
     const pushed = await pushPending().catch((e) => {
       console.error("community hub: sending shared notes:", e instanceof Error ? e.message : e);
@@ -704,6 +877,31 @@ async function doSync(): Promise<SyncResult> {
   }
 }
 
+/**
+ * A StitchBench with one company tells the hub which it is, once per connection and start of the program: what the
+ * install listed, ordered, was rated for and shared before it named its company becomes that company's (its ratings
+ * carry over). An older hub doesn't know this (404); nothing is lost then.
+ */
+async function claimShop(run: SyncRun) {
+  const done = globalThis as unknown as { __hubClaimed?: string | null };
+  if (done.__hubClaimed === run.installId) return;
+  const sole = await soleShopId();
+  if (sole) await hubFetch("/v1/shops/claim", { method: "POST", json: { shopRef: sole } }).catch(() => {});
+  done.__hubClaimed = run.installId;
+}
+
+/**
+ * Sync after a person's change (a note shared, an order accepted): they wait for it while the hub answers, a few
+ * seconds at most, and not at all once it's known to be down; the rest carries on in the background.
+ */
+export async function syncSoon(maxWait = 8000) {
+  const run = syncHub().catch(() => undefined);
+  if (net.offlineSince) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([run, new Promise((r) => (timer = setTimeout(r, maxWait)))]);
+  clearTimeout(timer);
+}
+
 // One sync at a time, shared by every copy of this module Next loads; a second caller waits for the one running.
 const shared = globalThis as unknown as { __hubSync?: Promise<SyncResult> | null };
 
@@ -714,6 +912,10 @@ export function syncHub(): Promise<SyncResult> {
   return shared.__hubSync;
 }
 
+// The hub's own limit for a figure or a photo is 2 MB. A picture past this isn't read further, kept, or shown: a hub that
+// sends a huge body must not fill this program's memory and database.
+const MAX_PICTURE = 3 * 1024 * 1024;
+
 /** A picture from the hub (note photo, figure snapshot or listing photo), kept locally after the first look. */
 export async function hubPicture(kind: "photo" | "figure" | "listing", id: string): Promise<{ mime: string; data: Uint8Array } | null> {
   id = hubId(id);
@@ -722,7 +924,8 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
     if (have) return { mime: safeImageType(have.mime), data: have.data };
     const r = await hubFetch(`/v1/listing-photos/${id}`, { quick: true });
     const mime = safeImageType(r.headers.get("content-type"));
-    const data = new Uint8Array(await r.arrayBuffer());
+    const data = await readUpTo(r, MAX_PICTURE);
+    if (!data) return null;
     await db.listingPhoto.upsert({ where: { id }, create: { id, mime, data }, update: {} });
     return { mime, data };
   }
@@ -731,7 +934,8 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
     if (!p) return null;
     if (p.data) return { mime: safeImageType(p.mime), data: p.data };
     const r = await hubFetch(`/v1/photos/${id}`, { quick: true });
-    const data = new Uint8Array(await r.arrayBuffer());
+    const data = await readUpTo(r, MAX_PICTURE);
+    if (!data) return null;
     await db.hubPhoto.update({ where: { id }, data: { data } });
     return { mime: safeImageType(p.mime), data };
   }
@@ -740,7 +944,8 @@ export async function hubPicture(kind: "photo" | "figure" | "listing", id: strin
   if (f.data && f.mime) return { mime: safeImageType(f.mime), data: f.data };
   const r = await hubFetch(`/v1/figures/${id}`, { quick: true });
   const mime = safeImageType(r.headers.get("content-type"));
-  const data = new Uint8Array(await r.arrayBuffer());
+  const data = await readUpTo(r, MAX_PICTURE);
+  if (!data) return null;
   await db.hubFigure.update({ where: { id }, data: { mime, data } });
   return { mime, data };
 }

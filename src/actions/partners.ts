@@ -18,6 +18,7 @@ import {
   endPartnership,
   monthPeriod,
   partnerLink,
+  partnerQuota,
   proposeTerms,
   redeemPartnerCode,
   kickPartnerSync,
@@ -38,6 +39,7 @@ export type InviteResult = { code: string; long: string; expiresAt: string } | {
 export async function makePartnerCode(formData: FormData): Promise<InviteResult> {
   try {
     const admin = await requireAdmin();
+    partnerQuota(admin.shopId, "code", 20, "This company made a lot of partner codes in the last hour. Wait a while and try again.");
     const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
     const side = str(formData.get("side")) === "retail" ? "retail" : "repair";
     const r = await createPartnerInvite(shop.id, shop.name, side, termsFromForm(formData));
@@ -52,6 +54,7 @@ export const enterPartnerCode = safe(async function enterPartnerCode(formData: F
   const admin = await requireAdmin();
   const code = str(formData.get("code"));
   if (!code) throw new UserError("Type or paste the partner code.");
+  partnerQuota(admin.shopId, "redeem", 10, "Too many partner codes tried in the last hour. Wait a while and try again.");
   // Not on a hub yet: the code would connect the whole install to one, which is the install administrator's call.
   if (!(await hubJoined())) await requireInstallAdmin();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
@@ -65,7 +68,9 @@ export const acceptPartnerTerms = safe(async function acceptPartnerTerms(linkId:
   const name = str(formData.get("name"));
   if (!name) throw new UserError("Type your name to accept.");
   if (formData.get("agree") !== "on") throw new UserError("Tick the box to say you've read the terms.");
-  await acceptTerms(admin.shopId, linkId, name);
+  // The version and terms on the page when it was read: newer ones that arrived meanwhile aren't accepted unseen.
+  const shown = { version: Number(formData.get("version")) || null, key: str(formData.get("key")) };
+  await acceptTerms(admin.shopId, linkId, name, shown);
   refresh();
 });
 
@@ -106,7 +111,7 @@ export const recordSettlement = safe(async function recordSettlement(linkId: str
   const at = new Date();
   await db.$transaction(async (tx) => {
     await tx.settlement.create({
-      data: { id, shopId: admin.shopId, linkId, periodFrom: from, periodTo: to, netCents: net, summary, note: str(formData.get("note")), byName: admin.name, paidAt: at },
+      data: { id, shopId: admin.shopId, linkId, periodFrom: from, periodTo: to, netCents: net, summary, note: str(formData.get("note")), byName: admin.name, paidAt: at, confirmedAt: at },
     });
     await sendToPartner(
       admin.shopId,
@@ -116,6 +121,14 @@ export const recordSettlement = safe(async function recordSettlement(linkId: str
       tx,
     );
   });
+  refresh();
+});
+
+/** The partner says it paid: someone here confirms the money arrived, and only then does it come off the balance. */
+export const confirmSettlement = safe(async function confirmSettlement(linkId: string, settlementId: string) {
+  const admin = await requireAdmin();
+  const r = await db.settlement.updateMany({ where: { shopId: admin.shopId, linkId, id: settlementId, confirmedAt: null }, data: { confirmedAt: new Date() } });
+  if (!r.count) throw new UserError("That payment isn't waiting to be confirmed.");
   refresh();
 });
 
@@ -140,6 +153,10 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
   const hub = await db.hubState.findUnique({ where: { id: 1 } });
   if (!hub?.installKey) throw new UserError("Join the community hub first (Settings): partner shops talk through it.");
   const repair = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
+  // The invite comes first: it needs the hub, so with the hub down nothing has been created yet (a retry isn't refused
+  // for an email that already has an account). An email already in use is caught before the invite is spent on it.
+  if (await db.user.findUnique({ where: { email: normalizeEmail(formData.get("email")) }, select: { id: true } })) throw new UserError("That email already has an account.");
+  const invite = await createPartnerInvite(repair.id, repair.name, "repair", termsFromForm(formData));
   const created = await createShopWithOwner({
     shopName: String(formData.get("shop") ?? ""),
     name: String(formData.get("name") ?? ""),
@@ -147,8 +164,17 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
     password: String(formData.get("password") ?? ""),
     kind: "retail",
   });
-  const invite = await createPartnerInvite(repair.id, repair.name, "repair", termsFromForm(formData));
-  const r = await redeemPartnerCode(created.id, created.name, normalizeEmail(formData.get("email")), invite.code);
+  let r: Awaited<ReturnType<typeof redeemPartnerCode>>;
+  try {
+    r = await redeemPartnerCode(created.id, created.name, normalizeEmail(formData.get("email")), invite.code);
+  } catch (e) {
+    // The company and its login exist by now: the code is the way to finish, not the form again.
+    refresh();
+    revalidatePath("/companies");
+    throw new UserError(
+      `${created.name} was added, but the partnership wasn't made${isUserError(e) ? ` (${e.message})` : ""}. Ask them to sign in and enter this partner code under Partners: ${invite.code}`,
+    );
+  }
   // Our side of the link now too, rather than on the next sync.
   await saveLinkFromHub(repair.id, "repair", r.link);
   refresh();
