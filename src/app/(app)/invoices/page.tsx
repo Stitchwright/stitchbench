@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { PageHeader, Empty, StatusPill } from "@/components/ui";
 
@@ -15,6 +16,7 @@ const LIMIT = 500;
 
 export default async function Invoices({ searchParams }: { searchParams: Promise<{ show?: string; q?: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const sp = await searchParams;
   const show: Tab = TABS.some((t) => t.key === sp.show) ? (sp.show as Tab) : "unpaid";
   const term = sp.q?.trim() ?? "";
@@ -140,7 +142,7 @@ export default async function Invoices({ searchParams }: { searchParams: Promise
                         #{ticketNo(t.number)}
                       </Link>
                     </td>
-                    <td className="num whitespace-nowrap">{fmtDate(t.closedAt ?? t.readyAt ?? t.intakeAt)}</td>
+                    <td className="num whitespace-nowrap">{fmtDate(t.closedAt ?? t.readyAt ?? t.intakeAt, tz)}</td>
                     <td>{t.customer ? <Link href={`/customers/${t.customer.id}`} className="link">{t.customer.name}</Link> : "-"}</td>
                     <td>
                       {t.machine.brand} {t.machine.model}

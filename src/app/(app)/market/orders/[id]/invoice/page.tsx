@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import type { HubOrder } from "@/lib/hub";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader } from "@/components/ui";
@@ -10,6 +11,7 @@ import { CONDITION_LABEL } from "@/components/market-ui";
 // The invoice for a marketplace order, from the seller to the buyer. The buyer pays the seller directly.
 export default async function MarketInvoice({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const row = await db.marketOrder.findUnique({ where: { id } });
   if (!row || row.shopId !== user.shopId) notFound();
@@ -40,8 +42,8 @@ export default async function MarketInvoice({ params }: { params: Promise<{ id: 
             <div className="text-lg font-semibold">
               Invoice <span className="mono">{o.number}</span>
             </div>
-            <div>Date {fmtDate(accepted)}</div>
-            {paid && <div className="font-semibold">Paid {fmtDate(o.paidAt)}</div>}
+            <div>Date {fmtDate(accepted, tz)}</div>
+            {paid && <div className="font-semibold">Paid {fmtDate(o.paidAt, tz)}</div>}
           </div>
         </header>
 
@@ -102,7 +104,7 @@ export default async function MarketInvoice({ params }: { params: Promise<{ id: 
           )}
           {o.tracking && (
             <p>
-              Shipped {o.shippedAt ? fmtDate(o.shippedAt) : ""} by {o.carrier}, tracking <span className="mono">{o.tracking}</span>
+              Shipped {o.shippedAt ? fmtDate(o.shippedAt, tz) : ""} by {o.carrier}, tracking <span className="mono">{o.tracking}</span>
             </p>
           )}
           <p className="text-xs">Sold between repair shops on the StitchHub marketplace. Thank you for your business.</p>

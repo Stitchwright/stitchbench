@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { modelKey } from "@/lib/format";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ModelPanel } from "@/components/model-panel";
@@ -11,6 +12,7 @@ import { PartsThatFit } from "@/components/parts-that-fit";
 
 export default async function ModelPage({ params }: { params: Promise<{ brand: string; model: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const p = await params;
   const brand = decodeURIComponent(p.brand);
   const model = decodeURIComponent(p.model);
@@ -26,7 +28,7 @@ export default async function ModelPage({ params }: { params: Promise<{ brand: s
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
           <ModelPanel shopId={user.shopId} brand={brand} model={model} showLink={false} />
-          <ManualLinks brand={brand} model={model} />
+          <ManualLinks brand={brand} model={model} timeZone={tz} />
         </div>
         <div className="space-y-6 xl:col-span-2">
           <ModelMachines shopId={user.shopId} brand={brand} model={model} title="Serviced here" />

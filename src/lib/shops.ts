@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "@/lib/service-menu";
+import { serverTimeZone } from "@/lib/time-zone";
 
 export type ShopKind = "repair" | "retail" | "both";
 
@@ -55,6 +56,8 @@ export async function createShopWithOwner(
       data: {
         name: input.shopName.trim(),
         ...modes,
+        // The Windows program runs in the shop's own zone; a hosted (UTC) server keeps the default until Settings says.
+        timeZone: serverTimeZone() ?? undefined,
         checklistItems: DEFAULT_CHECKLIST,
         users: { create: { email, name: input.name.trim(), role: "OWNER", passwordHash } },
         serviceItems: modes.doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i })) } : undefined,

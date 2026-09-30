@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { hubFetch, type Reputation } from "@/lib/hub";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ListingCard, MarketNav, Stars } from "@/components/market-ui";
@@ -10,6 +11,7 @@ type Rep = { asSeller: Reputation; asBuyer: Reputation; recent: { stars: number;
 // A shop on the marketplace: how other shops rated it, and what it has for sale.
 export default async function ShopPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
   const [found, rep] = await Promise.all([
     db.listing.findMany({ where: { sellerId: id, status: "ACTIVE" }, orderBy: { createdAt: "desc" } }),
@@ -51,7 +53,7 @@ export default async function ShopPage({ params }: { params: Promise<{ id: strin
                           <span className="text-line">{"★".repeat(5 - r.stars)}</span>
                         </span>{" "}
                         <span className="muted text-xs">
-                          as {r.role === "seller" ? "seller" : "buyer"} · {fmtDate(r.at)}
+                          as {r.role === "seller" ? "seller" : "buyer"} · {fmtDate(r.at, tz)}
                         </span>
                         {r.comment && <div>&ldquo;{r.comment}&rdquo;</div>}
                       </li>
