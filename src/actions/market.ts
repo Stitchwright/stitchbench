@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { hubFetch, hubId, hubReachable, saveListing, saveOrder, syncHub, syncSoon, type HubListing, type HubOrder } from "@/lib/hub";
 import { numberKey } from "@/lib/parts";
+import { sameText } from "@/lib/input";
 
 const CONDITIONS = ["NEW", "USED", "REFURB"];
 const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
@@ -171,7 +172,7 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
   // This shop's own stock of it (never a partner's consigned item): the exact number, then any number it's sold under.
   const partNumber = o.item.partNumber ?? o.number;
   const part =
-    (await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: { equals: partNumber, mode: "insensitive" } } })) ??
+    (await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: sameText(partNumber) } })) ??
     (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, numberKeys: { has: key } } }) : null);
   if (part) {
     await db.$transaction([
@@ -201,7 +202,7 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
 async function takeFromStock(o: HubOrder, userId: string, shopId: string) {
   const key = o.item.partNumber ? numberKey(o.item.partNumber) : null;
   const part =
-    (o.item.partNumber ? await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: { equals: o.item.partNumber, mode: "insensitive" } } }) : null) ??
+    (o.item.partNumber ? await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: sameText(o.item.partNumber) } }) : null) ??
     (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, numberKeys: { has: key } } }) : null);
   if (!part) return;
   await db.$transaction([

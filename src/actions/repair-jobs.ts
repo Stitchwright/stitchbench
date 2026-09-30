@@ -10,6 +10,7 @@ import { modelKey, str, toCents } from "@/lib/format";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { kickPartnerSync, MAX_MONEY, sendToPartner, type JobEvent } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
+import { sameText } from "@/lib/input";
 
 const IMAGE = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -76,7 +77,7 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     if (photos.reduce((a, p) => a + p.data.length, 0) > 2_600_000) throw new UserError("The photos are too large together. Take fewer, or smaller ones.");
 
     const terms = normalizeTerms(link.terms);
-    const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } }) : null;
+    const existing = serial ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } }) : null;
     const id = crypto.randomUUID();
     const at = new Date();
     const machineType = str(formData.get("machineType"));
