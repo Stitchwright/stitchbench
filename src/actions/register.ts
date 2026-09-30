@@ -10,7 +10,7 @@ import { codeKeys, numberKey } from "@/lib/parts";
 import { sameText } from "@/lib/input";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
-import { inEighths, lineNet, orderDiscountShares, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
+import { inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type RegisterItem = {
@@ -72,6 +72,9 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   return matches[0] ? view(matches[0]) : null;
 }
 
+// A repair the customer can take home: the repair shop has sent it back.
+const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
+
 /** What the customer still owes on a repair: the bill, less anything already paid to either shop. */
 function repairDue(j: { totalCents: number | null; repairPaidCents: number | null; paidCents: number | null }) {
   return Math.max(0, (j.totalCents ?? 0) - (j.repairPaidCents ?? 0) - (j.paidCents ?? 0));
@@ -123,7 +126,7 @@ export async function pickupJobs(): Promise<PickupJob[]> {
       side: "retail",
       totalCents: { not: null },
       OR: [
-        { paidAt: null, status: { in: ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"] } },
+        { paidAt: null, status: { in: BACK_FROM_REPAIR } },
         { paidCents: { gt: 0 }, totalCents: { gt: db.repairJob.fields.paidCents } },
       ],
     },
@@ -223,24 +226,33 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     if (input.customerId && !(await db.customer.findFirst({ where: { id: input.customerId, shopId } }))) throw new UserError("Customer not found.");
 
     const lines = input.lines.map((l) => {
-      const qty = Number(l.qty);
+      const part = l.partId ? parts.get(l.partId)! : null;
+      const job = l.repairJobId ? jobs.get(l.repairJobId)! : null;
+      let qty = Number(l.qty);
+      // Fabric is cut in eighths, and an eighth is exact in binary: counts and sums never drift, and the repair shop
+      // (which rounds to thousandths) records the same number. Anything that is not an eighth is refused below.
+      if (part?.unit === "yd" && Number.isFinite(qty) && inEighths(qty)) qty = Math.round(qty * 8) / 8;
       if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 10000) throw new UserError("Each line needs a quantity.");
       let unit = Math.round(Number(l.unitPriceCents));
       if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, use Return mode (negative quantity).");
       let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
-      const part = l.partId ? parts.get(l.partId)! : null;
-      const job = l.repairJobId ? jobs.get(l.repairJobId)! : null;
       if (job) {
         if (qty !== 1) throw new UserError("A repair is one line of 1.");
         if (disc) throw new UserError("A repair is paid as the repair shop billed it; it can't be discounted here.");
         // The balance as we know it now, not what the page had when it was opened.
         unit = repairDue(job);
         if (unit <= 0) throw new UserError(`Repair tag ${job.tag} has nothing left to pay.`);
+        // The machine goes home only if the repair shop has sent it back (the pickup list may be out of date).
+        if (l.pickedUp !== false && !job.pickedUpAt && !BACK_FROM_REPAIR.includes(job.status)) {
+          throw new UserError(`Repair tag ${job.tag} isn't back from the repair shop yet. Untick "taking the machine home" to take the payment only.`);
+        }
       }
       if (part) {
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
         if (part.unit === "yd" && !inEighths(qty)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
         if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+        // A tech can type the price of an item that has none, but not leave it free.
+        if (user.role === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
       }
       // A discount is a price change too.
       if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
@@ -248,7 +260,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         throw new UserError(`${part?.partNumber ?? (l.description || "A line")} comes to more than $100,000. Check the price and quantity.`);
       }
       // A discount can take a line to zero, never below.
-      disc = Math.min(disc, Math.abs(Math.round(qty * unit)));
+      disc = Math.min(disc, Math.abs(roundCents(qty * unit)));
       return {
         partId: part?.id ?? null,
         repairJobId: job?.id ?? null,
@@ -259,7 +271,8 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         unit: part?.unit ?? null,
         unitPriceCents: unit,
         discountCents: disc,
-        taxable: job ? false : Boolean(l.taxable),
+        // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc line only.
+        taxable: job ? false : part ? true : Boolean(l.taxable),
         discountable: !job,
         costCents: part?.costCents ?? null,
         consignLinkId: part?.consignLinkId ?? null,
@@ -342,12 +355,22 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
               shopKeepsCents: Math.round((gross * (shares.get(l.consignLinkId) ?? 0)) / 100),
             },
           });
-          // A return takes back only what was sold (the repair shop applies the same rule, so both books agree).
-          const took = await tx.consignItem.updateMany({
-            where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, ...(l.qty < 0 ? { sold: { gte: -l.qty } } : {}) },
-            data: { sold: { increment: l.qty } },
-          });
-          if (!took.count) throw new UserError(`More of ${l.description} is being returned than was sold on consignment.`);
+          // A sale sells only what is still on the shelf and a return takes back only what was sold (the repair shop
+          // applies the same rules, so both books agree). Quantities are floats: a millionth of slack.
+          const key = { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey };
+          if (l.qty > 0) {
+            const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: key } });
+            const onShelf = item ? item.placed - item.sold - item.returned : 0;
+            if (!item || l.qty > onShelf + 1e-6) {
+              throw new UserError(`${l.description}: ${onShelf > 1e-6 ? `only ${qtyText(onShelf, l.unit)}` : "none"} left on the shelf on consignment.`);
+            }
+            // Only if nobody sold it meanwhile (another register).
+            const took = await tx.consignItem.updateMany({ where: { id: item.id, sold: item.sold }, data: { sold: { increment: l.qty } } });
+            if (!took.count) throw new UserError(`${l.description} was just sold at another register. Ring it up again.`);
+          } else {
+            const took = await tx.consignItem.updateMany({ where: { ...key, sold: { gte: -l.qty - 1e-6 } }, data: { sold: { increment: l.qty } } });
+            if (!took.count) throw new UserError(`More of ${l.description} is being returned than was sold on consignment.`);
+          }
           await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx, false);
         }
         if (l.repairJobId) {
@@ -360,16 +383,17 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
           const events = [...((job.events as { at: string; note?: string; status?: string }[]) ?? []), { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` }].slice(-200);
           // Only if nobody paid it and the bill didn't change meanwhile (another register, a second click, an update).
           const paid = await tx.repairJob.updateMany({
-            where: { shopId, id: job.id, paidCents: job.paidCents, repairPaidCents: job.repairPaidCents, totalCents: job.totalCents },
+            where: { shopId, id: job.id, paidCents: job.paidCents, repairPaidCents: job.repairPaidCents, totalCents: job.totalCents, ...(handOver ? { status: job.status } : {}) },
             data: {
               paidCents: paidHere,
               paidAt: job.paidAt ?? at,
               paidWhere: job.repairPaidCents ? "split" : "shop",
-              ...(handOver ? { pickedUpAt: at, status: "COLLECTED" } : {}),
+              // A machine sent back unrepaired stays that way in the record (as on the repair shop's side).
+              ...(handOver ? { pickedUpAt: at, status: job.status === "RETURNED_UNREPAIRED" ? job.status : "COLLECTED" } : {}),
               events: (handOver ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
             },
           });
-          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid, or its bill changed. Take it off this sale and add it again.`);
+          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid, or its bill or status changed. Take it off this sale and add it again.`);
           // amountCents is this payment; paidCents is everything paid here so far (a repeat of a message adds nothing).
           await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, paidCents: paidHere, saleNumber: number, at: at.toISOString() }, tx, false);
           if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx, false);
@@ -428,7 +452,7 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
           data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at, shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null },
         });
         const undone = await tx.consignItem.updateMany({
-          where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, ...(l.qty > 0 ? { sold: { gte: l.qty } } : {}) },
+          where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, ...(l.qty > 0 ? { sold: { gte: l.qty - 1e-6 } } : {}) },
           data: { sold: { decrement: l.qty } },
         });
         if (!undone.count) throw new UserError(`${l.description} was returned since this sale; void that return first.`);

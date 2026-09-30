@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { firstValues } from "@/lib/search-params";
 import { fmtDate, money, ticketNo } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
@@ -17,10 +18,11 @@ const LIMIT = 500;
 export default async function Invoices({ searchParams }: { searchParams: Promise<{ show?: string; q?: string }> }) {
   const user = await requireUser();
   const tz = await shopTimeZone(user.shopId);
-  const sp = await searchParams;
+  const sp = firstValues(await searchParams);
   const show: Tab = TABS.some((t) => t.key === sp.show) ? (sp.show as Tab) : "unpaid";
   const term = sp.q?.trim() ?? "";
-  const num = /^\d+$/.test(term) ? Number(term) : null;
+  // Up to 9 digits can be a ticket number (the column holds a little over 2 billion); a longer number is a serial.
+  const num = /^\d{1,9}$/.test(term) ? Number(term) : null;
 
   // An invoice is a ticket with something billed on it. Every one's amounts are read (just the money columns), so
   // Unpaid and the totals take in old debts too; the list itself shows the newest LIMIT of them.
