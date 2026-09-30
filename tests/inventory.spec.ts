@@ -100,6 +100,13 @@ test("labels, scanner and most-used parts", async ({ page }) => {
 
   // Most used across the community (after this shop reports its counts to the hub).
   if (process.env.HUB_URL) {
+    // Counts go to the hub only once the shop offers them.
+    await page.goto("/parts/most-used");
+    const offer = page.getByRole("button", { name: "Offer our counts" });
+    if (await offer.count()) {
+      await offer.click();
+      await expect(page.getByRole("button", { name: "Stop offering our counts" })).toBeVisible();
+    }
     await page.goto("/settings");
     await expect(page.getByText(/Connected to/)).toBeVisible();
     await page.getByRole("button", { name: "Sync now" }).click();

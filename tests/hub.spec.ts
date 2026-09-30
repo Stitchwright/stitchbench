@@ -1,6 +1,7 @@
 // StitchBench with a community hub (StitchHub): join, manual links (add, download, fix, history, roll back,
 // remove) and sharing a note. Needs a test hub and a URL that serves a PDF:
-//   HUB_URL=http://localhost:3200 HUB_JOIN_KEY=... PDF_URL=http://localhost:3400/test-manual.pdf TESTLIB=<LIBRARY_DIR> npx playwright test hub
+//   HUB_URL=http://localhost:3200 HUB_JOIN_KEY=... HUB_ADMIN_TOKEN=... PDF_URL=http://localhost:3400/test-manual.pdf TESTLIB=<LIBRARY_DIR> npx playwright test hub
+// HUB_ADMIN_TOKEN loads the MC6700P catalog links into a fresh hub; without it the hub must already have them.
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
@@ -42,7 +43,20 @@ test("community hub: links and shared notes", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Community chat" })).toHaveAttribute("href", /discord/);
   await page.screenshot({ path: "test-results/hub-settings.png" });
 
-  // The catalog's links for this model.
+  // The catalog's links for this model. A fresh test hub has none: with HUB_ADMIN_TOKEN, load this model's rows from the
+  // shipped link list (the hub skips ones it already has), then sync so this install has them.
+  if (process.env.HUB_ADMIN_TOKEN) {
+    const all = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prisma", "seed-data", "hub_links.json"), "utf8")) as { models: string }[];
+    const rows = all.filter((l) => l.models === "MC6700P");
+    const r = await fetch(`${hub}/v1/admin/links/import`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.HUB_ADMIN_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(rows),
+    });
+    expect(r.ok).toBe(true);
+    await page.getByRole("button", { name: "Sync now" }).click();
+    await expect(page.getByText("Synced with the hub")).toBeVisible({ timeout: 180_000 });
+  }
   await page.goto("/models/Janome/MC6700P");
   await expect(page.getByRole("heading", { name: /Manual links \(([2-9]|\d\d+)\)/ })).toBeVisible();
 
