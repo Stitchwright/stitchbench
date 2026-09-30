@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/shops";
 import { str } from "@/lib/format";
 import { modelHref } from "@/components/ui";
-import { hubJoined, syncHub } from "@/lib/hub";
+import { hubJoined, syncSoon } from "@/lib/hub";
 import type { NoteKind } from "@/generated/prisma/enums";
 
 const KINDS: NoteKind[] = ["GOTCHA", "TIP", "FACT"];
@@ -39,8 +39,9 @@ export const sharePost = safe(async function sharePost(machineId: string, formDa
       photos: { create: photos.map((p, i) => ({ kind: p.kind, caption: p.caption, mime: p.mime, data: p.data, sortOrder: i })) },
     },
   });
-  // Send it to the community hub now; if the hub can't be reached, the next sync sends it.
-  if (await hubJoined()) await syncHub().catch(() => {});
+  // Send it to the community hub now (a few seconds at most; not at all while the hub is known to be down): it's saved
+  // here either way, and the next sync sends it.
+  if (await hubJoined()) await syncSoon();
   revalidatePath(`/machines/${machineId}`);
   revalidatePath(modelHref(m.brand, m.model));
   revalidatePath("/shared");

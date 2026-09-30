@@ -3,14 +3,34 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { modelKey } from "@/lib/format";
 import { hubJoined } from "@/lib/hub";
-import { KIND_LABEL, numberKey, type XFit, type XNumber } from "@/lib/parts";
+import { KIND_LABEL, baseNumber, numberKey, splitList, type XFit, type XNumber } from "@/lib/parts";
 import { PageHeader, Section, Empty } from "@/components/ui";
+import { ActionButton } from "@/components/action-form";
 import { XrefForm } from "@/components/xref-form";
+import { restoreCrossRef } from "@/actions/xref";
 
-export default async function CrossRef({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await requireUser();
-  const term = (await searchParams).q?.trim() ?? "";
-  const [joined, total] = await Promise.all([hubJoined(), db.xPart.count()]);
+const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
+
+export default async function CrossRef({ searchParams }: { searchParams: Promise<{ q?: string; add?: string }> }) {
+  const user = await requireUser();
+  const sp = await searchParams;
+  const term = sp.q?.trim() ?? "";
+  const [joined, total, removed, offered] = await Promise.all([
+    hubJoined(),
+    db.xPart.count(),
+    db.removedXPart.findMany({ where: { removedAt: { gte: daysAgo(90) } }, orderBy: { removedAt: "desc" }, take: 20 }),
+    sp.add ? db.part.findFirst({ where: { id: sp.add, shopId: user.shopId }, select: { description: true, kind: true, brand: true, partNumber: true, altNumbers: true, fits: true } }) : null,
+  ]);
+  // A part of this shop's offered to the cross-reference: the form comes filled in to check before it goes to every
+  // shop. Its own suffixes ("(own)", a partner's name) come off the number; its notes stay here.
+  const offer = offered
+    ? {
+        name: offered.description,
+        kind: offered.kind,
+        numbers: [...new Set([baseNumber(offered.partNumber), ...offered.altNumbers.map(baseNumber)])].map((n) => (offered.brand ? `${offered.brand}, ${n}` : n)).join("\n"),
+        fits: offered.brand ? splitList(offered.fits).map((m) => `${offered.brand}, ${m}`).join("\n") : "",
+      }
+    : undefined;
   const nk = numberKey(term);
   const mk = modelKey(term);
   const rows = term
@@ -107,8 +127,39 @@ export default async function CrossRef({ searchParams }: { searchParams: Promise
             </div>
           )}
           <Section title="Add a part to the cross-reference">
-            <XrefForm defaults={nk.length >= 3 && !rows.length ? { numbers: term } : undefined} />
+            <div id="add">
+              {offer && (
+                <p className="pill tone-wait mb-3 inline-block">
+                  Filled in from your part. Check it before adding: everything here goes to every shop on the hub (your part&apos;s notes don&apos;t).
+                  {!offered?.brand && " Put the maker's name before each number (Brand, number)."}
+                </p>
+              )}
+              <XrefForm defaults={offer ?? (nk.length >= 3 && !rows.length ? { numbers: term } : undefined)} />
+            </div>
           </Section>
+          {removed.length > 0 && (
+            <Section title="Recently removed">
+              <p className="muted mb-2 text-xs">Removed by a shop in the last 90 days. Put one back if it was removed by mistake.</p>
+              <ul className="divide-y divide-line text-sm">
+                {removed.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <span>
+                      <span className="font-semibold">{r.name}</span>{" "}
+                      <span className="mono muted text-xs">
+                        {(r.numbers as XNumber[])
+                          .slice(0, 3)
+                          .map((n) => `${n.brand} ${n.number}`)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <ActionButton action={restoreCrossRef.bind(null, r.id)} className="btn btn-sm" confirm="Put it back for everyone?" title="Put back">
+                      Put back
+                    </ActionButton>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
         </>
       )}
     </div>

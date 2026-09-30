@@ -7,19 +7,21 @@ import { ListingCard, MarketNav, Stars } from "@/components/market-ui";
 
 type Rep = { asSeller: Reputation; asBuyer: Reputation; recent: { stars: number; comment: string | null; role: string; at: string }[] };
 
-// A shop on the marketplace: how other shops rated it, and what it has for sale.
-export default async function ShopPage({ params }: { params: Promise<{ id: string }> }) {
+// A shop on the marketplace: how other shops rated it, and what it has for sale. `ref` is the company on that install
+// (a StitchBench can hold several, each rated on its own).
+export default async function ShopPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ref?: string }> }) {
   const user = await requireUser();
   const { id } = await params;
+  const ref = (await searchParams).ref?.trim().slice(0, 64) || null;
   const [found, rep] = await Promise.all([
-    db.listing.findMany({ where: { sellerId: id, status: "ACTIVE" }, orderBy: { createdAt: "desc" } }),
-    hubFetch(`/v1/reputation/${id}`, { quick: true })
+    db.listing.findMany({ where: { sellerId: id, status: "ACTIVE", ...(ref ? { sellerRef: ref } : {}) }, orderBy: { createdAt: "desc" } }),
+    hubFetch(`/v1/reputation/${id}${ref ? `?shopRef=${encodeURIComponent(ref)}` : ""}`, { quick: true })
       .then((r) => r.json() as Promise<Rep>)
       .catch(() => null),
   ]);
   // This install's own page: "mine" means this company's; another company here sees its listings like any shop's.
   const listings = found.map((l) => ({ ...l, mine: l.mine && l.shopId === user.shopId }));
-  const name = listings[0]?.shopName ?? (await db.listing.findFirst({ where: { sellerId: id }, select: { shopName: true } }))?.shopName ?? "Shop";
+  const name = listings[0]?.shopName ?? (await db.listing.findFirst({ where: { sellerId: id, ...(ref ? { sellerRef: ref } : {}) }, select: { shopName: true } }))?.shopName ?? "Shop";
 
   return (
     <div className="space-y-6">
