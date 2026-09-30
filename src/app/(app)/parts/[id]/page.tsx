@@ -13,7 +13,8 @@ import { ActionButton } from "@/components/action-form";
 import { ListingForm } from "@/components/listing-form";
 import { PartSearchLinks } from "@/components/part-search-links";
 import { hubJoined } from "@/lib/hub";
-import { EVIDENCE_LABEL, KIND_LABEL, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
+import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
+import { partTags } from "@/lib/part-labels";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { qtyText } from "@/lib/register-math";
 
@@ -58,7 +59,16 @@ export default async function PartPage({ params, searchParams }: { params: Promi
             <span className="mono">{p.partNumber}</span> {p.description}
           </>
         }
-        sub={`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+        sub={
+          <>
+            {partTags(p).map((t) => (
+              <span key={t} className="pill tone-wait mr-2">
+                {t}
+              </span>
+            ))}
+            {`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+          </>
+        }
         actions={
           <>
             <a href={`/labels?id=${p.id}&format=thermal`} target="_blank" rel="noreferrer" className="btn">
@@ -167,12 +177,12 @@ export default async function PartPage({ params, searchParams }: { params: Promi
               </ul>
             )}
             <div className="mt-3">
-              <PartSearchLinks numbers={[p.partNumber, ...p.altNumbers]} />
+              <PartSearchLinks numbers={p.ownNumber ? p.altNumbers : [baseNumber(p.partNumber), ...p.altNumbers]} />
             </div>
             <details className="mt-3 border-t border-line pt-3">
               <summary className="link cursor-pointer text-sm">Add a supplier</summary>
               <ActionForm action={addPartSource.bind(null, p.id)} reset success="Supplier added" className="mt-2 grid gap-2 sm:grid-cols-2">
-                <input name="vendor" aria-label="Supplier" required className="input" placeholder="Supplier, e.g. Sewing Parts Online" />
+                <input name="vendor" aria-label="Supplier" required className="input" placeholder="Supplier, e.g. Sewing Parts Online (or 3D print file)" />
                 <input name="url" aria-label="Link" type="url" className="input" placeholder="https:// link to the part" />
                 <input name="price" aria-label="Price" inputMode="decimal" className="input num" placeholder="$ price" />
                 <input name="note" aria-label="Note" className="input" placeholder="Note (optional)" />
@@ -250,10 +260,14 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                     <ListingForm
                       defaults={{
                         title: p.description,
-                        partNumber: p.partNumber,
+                        // A shop number isn't the maker's, so a listing of such an item has none; what it fits and its
+                        // photos say what it is. The suffix that tells stock apart ("X (used)") isn't part of the number.
+                        partNumber: p.ownNumber ? null : baseNumber(p.partNumber),
                         brand: p.brand,
                         fits: p.fits,
                         kind: p.kind,
+                        condition: p.condition,
+                        origin: p.origin,
                         priceCents: p.priceCents,
                         // Whole units: a listing's quantity is a count (for fabric, whole yards).
                         qty: Math.max(1, Math.floor(p.qtyOnHand)),

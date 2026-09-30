@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { money } from "@/lib/format";
+import { ORIGIN_NAME } from "@/lib/part-labels";
 
 export const CONDITION_LABEL: Record<string, string> = { NEW: "New", USED: "Used", REFURB: "Refurbished" };
+
+/** Who made a listed item ("Compatible"); null when the seller's install didn't say. */
+export const originName = (origin: string | null | undefined) => (origin ? ((ORIGIN_NAME as Record<string, string>)[origin] ?? null) : null);
 
 export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
   REQUESTED: { label: "Waiting for the seller", tone: "tone-wait" },
@@ -38,6 +42,7 @@ type L = {
   priceCents: number;
   qty: number;
   condition: string;
+  origin?: string | null;
   brand: string | null;
   partNumber: string | null;
   shippingCents: number | null;
@@ -61,6 +66,7 @@ export function ListingCard({ l }: { l: L }) {
         <div className="font-semibold">{l.title}</div>
         <div className="muted text-xs">
           {[l.brand, l.partNumber, CONDITION_LABEL[l.condition] ?? l.condition].filter(Boolean).join(" · ")}
+          {(l.origin === "COMPATIBLE" || l.origin === "PRINTED") && <span className="pill tone-wait ml-2">{originName(l.origin)}</span>}
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="num font-semibold">{money(l.priceCents)}</span>

@@ -51,6 +51,8 @@ model Shop {
   nextSaleNumber     Int      @default(1001)
   nextTagNumber      Int      @default(101)
   nextOrderNumber    Int      @default(1001)
+  // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
+  nextPartNumber     Int      @default(1)
   // Line at the bottom of register receipts (returns policy, hours)
   receiptNote        String?
   // The shop's own time zone: where days and months start for reports and statements
@@ -400,22 +402,22 @@ model ServiceItem {
 // ============================================================
 
 model Part {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   shopId          String
-  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   partNumber      String
   description     String
   brand           String?
   fits            String? // models it fits, free text
   location        String? // bin / drawer
-  qtyOnHand       Float    @default(0) // fabric sells in fractions of a yard
-  reorderAt       Float    @default(0)
+  qtyOnHand       Float         @default(0) // fabric sells in fractions of a yard
+  reorderAt       Float         @default(0)
   costCents       Int?
   priceCents      Int?
   supplier        String?
   notes           String?
-  createdAt       DateTime @default(now())
-  kind            PartKind @default(PART)
+  createdAt       DateTime      @default(now())
+  kind            PartKind      @default(PART)
   // Other numbers it's sold under (other makers' numbers, generic numbers)
   altNumbers      String[]
   // partNumber + altNumbers, upper-case letters and digits only, for matching the cross-reference
@@ -424,10 +426,15 @@ model Part {
   unit            String?
   // Offered to partner sewing shops at this price (their catalog from this shop)
   wholesaleCents  Int?
-  offerToPartners Boolean  @default(false)
+  offerToPartners Boolean       @default(false)
   // A partner repair shop's stock held here on consignment: which partnership, and the owner's id for the item
   consignLinkId   String?
   consignItemKey  String?
+  // New, used or refurbished; and who made it: the machine maker (genuine), a compatible replacement or 3D printed
+  condition       PartCondition @default(NEW)
+  origin          PartOrigin    @default(GENUINE)
+  // The maker gave no number, so partNumber is a shop number (SB-00001): never presented as the maker's
+  ownNumber       Boolean       @default(false)
 
   moves     StockMove[]
   lines     TicketLine[]
@@ -446,6 +453,18 @@ enum PartKind {
   FABRIC
   THREAD
   PATTERN
+}
+
+enum PartCondition {
+  NEW
+  USED
+  REFURB // cleaned and tested
+}
+
+enum PartOrigin {
+  GENUINE // the machine maker's part
+  COMPATIBLE // a replacement that isn't the maker's, e.g. an aftermarket screen
+  PRINTED // 3D printed
 }
 
 // Where this shop buys a part (its own list; the community's list is on the cross-reference).
@@ -727,6 +746,8 @@ model Listing {
   description   String?
   kind          String   @default("PART")
   condition     String   @default("NEW")
+  // GENUINE | COMPATIBLE | PRINTED; null = the seller's install didn't say
+  origin        String?
   brand         String?
   partNumber    String?
   numberKey     String?

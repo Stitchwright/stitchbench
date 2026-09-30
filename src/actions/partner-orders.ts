@@ -8,7 +8,8 @@ import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
-import { numberKey, partKeys } from "@/lib/parts";
+import { numberKey, partKeys, stockFor } from "@/lib/parts";
+import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
 import { consignReturned, MAX_MONEY, MAX_QTY, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
@@ -39,7 +40,7 @@ export async function placePartnerOrder(linkId: string, wanted: { itemKey: strin
       const raw = Number(w.qty);
       const qty = c.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
       if (!(qty > 0) || qty > 10000) continue;
-      lines.push({ itemKey: c.itemKey, partNumber: c.partNumber, description: c.description, qty, unitCents: c.wholesaleCents });
+      lines.push({ itemKey: c.itemKey, partNumber: c.partNumber, description: c.description, qty, unitCents: c.wholesaleCents, ...labelFields(c) });
     }
     if (!lines.length) throw new UserError("Add at least one item with a quantity.");
     const id = crypto.randomUUID();
@@ -122,27 +123,34 @@ export const partnerOrderAction = safe(async function partnerOrderAction(orderId
       const catalog = new Map(((link.catalog as CatalogItem[] | null) ?? []).map((c) => [c.itemKey, c]));
       for (const l of lines) {
         const key = numberKey(l.partNumber);
+        // What was sold, as the repair shop has it (a line from before that was sent says nothing: New, Genuine). Units
+        // of a used part don't go into the count of a new one.
+        const condition = asCondition(l.condition) ?? "NEW";
+        const origin = asOrigin(l.origin) ?? "GENUINE";
+        const stock = await stockFor(tx, shopId, l.partNumber, condition);
         let part =
-          (await tx.part.findFirst({ where: { shopId, partNumber: l.partNumber, consignLinkId: null } })) ??
-          (key.length >= 3 ? await tx.part.findFirst({ where: { shopId, numberKeys: { has: key }, consignLinkId: null } }) : null);
+          stock.existing ??
+          (key.length >= 3 ? await tx.part.findFirst({ where: { shopId, numberKeys: { has: key }, consignLinkId: null, condition }, select: { id: true } }) : null);
         if (!part) {
           const c = catalog.get(l.itemKey);
           const kind = (c && KINDS.includes(c.kind) ? c.kind : "PART") as PartKind;
-          // The number may already be the partner's consigned item on this shelf; this shop's own stock is kept apart.
-          const taken = await tx.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: l.partNumber } } });
+          // The number may already be the partner's consigned item on this shelf, or this shop's own stock in another
+          // condition; this stock is kept apart.
           part = await tx.part.create({
             data: {
               shopId,
-              partNumber: taken ? `${l.partNumber} (own)` : l.partNumber,
-              altNumbers: taken ? [l.partNumber] : [],
+              partNumber: stock.partNumber,
+              altNumbers: stock.altNumbers,
               description: l.description,
               kind,
+              condition,
+              origin,
               brand: c?.brand ?? null,
               unit: c?.unit ?? null,
               priceCents: c?.retailCents ?? null,
               costCents: l.unitCents,
               supplier: link.partnerName,
-              numberKeys: partKeys(taken ? `${l.partNumber} (own)` : l.partNumber, [l.partNumber]),
+              numberKeys: partKeys(stock.partNumber, [l.partNumber]),
             },
           });
         }
@@ -213,7 +221,7 @@ export const placeConsignment = safe(async function placeConsignment(linkId: str
       "consign.place",
       {
         id: crypto.randomUUID(),
-        items: [{ itemKey: part.id, partNumber: part.partNumber, description: part.description, kind: part.kind, brand: part.brand, unit: part.unit, priceCents: price, qty }],
+        items: [{ itemKey: part.id, partNumber: part.partNumber, description: part.description, kind: part.kind, brand: part.brand, unit: part.unit, priceCents: price, qty, ...labelFields(part) }],
         at: at.toISOString(),
       },
       tx,

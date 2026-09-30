@@ -7,11 +7,13 @@ import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { codeKeys, numberKey } from "@/lib/parts";
+import { disclosure, withDisclosure } from "@/lib/part-labels";
 import { sameText } from "@/lib/input";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import type { Prisma } from "@/generated/prisma/client";
+import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 
 export type RegisterItem = {
   id: string;
@@ -22,6 +24,8 @@ export type RegisterItem = {
   qtyOnHand: number;
   kind: string;
   consigned: boolean;
+  /** "used", "compatible, not genuine Brother"...: what the receipt will say about it, empty for a new, genuine item. */
+  disclosure: string;
 };
 
 const view = (p: {
@@ -33,6 +37,9 @@ const view = (p: {
   qtyOnHand: number;
   kind: string;
   consignLinkId: string | null;
+  brand: string | null;
+  condition: PartCondition;
+  origin: PartOrigin;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -42,6 +49,7 @@ const view = (p: {
   qtyOnHand: p.qtyOnHand,
   kind: p.kind,
   consigned: Boolean(p.consignLinkId),
+  disclosure: disclosure(p),
 });
 
 /**
@@ -61,11 +69,11 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   });
   const lc = c.toLowerCase();
   const exact = (p: { partNumber: string }) => p.partNumber.toLowerCase() === lc;
-  // The same item kept apart as a partner's consigned stock ("N (Their shop)"), or as this shop's own beside a
-  // partner's "N" ("N (own)"), counts as the number itself.
+  // The same item kept apart as a partner's consigned stock ("N (Their shop)"), as this shop's own beside a partner's
+  // "N" ("N (own)"), or in another condition ("N (used)"), counts as the number itself.
   const twin = (p: (typeof matches)[number]) => {
     const n = p.partNumber.toLowerCase();
-    return n.startsWith(`${lc} (`) && (Boolean(p.consignLinkId) || n.endsWith(" (own)"));
+    return n.startsWith(`${lc} (`) && (Boolean(p.consignLinkId) || /\((own|new|used|refurbished)\)$/.test(n));
   };
   const rank = (p: (typeof matches)[number]) => (exact(p) || twin(p) ? 0 : 8) + (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
   matches.sort((a, b) => rank(a) - rank(b));
@@ -261,11 +269,14 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
       }
       // A discount can take a line to zero, never below.
       disc = Math.min(disc, Math.abs(roundCents(qty * unit)));
+      const text = (l.description || part?.description || "Item").slice(0, 200);
       return {
         partId: part?.id ?? null,
         repairJobId: job?.id ?? null,
         pickedUp: l.pickedUp !== false,
-        description: (l.description || part?.description || "Item").slice(0, 200),
+        // A used, refurbished, compatible or 3D printed item says so on the receipt: written now, so the receipt stays
+        // right if the item is changed later.
+        description: part ? withDisclosure(text, part) : text,
         partNumber: part?.partNumber ?? null,
         qty,
         unit: part?.unit ?? null,

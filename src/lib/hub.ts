@@ -416,6 +416,8 @@ export type HubListing = {
   description: string | null;
   kind: string;
   condition: string;
+  // GENUINE | COMPATIBLE | PRINTED; null = the seller's install didn't say (hubs from before this don't send it at all)
+  origin?: string | null;
   brand: string | null;
   partNumber: string | null;
   xpartId: string | null;
@@ -442,7 +444,7 @@ export type HubOrder = {
   number: string;
   role: "buyer" | "seller";
   listingId: string;
-  item: { title: string; brand: string | null; partNumber: string | null; condition: string };
+  item: { title: string; brand: string | null; partNumber: string | null; condition: string; origin?: string | null };
   sellerShop: string;
   buyerShop: string;
   // Which company on each install (hubs from before per-company identity don't send them)
@@ -565,6 +567,7 @@ export async function saveListing(l: HubListing) {
     description: l.description,
     kind: l.kind,
     condition: l.condition,
+    origin: l.origin ?? null,
     brand: l.brand,
     partNumber: l.partNumber,
     numberKey: l.partNumber ? key(l.partNumber) : null,
@@ -682,10 +685,12 @@ async function pushUsage() {
         SELECT p."partNumber" AS number, p.brand, SUM(-sm.qty) AS qty, COUNT(DISTINCT sm."ticketId") AS tickets
         FROM "StockMove" sm JOIN "Part" p ON p.id = sm."partId"
         WHERE sm."shopId" = ${shop.id} AND sm.reason IN ('USED', 'RETURNED') AND sm."createdAt" >= ${from} AND sm."createdAt" < ${to}
+          AND NOT p."ownNumber"
         GROUP BY p."partNumber", p.brand`;
-      // The community counts a part by its number, not by how this shop tells its stock apart ("X (own)", "X (Partner)"),
-      // and by the letters and digits of it: one with none ("-", a part named only in Chinese) would make the hub refuse
-      // the whole month, so those stay out.
+      // The community counts a part by its number, not by how this shop tells its stock apart ("X (own)", "X (used)",
+      // "X (Partner)"), and by the letters and digits of it: one with none ("-", a part named only in Chinese) would
+      // make the hub refuse the whole month, so those stay out. A shop number (a part the maker gave none) isn't the
+      // maker's number, so it is never reported.
       const byPart = new Map<string, { number: string; brand: string; qty: number; tickets: number }>();
       for (const r of rows) {
         const number = baseNumber(r.number).slice(0, 60);

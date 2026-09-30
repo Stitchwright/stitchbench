@@ -60,11 +60,14 @@ export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; k
           id={`xnum-${id}`}
           name="numbers"
           rows={3}
-          required
           defaultValue={x ? numbersText(x.numbers as XNumber[]) : defaults?.numbers}
           className="textarea mono text-sm"
           placeholder={"Brother, XA1234-001\nBaby Lock, XA1234-001"}
+          aria-describedby={`xnum-hint-${id}`}
         />
+        <p id={`xnum-hint-${id}`} className="muted text-xs">
+          Leave the numbers blank for a part the maker gave none, and list the models it fits below.
+        </p>
       </div>
       <div className="field">
         <label htmlFor={`xfit-${id}`} className="label">
@@ -90,7 +93,11 @@ export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; k
           defaultValue={x ? sourcesText(x.sources as XSource[]) : ""}
           className="textarea text-sm"
           placeholder="Sewing Parts Online, https://..., 4.95"
+          aria-describedby={`xsrc-hint-${id}`}
         />
+        <p id={`xsrc-hint-${id}`} className="muted text-xs">
+          A 3D printed version: put &ldquo;3D print file&rdquo; as the vendor and the link to the design (no price needed).
+        </p>
       </div>
       <div className="grid-form">
         <div className="field">

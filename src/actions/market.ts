@@ -9,10 +9,12 @@ import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { hubFetch, hubId, hubReachable, saveListing, saveOrder, syncHub, syncSoon, type HubListing, type HubOrder } from "@/lib/hub";
-import { numberKey, orderStockNote } from "@/lib/parts";
-import { sameText } from "@/lib/input";
+import { numberKey, orderStockNote, partKeys, stockFor, takeShopNumber } from "@/lib/parts";
+import { CONDITIONS as PART_CONDITIONS, ORIGINS as PART_ORIGINS } from "@/lib/part-labels";
+import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 
-const CONDITIONS = ["NEW", "USED", "REFURB"];
+const CONDITIONS: string[] = PART_CONDITIONS;
+const ORIGINS: string[] = PART_ORIGINS;
 const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 const IMAGE = ["image/jpeg", "image/png", "image/webp"];
 
@@ -57,6 +59,7 @@ export const createListing = safe(async function createListing(formData: FormDat
   if (description && description.length > 4000) throw new UserError(`Keep the description to 4,000 characters (it is ${description.length.toLocaleString("en-US")}).`);
   const kind = str(formData.get("kind")) ?? "PART";
   const condition = str(formData.get("condition")) ?? "NEW";
+  const origin = str(formData.get("origin"));
   const partNumber = str(formData.get("partNumber"));
   const xpart = partNumber ? await db.xPart.findFirst({ where: { numberKeys: { has: numberKey(partNumber) } }, select: { id: true } }) : null;
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId } });
@@ -65,6 +68,8 @@ export const createListing = safe(async function createListing(formData: FormDat
     description,
     kind: KINDS.includes(kind) ? kind : "PART",
     condition: CONDITIONS.includes(condition) ? condition : "NEW",
+    // Who made it. An older hub ignores this; a form that doesn't say (opened before it was added) leaves it unstated.
+    origin: origin && ORIGINS.includes(origin) ? origin : null,
     brand: str(formData.get("brand")),
     partNumber,
     xpartId: xpart?.id ?? null,
@@ -193,34 +198,43 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
   const key = o.item.partNumber ? numberKey(o.item.partNumber) : null;
   const note = orderStockNote(o);
   const unitCost = o.qty ? Math.round(o.totalCents / o.qty) : null;
-  // This shop's own stock of it (never a partner's consigned item): the exact number, "<number> (own)", then any number
-  // it's sold under.
-  const partNumber = o.item.partNumber ?? o.number;
+  // What was bought, as the seller listed it. A listing that says nothing about who made it counts as genuine.
+  const condition = (CONDITIONS.includes(o.item.condition) ? o.item.condition : "NEW") as PartCondition;
+  const origin = (ORIGINS.includes(o.item.origin ?? "") ? o.item.origin : "GENUINE") as PartOrigin;
+  // This shop's own stock of it in the same condition (never a partner's consigned item): the exact number,
+  // "<number> (own)", "<number> (used)", then any number it's sold under.
+  const stock = o.item.partNumber ? await stockFor(db, shopId, o.item.partNumber, condition) : null;
   const part =
-    (await db.part.findFirst({ where: { shopId, consignLinkId: null, OR: [{ partNumber: sameText(partNumber) }, { partNumber: sameText(`${partNumber} (own)`) }] } })) ??
-    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, numberKeys: { has: key } } }) : null);
+    stock?.existing ??
+    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
   if (part) {
     await db.$transaction([
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: o.qty }, ...(unitCost ? { costCents: unitCost } : {}) } }),
       db.stockMove.create({ data: { shopId, partId: part.id, qty: o.qty, reason: "RECEIVED", userId, note } }),
     ]);
   } else {
-    // The number may be a partner's consigned item here: this shop's own stock gets its own entry.
-    const taken = await db.part.findFirst({ where: { shopId, partNumber } });
-    await db.part.create({
-      data: {
-        shopId,
-        partNumber: taken ? `${partNumber} (own)` : partNumber,
-        altNumbers: taken ? [partNumber] : [],
-        numberKeys: [numberKey(partNumber)].filter((k) => k.length >= 3),
-        description: o.item.title,
-        brand: o.item.brand,
-        qtyOnHand: o.qty,
-        costCents: unitCost,
-        supplier: o.sellerShop,
-        moves: { create: { shopId, qty: o.qty, reason: "RECEIVED", userId, note } },
-      },
-    });
+    const item = {
+      shopId,
+      description: o.item.title,
+      brand: o.item.brand,
+      condition,
+      origin,
+      qtyOnHand: o.qty,
+      costCents: unitCost,
+      supplier: o.sellerShop,
+      moves: { create: { shopId, qty: o.qty, reason: "RECEIVED" as const, userId, note } },
+    };
+    if (stock) {
+      // The number may be a partner's consigned item here, or this shop's own stock in another condition: this
+      // stock gets its own entry.
+      await db.part.create({ data: { ...item, partNumber: stock.partNumber, altNumbers: stock.altNumbers, numberKeys: partKeys(stock.partNumber, stock.altNumbers) } });
+    } else {
+      // The listing has no maker's number: the item gets a shop number.
+      await db.$transaction(async (tx) => {
+        const partNumber = await takeShopNumber(tx, shopId);
+        await tx.part.create({ data: { ...item, partNumber, ownNumber: true, numberKeys: partKeys(partNumber, []) } });
+      });
+    }
   }
 }
 
@@ -228,9 +242,11 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
 async function takeFromStock(o: HubOrder, userId: string, shopId: string) {
   if (await inStock(shopId, o)) return false;
   const key = o.item.partNumber ? numberKey(o.item.partNumber) : null;
+  // The stock item of that number in the condition it was listed in (a used one sold doesn't come off the new one's count).
+  const condition = (CONDITIONS.includes(o.item.condition) ? o.item.condition : "NEW") as PartCondition;
   const part =
-    (o.item.partNumber ? await db.part.findFirst({ where: { shopId, consignLinkId: null, partNumber: sameText(o.item.partNumber) } }) : null) ??
-    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, numberKeys: { has: key } } }) : null);
+    (o.item.partNumber ? (await stockFor(db, shopId, o.item.partNumber, condition)).existing : null) ??
+    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
   if (!part) return false;
   await db.$transaction([
     db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: o.qty } } }),

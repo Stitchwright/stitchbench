@@ -23,6 +23,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms, repairCommission, termsKey, type Accepted, type PartnerTerms } from "@/lib/partner-terms";
 import { Prisma } from "@/generated/prisma/client";
 import { sameText } from "@/lib/input";
+import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
 
 export const DEFAULT_HUB_URL = (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
 const FINAL = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
@@ -128,11 +129,14 @@ export type CatalogItem = {
   wholesaleCents: number;
   retailCents: number | null;
   inStock: number;
+  // Left out when New / Genuine; installs from before these existed don't send them (see labelFields)
+  condition?: string;
+  origin?: string;
 };
 
 export type JobEvent = { at: string; status?: string; note?: string };
 export type JobLine = { description: string; qty: number; amountCents: number; kind: string };
-export type OrderLine = { itemKey: string; partNumber: string; description: string; qty: number; unitCents: number };
+export type OrderLine = { itemKey: string; partNumber: string; description: string; qty: number; unitCents: number; condition?: string; origin?: string };
 
 /** What the customer still owes on a repair: the bill, less anything already paid to either shop (the register's figure). */
 export function repairDue(j: { totalCents: number | null; repairPaidCents: number | null; paidCents: number | null }) {
@@ -502,6 +506,7 @@ export async function catalogFor(shopId: string): Promise<CatalogItem[]> {
     retailCents: p.priceCents,
     // Stock gone below zero (sold before it was received) shows as none; the partner refuses counts past its range.
     inStock: Math.min(MAX_QTY, Math.max(0, p.qtyOnHand)),
+    ...labelFields(p),
   }));
 }
 
@@ -937,6 +942,7 @@ async function applyMessage(m: HubMessage) {
           wholesaleCents: int(it.wholesaleCents, 0, MAX_MONEY, "partner price"),
           retailCents: optInt(it.retailCents, 0, MAX_MONEY, "retail price"),
           inStock: qtyOf(it.inStock ?? 0, "stock"),
+          ...labelFields(it),
         } satisfies CatalogItem;
       });
       await db.partnerLink.update({ where: lk, data: { catalog: items as Json, catalogAt: at } });
@@ -1092,7 +1098,7 @@ async function applyMessage(m: HubMessage) {
         const qty = part.unit === "yd" ? raw : Math.round(raw);
         if (!(qty > 0)) continue;
         if (optInt(a.unitCents, 0, MAX_MONEY, "price") !== part.wholesaleCents) notes.push(`${part.partNumber}: the order showed a different price; your partner price is used.`);
-        lines.push({ itemKey: part.id, partNumber: part.partNumber, description: part.description, qty, unitCents: part.wholesaleCents! });
+        lines.push({ itemKey: part.id, partNumber: part.partNumber, description: part.description, qty, unitCents: part.wholesaleCents!, ...labelFields(part) });
       }
       if (!lines.length) return bad("the order has nothing we offer");
       const note = [text(d.note, 1000), ...notes].filter(Boolean).join("\n") || null;
@@ -1144,7 +1150,14 @@ async function applyMessage(m: HubMessage) {
         const lines: OrderLine[] = arr(d.lines, 500, "order").map((x) => {
           const l = obj(x, "order line");
           const qty = Math.abs(qtyOf(l.qty, "qty"));
-          return { itemKey: idOf(l.itemKey, "item"), partNumber: need(l.partNumber, 80, "part number"), description: text(l.description, 300) ?? "", qty, unitCents: int(l.unitCents, 0, MAX_MONEY, "price") };
+          return {
+            itemKey: idOf(l.itemKey, "item"),
+            partNumber: need(l.partNumber, 80, "part number"),
+            description: text(l.description, 300) ?? "",
+            qty,
+            unitCents: int(l.unitCents, 0, MAX_MONEY, "price"),
+            ...labelFields(l),
+          };
         });
         theirs = { lines: lines.filter((l) => l.qty > 0) as Json, totalCents: orderTotal(lines) };
       }
@@ -1324,6 +1337,7 @@ export function orderLines(v: unknown): OrderLine[] {
       description: String(l.description ?? ""),
       qty: Math.max(0, Number(l.qty) || 0),
       unitCents: Math.max(0, Math.round(Number(l.unitCents) || 0)),
+      ...labelFields(l),
     }))
     .filter((l) => l.itemKey && l.qty > 0);
 }
@@ -1434,6 +1448,9 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
   const price = int(it.priceCents, 0, MAX_MONEY, "shelf price");
   const number = need(it.partNumber, 80, "part number");
   const unit = it.unit === "yd" ? "yd" : null;
+  // As the owner has the item now; an owner from before these were sent has only new, genuine items.
+  const condition = asCondition(it.condition) ?? "NEW";
+  const origin = asOrigin(it.origin) ?? "GENUINE";
   // The same item again, or the same number from this partner: one inventory entry.
   let part =
     (await db.part.findFirst({ where: { shopId, consignLinkId: link.id, consignItemKey: itemKey } })) ??
@@ -1449,6 +1466,8 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
         brand: text(it.brand, 80),
         kind: kind as "ACCESSORY",
         unit,
+        condition,
+        origin,
         priceCents: price,
         altNumbers: partNumber !== number ? [number] : [],
         numberKeys: [...new Set([partNumber, number].map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, "")))].filter((k) => k.length >= 3),
@@ -1459,7 +1478,7 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
     });
   }
   await db.$transaction([
-    db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: qty }, priceCents: price || part.priceCents, consignItemKey: itemKey } }),
+    db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: qty }, priceCents: price || part.priceCents, consignItemKey: itemKey, condition, origin } }),
     db.stockMove.create({ data: { shopId, partId: part.id, qty, reason: "CONSIGNED", note: `Consignment from ${link.partnerName}`, createdAt: at } }),
     db.consignItem.upsert({
       where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } },

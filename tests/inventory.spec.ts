@@ -116,3 +116,71 @@ test("labels, scanner and most-used parts", async ({ page }) => {
     await page.screenshot({ path: "test-results/most-used-community.png", fullPage: true });
   }
 });
+
+test("the same part new and used, and condition columns on import and export", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
+  await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD ?? "e2e-password-1");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+
+  // A number in stock new, then the same number used: a second item, "<number> (used)", that a scan finds too.
+  const tw = `TW-${run}`;
+  await page.goto("/parts");
+  await page.locator("#partNumber").fill(tw);
+  await page.locator("#description").fill("Twin test bobbin case");
+  await page.locator("#qtyOnHand").fill("2");
+  await page.getByRole("button", { name: "Add part" }).click();
+  await expect(page.getByRole("heading", { name: tw })).toBeVisible();
+  await page.goto("/parts");
+  await page.locator("#partNumber").fill(tw);
+  await page.locator("#description").fill("Twin test bobbin case from a donor machine");
+  await page.locator("#condition").selectOption("USED");
+  await page.locator("#qtyOnHand").fill("1");
+  await page.getByRole("button", { name: "Add part" }).click();
+  await expect(page.getByRole("heading", { name: `${tw} (used)` })).toBeVisible();
+  await page.goto("/parts/scan");
+  const box = page.locator("#scan-code");
+  await box.fill(`${tw} (used)`);
+  await box.press("Enter");
+  await expect(page.getByText(`${tw} (used): 1 on hand`)).toBeVisible();
+  await box.fill(tw);
+  await box.press("Enter");
+  await expect(page.getByText(`${tw}: 2 on hand`)).toBeVisible();
+
+  // The list tags the used one, and both labels filter it.
+  await page.goto(`/parts?q=${tw}`);
+  await expect(page.getByRole("link", { name: tw, exact: true })).toBeVisible();
+  const usedRow = page.locator("tr", { has: page.getByRole("link", { name: `${tw} (used)` }) });
+  await expect(usedRow).toContainText("Used");
+  await page.goto(`/parts?q=${tw}&condition=USED`);
+  await expect(page.getByRole("link", { name: `${tw} (used)` })).toBeVisible();
+  await expect(page.getByRole("link", { name: tw, exact: true })).toHaveCount(0);
+  await page.goto(`/parts?q=${tw}&origin=COMPATIBLE`);
+  await expect(page.getByRole("link", { name: `${tw} (used)` })).toHaveCount(0);
+
+  // A sheet with Condition and Made by columns.
+  await page.goto("/parts/import");
+  const imp = `IMPC-${run}`;
+  const sheet = [
+    ["SKU", "Description", "Qty", "Condition", "Made by"],
+    [`${imp}A`, "Imported screen", "2", "Used", "Aftermarket"],
+    [`${imp}B`, "Imported knob", "1", "New", "3D printed"],
+  ]
+    .map((r) => r.join("\t"))
+    .join("\n");
+  await page.locator("#paste").fill(sheet);
+  await expect(page.locator("#map-condition")).toHaveValue("3");
+  await expect(page.locator("#map-origin")).toHaveValue("4");
+  await page.getByRole("button", { name: "Import 2 items" }).click();
+  await expect(page.getByText("Imported: 2 added, 0 updated, 0 skipped").first()).toBeVisible();
+  await page.goto(`/parts?q=${imp}`);
+  await expect(page.locator("tr", { has: page.getByRole("link", { name: `${imp}A` }) })).toContainText("Compatible");
+  await expect(page.locator("tr", { has: page.getByRole("link", { name: `${imp}B` }) })).toContainText("3D printed");
+
+  // The shop's records as a spreadsheet carry the condition, who made it and the shop number.
+  const exp = await (await page.request.get("/api/export/inventory")).text();
+  expect(exp.split("\n")[0]).toContain("condition,made_by,shop_number");
+  expect(exp).toContain(`${tw} (used),${tw},`);
+  expect(exp).toMatch(new RegExp(`${imp}A,.*,Used,Compatible,`));
+});

@@ -28,6 +28,8 @@ type CartLine = {
   discountPct: number;
   taxable: boolean;
   consigned?: boolean;
+  /** "used", "compatible, not genuine Brother"...: the receipt says it after the description. */
+  disclosure?: string;
 };
 
 const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
@@ -108,6 +110,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
           discountPct: 0,
           taxable: true,
           consigned: it.consigned,
+          disclosure: it.disclosure,
         },
       ];
     });
@@ -320,6 +323,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                   >
                     <span>
                       <span className="mono">{it.partNumber}</span> {it.description}
+                      {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     </span>
                     <span className="num">
@@ -440,6 +444,7 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                   <td>
                     {l.partNumber && <span className="mono mr-1">{l.partNumber}</span>}
                     {l.description}
+                    {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">

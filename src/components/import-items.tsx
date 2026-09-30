@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import { importItems, type ImportRow } from "@/actions/inventory-import";
 import { money, toCents } from "@/lib/format";
 import { EXCEL_NUMBER } from "@/lib/input";
+import { CONDITION_NAME, ORIGIN_NAME, conditionFromText, originFromText } from "@/lib/part-labels";
 
-type Field = "partNumber" | "barcode" | "description" | "brand" | "cost" | "price" | "qty" | "location";
+type Field = "partNumber" | "barcode" | "description" | "brand" | "cost" | "price" | "qty" | "location" | "condition" | "origin";
 
 const FIELDS: { key: Field; label: string; words: RegExp }[] = [
   { key: "partNumber", label: "Item / style / SKU number", words: /^(sku|item|item ?(no|#|number)|style|part ?(no|#|number)?|product ?(code|no|#)|article|mfg ?(no|#)|stock ?(no|#|number)|number)$/i },
@@ -18,6 +19,9 @@ const FIELDS: { key: Field; label: string; words: RegExp }[] = [
   // Whole header words only: "Discount" isn't "count", "Stock #" is a number, not a quantity.
   { key: "qty", label: "Quantity", words: /^(qty|quantity|on ?hand|in ?stock|stock ?(qty|on ?hand)|count|yards|yds|qty ?(on ?hand|ordered|shipped))$/i },
   { key: "location", label: "Bin / location", words: /(bin|location|shelf|aisle)/i },
+  // Optional: new / used / refurbished, and genuine (OEM) / compatible (aftermarket, generic) / 3D printed.
+  { key: "condition", label: "Condition (new, used, refurbished)", words: /^(condition|cond)$/i },
+  { key: "origin", label: "Made by (genuine, compatible, 3D printed)", words: /^(made ?by|origin|oem)$/i },
 ];
 
 /** Split pasted Excel cells (tabs) or a CSV file into rows, honouring "quoted, fields". */
@@ -116,8 +120,14 @@ export function ImportItems() {
       priceCents: cents(cell(r, "price")),
       qty: cell(r, "qty") === "" ? null : parseQty(cell(r, "qty")),
       location: cell(r, "location") || null,
+      condition: conditionFromText(cell(r, "condition")),
+      origin: originFromText(cell(r, "origin")),
     };
   });
+  // A cell in those columns that says none of the choices is ignored: the item comes in as if it were empty.
+  const unclear = (f: "condition" | "origin", read: (t: string) => string | null) => body.flatMap((r, i) => (cell(r, f) !== "" && !read(cell(r, f)) ? [i + 2] : []));
+  const unclearCondition = m.condition >= 0 ? unclear("condition", conditionFromText) : [];
+  const unclearOrigin = m.origin >= 0 ? unclear("origin", originFromText) : [];
   // A quantity that can't be read ("TBD", "2 bolts") must not turn into stock quietly not received: those rows stay
   // here, and the user is told which ones (sheet row numbers, the header being row 1).
   const unreadable = opts.addQty ? rows.flatMap((r, i) => (Number.isNaN(r.qty) ? [i + 2] : [])) : [];
@@ -232,6 +242,7 @@ export function ImportItems() {
                   <th className="text-right">Cost</th>
                   <th className="text-right">Price</th>
                   <th className="text-right">Qty</th>
+                  {(m.condition >= 0 || m.origin >= 0) && <th>Labels</th>}
                 </tr>
               </thead>
               <tbody>
@@ -244,6 +255,9 @@ export function ImportItems() {
                     <td className="num text-right">{money(r.costCents)}</td>
                     <td className="num text-right">{money(r.priceCents)}</td>
                     <td className="num text-right">{r.qty == null ? "" : Number.isNaN(r.qty) ? <span className="pill tone-bad">?</span> : r.qty}</td>
+                    {(m.condition >= 0 || m.origin >= 0) && (
+                      <td className="text-xs">{[r.condition && CONDITION_NAME[r.condition as keyof typeof CONDITION_NAME], r.origin && ORIGIN_NAME[r.origin as keyof typeof ORIGIN_NAME]].filter(Boolean).join(" · ")}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -260,6 +274,16 @@ export function ImportItems() {
                     imported.
                   </span>{" "}
                   Fix those cells, or set Quantity to (none) to bring the items in without stock.
+                </>
+              )}
+              {unclearCondition.length + unclearOrigin.length > 0 && (
+                <>
+                  {" "}
+                  <span className="text-[var(--bad)]">
+                    {unclearCondition.length > 0 && `${unclearCondition.length} condition${unclearCondition.length === 1 ? "" : "s"} (row${unclearCondition.length === 1 ? "" : "s"} ${unclearCondition.slice(0, 10).join(", ")}) aren't new, used or refurbished. `}
+                    {unclearOrigin.length > 0 && `${unclearOrigin.length} made-by value${unclearOrigin.length === 1 ? "" : "s"} (row${unclearOrigin.length === 1 ? "" : "s"} ${unclearOrigin.slice(0, 10).join(", ")}) aren't genuine, compatible or 3D printed. `}
+                    Those cells are ignored.
+                  </span>
                 </>
               )}
               {shortened.length > 0 && (

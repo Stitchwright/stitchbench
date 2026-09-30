@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { money } from "@/lib/format";
 import { barcodeSvg } from "@/lib/barcode";
+import { labelTag } from "@/lib/part-labels";
+import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 import { PrintButton } from "@/components/print-button";
 
 // Barcode labels for parts: a sheet of Avery 5160 labels (30 per letter page) or one label per page for a thermal
@@ -39,6 +41,8 @@ export default async function Labels({ searchParams }: { searchParams: Promise<S
         .label .pn { font: 700 10pt/1.1 ui-monospace, Consolas, monospace; }
         .label .desc { font-size: 7.5pt; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .label .meta { font-size: 7pt; display: flex; justify-content: space-between; gap: 4px; }
+        .label .tag { font: 700 7pt/1.1 Arial, sans-serif; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; }
+        .labels-sheet .label.tagged svg { height: 0.32in; }
         .labels-sheet .page { width: 8.5in; padding: 0.5in 0.1875in 0; display: grid; grid-template-columns: repeat(3, 2.625in); grid-auto-rows: 1in; column-gap: 0.125in; }
         .labels-sheet .label { padding: 0.06in 0.14in; }
         .labels-thermal .label { width: 2.25in; height: 1.25in; padding: 0.06in 0.1in; page-break-after: always; break-after: page; }
@@ -111,15 +115,18 @@ function Label({
   svg,
   withPrice,
 }: {
-  p: { partNumber: string; description: string; location: string | null; priceCents: number | null };
+  p: { partNumber: string; description: string; location: string | null; priceCents: number | null; condition: PartCondition; origin: PartOrigin };
   svg: string | null | undefined;
   withPrice: boolean;
 }) {
+  // USED, REFURB, COMPATIBLE or 3D PRINTED under the description, so the shelf and the bin show what it is.
+  const tag = labelTag(p);
   return (
-    <div className="label">
+    <div className={tag ? "label tagged" : "label"}>
       {svg ? <div dangerouslySetInnerHTML={{ __html: svg }} /> : null}
       <div className="pn">{p.partNumber}</div>
       <div className="desc">{p.description}</div>
+      {tag && <div className="tag">{tag}</div>}
       <div className="meta">
         <span>{p.location ? `Bin ${p.location}` : ""}</span>
         <span>{withPrice && p.priceCents != null ? money(p.priceCents) : ""}</span>

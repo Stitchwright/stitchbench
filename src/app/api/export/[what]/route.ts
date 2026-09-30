@@ -7,6 +7,7 @@ import { sessionUser } from "@/lib/session";
 import { csvResponse } from "@/lib/csv";
 import { lineNet, type Tender } from "@/lib/register-math";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
+import { CONDITION_NAME, ORIGIN_NAME } from "@/lib/part-labels";
 import { PAYMENT_LABEL, STATUS_LABEL } from "@/lib/constants";
 import { dateIn, dateTimeIn, todayIn } from "@/lib/time-zone";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -27,7 +28,7 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
     case "inventory": {
       const ps = await db.part.findMany({ where: { shopId }, orderBy: { partNumber: "asc" } });
       return [
-        ["number", "other_numbers", "description", "kind", "brand", "unit", "on_hand", "reorder_at", "bin", "cost", "price", "partner_price", "supplier", "consigned"],
+        ["number", "other_numbers", "description", "kind", "brand", "unit", "on_hand", "reorder_at", "bin", "cost", "price", "partner_price", "supplier", "consigned", "condition", "made_by", "shop_number"],
         ...ps.map((p) => [
           p.partNumber,
           p.altNumbers.join(" "),
@@ -43,6 +44,10 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
           dollars(p.wholesaleCents),
           p.supplier,
           p.consignLinkId ? "yes" : "",
+          CONDITION_NAME[p.condition],
+          ORIGIN_NAME[p.origin],
+          // The number the shop gave an item the maker gave none (it is also in "number").
+          p.ownNumber ? p.partNumber : "",
         ]),
       ];
     }
