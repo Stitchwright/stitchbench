@@ -845,6 +845,9 @@ model PartnerLink {
   // Repair side: what was last sent, so an unchanged catalog isn't sent again
   catalogHash   String?
   endedAt       DateTime?
+  // The note typed when the partnership was ended, and which side ended it (repair | retail; the hub sends both)
+  endNote       String?
+  endedBy       String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

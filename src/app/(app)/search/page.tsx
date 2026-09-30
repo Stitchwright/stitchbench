@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { modelKey, ticketNo } from "@/lib/format";
+import { customerIdsByPhone } from "@/lib/phone-search";
 import { PageHeader, Section, StatusPill, Empty, modelHref } from "@/components/ui";
 
 export default async function Search({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
@@ -16,7 +17,13 @@ export default async function Search({ searchParams }: { searchParams: Promise<{
     const t = await db.ticket.findFirst({ where: { shopId, number: Number(q) } });
     if (t) redirect(`/tickets/${t.id}`);
   }
+  // Or a claim tag at a sewing shop ("T101" is how the tag's barcode reads): straight to that repair.
+  if (/^t?\d{1,10}$/i.test(q)) {
+    const job = await db.repairJob.findFirst({ where: { shopId, side: "retail", tag: q.replace(/^t/i, "") }, select: { id: true } });
+    if (job) redirect(`/repairs/${job.id}`);
+  }
   const key = modelKey(q);
+  const phoneIds = await customerIdsByPhone(shopId, q);
   const [machines, customers, specs, parts] = await Promise.all([
     db.machine.findMany({
       where: {
@@ -31,7 +38,7 @@ export default async function Search({ searchParams }: { searchParams: Promise<{
       take: 50,
     }),
     db.customer.findMany({
-      where: { shopId, OR: [{ name: { contains: q, mode: "insensitive" } }, { phone: { contains: q } }, { email: { contains: q, mode: "insensitive" } }] },
+      where: { shopId, OR: [{ name: { contains: q, mode: "insensitive" } }, { phone: { contains: q } }, { id: { in: phoneIds } }, { email: { contains: q, mode: "insensitive" } }] },
       take: 20,
     }),
     key ? db.tensionSpec.findMany({ where: { modelKeys: { has: key } }, select: { brand: true, models: true }, take: 20 }) : Promise.resolve([]),

@@ -8,7 +8,8 @@ import { fmtDateTime } from "@/lib/format";
 import { setStatus, toggleChecklist } from "@/actions/tickets";
 import { runAction } from "@/components/action-form";
 
-export function StatusSelect({ ticketId, status }: { ticketId: string; status: TicketStatus }) {
+// partnerOwns: a partner sewing shop's machine that hasn't been picked up. They mark it collected, not the bench.
+export function StatusSelect({ ticketId, status, partnerOwns }: { ticketId: string; status: TicketStatus; partnerOwns?: boolean }) {
   const [pending, start] = useTransition();
   return (
     <div className="field">
@@ -33,11 +34,12 @@ export function StatusSelect({ ticketId, status }: { ticketId: string; status: T
         }}
       >
         {STATUS_ORDER.map((s) => (
-          <option key={s} value={s}>
+          <option key={s} value={s} disabled={partnerOwns && s === "COLLECTED" && s !== status}>
             {STATUS_LABEL[s]}
           </option>
         ))}
       </select>
+      {partnerOwns && <p className="muted mt-1 text-xs">The partner shop marks it collected when their customer picks it up.</p>}
     </div>
   );
 }
