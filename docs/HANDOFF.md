@@ -1,4 +1,4 @@
-# Handoff: where the work stands (27 Sep 2026)
+# Handoff: where the work stands (30 Sep 2026)
 
 Read this first in a new Claude Code session. It picks up work started in a cloud session: a code/QA/security
 review, fixes, and the design of several new features. Everything below is on the branch
@@ -79,7 +79,43 @@ copied into `public/` (the eslint config should ignore `public/`).
     finish/check each one.
   - None of these fixes has had the independent re-test yet (see step 3.2).
 
+## 2b. Round-3 high + medium fixes finished (30 Sep 2026, cloud session)
+
+On branch `claude/remaining-tasks-l5s9q3` in both repos (not merged into `main`, not deployed). Every high and medium
+finding is fixed or partly done; the statuses in `docs/round3/ROUND3_FINDINGS.md` say what is left for the 7 partly
+done ones (M12, M44, M53, M56, M58, M68, M71). Checked on Linux: `npm ci`, tsc, lint (0 errors), `next build`, all
+migrations on an empty and on a used database, drift check empty, Playwright specs smoke, hub, inventory, market,
+partners and register all pass, hub smoke test passes.
+
+- New migrations: StitchBench `20260927110100_round3_bench-tickets-2`, `20260927120000_round3_partners`,
+  `20260927140000_round3_hub-market-parts`, `20260927160000_round3_time-zone` (data only); StitchHub
+  `008_round3_partners.sql`, `009_round3_hub-market-parts.sql`. Deploy the hub first; old and new installs and hubs
+  work with each other (new fields are optional).
+- Behaviour the owner will notice:
+  - The monthly most-used-parts report is off for every company until it's turned on (Parts > Most used > "Offer our
+    counts"), per the sharing decision.
+  - A settlement payment a partner reports counts once someone clicks "Confirm it arrived" on the statement.
+  - Leaving the hub is refused while marketplace orders are open; an ended partnership takes no new work (updates and
+    payments still go through).
+  - Every date prints in the company's time zone (Settings). The Windows program's one company gets the PC's zone
+    once, if it was still on the New York default.
+  - "Add it to the cross-reference" opens the cross-reference form filled in from the part (no notes) instead of
+    posting at once.
+  - Settings > Your data exports tickets (with lines and readings), machines, payments and model notes too.
+  - Sign-up with a partner code only connects to a hub when the install is already on one (or it's the first company).
+  - Hosted installs load the shipped specs and factory settings again whenever the shipped files change.
+- Follow-ups noted during the work: use `assertId` (src/lib/input.ts) at the top of every server action that takes
+  an id (done in parts and scan); a held partner message makes each sync re-read the backlog after it (bandwidth);
+  "byShop" on hub link and cross-reference revisions per company; the Settings time-zone field is free text; hosted
+  sign-up could take the browser's time zone; the typed paper ticket number is unbounded (L35).
+- Testing in a Linux cloud session: Postgres 16 is installed (`/usr/lib/postgresql/16/bin`), Node 24 via nvm, and
+  Playwright needs `executablePath: "/opt/pw-browsers/chromium"` (a local config that spreads playwright.config.ts).
+  The hub spec loads its catalog links itself when HUB_ADMIN_TOKEN is set.
+
 ## 3. What to do next, in order
+
+Steps 1 and 2 below are done for high + medium (section 2b); next is step 3, then merge to `main` and deploy.
+
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
    lists that package's findings (title, file:line, problem, scenario, suggested fix, evidence). Order and
