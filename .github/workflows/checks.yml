@@ -1,0 +1,27 @@
+# Quick checks on every push: the lock file installs with npm ci (as Railway does), types and lint pass.
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Not used by the checks, but Prisma's config reads it.
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - name: Program's lock file
+        working-directory: desktop
+        run: npm ci --ignore-scripts --dry-run

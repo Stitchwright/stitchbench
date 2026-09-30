@@ -69,7 +69,7 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
   };
   // The camera reports a code once while it's in view (see useBarcodeCamera), so every code that arrives counts, as
   // does every handheld scan.
-  const cam = useBarcodeCamera(enqueue);
+  const { video: camVideo, on: camOn, start: camStart, stop: camStop } = useBarcodeCamera(enqueue);
 
   async function save() {
     const r = await saveCounts([...counts.values()].map((c) => ({ partId: c.part.id, qty: c.n })));
@@ -137,11 +137,11 @@ export function ScanStation({ tickets }: { tickets: Ticket[] }) {
           </div>
         )}
         <button className="btn btn-primary">Go</button>
-        <button type="button" className="btn" onClick={() => (cam.on ? cam.stop() : cam.start())}>
-          {cam.on ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {cam.on ? "Stop camera" : "Use camera"}
+        <button type="button" className="btn" onClick={() => (camOn ? camStop() : camStart())}>
+          {camOn ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camOn ? "Stop camera" : "Use camera"}
         </button>
       </form>
-      <video ref={cam.video} className={cam.on ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
+      <video ref={camVideo} className={camOn ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
       {mode === "count" && (
         <div className="card card-pad space-y-2">

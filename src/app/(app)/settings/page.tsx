@@ -139,15 +139,20 @@ export default async function SettingsPage() {
         <Section title="Your data">
           <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
           <div className="flex flex-wrap gap-2">
+            {/* A file download, not a page: a plain link. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/customers" className="btn btn-sm">
               Customers
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/inventory" className="btn btn-sm">
               Inventory
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/register-sales" className="btn btn-sm">
               Register sales
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/repairs" className="btn btn-sm">
               Repairs sent out / from partners
             </a>
