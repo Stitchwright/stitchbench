@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -37,7 +38,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             ) : l.sellerId ? (
               <>
                 Sold by{" "}
-                <Link href={`/market/shops/${l.sellerId}`} className="link">
+                <Link href={`/market/shops/${l.sellerId}${l.sellerRef ? `?ref=${encodeURIComponent(l.sellerRef)}` : ""}`} className="link">
                   {l.shopName}
                 </Link>{" "}
                 <Stars avg={l.sellerAvg} count={l.sellerCount} />
@@ -103,6 +104,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                     Available
                   </label>
                   <input id="ul-qty" name="qty" defaultValue={l.qty} className="input num" />
+                  {/* The number shown: the quantity is sent only when changed from it, and the hub checks it still is. */}
+                  <input type="hidden" name="qtyWas" value={l.qty} />
                 </div>
                 <div className="field">
                   <label htmlFor="ul-ship" className="label">
@@ -134,6 +137,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           ) : l.status === "ACTIVE" && l.qty > 0 ? (
             <Section title="Order from this shop">
               <ActionForm action={placeOrder.bind(null, l.id)} className="space-y-3">
+                {/* This form's order: sent again after a lost answer, it's the same order on the hub. */}
+                <input type="hidden" name="clientId" value={randomUUID()} />
                 <div className="field">
                   <label htmlFor="po-qty" className="label">
                     How many

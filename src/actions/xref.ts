@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
-import { modelKey, str } from "@/lib/format";
-import { hubFetch, hubId, saveXPart, type HubXPart } from "@/lib/hub";
-import { numberKey, parseFits, parseNumbers, parseSources, partKeys, splitList, type XFit, type XSource } from "@/lib/parts";
+import { str } from "@/lib/format";
+import { hubFetch, hubId, hubStatus, saveXPart, type HubXPart } from "@/lib/hub";
+import { numberKey, parseFits, parseNumbers, parseSources, partKeys, type XFit, type XSource } from "@/lib/parts";
 
 const KINDS = ["PART", "ACCESSORY", "SUPPLY"];
 
@@ -41,12 +41,26 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
     sources: parseSources(str(formData.get("sources")), (prev?.sources as XSource[]) ?? []),
     byName: user.name,
     note: str(formData.get("note")),
+    // The version this form was filled from: the hub refuses the edit when the entry changed since (the whole entry is
+    // replaced, so it would undo another shop's fix or the supplier scan's links).
+    ...(prev ? { baseUpdatedAt: str(formData.get("baseUpdatedAt")) ?? prev.updatedAt.toISOString() } : {}),
   };
   if (!body.name) throw new UserError("Give the part a name, e.g. \"Needle plate screw\".");
   if (!body.numbers.length) throw new UserError("Add at least one part number (one per line: Brand, number).");
   const clash = await numberOwner(body.numbers, id ?? undefined);
   if (clash) throw new UserError(`One of those numbers is already on "${clash.name}". Open that part and merge the two instead.`);
-  const x = (await (await hubFetch(id ? `/v1/xparts/${hubId(id)}` : "/v1/xparts", { method: id ? "PUT" : "POST", json: body })).json()) as HubXPart;
+  let x: HubXPart;
+  try {
+    x = (await (await hubFetch(id ? `/v1/xparts/${hubId(id)}` : "/v1/xparts", { method: id ? "PUT" : "POST", json: body })).json()) as HubXPart;
+  } catch (e) {
+    // Changed on the hub since: this copy takes the current entry, so the page shows what the other change was.
+    if (id && hubStatus(e) === 409 && "baseUpdatedAt" in body) {
+      const now = await hubFetch(`/v1/xparts/${hubId(id)}`).then((r) => r.json() as Promise<HubXPart>, () => null);
+      if (now) await saveXPart(now);
+      refresh(id);
+    }
+    throw e;
+  }
   await saveXPart(x);
   refresh(x.id);
   if (!id) redirect(`/xref/${x.id}`);
@@ -70,10 +84,20 @@ export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formD
 
 export const removeCrossRef = safe(async function removeCrossRef(id: string) {
   const user = await requireUser();
-  await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: { byName: user.name } });
-  await db.xPart.deleteMany({ where: { id } });
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: { byName: user.name } })).json()) as HubXPart;
+  // Kept aside as removed (listed on the cross-reference page, where it can be put back).
+  await saveXPart({ ...x, deleted: true });
   refresh();
   redirect("/xref");
+});
+
+/** Put back an entry someone removed, with its numbers, fits and links as they were. */
+export const restoreCrossRef = safe(async function restoreCrossRef(id: string) {
+  const user = await requireUser();
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/restore`, { method: "POST", json: { byName: user.name } })).json()) as HubXPart;
+  await saveXPart(x);
+  refresh(x.id);
+  redirect(`/xref/${x.id}`);
 });
 
 export const revertCrossRef = safe(async function revertCrossRef(id: string, revisionId: string) {
@@ -94,28 +118,16 @@ export async function crossRefHistory(id: string): Promise<{ revisions: XRevisio
   }
 }
 
-/** Put one of this shop's parts on the community cross-reference (or open the entry that already has it). */
+/**
+ * Offer one of this shop's parts to the community cross-reference (or open the entry that already has it). Nothing is
+ * sent from here: the cross-reference form opens filled in from the part (never its private notes), for the shop to
+ * check and send.
+ */
 export const addPartToCrossRef = safe(async function addPartToCrossRef(partId: string) {
   const user = await requireUser();
-  const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
+  const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId }, select: { id: true, partNumber: true, altNumbers: true } });
   if (!p) throw new UserError("Part not found.");
   const existing = await db.xPart.findFirst({ where: { numberKeys: { hasSome: partKeys(p.partNumber, p.altNumbers) } }, select: { id: true } });
   if (existing) redirect(`/xref/${existing.id}`);
-  const brand = p.brand ?? "Generic";
-  const body = {
-    name: p.description,
-    kind: p.kind,
-    category: null,
-    specs: null,
-    notes: p.notes,
-    numbers: [{ brand, number: p.partNumber }, ...p.altNumbers.map((n) => ({ brand: "Generic", number: n }))],
-    fits: splitList(p.fits).map((m) => ({ brand, model: m, modelKey: modelKey(m), evidence: "tested", source: null })),
-    sources: [],
-    byName: user.name,
-    note: "added from a shop's parts list",
-  };
-  const x = (await (await hubFetch("/v1/xparts", { method: "POST", json: body })).json()) as HubXPart;
-  await saveXPart(x);
-  refresh(x.id);
-  redirect(`/xref/${x.id}`);
+  redirect(`/xref?add=${encodeURIComponent(p.id)}#add`);
 });
