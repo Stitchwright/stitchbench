@@ -1,9 +1,13 @@
-# Quick checks on every push: the lock file installs with npm ci (as Railway does), types and lint pass.
+# Quick checks on every push: the lock file installs with npm ci (as Railway does), types and lint pass, the unit tests
+# pass, and the Windows program's database code (migrations, backup, restore) works against a real Postgres.
 name: Checks
 
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   checks:
@@ -13,8 +17,10 @@ jobs:
       # Not used by the checks, but Prisma's config reads it.
       DATABASE_URL: postgresql://build:build@localhost:5432/build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -26,3 +32,38 @@ jobs:
       - name: Program's lock file
         working-directory: desktop
         run: npm ci --ignore-scripts --dry-run
+
+  # migrate.mjs, reference.mjs and backup.mjs are what a shop's data goes through on every update and restore: run them
+  # here, before an installer is built, against Postgres 17 (the version the program ships).
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install the program's packages (no Electron download needed)
+        working-directory: desktop
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Migrations, reference data, backup and restore
+        working-directory: desktop
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+        run: npm test

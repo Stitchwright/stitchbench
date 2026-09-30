@@ -38,7 +38,7 @@ export function shopModes(kind: string | null | undefined) {
  * or a platform admin (allowReserved) may give one to a new owner.
  */
 export async function createShopWithOwner(
-  input: { shopName: string; name: string; email: string; password: string; kind?: ShopKind },
+  input: { shopName: string; name: string; email: string; password: string; kind?: ShopKind; timeZone?: string | null },
   opts: { firstOnly?: boolean; allowReserved?: boolean } = {},
 ) {
   const email = normalizeEmail(input.email);
@@ -60,8 +60,9 @@ export async function createShopWithOwner(
       data: {
         name: input.shopName.trim(),
         ...modes,
-        // The Windows program runs in the shop's own zone; a hosted (UTC) server keeps the default until Settings says.
-        timeZone: serverTimeZone() ?? undefined,
+        // The Windows program runs in the shop's own zone; on a hosted (UTC) server, the one the sign-up page's browser
+        // reported; failing both, the default until Settings says.
+        timeZone: serverTimeZone() ?? knownTimeZone(input.timeZone) ?? undefined,
         checklistItems: DEFAULT_CHECKLIST,
         users: { create: { email, name: input.name.trim(), role: "OWNER", passwordHash } },
         serviceItems: modes.doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i })) } : undefined,
@@ -70,6 +71,17 @@ export async function createShopWithOwner(
     });
     return { ...shop, first };
   });
+}
+
+/** A zone name a browser reported (America/Chicago), or null when it is missing, odd or not one this server knows. */
+function knownTimeZone(tz: string | null | undefined) {
+  if (!tz || tz.length > 64 || !tz.includes("/")) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return null;
+  }
 }
 
 export const RESERVED_EMAIL = "That email is reserved on this StitchBench.";

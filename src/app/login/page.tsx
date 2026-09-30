@@ -4,20 +4,40 @@ import Link from "next/link";
 import { signIn } from "@/auth";
 import { appName } from "@/lib/shops";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; ended?: string }> }) {
-  const { error, ended } = await searchParams;
+/**
+ * Where to go after signing in: the page the person was sent from (the proxy adds ?callbackUrl=<that page's address>), as
+ * a path on this site only. Anything else, like //other.site or a path with a backslash, means the dashboard.
+ */
+function landingPath(value: unknown) {
+  if (typeof value !== "string" || !value) return "/";
+  let path: string;
+  try {
+    const u = new URL(value, "http://this.site"); // a full address or a path: only its path and query are kept
+    path = u.pathname + u.search;
+  } catch {
+    return "/";
+  }
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\") || /^\/(login|signup|api)(\/|\?|$)/.test(path)) return "/";
+  return path;
+}
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; ended?: string; callbackUrl?: string }> }) {
+  const { error, ended, callbackUrl } = await searchParams;
   const shopApp = appName() === "StitchShop";
+  const next = landingPath(callbackUrl);
 
   async function login(formData: FormData) {
     "use server";
+    const to = landingPath(formData.get("next"));
     try {
       await signIn("credentials", {
         email: formData.get("email"),
         password: formData.get("password"),
-        redirectTo: "/",
+        redirectTo: to,
       });
     } catch (e) {
-      if (e instanceof AuthError) redirect("/login?error=1");
+      // Back to the form with the same destination, so a second try still ends up on the page that was asked for.
+      if (e instanceof AuthError) redirect(`/login?error=1${to === "/" ? "" : `&callbackUrl=${encodeURIComponent(to)}`}`);
       throw e;
     }
   }
@@ -25,6 +45,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <form action={login} className="card card-pad w-full max-w-sm space-y-4">
+        <input type="hidden" name="next" value={next} />
         <div>
           <div className="text-2xl font-bold tracking-tight">
             Stitch<span className="text-thread">{shopApp ? "Shop" : "Bench"}</span>
