@@ -211,6 +211,11 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await expect(s.getByTestId("balance")).toHaveText("$0.00");
   await sync(s);
   await r.goto(`/partners/${linkId}/statement`);
+  // The sewing shop's word first; the repair shop confirms the money arrived.
+  await expect(r.getByTestId("balance")).toHaveText("$146.80");
+  await r.getByRole("button", { name: "Confirm it arrived" }).click();
+  await expect(r.getByText("Payment confirmed")).toBeVisible();
+  await r.reload();
   await expect(r.getByTestId("balance")).toHaveText("$0.00");
   await r.screenshot({ path: "test-results/partner-statement.png", fullPage: true });
   await s.goto("/repairs");

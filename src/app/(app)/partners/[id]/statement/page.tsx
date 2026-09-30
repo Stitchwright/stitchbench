@@ -7,8 +7,8 @@ import { monthPeriod, statementFor } from "@/lib/partners";
 import { qtyText } from "@/lib/register-math";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
-import { ActionForm, Submit } from "@/components/action-form";
-import { recordSettlement } from "@/actions/partners";
+import { ActionButton, ActionForm, Submit } from "@/components/action-form";
+import { confirmSettlement, recordSettlement } from "@/actions/partners";
 
 export default async function StatementPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ month?: string }> }) {
   const user = await requireUser();
@@ -148,11 +148,19 @@ export default async function StatementPage({ params, searchParams }: { params: 
             <span className="num">{money(Math.abs(st.totals.periodNetCents))}</span>
           </li>
           {st.settlements.map((x) => (
-            <li key={x.id} className="flex justify-between">
+            <li key={x.id} className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 Paid {fmtDate(x.paidAt, tz)} ({x.netCents > 0 ? `${sewingName} to ${repairName}` : `${repairName} to ${sewingName}`}){x.note ? ` · ${x.note}` : ""}
+                {!x.confirmedAt && <span className="pill tone-wait ml-1">{link.partnerName} says it paid; not in the balance until you confirm it arrived</span>}
               </span>
-              <span className="num">{money(Math.abs(x.netCents))}</span>
+              <span className="flex items-center gap-2">
+                {!x.confirmedAt && user.role !== "TECH" && (
+                  <ActionButton action={confirmSettlement.bind(null, id, x.id)} success="Payment confirmed">
+                    Confirm it arrived
+                  </ActionButton>
+                )}
+                <span className="num">{money(Math.abs(x.netCents))}</span>
+              </span>
             </li>
           ))}
           <li className="flex justify-between border-t border-line pt-1 text-base font-bold">
