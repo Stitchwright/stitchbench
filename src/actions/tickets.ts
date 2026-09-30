@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
+import { sameText } from "@/lib/input";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
@@ -78,7 +79,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
     if (!brand || !model) throw new UserError("Enter the machine's brand and model.");
     const serial = str(formData.get("serial"));
     const existing = serial
-      ? await db.machine.findFirst({ where: { shopId, serial: { equals: serial, mode: "insensitive" }, modelKey: modelKey(model) } })
+      ? await db.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model) } })
       : null;
     const m =
       existing ??
@@ -368,7 +369,7 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
     // The shop's own stock (not a partner's consigned items), by its number, any case, or another number it's sold under.
     const key = pn ? numberKey(pn) : "";
     const part = pn
-      ? ((await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, partNumber: { equals: pn, mode: "insensitive" } } })) ??
+      ? ((await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, partNumber: sameText(pn) } })) ??
         (key.length >= 3 ? await db.part.findFirst({ where: { shopId: user.shopId, consignLinkId: null, numberKeys: { has: key } } }) : null))
       : null;
     const rawQty = Number(str(formData.get("qty")) ?? "1");
