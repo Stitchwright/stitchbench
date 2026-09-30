@@ -27,17 +27,21 @@ test("community hub: links and shared notes", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
 
-  // Join with a member invite (the first sync pulls the whole link catalog). Leave first if a past run joined.
+  // Join with a member invite (the first sync pulls the whole link catalog). Leave first if a past run joined; leaving
+  // is refused while partnerships or marketplace orders are open (other specs leave some), and then this run stays joined.
   await page.goto("/settings");
+  const join = page.getByRole("button", { name: "Join", exact: true });
   const leave = page.getByRole("button", { name: "Leave the hub" });
   if (await leave.count()) {
     await leave.click();
     await page.getByRole("button", { name: "Disconnect from the hub?" }).click();
-    await expect(page.getByRole("button", { name: "Join", exact: true })).toBeVisible();
+    await expect(join.or(page.getByText(/then leave\./))).toBeVisible();
   }
-  const invite = { v: 1, url: hub, joinKey, name: "Test hub", discord: "https://discord.gg/stitchtest" };
-  await page.locator("#hub-invite").fill("stitchhub:" + Buffer.from(JSON.stringify(invite)).toString("base64url"));
-  await page.getByRole("button", { name: "Join", exact: true }).click();
+  if (await join.count()) {
+    const invite = { v: 1, url: hub, joinKey, name: "Test hub", discord: "https://discord.gg/stitchtest" };
+    await page.locator("#hub-invite").fill("stitchhub:" + Buffer.from(JSON.stringify(invite)).toString("base64url"));
+    await join.click();
+  }
   await expect(page.getByText(/Connected to/)).toBeVisible({ timeout: 180_000 });
   // The invite's Discord link becomes "Community chat" (until the hub says otherwise at the next sync).
   await expect(page.getByRole("link", { name: "Community chat" })).toHaveAttribute("href", /discord/);
