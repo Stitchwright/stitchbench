@@ -41,7 +41,7 @@ let stopping = false; // stopServer asked the server to exit
 let starting = false; // startServer is waiting for it to answer
 let dbOwned = false; // the postgres this program started is running (not one it only connected to, nor one that died)
 let maintenance = false; // a restore is replacing the data
-let backingUp = false;
+let backingUp = 0; // backups running or waiting their turn
 let status = null; // shown in the tray when the server isn't running normally
 const recent = [];
 
@@ -411,7 +411,7 @@ function notify(title, body) {
 }
 
 async function runBackup(reason, { prune = true } = {}) {
-  backingUp = true;
+  backingUp++;
   buildTray();
   try {
     const dir = await backup(pool, cfg.backupDir, { keep: cfg.backupsToKeep, flavor: FLAVOR, prune, version: app.getVersion() });
@@ -422,7 +422,7 @@ async function runBackup(reason, { prune = true } = {}) {
     notify(`${NAME} backup failed`, String(e instanceof Error ? e.message : e));
     return null;
   } finally {
-    backingUp = false;
+    backingUp--;
     buildTray();
   }
 }
@@ -433,7 +433,9 @@ function lastBackupTime() {
 }
 
 setInterval(() => {
-  if (!pool || quitting || maintenance) return;
+  // A backup still running (a big photo table, a slow NAS) has no finished folder yet, so the last one still looks old:
+  // don't queue another behind it.
+  if (!pool || quitting || maintenance || backingUp) return;
   // Once a day, after 1 am, or whenever the last one is more than a day old.
   const d = new Date();
   const today1am = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 1).getTime();
@@ -695,6 +697,6 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(buildTray, 5 * 60_000);
     if (!process.argv.includes("--hidden") || signupOpen) showWindow();
     // Unless a restore has begun by then (on a new PC that's often the first thing done): it makes its own safety copy.
-    if (Date.now() - lastBackupTime() > 26 * 3600_000) setTimeout(() => maintenance || runBackup("startup"), 60_000);
+    if (Date.now() - lastBackupTime() > 26 * 3600_000) setTimeout(() => maintenance || backingUp || runBackup("startup"), 60_000);
   });
 }

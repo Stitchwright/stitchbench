@@ -15,6 +15,7 @@ import {
   saveServiceItem,
   saveShop,
   setUserActive,
+  setUserRole,
 } from "@/actions/settings";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
@@ -332,7 +333,23 @@ export default async function SettingsPage() {
                     </ActionButton>
                   )}
                 </div>
-                {(u.role !== "OWNER" || u.id === user.id) && (
+                {u.role !== "OWNER" && u.id !== user.id && (
+                  <details className="mt-1">
+                    <summary className="link cursor-pointer text-xs">Change role</summary>
+                    <ActionForm action={setUserRole.bind(null, u.id)} success="Role changed. They sign in again." className="mt-2 flex flex-wrap gap-2">
+                      <label className="sr-only" htmlFor={`role-${u.id}`}>
+                        Role for {u.name}
+                      </label>
+                      <select id={`role-${u.id}`} name="role" className="select w-64" defaultValue={u.role}>
+                        <option value="TECH">Tech</option>
+                        <option value="ADMIN">Admin (can change settings)</option>
+                      </select>
+                      <Submit className="btn btn-sm">Set role</Submit>
+                    </ActionForm>
+                  </details>
+                )}
+                {/* Your own password is changed under My password below, which asks for the current one. */}
+                {u.role !== "OWNER" && u.id !== user.id && (
                   <details className="mt-1">
                     <summary className="link cursor-pointer text-xs">Reset password</summary>
                     <ActionForm action={resetUserPassword.bind(null, u.id)} reset success="Password reset. Give them the new one." className="mt-2 flex flex-wrap gap-2">

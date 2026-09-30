@@ -146,6 +146,20 @@ export const addUser = safe(async function addUser(formData: FormData) {
   revalidatePath("/settings");
 });
 
+export const setUserRole = safe(async function setUserRole(userId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const role = str(formData.get("role"));
+  if (role !== "ADMIN" && role !== "TECH") throw new UserError("Pick admin or tech.");
+  const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
+  if (!u) throw new UserError("User not found.");
+  if (u.role === "OWNER") throw new UserError("The owner's role can't be changed.");
+  if (u.id === admin.id) throw new UserError("You can't change your own role.");
+  if (u.role === role) return;
+  // They sign in again, so nothing they had open keeps working with the old role.
+  await db.user.update({ where: { id: userId }, data: { role, sessionVersion: { increment: 1 } } });
+  revalidatePath("/settings");
+});
+
 export const setUserActive = safe(async function setUserActive(userId: string, active: boolean) {
   const admin = await requireAdmin();
   const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });

@@ -46,8 +46,10 @@ The tray icon's **Address for other devices** lists the addresses. Click one to 
 The Wi-Fi addresses are plain `http://`: sign-ins cross the network unencrypted, so anyone who can listen on that
 Wi-Fi could read them. Use them only on a network just for the shop's own devices, with its own password. When
 customers share the shop's Wi-Fi (no separate guest network), use the *Tailscale* address on every device instead;
-Tailscale encrypts everything, even inside the shop. After 10 wrong passwords for one email (or 50 from one
-device) in 15 minutes, sign-in pauses for that email or device.
+Tailscale encrypts everything, even inside the shop. Wrong passwords slow one account down: after 5 wrong tries
+in 15 minutes, further tries for that email are taken one at a time and each waits longer (up to 30 seconds), while
+the right password still works. The Windows program has no limit per device, so a device on the Wi-Fi can keep
+guessing at different accounts: that is one more reason to keep customers off the shop's own network.
 
 Add each person under **Settings → People**. Everyone signs in with their own email and password.
 
@@ -79,7 +81,12 @@ StitchBench, and scans made on any device are saved to `C:\Manuals\_inbox`.
   PC brings all of it back. The community hub's shared notes, parts and photos aren't in it; they sync again.
 - The tension specs, factory settings and manual list come with the program, not from a backup: a new install
   loads them on its first start, and an update brings in new ones. A restore leaves them as they are.
-- Now and then, copy the backups folder to another drive or a NAS. You can also set `backupDir` to a NAS folder.
+- Backups are not encrypted, and they hold everything the shop PC does: every customer's details, the staff logins
+  (as password hashes, which can be cracked offline) and the key that lets this install act as your shop on the
+  community hub and with its partner shops. Keep them as private as the shop PC itself. Don't put the backups folder
+  where others can open it, and remember that Windows may sync `Documents` to OneDrive.
+- Now and then, copy the backups folder to another drive or a NAS (a private one). You can also set `backupDir` to a
+  NAS folder.
 
 ### Settings file
 Tray → **Settings file** opens `%APPDATA%\StitchBench\config.json`. Restart StitchBench after changing it.
@@ -168,7 +175,8 @@ run `pg_dump` against it with the `DATABASE_PUBLIC_URL` that appears in its vari
 
 ### Updating
 Run `railway up --service stitchbench --ci` again, or push to GitHub if the service deploys from a repo. The new
-version applies database updates when it starts.
+version applies database updates when it starts. Railway switches to it only once `/api/health` answers (it waits up
+to 10 minutes), so a version whose database update fails leaves the old one running; the failed deploy's log says why.
 
 ### Hosting other shops
 One Railway StitchBench can hold several companies, each with its own separate data. Set `PLATFORM_ADMIN_EMAILS`
@@ -312,9 +320,9 @@ any database updates and new reference data by itself.
 |---|---|
 | `backup-now.mjs` | back up the running program's shop data |
 | (all of them) | act on StitchBench; set `SB_FLAVOR=stitchshop` to act on StitchShop |
-| `join-hub.mjs <hub url> <join key>` | join a community hub from the command line |
+| `join-hub.mjs <hub url> <join key>` | join a community hub from the command line (an https address; http only for a hub on this PC) |
 | `push-figures.mjs` | upload this program's figure snapshots to the hub |
-| `import-from-dev.mjs <database url>` | copy shop data from another StitchBench database into the program |
+| `import-from-dev.mjs <database url> [--replace]` | replace the program's shop data with another StitchBench database's (not a merge). A program that already has a company needs `--replace`, and its current data is backed up first |
 
 ### Reloading factory specs into a program
 The program loads the specs, factory settings and manual list that ship with it by itself. To load a newer set
