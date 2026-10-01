@@ -404,8 +404,25 @@ npm run installer:stitchshop         # → desktop/dist-stitchshop/StitchShop Se
 ```
 
 Set the version in `desktop/package.json`. Windows Smart App Control and SmartScreen block or warn about
-unsigned installers, so sign it with a code-signing certificate or with Microsoft's Trusted Signing service (see
-electron-builder's `win` signing options).
+unsigned installers, so sign them before shops install them.
+
+#### Signing the installers
+
+Two ways work with the GitHub workflow; the first is cheaper and needs no hardware token.
+
+1. **Microsoft Trusted Signing** (about $10 a month; an Azure subscription and a verified identity, which takes a few
+   days). Make a Trusted Signing account and a certificate profile in Azure, then an app registration with a client
+   secret that has the "Trusted Signing Certificate Profile Signer" role. Add to `desktop/package.json` under `build.win`:
+   `"azureSignOptions": { "publisherName": "<the name on the certificate profile>", "endpoint": "https://<region>.codesigning.azure.net", "certificateProfileName": "<profile>", "codeSigningAccountName": "<account>" }`,
+   and give the workflow the secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (electron-builder reads
+   them). Remove the `CSC_LINK` lines from the workflow in that case.
+2. **A code-signing certificate file** (OV or EV from a certificate authority; since 2023 these come on a hardware token
+   or in a cloud HSM, so a plain `.pfx` is only possible with some providers' cloud signing). Store the `.pfx` as base64
+   in the repository secret `WIN_CSC_LINK` and its password in `WIN_CSC_KEY_PASSWORD`; the workflow passes them to
+   electron-builder, which signs both installers. With the secrets empty the installers are built unsigned, as today.
+
+Either way, the first signed release still shows SmartScreen's "unknown publisher" warning until the certificate has
+built up reputation (EV certificates and Trusted Signing skip that). Keep signing every release with the same identity.
 
 ### Updating an installed program without a new installer
 Stop StitchBench (tray → Quit). Copy `desktop/server` over

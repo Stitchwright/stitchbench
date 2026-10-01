@@ -47,12 +47,20 @@ jobs:
         working-directory: desktop
         run: node prepare-app.mjs
 
+      # Code signing (INSTALL.md, "Signing the installers"): with the two secrets set, electron-builder signs both
+      # installers with that certificate; with them empty the installers are built unsigned, as before.
       - name: StitchBench installer
         working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run installer
 
       - name: StitchShop installer
         working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run installer:stitchshop
 
       - name: Keep the installers
