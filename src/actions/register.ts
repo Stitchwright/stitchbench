@@ -19,8 +19,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { viewItem, type RegisterItem } from "@/lib/register-item";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
-// functions, and the Vac Shop unit hooks (src/lib/vac/sale-units.ts) build items too.
-export type { RegisterItem };
+// functions (even a type re-export trips the bundler), and the Vac Shop unit hooks (src/lib/vac/sale-units.ts) build items too.
 const view = viewItem;
 
 /**
