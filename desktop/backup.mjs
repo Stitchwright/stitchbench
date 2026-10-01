@@ -50,14 +50,30 @@ function legacyOwn(root, name, flavor) {
   }
 }
 
+/**
+ * Newest first by the numbers in the name: the date and time, then the "-2", "-3"... a second backup in the same
+ * second gets. Compared as numbers, not text: as text "-10" sorts before "-9", so the tenth backup of a second would
+ * count as older than the ninth, and pruning would keep the wrong ones (and the last-backup time would be off).
+ */
+export function newestFirst(a, b) {
+  const nums = (n) => n.split("-").slice(1).map(Number);
+  const x = nums(a);
+  const y = nums(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    // A name with fewer numbers is the first of its second (no suffix), so it is the older one.
+    const d = (y[i] ?? 0) - (x[i] ?? 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
 /** This program's backups in root, newest first. StitchBench and StitchShop keep theirs apart even in one folder. */
 export function listBackups(root, flavor = "stitchbench") {
   if (!fs.existsSync(root)) return [];
   return fs
     .readdirSync(root)
     .filter((n) => NAME.test(n) && (n.startsWith(`${flavor}-`) || legacyOwn(root, n, flavor)) && fs.existsSync(path.join(root, n, "manifest.json")))
-    .sort()
-    .reverse()
+    .sort(newestFirst)
     .map((n) => path.join(root, n));
 }
 

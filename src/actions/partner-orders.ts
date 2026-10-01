@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
-import { numberKey, partKeys, stockFor } from "@/lib/parts";
+import { numberKey, partKeys, partNumberClash, stockFor } from "@/lib/parts";
 import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
 import { consignReturned, MAX_MONEY, MAX_QTY, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
@@ -152,6 +152,9 @@ export const partnerOrderAction = safe(async function partnerOrderAction(orderId
               supplier: link.partnerName,
               numberKeys: partKeys(stock.partNumber, [l.partNumber]),
             },
+          }).catch(async (e) => {
+            // The same number added (in any case) at the same moment hits the case-insensitive index: say so.
+            throw await partNumberClash(e, shopId, stock.partNumber);
           });
         }
         await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: l.qty }, costCents: l.unitCents } });

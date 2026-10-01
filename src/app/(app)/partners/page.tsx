@@ -8,7 +8,7 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, ActionButton, Submit } from "@/components/action-form";
 import { PartnerCodeForm } from "@/components/partner-code-form";
 import { TermsFields } from "@/components/terms-fields";
-import { enterPartnerCode, resendPartnerMessage, setUpSewingShop, syncPartnersNow } from "@/actions/partners";
+import { enterPartnerCode, resendPartnerMessage, retryFailedMessage, setUpSewingShop, syncPartnersNow } from "@/actions/partners";
 import { isPlatformAdmin } from "@/lib/shops";
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
@@ -133,13 +133,23 @@ export default async function Partners({ searchParams }: { searchParams: Promise
               </li>
             ))}
             {failures.map((f) => (
-              <li key={f.key}>
-                From {nameOf.get(f.linkId) ?? "a partner"}: <span className="mono">{f.type}</span> on {fmtDate(f.at, tz)} —{" "}
-                {f.skipped ? "set aside, not applied" : `failing (${f.tries} tries)`}: {f.error}
+              <li key={f.key} className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  From {nameOf.get(f.linkId) ?? "a partner"}: <span className="mono">{f.type}</span> on {fmtDate(f.at, tz)} —{" "}
+                  {f.skipped ? "set aside, not applied" : `failing (${f.tries} tries)`}: {f.error}
+                </span>
+                {f.skipped && admin && hub?.installKey && (
+                  <ActionButton action={retryFailedMessage.bind(null, f.key)} success="Applied">
+                    Try again
+                  </ActionButton>
+                )}
               </li>
             ))}
           </ul>
-          <p className="muted mt-2 text-xs">Set-aside messages came with data that couldn&apos;t be used. Ask the partner shop what they meant to send.</p>
+          <p className="muted mt-2 text-xs">
+            A set-aside message came with data that couldn&apos;t be used, or failed here a few times in a row. Try again fetches it from the hub and
+            applies it once more (after the cause is fixed); if it still fails, ask the partner shop what they meant to send.
+          </p>
         </Section>
       )}
 

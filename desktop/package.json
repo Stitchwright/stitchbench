@@ -38,6 +38,7 @@
       "migrate.mjs",
       "backup.mjs",
       "reference.mjs",
+      "app-role.mjs",
       "icon.png",
       "package.json",
       "node_modules/**/*"

@@ -17,6 +17,7 @@ import pg from "pg";
 import { migrate } from "./migrate.mjs";
 import { backup, restore, listBackups, readManifest } from "./backup.mjs";
 import { loadReference } from "./reference.mjs";
+import { ensureAppRole, APP_ROLE } from "./app-role.mjs";
 
 const HERE = import.meta.dirname;
 const PKG = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
@@ -40,6 +41,7 @@ let setupToken = "";
 let stopping = false; // stopServer asked the server to exit
 let starting = false; // startServer is waiting for it to answer
 let dbOwned = false; // the postgres this program started is running (not one it only connected to, nor one that died)
+let appRoleReady = false; // the server's limited database login (app-role.mjs) is set up; otherwise it gets the owner's
 let maintenance = false; // a restore is replacing the data
 let backingUp = 0; // backups running or waiting their turn
 let status = null; // shown in the tray when the server isn't running normally
@@ -94,7 +96,7 @@ function writeAtomic(file, text) {
 
 /** Save the settings, keeping the last good copy as config.json.bak. */
 function writeConfig(c) {
-  const { dbPassword, authSecret, ...plain } = c;
+  const { dbPassword, appDbPassword, authSecret, ...plain } = c;
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       readJson(CONFIG_FILE); // only a good file becomes the backup copy
@@ -144,15 +146,19 @@ function loadConfig() {
     }
     dbPassword = crypto.randomBytes(18).toString("base64url");
   }
-  if (secrets.dbPassword !== dbPassword || secrets.authSecret !== authSecret) {
-    writeAtomic(SECRETS_FILE, JSON.stringify({ dbPassword, authSecret }, null, 2));
+  // The web server's own login (app-role.mjs). Made up here when missing (a first start, an update from before 1.6, a
+  // secrets.json put back from an older copy): the program sets the role's password to this one at every start.
+  const appDbPassword = secrets.appDbPassword || crypto.randomBytes(18).toString("base64url");
+  if (secrets.dbPassword !== dbPassword || secrets.appDbPassword !== appDbPassword || secrets.authSecret !== authSecret) {
+    writeAtomic(SECRETS_FILE, JSON.stringify({ dbPassword, appDbPassword, authSecret }, null, 2));
   }
   const c = { ...defaults, ...(saved ?? {}) };
   delete c.dbPassword;
+  delete c.appDbPassword;
   delete c.authSecret;
   // First run: write the defaults so the settings file shows what can be changed. Also drops moved secrets.
   if (!saved || "dbPassword" in saved || "authSecret" in saved) writeConfig(c);
-  return { ...c, dbPassword, authSecret };
+  return { ...c, dbPassword, appDbPassword, authSecret };
 }
 
 /** A settings file that can't be read: say which and why, and offer the last good copy. Returns true to try again. */
@@ -227,9 +233,28 @@ async function startDatabase() {
   pool = new pg.Pool({ host: "127.0.0.1", port: cfg.dbPort, user: "stitchbench", password: cfg.dbPassword, database: "stitchbench", max: 4 });
   const n = await migrate(pool, path.join(APP_DIR, "migrations"), log);
   log(`database ready (${n} update${n === 1 ? "" : "s"} applied)`);
+  await setupAppRole();
 }
 
-const databaseUrl = () => `postgresql://stitchbench:${encodeURIComponent(cfg.dbPassword)}@127.0.0.1:${cfg.dbPort}/stitchbench`;
+/**
+ * The server's limited login, made or brought up to date as the owner (after the migrations, and again after a restore).
+ * If that fails the shop still opens: the server gets the owner's login as before 1.6, and the log says why.
+ */
+async function setupAppRole() {
+  try {
+    await ensureAppRole(pool, { password: cfg.appDbPassword, log });
+    appRoleReady = true;
+  } catch (e) {
+    appRoleReady = false;
+    log(`database: the server's login ${APP_ROLE} couldn't be set up; the server runs as the database owner instead:`, e);
+  }
+}
+
+// The server's database address: the limited login when it is set up, otherwise the owner's (never both at once).
+const databaseUrl = () =>
+  appRoleReady
+    ? `postgresql://${APP_ROLE}:${encodeURIComponent(cfg.appDbPassword)}@127.0.0.1:${cfg.dbPort}/stitchbench`
+    : `postgresql://stitchbench:${encodeURIComponent(cfg.dbPassword)}@127.0.0.1:${cfg.dbPort}/stitchbench`;
 
 // ---------- the StitchBench server ----------
 
@@ -477,6 +502,7 @@ async function restoreFromBackup() {
       try {
         await restore(pool, dir, FLAVOR);
         log(`restored ${dir}`);
+        await setupAppRole(); // cheap, and covers a restore that touched what the server may use
         dialog.showMessageBox({ message: "Backup restored.", detail: `The data from just before is saved in:\n${saved}` });
       } catch (e) {
         log("restore failed:", e);
