@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
-import { OWNER, RUN, disconnect, login, sql } from "./helpers";
+import { OWNER, RUN, disconnect, insert, login, sql } from "./helpers";
 import { setModule } from "./helpers/modules";
 import { clearSink, eventually, sendNow, sinkMessages } from "./helpers/messaging";
 
@@ -38,7 +38,8 @@ async function newTicket(page: Page, customer: { name: string; email: string }):
   await page.goto("/tickets/new");
   await page.getByLabel("New customer name").fill(customer.name);
   await page.getByLabel("Email address").fill(customer.email);
-  await page.getByRole("radio", { name: "Email", exact: true }).check();
+  const notify = page.getByRole("radio", { name: "Email", exact: true }); // not asked while Marketing is off
+  if (await notify.count()) await notify.check();
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
   await page.getByRole("button", { name: "Create ticket" }).click();
@@ -183,4 +184,49 @@ test("the unsubscribe link: opening changes nothing, the button opts out, Opt-ou
   await page.goto("/u/not-a-real-token-here");
   await expect(page.getByText("This link isn't valid.")).toBeVisible();
   await ctx.close();
+});
+
+test("Marketing off: a due stage says send it by hand, and /repairs asks whether a ready partner job is here", async ({ browser }) => {
+  // The acceptance's two hand checks (design 15.2 item 5), on the same company with Marketing switched off.
+  await setModule(admin, company, "Marketing", false);
+  const page = await login(browser, owner);
+  const ticketId = await newTicket(page, { name: `Hal Hand ${RUN}`, email: `hal-${RUN.toLowerCase()}@customer.test` });
+  await page.getByLabel("Status", { exact: true }).selectOption({ label: "Ready - customer called" });
+  await expect(page.getByText("Status: Ready - customer called")).toBeVisible();
+  // Ready 8 days ago: the first notice (day 7) is due, with Messages off it is staff's to send.
+  await sql(`UPDATE "Ticket" SET "pickupReadyAt" = now() - interval '8 days' WHERE id = $1`, [ticketId]);
+  await page.reload();
+  const messages = page.locator("section", { has: page.getByRole("heading", { name: "Messages" }) });
+  await expect(messages.getByText(/Due .*: send it by hand \(Messages is off\)/)).toBeVisible(); // the day-7 stage, due now
+  await expect(messages.getByText(/Due .* \(by hand: Messages is off\)/).first()).toBeVisible(); // the later stages
+  await expect(messages.getByRole("button", { name: "Send the ready notice again" })).toHaveCount(0);
+
+  // A partner repair shop marked a retail job ready: /repairs asks whether it is here; "It's back" records it and,
+  // with Messages off, warns that the customer must be called (a warning, not an error: the record was saved).
+  const link = await insert<{ id: string }>("PartnerLink", { shopId, side: "retail", partnerName: `Repair Partner ${RUN}`, updatedAt: new Date() });
+  const tag = `T${RUN.slice(-4)}`;
+  const job = await insert<{ id: string }>("RepairJob", {
+    shopId,
+    linkId: link.id,
+    side: "retail",
+    tag,
+    status: "READY_FOR_PICKUP",
+    customerName: "Hal H.",
+    brand: "Bernina",
+    model: "B770",
+    updatedAt: new Date(),
+  });
+  await page.goto("/repairs");
+  const back = page.locator("section", { has: page.getByRole("heading", { name: "Marked ready by the repair shop. Are they here?" }) });
+  await expect(back).toBeVisible();
+  await expect(back.getByText(`Repair Partner ${RUN}`)).toBeVisible();
+  await back.getByLabel(`Tag ${tag} is here`).check();
+  await back.getByRole("button", { name: "These are back", exact: true }).click();
+  const toast = page.locator("[data-sonner-toast]").first();
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveAttribute("data-type", "warning");
+  await expect(toast).toHaveText(/Recorded\. Messages are off: call the customer\./);
+  const rec = await sql<{ backAt: Date | null }>(`SELECT "backAt" FROM "RepairJob" WHERE id = $1`, [job.id]);
+  expect(rec[0].backAt).not.toBeNull();
+  await page.context().close();
 });
