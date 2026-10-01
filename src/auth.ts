@@ -1,3 +1,4 @@
+import { clientAddress } from "@/lib/client-ip";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -51,13 +52,6 @@ function fail(key: string) {
     if (failures.size <= MAX_KEYS) break;
     failures.delete(k);
   }
-}
-
-/** The address the attempt came from, as the proxy in front of us saw it (its own entry is the last one). */
-function clientAddress(request?: Request) {
-  if (process.env.TRUST_PROXY !== "true") return null;
-  const hops = request?.headers?.get("x-forwarded-for")?.split(",").map((h) => h.trim()).filter(Boolean) ?? [];
-  return hops.at(-1) ?? null;
 }
 
 const waiting = new Map<string, { tail: Promise<unknown>; n: number }>();

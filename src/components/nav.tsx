@@ -24,6 +24,9 @@ import {
   Wrench,
   Handshake,
   Fan,
+  CalendarDays,
+  GraduationCap,
+  Send,
   Lock,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +46,11 @@ const items: Item[] = [
   // Vac Shop: whatever doesRepair and sellsRetail say (a StitchShop counter can sell vacuums too).
   { href: "/vac", label: "Vac Shop", icon: Fan, module: "vac" },
   { href: "/customers", label: "Customers", icon: Users },
+  // Scheduling: the calendar (its Staff tab is the staff schedule) for every company; classes need a counter.
+  { href: "/calendar", label: "Calendar", icon: CalendarDays, module: "scheduling" },
+  { href: "/classes", label: "Classes", icon: GraduationCap, retail: true, module: "scheduling" },
+  // Marketing: the outbox (Campaigns is its tab), with a badge of customer replies nobody has looked at.
+  { href: "/messages", label: "Messages", icon: Send, module: "marketing" },
   { href: "/parts", label: "Parts", icon: Package },
   { href: "/partners", label: "Partner shops", icon: Handshake },
   { href: "/market", label: "Marketplace", icon: Store, repair: true },
@@ -65,6 +73,8 @@ export function Nav({
   sellsRetail = false,
   retailPartners = false,
   gates,
+  badges,
+  pausePill,
 }: {
   platformAdmin?: boolean;
   chatUrl?: string | null;
@@ -72,6 +82,10 @@ export function Nav({
   sellsRetail?: boolean;
   retailPartners?: boolean;
   gates?: Partial<Record<ModuleId, NavGate>>;
+  /** href -> a count shown after the item's label (unhandled replies on Messages); nothing when 0. */
+  badges?: Partial<Record<string, number>>;
+  /** A warning under the items ("Texts paused: fix in Settings"), or nothing. */
+  pausePill?: string | null;
 }) {
   const path = usePathname();
   const shown = items
@@ -99,6 +113,7 @@ export function Nav({
       {[...shown, ...(platformAdmin ? platformItems : [])].map(({ href, label, icon: Icon, module }) => {
           const active = href === activeHref;
           const readonly = module != null && gates?.[module] === "readonly";
+          const badge = badges?.[href] ?? 0;
           return (
             <Link
               key={href}
@@ -110,10 +125,20 @@ export function Nav({
             >
               <Icon size={16} aria-hidden />
               {label}
+              {badge > 0 && (
+                <span className="pill tone-wait text-xs" title={`${badge} ${badge === 1 ? "reply" : "replies"} to look at`}>
+                  {badge}
+                </span>
+              )}
               {readonly && <Lock size={12} aria-label="Read only" />}
             </Link>
           );
         })}
+      {pausePill && (
+        <div className="shrink-0 px-3 py-1">
+          <span className="pill tone-bad text-xs">{pausePill}</span>
+        </div>
+      )}
     </nav>
   );
 }

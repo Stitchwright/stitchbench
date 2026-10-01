@@ -24,6 +24,9 @@ import {
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
+import { gateFor } from "@/lib/module-gate";
+import { messagingView } from "@/lib/messaging/settings";
+import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -160,6 +163,9 @@ export default async function SettingsPage() {
   const otherKindsUsable = kinds.usable.some((k) => k.key !== "sewing");
   const kindsWithoutMenu = kinds.usable.filter((k) => k.key !== "sewing" && !usedKinds.has(k.key));
   const showVacExport = modules.states.vac.status !== "off" || stockUnits > 0;
+  // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins while Marketing isn't hidden.
+  const messagesGate = admin ? await gateFor(user.shopId, "marketing") : "hidden";
+  const messaging = messagesGate !== "hidden" ? await messagingView(user.shopId) : null;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -209,6 +215,18 @@ export default async function SettingsPage() {
           </Link>
         </div>
       </Section>
+
+      {admin && messaging && (
+        <Section title="Messages" id="messages">
+          <div className="space-y-2 text-sm">
+            <ChannelStatusLine status={channelStatus(messaging, "email", shop.timeZone)} />
+            <ChannelStatusLine status={channelStatus(messaging, "sms", shop.timeZone)} />
+            <Link href="/settings/messages" className="link">
+              Email and text settings
+            </Link>
+          </div>
+        </Section>
+      )}
 
       {admin && (
         <Section title="Your data">

@@ -11,6 +11,9 @@ import { PageHeader, Section, KV, JobStatusPill } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { answerEstimate, cancelJob, markPickedUp } from "@/actions/repair-jobs";
+import { JobRunSlot } from "@/components/slots/job-run";
+import { JobEstimateSlot } from "@/components/slots/job-estimate";
+import { JobNoticesSlot } from "@/components/slots/job-notices";
 
 export default async function RepairJobPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -45,6 +48,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
           </a>
         }
       />
+      <JobRunSlot jobId={j.id} user={user} />
 
       {j.status === "WAITING_CUSTOMER_OK" && !j.approval && (
         <Section title="The repair shop needs the customer's OK">
@@ -86,6 +90,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
           </div>
         </Section>
       )}
+      <JobEstimateSlot jobId={j.id} user={user} />
       {j.approval && (
         <p className={`pill ${j.approval === "APPROVED" ? "tone-done" : "tone-bad"}`}>
           Customer {j.approval === "APPROVED" ? `approved${j.approvedCents != null ? ` up to ${money(j.approvedCents)}` : ""}` : "declined"}
@@ -114,6 +119,7 @@ export default async function RepairJobPage({ params }: { params: Promise<{ id: 
           </div>
         </Section>
       )}
+      <JobNoticesSlot jobId={j.id} user={user} />
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Section title="Customer and machine">

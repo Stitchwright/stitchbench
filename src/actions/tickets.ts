@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { isUserError, safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { withDisclosure } from "@/lib/part-labels";
@@ -12,9 +12,14 @@ import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { CLOSING_STATUSES, OPEN_STATUSES, PAYMENT_LABEL, SITE_STATUS_ORDER, STATUS_ORDER } from "@/lib/constants";
+import { CLOSING_STATUSES, PAYMENT_LABEL, SITE_STATUS_ORDER, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { kickPartnerSync } from "@/lib/partners";
 import { requireModule } from "@/lib/modules";
+import { changeTicketStatus } from "@/lib/ticket-status";
+import { hookContext } from "@/lib/notices/context";
+import { applyNotifyBy, needNotifyBy } from "@/lib/customer-input";
+import { recordConsent } from "@/lib/messaging/consent";
+import { isNotifyBy } from "@/components/notify-by-field";
 import { canWorkOn, requireEquipment } from "@/lib/equipment/gate";
 import { checklistFor, kindOf, shopKinds } from "@/lib/equipment/shop";
 import { readAnswers } from "@/lib/equipment/form";
@@ -57,15 +62,33 @@ function amountOf(v: FormDataEntryValue | null, label: string): number | null {
   return c;
 }
 
+// Where a check-in can start: in the shop, on the truck, on the bench, or already waiting (a crafted request could
+// otherwise start a ticket ready or collected, which skips the ready-notice and never shows in the Sales log).
+const NEW_TICKET_STATUSES: TicketStatus[] = ["AT_SHOP_AWAITING_PICKUP", "IN_TRUCK", "ON_BENCH", "WAITING_CUSTOMER_OK", "WAITING_PARTS"];
+
 /**
- * A check-in with a status that isn't open (a crafted request could start a ticket already collected, which the Sales log
- * never shows). Checked first, so a mistake leaves no new customer or machine behind. (A typed paper number is checked
- * in createTicket.)
+ * A check-in's typed status must be one a new ticket can start as. Checked first, so a mistake leaves no new customer or
+ * machine behind. (A typed paper number is checked in createTicket.)
  */
 function checkNewTicket(formData: FormData) {
   const status = str(formData.get("status"));
-  if (status != null && !OPEN_STATUSES.includes(status as TicketStatus)) throw new UserError("A new ticket has to start open.");
+  if (status != null && !NEW_TICKET_STATUSES.includes(status as TicketStatus)) {
+    throw new UserError(`A new ticket can't start as ${STATUS_LABEL[status as TicketStatus] ?? status}.`);
+  }
 }
+
+/**
+ * "How should we tell them" as typed on a check-in: a non-blank valid value, null when the form has none or left it
+ * blank (blank means "not asked" for a new customer and "keep as it is" for a picked one). Anything else is refused.
+ */
+function typedNotifyBy(formData: FormData): string | null {
+  const v = str(formData.get("notifyBy"));
+  if (v == null) return null;
+  if (!isNotifyBy(v)) throw new UserError("Pick how to tell them.");
+  return v;
+}
+
+const ASK_NOTIFY_BY = "Ask how they'd like to be told (text, email or a call).";
 
 function refresh(ticketId: string) {
   // A ticket that came from a partner sewing shop: they see the change on their next sync (soon).
@@ -110,12 +133,18 @@ export const createTicket = safe(async function createTicket(formData: FormData)
     if (!brand || !model) throw new UserError(`Enter the ${kind.noun}'s brand and model.`);
   }
 
-  // Customer: pick an existing one or type a new name.
+  // Customer: pick an existing one or type a new name. With Marketing on and a channel ready, a customer who hasn't been
+  // asked how to be told (text, email or a call) must be asked now; a picked customer's answer is applied in the transaction.
   const pickedCustomerId = str(formData.get("customerId"));
   const newCustomer = str(formData.get("customerName"));
+  const notifyBy = typedNotifyBy(formData);
+  const needNotify = await needNotifyBy(shopId);
   if (pickedCustomerId) {
-    const ok = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId } });
+    const ok = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId }, select: { id: true, notifyBy: true } });
     if (!ok) throw new UserError("Customer not found.");
+    if (needNotify && ok.notifyBy === "" && !notifyBy) throw new UserError(ASK_NOTIFY_BY);
+  } else if (newCustomer && needNotify && !notifyBy) {
+    throw new UserError(ASK_NOTIFY_BY);
   }
 
   const viaAccountId = str(formData.get("viaAccountId"));
@@ -148,11 +177,18 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   const ticket = await db.$transaction(async (tx) => {
     const number = await takeTicketNumber(tx, shopId, typed);
 
-    const customerId =
-      pickedCustomerId ??
-      (newCustomer
-        ? (await tx.customer.create({ data: { shopId, name: newCustomer, phone: str(formData.get("customerPhone")), email: str(formData.get("customerEmail")) } })).id
-        : null);
+    let customerId: string | null = pickedCustomerId;
+    if (customerId) {
+      // A picked customer's typed answer (blank keeps what they said before), with its consent record.
+      if (notifyBy) await applyNotifyBy(tx, shopId, customerId, formData, user.id, "intake");
+    } else if (newCustomer) {
+      customerId = (
+        await tx.customer.create({
+          data: { shopId, name: newCustomer, phone: str(formData.get("customerPhone")), email: str(formData.get("customerEmail")), notifyBy: notifyBy ?? "" },
+        })
+      ).id;
+      if (notifyBy) await recordConsent(tx, { shopId, customerId, channel: "any", event: "notify_pref", source: "intake", detail: notifyBy, byUserId: user.id });
+    }
 
     let machineId = pickedMachineId;
     if (!machineId) {
@@ -212,47 +248,38 @@ export const createTicket = safe(async function createTicket(formData: FormData)
 
 // ---------- status and text ----------
 
-export const setStatus = safe(async function setStatus(ticketId: string, status: TicketStatus) {
-  const user = await requireUser();
-  if (!STATUS_ORDER.includes(status)) throw new UserError("Unknown status.");
-  // Closing a ticket (collected, returned unrepaired, abandoned) is always allowed; any other status is work.
-  const t = await ownTicket(user.shopId, ticketId, CLOSING_STATUSES.includes(status) ? "close" : "work", user.role);
-  if (t.jobType === "SITE" && !SITE_STATUS_ORDER.includes(status)) throw new UserError("That status isn't used for installs.");
-  if (status === "COLLECTED" && t.status !== "COLLECTED") {
-    // A partner sewing shop's machine goes back to them, and they mark it collected when their customer pays and picks
-    // it up. Set here, it would send "collected" and take the job off their register's pickup list, unpaid.
-    const job = await db.repairJob.findFirst({ where: { shopId: user.shopId, ticketId, side: "repair" }, select: { pickedUpAt: true } });
-    if (job && !job.pickedUpAt) throw new UserError("This machine came from a partner shop. They mark it collected when their customer picks it up.");
-  }
-  const now = new Date();
-  const data: Record<string, unknown> = { status };
-  const ready = (s: TicketStatus) => s === "READY_IN_TRUCK" || s === "READY_FOR_PICKUP";
-  const wasClosed = !OPEN_STATUSES.includes(t.status);
-  if (OPEN_STATUSES.includes(status)) {
-    // Open again (a mis-click, or the repair didn't hold): it hasn't left the shop, so no return date or warranty, and
-    // back on the bench it isn't ready either. Ready again later, the storage-fee clock starts from that ready-call.
-    data.closedAt = null;
-    data.warrantyUntil = null;
-    data.tradeCommissionPct = null; // open tickets follow the account's current rate
-    if (!ready(status)) data.readyAt = null;
-    else if (!t.readyAt || !(ready(t.status) || wasClosed)) data.readyAt = now;
-  } else {
-    // Collected and returned-unrepaired swapped for each other keep the day it left; closing a reopened ticket, or
-    // handing back an abandoned machine, dates from now. Only a collected repair carries the warranty.
-    const closedAt = wasClosed && t.closedAt && t.status !== "ABANDONED" ? t.closedAt : now;
-    data.closedAt = closedAt;
-    // A trade account's commission is kept as it stands when the machine leaves, so editing the account later doesn't
-    // rewrite what past months owe it.
-    if (closedAt !== t.closedAt || t.tradeCommissionPct == null) {
-      const account = t.viaAccountId ? await db.customer.findFirst({ where: { id: t.viaAccountId, shopId: user.shopId }, select: { commissionPct: true } }) : null;
-      data.tradeCommissionPct = account ? (account.commissionPct ?? 0) : null;
+/**
+ * A status change. Not `safe()`: it returns data, the line for the staff toast when a notice was queued ("A text goes
+ * to Mary Smith at 10:44 am..."). The dates (ready, closed, warranty, the pickup shelf clock) and the notices hook are
+ * in changeTicketStatus (src/lib/ticket-status.ts), the one way a direct ticket's status changes.
+ */
+export async function setStatus(ticketId: string, status: TicketStatus): Promise<{ ok: true; note?: string } | { error: string }> {
+  try {
+    const user = await requireUser();
+    if (!STATUS_ORDER.includes(status)) throw new UserError("Unknown status.");
+    // Closing a ticket (collected, returned unrepaired, abandoned) is always allowed; any other status is work.
+    const t = await ownTicket(user.shopId, ticketId, CLOSING_STATUSES.includes(status) ? "close" : "work", user.role);
+    if (t.jobType === "SITE" && !SITE_STATUS_ORDER.includes(status)) throw new UserError("That status isn't used for installs.");
+    if (status === "COLLECTED" && t.status !== "COLLECTED") {
+      // A partner sewing shop's machine goes back to them, and they mark it collected when their customer pays and picks
+      // it up. Set here, it would send "collected" and take the job off their register's pickup list, unpaid.
+      const job = await db.repairJob.findFirst({ where: { shopId: user.shopId, ticketId, side: "repair" }, select: { pickedUpAt: true } });
+      if (job && !job.pickedUpAt) throw new UserError("This machine came from a partner shop. They mark it collected when their customer picks it up.");
     }
-    data.warrantyUntil =
-      status === "COLLECTED" ? (t.status === "COLLECTED" && t.warrantyUntil ? t.warrantyUntil : new Date(now.getTime() + t.shop.warrantyDays * 86400000)) : null;
+    // A trade account's commission is kept as it stands when the machine leaves (statusData pins it when the ticket
+    // closes), so editing the account later doesn't rewrite what past months owe it. Looked up outside the transaction.
+    const account = t.viaAccountId ? await db.customer.findFirst({ where: { id: t.viaAccountId, shopId: user.shopId }, select: { commissionPct: true } }) : null;
+    const commissionPct = account ? (account.commissionPct ?? 0) : null;
+    // What the notices hook needs, loaded before the transaction so it never opens a second connection inside one.
+    const ctx = await hookContext(user.shopId, user.name);
+    const r = await db.$transaction((tx) => changeTicketStatus(tx, t, status, new Date(), t.shop.warrantyDays, ctx, commissionPct));
+    refresh(ticketId);
+    return { ok: true, ...(r.note ? { note: r.note } : {}) };
+  } catch (e) {
+    if (isUserError(e)) return { error: e.message };
+    throw e;
   }
-  await db.ticket.update({ where: { id: ticketId }, data });
-  refresh(ticketId);
-});
+}
 
 // The ticket's text form: column, form field, how it's read, and its name on the page.
 const text = (v: FormDataEntryValue | null) => str(v)?.replace(/\r\n?/g, "\n") ?? null;

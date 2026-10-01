@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/session";
 import { firstValues } from "@/lib/search-params";
 import { money, ticketNo } from "@/lib/format";
 import { getModules } from "@/lib/modules";
+import { gateFor } from "@/lib/module-gate";
+import { needNotifyBy } from "@/lib/customer-input";
 import { canWorkOn } from "@/lib/equipment/gate";
 import { kindByKey, kindOf, servicesFor, shopKinds } from "@/lib/equipment/shop";
 import { SEWING_KIND } from "@/lib/equipment/sewing";
@@ -11,6 +13,7 @@ import { withArticle } from "@/lib/equipment/types";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CustomerPicker } from "@/components/customer-picker";
+import { NotifyByField } from "@/components/notify-by-field";
 import { ModuleNotice } from "@/components/module-notice";
 import { KindChips } from "@/components/equipment/kind-chips";
 import { IntakeFields } from "@/components/equipment/intake-fields";
@@ -33,7 +36,9 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
       : (kinds.usable.find((k) => k.key === shop.checkInKind) ?? SEWING_KIND);
   const usable = machine ? await canWorkOn(user.shopId, machine.equipment) : kinds.usable.some((k) => k.key === kind.key);
   const sewing = kind.key === "sewing";
-  const [accounts, services, specBrands, presetCustomer, blocked] = await Promise.all([
+  // "How should we tell them": asked (required) while Marketing is on and email or texts are ready; offered as an
+  // optional choice while Marketing isn't hidden; not shown otherwise.
+  const [accounts, services, specBrands, presetCustomer, blocked, needNotify, marketingGate] = await Promise.all([
     db.customer.findMany({ where: { shopId: user.shopId, kind: "TRADE" }, orderBy: { name: "asc" } }),
     servicesFor(user.shopId, kind.key),
     sewing ? db.tensionSpec.findMany({ distinct: ["brand"], select: { brand: true }, orderBy: { brand: "asc" } }) : [],
@@ -42,6 +47,8 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
       return id ? db.customer.findFirst({ where: { id, shopId: user.shopId, kind: "RETAIL" }, select: { id: true, name: true, phone: true } }) : null;
     })(),
     !usable && kind.module ? getModules(user.shopId).then((m) => m.states[kind.module!]) : null,
+    needNotifyBy(user.shopId),
+    gateFor(user.shopId, "marketing"),
   ]);
   const brands = sewing ? specBrands.map((b) => b.brand) : kind.brands;
   const chipHref = (key: string) => `/tickets/new?kind=${encodeURIComponent(key)}${sp.customerId ? `&customerId=${encodeURIComponent(sp.customerId)}` : ""}`;
@@ -77,7 +84,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
           <input type="hidden" name="kind" value={kind.key} />
           <Section title="Customer">
             <div className="grid-form">
-              <CustomerPicker initial={presetCustomer} />
+              <CustomerPicker initial={presetCustomer} notifyRequired={needNotify} />
               <div className="field">
                 <label htmlFor="customerName" className="label">
                   New customer name
@@ -92,10 +99,11 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
               </div>
               <div className="field">
                 <label htmlFor="customerEmail" className="label">
-                  Email
+                  Email address
                 </label>
                 <input id="customerEmail" name="customerEmail" type="email" className="input" />
               </div>
+              {marketingGate !== "hidden" && <NotifyByField required={needNotify} name="notifyBy" />}
               <div className="field">
                 <label htmlFor="viaAccountId" className="label">
                   {sewing ? "Came in through (quilt shop / dealer)" : "Came in through (dealer / partner shop)"}

@@ -7,6 +7,10 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { CustomerForm } from "@/components/customer-form";
+import { CustomerMessages } from "@/components/customer-messages";
+import { CustomerClassesSlot } from "@/components/slots/customer-classes";
+import { CustomerAppointmentsSlot } from "@/components/slots/customer-appointments";
+import { gateFor } from "@/lib/module-gate";
 import { saveCustomer } from "@/actions/records";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -97,9 +101,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             )}
           </Section>
         )}
+        <CustomerClassesSlot customerId={c.id} user={user} />
+        <CustomerAppointmentsSlot customerId={c.id} user={user} />
         <Section title="Details">
-          <CustomerForm action={saveCustomer.bind(null, c.id)} customer={c} submitLabel="Save" />
+          <CustomerForm action={saveCustomer.bind(null, c.id)} customer={c} submitLabel="Save" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
         </Section>
+        <CustomerMessages customerId={c.id} user={user} />
       </div>
     </div>
   );

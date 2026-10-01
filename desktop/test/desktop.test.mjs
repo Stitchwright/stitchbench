@@ -136,6 +136,77 @@ test("restore: license keys pasted after the backup come back, and the equipment
   }
 });
 
+test("restore: opt-outs and consent recorded after the backup stay, restored marketing is cancelled, notices requeued, marketing on hold", { skip }, async () => {
+  const t = await shop();
+  // Times as the UTC wall clock Prisma writes into TIMESTAMP(3) columns (backup.mjs compares the backup's time the same way).
+  const at = (d) => d.toISOString();
+  const AT = "::timestamptz AT TIME ZONE 'UTC'";
+  try {
+    const earlier = new Date(Date.now() - 86_400_000);
+    await t.pool.query(
+      `UPDATE "Customer" SET phone = '+15551230001', "notifyBy" = 'sms', "smsConsentAt" = $1${AT}, "smsConsentPhone" = '+15551230001', "smsConsentSource" = 'form', "smsConsentText" = 'Yes, text me offers' WHERE id = 'c1'`,
+      [at(earlier)],
+    );
+    await t.pool.query(`INSERT INTO "Customer" (id, "shopId", name, "notifyBy") VALUES ('c2', 'shop1', 'Bob', 'email')`);
+    await t.pool.query(`INSERT INTO "MessagingSettings" ("shopId", "inboundAt", "inboundIncomplete", "updatedAt") VALUES ('shop1', $1${AT}, 2, now())`, [at(earlier)]);
+    await t.pool.query(`INSERT INTO "Suppression" ("shopId", channel, address, scope, source) VALUES ('shop1', 'email', 'bob@example.com', 'marketing', 'link')`);
+    await t.pool.query(`INSERT INTO "Campaign" (id, "shopId", name, channel, body, audience, status, "updatedAt") VALUES ('camp1', 'shop1', 'Sale', 'sms', 'Sale!', '{}', 'SENDING', now())`);
+    await t.pool.query(
+      `INSERT INTO "OutMessage" (id, "shopId", channel, purpose, kind, "customerId", address, body, status, "campaignId", "claimedAt", "nextTryAt") VALUES
+         ('m1', 'shop1', 'sms', 'marketing', 'campaign', 'c1', '+15551230001', 'Sale!', 'QUEUED', 'camp1', NULL, NULL),
+         ('m2', 'shop1', 'email', 'notice', 'ready', 'c2', 'bob@example.com', 'Ready', 'QUEUED', NULL, NULL, NULL),
+         ('m3', 'shop1', 'email', 'notice', 'ready', 'c2', 'bob@example.com', 'Ready (2)', 'SENDING', NULL, now(), now())`,
+    );
+    const dir = await backup(t.pool, t.backups);
+
+    // After the backup: Ann texts STOP and asks for no messages, Bob's opt-out widens, a later customer sets a preference,
+    // and the campaign finishes sending.
+    const later = Date.now();
+    await t.pool.query(`INSERT INTO "Suppression" ("shopId", channel, address, scope, source) VALUES ('shop1', 'sms', '+15551230001', 'all', 'reply')`);
+    await t.pool.query(`UPDATE "Suppression" SET scope = 'all' WHERE address = 'bob@example.com'`);
+    await t.pool.query(`INSERT INTO "Customer" (id, "shopId", name, "notifyBy") VALUES ('c3', 'shop1', 'Cat', 'both')`);
+    await t.pool.query(
+      `INSERT INTO "ConsentEvent" (id, "shopId", "customerId", channel, event, address, source, detail, "at") VALUES
+         ('ev1', 'shop1', 'c1', 'sms', 'marketing_no', '+15551230001', 'reply', 'STOP', $1${AT}),
+         ('ev2', 'shop1', 'c1', 'any', 'notify_pref', NULL, 'counter', 'none', $2${AT}),
+         ('ev3', 'shop1', 'c3', 'any', 'notify_pref', NULL, 'counter', 'both', $3${AT}),
+         ('ev4', 'shop1', 'c2', 'any', 'notify_pref', NULL, 'counter', 'bogus', $3${AT})`,
+      [at(new Date(later + 1000)), at(new Date(later + 2000)), at(new Date(later + 3000))],
+    );
+    await t.pool.query(`UPDATE "Customer" SET "notifyBy" = 'none' WHERE id = 'c1'`);
+    await t.pool.query(`UPDATE "OutMessage" SET status = 'SENT' WHERE id = 'm1'`);
+    await restore(t.pool, dir);
+
+    const rows = async (sql) => (await t.pool.query(sql)).rows;
+    assert.deepEqual(await rows(`SELECT channel, address, scope FROM "Suppression" ORDER BY channel`), [
+      { channel: "email", address: "bob@example.com", scope: "all" },
+      { channel: "sms", address: "+15551230001", scope: "all" },
+    ], "the STOP survives and an opt-out never narrows");
+    assert.deepEqual(await rows(`SELECT id, "customerId" FROM "ConsentEvent" ORDER BY id`), [
+      { id: "ev1", customerId: "c1" },
+      { id: "ev2", customerId: "c1" },
+      { id: "ev3", customerId: null },
+      { id: "ev4", customerId: "c2" },
+    ], "every event stays; one about a customer the backup lacks names no customer");
+    const [ann] = await rows(`SELECT "notifyBy", "smsConsentAt", "smsConsentPhone", "smsConsentSource", "smsConsentText" FROM "Customer" WHERE id = 'c1'`);
+    assert.deepEqual(ann, { notifyBy: "none", smsConsentAt: null, smsConsentPhone: null, smsConsentSource: null, smsConsentText: null }, "consent cleared, 'no messages' kept");
+    assert.equal((await rows(`SELECT "notifyBy" FROM "Customer" WHERE id = 'c2'`))[0].notifyBy, "email", "a preference that isn't one of the five values is ignored");
+    assert.deepEqual(await rows(`SELECT id, status FROM "OutMessage" ORDER BY id`), [
+      { id: "m1", status: "CANCELLED" },
+      { id: "m2", status: "QUEUED" },
+      { id: "m3", status: "QUEUED" },
+    ], "restored marketing never goes out again; notices go back to the queue");
+    assert.equal((await rows(`SELECT "claimedAt" FROM "OutMessage" WHERE id = 'm3'`))[0].claimedAt, null);
+    assert.equal((await rows(`SELECT status FROM "Campaign"`))[0].status, "CANCELLED");
+    const [ms] = await rows(`SELECT "marketingHoldAt", "inboundAt", "inboundIncomplete" FROM "MessagingSettings"`);
+    assert.ok(ms.marketingHoldAt, "marketing is on hold until an admin checks the opt-outs");
+    assert.equal(ms.inboundAt, null, "replies are read again from the start");
+    assert.equal(ms.inboundIncomplete, 0);
+  } finally {
+    await t.done();
+  }
+});
+
 test("restore: a backup from a newer version, a missing file or a damaged file is refused and changes nothing", { skip }, async () => {
   const t = await shop();
   try {

@@ -24,6 +24,8 @@ import { IntakeFields } from "@/components/equipment/intake-fields";
 import { ReadingsPanel } from "@/components/equipment/readings-panel";
 import { DetailsList } from "@/components/equipment/details-list";
 import { SitePanel } from "@/components/vac/site-panel";
+import { TicketEstimateSlot } from "@/components/slots/ticket-estimate";
+import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { UnitBadge } from "@/components/vac/unit-badge";
 import {
   addLine,
@@ -203,6 +205,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <div className="space-y-6 xl:col-span-3">
           {isSite && <SitePanel ticketId={t.id} user={user} readOnly={!canWork} />}
 
+          <TicketEstimateSlot ticketId={t.id} user={user} />
           <Section title="Status and work">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <StatusSelect
@@ -620,6 +623,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </Section>
           )}
 
+          <TicketNoticesSlot ticketId={t.id} user={user} />
           <Section title="Photos">
             <fieldset disabled={!canWork} className="min-w-0">
               <PhotoStrip machineId={m.id} ticketId={t.id} photos={m.photos} timeZone={tz} />

@@ -5,6 +5,8 @@ import { fmtDate, money } from "@/lib/format";
 import { startOfMonth } from "@/lib/time-zone";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, Empty, JobStatusPill } from "@/components/ui";
+import { RepairsRunsSlot } from "@/components/slots/repairs-runs";
+import { RepairsBackSlot } from "@/components/slots/repairs-back";
 
 const GROUPS: { title: string; statuses: string[] }[] = [
   { title: "Needs the customer's OK", statuses: ["WAITING_CUSTOMER_OK"] },
@@ -81,6 +83,8 @@ export default async function Repairs() {
           </Link>
         }
       />
+      <RepairsRunsSlot user={user} />
+      <RepairsBackSlot user={user} />
       {open.length === 0 && <Empty>No machines in progress.</Empty>}
       {GROUPS.map((g) => {
         const list = open.filter((j) => g.statuses.includes(j.status));

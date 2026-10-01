@@ -9,6 +9,8 @@ import { isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
 import { getModules } from "@/lib/modules";
 import { fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
+import { gates as dataGates } from "@/lib/module-gate";
+import { messagingView } from "@/lib/messaging/settings";
 import { GraceBanner, ModulePills, type GraceItem, type RenewPill } from "@/components/module-banner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +23,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
   const doesRepair = shop?.doesRepair ?? true;
   const admin = user.role !== "TECH";
+  // Nav gates: the modules' own state, then Scheduling / Marketing as the data says (a company with records of a
+  // module that ended still sees the item, read-only).
+  const gates = { ...toNavGates(modules), ...(await dataGates(user.shopId)) };
+  // Marketing, unless hidden: customer replies nobody has handled (the Messages badge) and a paused channel (the pill).
+  const [replies, ms] = gates.marketing !== "hidden" ? await Promise.all([db.inboundText.count({ where: { shopId: user.shopId, keyword: null, handledAt: null } }), messagingView(user.shopId)]) : [0, null];
+  const pausePill = ms?.emailPausedAt ? "Email paused: fix in Settings" : ms?.smsPausedAt ? "Texts paused: fix in Settings" : null;
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
   // Paid modules: a quiet renewal pill for admins, and a banner for everyone while a module is in its grace period.
@@ -62,7 +70,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           doesRepair={doesRepair}
           sellsRetail={shop?.sellsRetail ?? false}
           retailPartners={retailPartners > 0}
-          gates={toNavGates(modules)}
+          gates={gates}
+          badges={{ "/messages": replies }}
+          pausePill={pausePill}
         />
         <ModulePills items={pills} />
         {offline && (

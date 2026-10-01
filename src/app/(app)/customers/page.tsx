@@ -6,6 +6,7 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 import { CustomerForm } from "@/components/customer-form";
 import { saveCustomer } from "@/actions/records";
 import { customerIdsByPhone } from "@/lib/phone-search";
+import { gateFor } from "@/lib/module-gate";
 
 export default async function Customers({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
@@ -79,7 +80,7 @@ export default async function Customers({ searchParams }: { searchParams: Promis
         )}
       </div>
       <Section title="Add a customer or shop account">
-        <CustomerForm action={saveCustomer.bind(null, null)} submitLabel="Add" />
+        <CustomerForm action={saveCustomer.bind(null, null)} submitLabel="Add" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
       </Section>
     </div>
   );

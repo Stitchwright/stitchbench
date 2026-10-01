@@ -9,6 +9,10 @@ import { PAID_ELSEWHERE } from "@/lib/sales";
 import { startOfToday } from "@/lib/time-zone";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PartnerTodo } from "@/components/partner-todo";
+import { DashboardRunsSlot } from "@/components/slots/dashboard-runs";
+import { TodaySlot } from "@/components/slots/today";
+import { EstimatesTodoSlot } from "@/components/slots/estimates-todo";
+import { TodoLinesSlot } from "@/components/slots/todo-lines";
 import { redirect } from "next/navigation";
 import { shopKinds } from "@/lib/equipment/shop";
 import { withArticle, type EquipmentKind } from "@/lib/equipment/types";
@@ -90,6 +94,10 @@ export default async function Dashboard() {
 
       <MarketTodo shopId={shopId} />
       <PartnerTodo shopId={shopId} />
+      <DashboardRunsSlot user={user} />
+      <TodaySlot user={user} place="dashboard" />
+      <EstimatesTodoSlot user={user} />
+      <TodoLinesSlot user={user} />
 
       {overdue.length > 0 && (
         <div className="card card-pad tone-bad">

@@ -3,8 +3,9 @@
 // manual list come with the program (reference.mjs loads them), so they're left out: a restore must not put an older
 // set back. The community hub's cached copies are left out too: they're synced again from the hub after a restore.
 // Each backup is a folder of gzipped COPY files plus manifest.json; restore replaces the shop data with it, except
-// that the license keys the PC holds are merged back (a key pasted after the backup was made comes back), and data
-// fix-ups from later migrations are applied to a backup from before them.
+// that the license keys the PC holds are merged back (a key pasted after the backup was made comes back), opt-outs
+// and consent changes recorded since the backup are kept (a customer who said STOP stays stopped), and data fix-ups
+// from later migrations are applied to a backup from before them.
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -15,8 +16,9 @@ const { to: copyTo, from: copyFrom } = copyStreams;
 // Never in a backup: the migration record (the program's own), the shipped reference sets (reference.mjs reloads them,
 // and skips a table whose comment says the shipped set is in, which a restore wouldn't change) and the hub's cached
 // data (re-synced from the hub). The hub connection itself (HubState), this shop's marketplace orders and its listings
-// are kept: which company on this install owns a listing (shopId) is known here only, not on the hub.
-const SKIP = new Set(["_prisma_migrations", "TensionSpec", "FactorySetting", "LibraryDoc", "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "ListingPhoto"]);
+// are kept: which company on this install owns a listing (shopId) is known here only, not on the hub. JobLease holds
+// which process is running a background job right now (src/lib/lease.ts): never data, cleaned at every start.
+const SKIP = new Set(["_prisma_migrations", "TensionSpec", "FactorySetting", "LibraryDoc", "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "ListingPhoto", "JobLease"]);
 // Backed up, but restored only from a backup that has it, so an older backup leaves what's here alone: the reference
 // pictures, and the listings (backups before 1.4.2 left them out; the ones here keep their owner, the hub refreshes the rest).
 const OPTIONAL = new Set(["FigureImage", "ModelImage", "Listing"]);
@@ -93,6 +95,7 @@ function oneAtATime(fn) {
 /**
  * Back up to a new folder in root. keep = how many of this program's backups to keep (older ones are removed unless
  * prune is false, as for the safety copy before a restore, which must never remove the backup being restored).
+ * @returns {Promise<string>} the new backup folder
  */
 export function backup(pool, root, { keep = 30, flavor = "stitchbench", prune = true, version = null } = {}) {
   return oneAtATime(() => backupNow(pool, root, { keep, flavor, prune, version }));
@@ -184,6 +187,7 @@ export function readManifest(dir, flavor = "stitchbench") {
 // Data fix-ups from migrations: a backup from before a migration comes back with them applied. A plain string is safe
 // to repeat and runs on every restore. `{ before: "<migration folder name>", sql }` runs only for a backup made before
 // that migration (manifest.lastMigration missing or older), so a backup made after it is left exactly as it was saved.
+// `{ sql, params: (manifest) => [...] }` runs with those parameters (every restore unless `before` is given too).
 const FIXUPS = [
   // 20260925170100_part_number_keys
   `UPDATE "Part" SET "numberKeys" = ARRAY[regexp_replace(upper("partNumber"), '[^A-Z0-9]', '', 'g')] WHERE "numberKeys" IS NULL OR cardinality("numberKeys") = 0`,
@@ -195,14 +199,37 @@ const FIXUPS = [
   // the same kinds the migration's backfill did (src/lib/service-menu.ts starterKindFor). A shop that has since set
   // its whole menu to "every kind" (all null) is a backup from after it, which this leaves alone.
   { before: "20261001120000_paid_modules", sql: `UPDATE "ServiceItem" SET "equipmentKind" = CASE WHEN "name" ~* '^(storage fee|rush|diagnosis)' THEN NULL ELSE 'sewing' END` },
+  // 20261001130000_scheduling_messaging (scheduling-messaging-design.md 2.3)
+  // A restored backup's unsent marketing may have gone out after the backup was taken: never sent again.
+  `UPDATE "OutMessage" SET status = 'CANCELLED', error = 'Not sent: restored from a backup (it may have gone out already)'
+     WHERE status IN ('QUEUED', 'SENDING') AND purpose = 'marketing'`,
+  // Notices go back to the queue; the worker's stillWanted() drops the ones that no longer apply.
+  `UPDATE "OutMessage" SET status = 'QUEUED', "claimedAt" = NULL, "nextTryAt" = NULL WHERE status = 'SENDING' AND purpose = 'notice'`,
+  { sql: `UPDATE "Campaign" SET status = 'CANCELLED', "finishedAt" = $1 WHERE status IN ('QUEUING', 'SENDING')`, params: () => [new Date()] },
+  // Re-read every text reply since the newest one in the backup, and hold marketing until an admin has checked opt-outs.
+  { sql: `UPDATE "MessagingSettings" SET "inboundAt" = NULL, "inboundIncomplete" = 0, "marketingHoldAt" = $1`, params: () => [new Date()] },
+  `UPDATE "Ticket" SET "pickupReadyAt" = "readyAt" WHERE status = 'READY_FOR_PICKUP' AND "pickupReadyAt" IS NULL`,
 ];
 
-/** Whether a fix-up applies to a backup whose manifest says this: plain strings always, gated ones before their migration. */
+/** Whether a fix-up applies to a backup whose manifest says this: ungated ones always, gated ones before their migration. */
 function fixupApplies(fixup, manifest) {
-  return typeof fixup === "string" || !manifest.lastMigration || manifest.lastMigration < fixup.before;
+  return typeof fixup === "string" || !fixup.before || !manifest.lastMigration || manifest.lastMigration < fixup.before;
 }
 
-/** Replace all shop data with a backup. The database must already be at (or past) the backup's version. */
+// The five values of Customer.notifyBy (NOTIFY_BY_LABEL in src/lib/constants.ts); a notify_pref event's detail is one of them.
+const NOTIFY_BY = new Set(["", "email", "sms", "both", "none"]);
+
+/**
+ * The backup's time as a UTC wall-clock timestamp, for comparing with the app's TIMESTAMP(3) columns: Prisma stores UTC
+ * in them, and a JS Date parameter would be sent in the PC's own time (pg serializes local time, Postgres drops the
+ * offset), so it would be hours off. Used as `$n::timestamptz AT TIME ZONE 'UTC'`.
+ */
+const sinceParam = (manifest) => new Date(manifest.created).toISOString();
+
+/**
+ * Replace all shop data with a backup. The database must already be at (or past) the backup's version.
+ * @returns {Promise<object>} the backup's manifest
+ */
 export function restore(pool, dir, flavor = "stitchbench") {
   return oneAtATime(() => restoreNow(pool, dir, flavor));
 }
@@ -227,6 +254,14 @@ async function restoreNow(pool, dir, flavor) {
     // skipped. Keys verify themselves and are bound to their company, so merging them can't add anything not bought.
     const keepLicenses = here.includes("License");
     if (keepLicenses) await client.query(`CREATE TEMP TABLE "_keep_License" ON COMMIT DROP AS SELECT * FROM "License"`);
+    // Opt-outs and consent survive a restore (scheduling-messaging-design.md 2.3): a customer who texted STOP or said
+    // "no messages" after the backup was made must not be messaged again because an older copy of their record came
+    // back. Every opt-out (Suppression) and every consent event recorded since the backup are kept aside here and put
+    // back after the load; the law asks for these records to be kept, so none is ever dropped by a restore.
+    const keepConsent = here.includes("Suppression") && here.includes("ConsentEvent");
+    const since = sinceParam(manifest);
+    const keepSup = keepConsent ? (await client.query(`SELECT * FROM "Suppression"`)).rows : [];
+    const keepEv = keepConsent ? (await client.query(`SELECT * FROM "ConsentEvent" WHERE "at" > ($1::timestamptz AT TIME ZONE 'UTC')`, [since])).rows : [];
     // Load in any order: foreign keys aren't checked while restoring.
     await client.query("SET LOCAL session_replication_role = replica");
     const inBackup = new Set(manifest.tables.map((t) => t.name));
@@ -246,7 +281,8 @@ async function restoreNow(pool, dir, flavor) {
     }
     // Only keys of a company the backup has: a company made after the backup is gone, and so are its keys.
     if (keepLicenses) await client.query(`INSERT INTO "License" SELECT * FROM "_keep_License" WHERE "shopId" IN (SELECT id FROM "Shop") ON CONFLICT DO NOTHING`);
-    for (const f of FIXUPS) if (fixupApplies(f, manifest)) await client.query(typeof f === "string" ? f : f.sql);
+    if (keepConsent) await restoreConsent(client, keepSup, keepEv, since);
+    for (const f of FIXUPS) if (fixupApplies(f, manifest)) await client.query(f.sql ?? f, f.params ? f.params(manifest) : []);
     // The hub's cached data isn't in backups, so sync it all again from the start.
     // Ask the hub again for everything; what was already applied is skipped (PartnerSeen), the rest catches the shop up.
     if (here.includes("HubState")) {
@@ -259,5 +295,47 @@ async function restoreNow(pool, dir, flavor) {
     throw e;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Put the opt-outs and the consent events recorded since the backup back after the load (same transaction), and make
+ * the restored customer records agree with them. Rows of a company the backup doesn't have are dropped with it.
+ */
+async function restoreConsent(client, keepSup, keepEv, since) {
+  // An opt-out the backup already has keeps the wider scope: 'all' (STOP: nothing at all) never goes back to 'marketing'.
+  for (const s of keepSup) {
+    await client.query(
+      `INSERT INTO "Suppression" ("shopId", channel, address, scope, source, "at")
+         SELECT $1, $2, $3, $4, $5, $6 WHERE EXISTS (SELECT 1 FROM "Shop" WHERE id = $1)
+         ON CONFLICT ("shopId", channel, address) DO UPDATE SET scope = CASE WHEN EXCLUDED.scope = 'all' THEN 'all' ELSE "Suppression".scope END`,
+      [s.shopId, s.channel, s.address, s.scope, s.source, s.at],
+    );
+  }
+  // The event stays even when its customer isn't in the backup (the address is on it); it then names no customer.
+  for (const e of keepEv) {
+    await client.query(
+      `INSERT INTO "ConsentEvent" (id, "shopId", "customerId", channel, event, address, source, detail, "byUserId", "at")
+         SELECT $1, $2, (SELECT id FROM "Customer" WHERE id = $3), $4, $5, $6, $7, $8, $9, $10 WHERE EXISTS (SELECT 1 FROM "Shop" WHERE id = $2)
+         ON CONFLICT (id) DO NOTHING`,
+      [e.id, e.shopId, e.customerId, e.channel, e.event, e.address, e.source, e.detail, e.byUserId, e.at],
+    );
+  }
+  // A restored record may still say the customer agreed to marketing texts, from before they stopped them.
+  await client.query(
+    `UPDATE "Customer" c SET "smsConsentAt" = NULL, "smsConsentPhone" = NULL, "smsConsentSource" = NULL, "smsConsentText" = NULL
+       WHERE EXISTS (SELECT 1 FROM "Suppression" s WHERE s."shopId" = c."shopId" AND s.channel = 'sms' AND s.address = c."smsConsentPhone")
+          OR EXISTS (SELECT 1 FROM "ConsentEvent" e WHERE e."customerId" = c.id AND e.event = 'marketing_no' AND e."at" > ($1::timestamptz AT TIME ZONE 'UTC'))`,
+    [since],
+  );
+  // Preferences changed since the backup: the newest notify_pref per customer wins. "No messages" stays "No messages".
+  const newest = new Map();
+  for (const e of keepEv) {
+    if (e.event !== "notify_pref" || !e.customerId || !NOTIFY_BY.has(e.detail)) continue;
+    const have = newest.get(e.customerId);
+    if (!have || new Date(e.at) > new Date(have.at)) newest.set(e.customerId, e);
+  }
+  for (const [customerId, e] of newest) {
+    await client.query(`UPDATE "Customer" SET "notifyBy" = $1 WHERE id = $2`, [e.detail, customerId]); // no row: not in the backup
   }
 }
