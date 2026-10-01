@@ -14,7 +14,12 @@ Start-Sleep 2
 
 robocopy "$repo\desktop\server" "$inst\resources\server" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
-foreach ($f in "main.mjs", "migrate.mjs", "backup.mjs", "reference.mjs", "icon.png") { Copy-Item "$repo\desktop\$f" "$inst\resources\app\$f" -Force }
+# Every program file the installer ships (desktop\package.json build.files), so a new file such as app-role.mjs isn't
+# left out: 1.6.1 failed to start when this list was written by hand.
+$pkg = Get-Content "$repo\desktop\package.json" -Raw | ConvertFrom-Json
+$files = @($pkg.build.files | Where-Object { $_ -notmatch '[\\/*]' -and $_ -ne "package.json" -and (Test-Path "$repo\desktop\$_" -PathType Leaf) })
+if ($files.Count -lt 5) { throw "desktop\package.json build.files lists too few program files ($($files -join ', '))" }
+foreach ($f in $files) { Copy-Item "$repo\desktop\$f" "$inst\resources\app\$f" -Force }
 
 # Version, written without a byte-order mark (Electron reads it as JSON).
 $pkgPath = "$inst\resources\app\package.json"
