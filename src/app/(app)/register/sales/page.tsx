@@ -60,7 +60,7 @@ export default async function RegisterSales({ searchParams }: { searchParams: Pr
       }
       if (l.repairJobId) repairs += sign * amt;
       else if (l.consignLinkId) consigned += sign * (consignSales.get(l.id) ?? amt);
-      const k = l.repairJobId ? "Repairs" : l.part ? (KIND_LABEL[l.part.kind] ?? l.part.kind) : "Misc";
+      const k = l.repairJobId ? "Repairs" : l.stockUnitId ? "Vacuums" : l.tradeInUnitId ? "Trade-ins" : l.part ? (KIND_LABEL[l.part.kind] ?? l.part.kind) : "Misc";
       byKind.set(k, (byKind.get(k) ?? 0) + sign * amt);
     }
   }

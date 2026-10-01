@@ -12,6 +12,7 @@ import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
 import { str } from "@/lib/format";
 import { byWhom, hubFetch, hubId, hubReachable, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, usageSettingChanged, type HubLink, type LinkRevision } from "@/lib/hub";
 import { libraryDir, writeUnusedPdf } from "@/lib/library-dir";
+import { requireHubWrites } from "@/lib/hub-writes";
 
 const UA = "StitchBench (manual download for a repair shop's own library)";
 const MAX_PDF = 300 * 1024 * 1024;
@@ -71,30 +72,35 @@ function linkFields(formData: FormData) {
 }
 
 // Each change names the person and the company making it (byWhom): the hub's history shows the company, not the install.
+// requireHubWrites refuses a company whose sharing the StitchBench administrator switched off, and names the writer.
 export const addManualLink = safe(async function addManualLink(formData: FormData) {
   const user = await requireUser();
-  const link = (await (await hubFetch("/v1/links", { method: "POST", json: { ...linkFields(formData), ...(await byWhom(user)) } })).json()) as HubLink;
+  const byName = await requireHubWrites(user);
+  const link = (await (await hubFetch("/v1/links", { method: "POST", json: { ...linkFields(formData), ...(await byWhom(user)), byName } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });
 
 export const editManualLink = safe(async function editManualLink(linkId: string, formData: FormData) {
   const user = await requireUser();
-  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "PUT", json: { ...linkFields(formData), ...(await byWhom(user)) } })).json()) as HubLink;
+  const byName = await requireHubWrites(user);
+  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "PUT", json: { ...linkFields(formData), ...(await byWhom(user)), byName } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });
 
 export const revertManualLink = safe(async function revertManualLink(linkId: string, revisionId: string) {
   const user = await requireUser();
-  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}/revert`, { method: "POST", json: { revisionId, ...(await byWhom(user)) } })).json()) as HubLink;
+  const byName = await requireHubWrites(user);
+  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}/revert`, { method: "POST", json: { revisionId, ...(await byWhom(user)), byName } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });
 
 export const removeManualLink = safe(async function removeManualLink(linkId: string) {
   const user = await requireUser();
-  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "DELETE", json: await byWhom(user) })).json()) as HubLink;
+  const byName = await requireHubWrites(user);
+  const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "DELETE", json: { ...(await byWhom(user)), byName } })).json()) as HubLink;
   await saveLink(link);
   refresh();
 });

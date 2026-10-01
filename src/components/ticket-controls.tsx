@@ -3,14 +3,35 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 import type { TicketStatus } from "@/generated/prisma/enums";
-import { STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
+import { CLOSING_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { fmtDateTime } from "@/lib/format";
 import { setStatus, toggleChecklist } from "@/actions/tickets";
 import { runAction } from "@/components/action-form";
 
-// partnerOwns: a partner sewing shop's machine that hasn't been picked up. They mark it collected, not the bench.
-export function StatusSelect({ ticketId, status, partnerOwns }: { ticketId: string; status: TicketStatus; partnerOwns?: boolean }) {
+/**
+ * partnerOwns: a partner sewing shop's machine that hasn't been picked up. They mark it collected, not the bench.
+ * order / labels: the statuses offered and their names (central vac installs use SITE_STATUS_ORDER / SITE_STATUS_LABEL).
+ * closingOnly: the ticket's module has ended, so only the current status and the closing ones are offered.
+ */
+export function StatusSelect({
+  ticketId,
+  status,
+  partnerOwns,
+  order = STATUS_ORDER,
+  labels = STATUS_LABEL,
+  closingOnly = false,
+}: {
+  ticketId: string;
+  status: TicketStatus;
+  partnerOwns?: boolean;
+  order?: TicketStatus[];
+  labels?: Record<TicketStatus, string>;
+  closingOnly?: boolean;
+}) {
   const [pending, start] = useTransition();
+  // The current status is always offered, even one this list doesn't usually show.
+  const offered = order.includes(status) ? order : [status, ...order];
+  const options = closingOnly ? offered.filter((s) => s === status || CLOSING_STATUSES.includes(s)) : offered;
   return (
     <div className="field">
       <label htmlFor="status" className="label">
@@ -29,16 +50,17 @@ export function StatusSelect({ ticketId, status, partnerOwns }: { ticketId: stri
             if (r?.error) {
               toast.error(r.error);
               el.value = status; // not saved: show what the ticket still says
-            } else toast.success(`Status: ${STATUS_LABEL[next]}`);
+            } else toast.success(`Status: ${labels[next]}`);
           });
         }}
       >
-        {STATUS_ORDER.map((s) => (
+        {options.map((s) => (
           <option key={s} value={s} disabled={partnerOwns && s === "COLLECTED" && s !== status}>
-            {STATUS_LABEL[s]}
+            {labels[s]}
           </option>
         ))}
       </select>
+      {closingOnly && <p className="muted mt-1 text-xs">Only closing it out is left: mark it picked up, returned unrepaired or abandoned.</p>}
       {partnerOwns && <p className="muted mt-1 text-xs">The partner shop marks it collected when their customer picks it up.</p>}
     </div>
   );

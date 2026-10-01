@@ -164,7 +164,7 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
     email: String(formData.get("email") ?? ""),
     password: String(formData.get("password") ?? ""),
     kind: "retail",
-  });
+  }, { allowReserved: true });
   let r: Awaited<ReturnType<typeof redeemPartnerCode>>;
   try {
     r = await redeemPartnerCode(created.id, created.name, normalizeEmail(formData.get("email")), invite.code);

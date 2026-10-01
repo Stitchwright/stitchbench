@@ -3,20 +3,38 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { firstValues } from "@/lib/search-params";
 import { MACHINE_TYPES } from "@/lib/constants";
+import { shopKinds } from "@/lib/equipment/shop";
 import { PageHeader, Section, Empty, modelHref } from "@/components/ui";
+import { KindChips } from "@/components/equipment/kind-chips";
 import { picturesFor } from "@/lib/model-info";
 import { modelKey } from "@/lib/format";
 import { ActionForm, Submit } from "@/components/action-form";
 import { createMachine } from "@/actions/records";
 
-export default async function Machines({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function Machines({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
   const user = await requireUser();
-  const { q } = firstValues(await searchParams);
+  const { q, kind: kindParam } = firstValues(await searchParams);
   const term = q?.trim();
+  // The kinds to filter by: those that have machines here, plus those that may take new work.
+  const [{ all, usable }, used] = await Promise.all([shopKinds(user.shopId), db.machine.groupBy({ by: ["kind"], where: { shopId: user.shopId } })]);
+  const usedKeys = new Set(used.map((u) => u.kind));
+  const chips = all.filter((k) => usedKeys.has(k.key) || usable.includes(k));
+  const active = kindParam && chips.some((k) => k.key === kindParam) ? kindParam : null;
+  const showKind = chips.length > 1;
+  const labelOf = new Map(all.map((k) => [k.key, k.label]));
+  const listHref = (kind: string | null) => {
+    const sp = new URLSearchParams();
+    if (term) sp.set("q", term);
+    if (kind) sp.set("kind", kind);
+    const s = sp.toString();
+    return s ? `/machines?${s}` : "/machines";
+  };
+
   const [machines, customers] = await Promise.all([
     db.machine.findMany({
       where: {
         shopId: user.shopId,
+        ...(active ? { kind: active } : {}),
         ...(term
           ? {
               OR: [
@@ -36,6 +54,8 @@ export default async function Machines({ searchParams }: { searchParams: Promise
   ]);
 
   const pics = await picturesFor(machines.map((m) => ({ brand: m.brand, model: m.model })));
+  // With only sewing machines to add, the form is as it always was; with more, "What is it" and the kinds' types.
+  const sewingOnly = usable.length === 1;
   return (
     <div className="space-y-6">
       <PageHeader title="Machines" sub="Every machine we've had on the bench, by serial number." />
@@ -44,12 +64,21 @@ export default async function Machines({ searchParams }: { searchParams: Promise
           Search machines
         </label>
         <input id="mq" name="q" defaultValue={term} className="input max-w-md" placeholder="Serial, model, brand or owner" />
+        {active && <input type="hidden" name="kind" value={active} />}
         <button className="btn">Search</button>
       </form>
+      {showKind && (
+        <div className="no-print flex flex-wrap items-center gap-2 text-sm">
+          <Link href={listHref(null)} className={`btn btn-sm ${active ? "" : "btn-primary"}`} aria-current={active ? undefined : "true"}>
+            All
+          </Link>
+          <KindChips kinds={chips} active={active} hrefFor={(key) => listHref(key)} />
+        </div>
+      )}
       <div className="card">
         {machines.length === 0 ? (
           <div className="card-pad">
-            <Empty>{term ? "No machine matches that." : "No machines yet. They're added when you check one in."}</Empty>
+            <Empty>{term || active ? "No machine matches that." : "No machines yet. They're added when you check one in."}</Empty>
           </div>
         ) : (
           <div className="scroll-x">
@@ -57,6 +86,7 @@ export default async function Machines({ searchParams }: { searchParams: Promise
               <thead>
                 <tr>
                   <th>Machine</th>
+                  {showKind && <th>Kind</th>}
                   <th>Serial</th>
                   <th>Owner</th>
                   <th className="text-right">Visits</th>
@@ -86,6 +116,7 @@ export default async function Machines({ searchParams }: { searchParams: Promise
                         </div>
                       </div>
                     </td>
+                    {showKind && <td className="text-sm">{labelOf.get(m.kind) ?? m.kind}</td>}
                     <td className="mono">{m.serial ?? "-"}</td>
                     <td>{m.customer?.name ?? "-"}</td>
                     <td className="num text-right">{m._count.tickets}</td>
@@ -99,6 +130,22 @@ export default async function Machines({ searchParams }: { searchParams: Promise
 
       <Section title="Add a machine without a ticket">
         <ActionForm action={createMachine} className="grid-form">
+          {sewingOnly ? (
+            <input type="hidden" name="kind" value="sewing" />
+          ) : (
+            <div className="field sm:col-span-2">
+              <label htmlFor="kind" className="label">
+                What is it
+              </label>
+              <select id="kind" name="kind" className="select" defaultValue={active && usable.some((k) => k.key === active) ? active : "sewing"}>
+                {usable.map((k) => (
+                  <option key={k.key} value={k.key}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="brand" className="label">
               Brand
@@ -123,9 +170,19 @@ export default async function Machines({ searchParams }: { searchParams: Promise
             </label>
             <select id="machineType" name="machineType" className="select" defaultValue="">
               <option value="">-</option>
-              {MACHINE_TYPES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
+              {sewingOnly
+                ? MACHINE_TYPES.map((t) => <option key={t}>{t}</option>)
+                : usable
+                    .filter((k) => k.types.length)
+                    .map((k) => (
+                      <optgroup key={k.key} label={k.label}>
+                        {k.types.map((t) => (
+                          <option key={`${k.key}:${t}`} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
             </select>
           </div>
           <div className="field sm:col-span-2">

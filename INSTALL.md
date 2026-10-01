@@ -288,6 +288,102 @@ Discord.
 
 ---
 
+## Paid modules
+
+StitchBench's extra modules (Vac Shop, Small Appliance Repair, Scheduling, Marketing) are sold by StitchBench,
+monthly or yearly. The program itself stays the same; a module is turned on by a **key**: about 350 characters
+starting `SB1.`, made for one company and emailed to the shop.
+
+### Adding a key (the shop)
+Go to **Settings → Modules**, paste the key (or the whole email it came in) in the box and press **Add key**. That is
+all. It works without the internet, on the Windows program and on a hosted copy alike. The page shows each module's
+state (on, renewal due, grace period, ended), the key's last day and who it was issued to. A key is bound to the
+Company ID shown on that page: it does nothing for another company, and a changed key is refused as damaged.
+
+### Rollout checklist (the owner, before the first release with modules)
+1. **Sales contact.** Fill `MODULE_SALES.email` (and `url`, if there is a pricing page) in `src/lib/module-info.ts`.
+   While it is empty, the app shows no "Ask about it" link, only "Ask StitchBench about it."
+2. **Owner key.** Run `npm run license:keygen -- --kid k1` on your PC. It writes `~/.stitchbench/license-k1.pem`
+   (encrypted with the passphrase you type) and prints a `k1: { x: "…", scope: "any" },` line. Paste that line into
+   `LICENSE_PUBLIC_KEYS` in `src/lib/license-keys.ts`, commit, and release (Railway and new installers). Until a
+   release carries the line, no pasted key works anywhere except on a development server.
+3. **Hosting key** (required on the hosted app before modules are released there: it signs the Companies page's
+   switch, and its presence turns test keys off). Run `npm run license:keygen -- --kid h1 --hosted`, commit the
+   printed `h1` line, and set two Railway variables on the hosted service: `LICENSE_HOSTED_KEY` (the printed base64)
+   and `LICENSE_HOSTED_KID=h1`. The first time a server process needs the hosting key, it logs one line if the
+   variable doesn't match the compiled `h1`: "LICENSE_HOSTED_KEY doesn't match kid h1 in license-keys.ts: the
+   Companies switch can't turn modules on." It keeps running either way.
+4. **Selling a module.** The shop presses "Ask about Vac Shop" in Settings → Modules, which emails you with the
+   Company ID filled in. Paste that email into `npm run license` (it asks the rest step by step), then send the shop
+   the email file it writes.
+5. **Self-hosted shops** (their own Railway project, or the Windows program) use pasted keys only. Their Companies
+   page explains this; the switch there is for the hosted StitchBench alone.
+
+### The command-line tools
+All of them live in `scripts/license/` and run from the repo folder. Only `dev.ts --grant` and `resign-grants.ts`
+touch a database.
+
+| Command | |
+|---|---|
+| `npm run license:keygen -- --kid k1` | the owner's signing key, encrypted; `--out <file>` to put it elsewhere (never inside the repo) |
+| `npm run license:keygen -- --kid h1 --hosted` | the hosting key, plain, plus the `LICENSE_HOSTED_KEY` value for Railway |
+| `npm run license:keygen -- --dev` | the development key `scripts/license/dev-key.json` (committed on purpose) |
+| `npm run license` | asks step by step: Company ID (or the shop's pasted email), name, modules, plan, start date, email, note |
+| `npm run license -- --shop <Company ID> --name "…" --modules vac,appliance --plan monthly\|yearly\|trial` | one key from flags; also `--from`, `--until`, `--grace`, `--email`, `--note`, `--key <pem>`, `--log <csv>` |
+| `npm run license -- --trial --shop <Company ID> --modules vac` | 14 days from today, no grace |
+| `npm run license -- --renew <keyId or Company ID>` | the next period of that customer's latest key: same name, modules, plan and anchor day |
+| `npm run license -- --due 30` | keys ending within 30 days with no later key, each with its `--renew` command |
+| `npm run license -- --renew-due 7` | `--renew` for every one of those within 7 days |
+| `npm run license -- --resend <keyId>` | prints that key and its email again, from the log |
+| `npm run license -- --check <key>` | decodes a key and verifies it against `src/lib/license-keys.ts` |
+| `npm run license -- --retire-list k1` | the `retired` entry for `k1` (last day and allow list) from the log |
+| `npx tsx --conditions=react-server scripts/license/dev.ts --grant <Company ID> --modules vac --from … --until …` | inserts a development key straight into a local database (for tests) |
+| `railway run npx tsx --conditions=react-server scripts/license/resign-grants.ts` | re-signs the hosted switch rows after a hosting key rotation (below) |
+
+Renewals keep the customer's **anchor day**: a key that started Jan 31 renews to Feb 27, then Mar 30, then Apr 29, so
+the date never drifts. `--until` can override the last day; `--grace` the days after it (default 14, trial 0).
+
+### Where the files live
+- `~/.stitchbench/license-<kid>.pem`: your signing key, encrypted with a passphrase. The passphrase is asked for
+  each time (nothing is echoed), or read from `STITCH_LICENSE_PASSPHRASE`. Back up the file and keep the passphrase
+  somewhere else (a password manager): anyone with both can make keys. `issue` picks the newest `.pem` whose kid is
+  in `license-keys.ts` and not retired; `--key` names one explicitly.
+- `~/.stitchbench/licenses.csv`: the sales log, one row per key (issued, keyId, companyId, name, email, modules,
+  plan, from, until, grace, anchor, note, key). `--due`, `--renew`, `--resend` and `--retire-list` read it.
+  `STITCH_LICENSE_LOG` or `--log` points elsewhere.
+- `~/.stitchbench/keys/<date>-<keyId>-<name>.txt`: the ready-to-send email for each key.
+
+### Rotating a signing key, and if one leaks
+Kids are never deleted from `license-keys.ts`: a deleted kid turns every key it signed into "needs a newer version".
+A kid is **retired** instead, keeping its public key:
+`k1: { x: "…", scope: "any", retired: { lastDay: "2027-09-30" } }`. A key from that kid whose last day is later is
+refused ("This key was replaced").
+
+- **Normal rotation** (a new PC, or a new key every few years): make `k2` with keygen and add its line in a release;
+  keep signing with `k1` for about 12 months, until offline Windows installs have updated; then sign with `k2` and
+  retire `k1` with `lastDay` = the latest last day `k1` signed (from the sales log).
+- **If your private key leaks:** release with `k2` added and `k1` retired with the whole entry printed by
+  `npm run license -- --retire-list k1`. Its `allow` list holds the hash of every genuine key in the log, so your
+  customers' keys keep working to their end dates while forged ones fail, even backdated ones. Issue `k2` keys at each
+  renewal. A PC that hasn't updated yet shows "needs a newer version" on a `k2` key, which tells the shop what to do.
+- **Hosting key rotation** (or a leak of it): release with `h2` added (keep `h1`); set the Railway variables
+  `LICENSE_HOSTED_KEY` and `LICENSE_HOSTED_KID=h2` (rows signed with `h1` keep counting, because the server still
+  holds a genuine hosting key); run `railway run npx tsx --conditions=react-server scripts/license/resign-grants.ts`,
+  which re-signs the newest "on" row of every company and module with `h2` (same last day and grace, note
+  "re-signed h1→h2", by "system"; running it twice changes nothing); in a later release, retire `h1` with `lastDay` =
+  that day.
+
+### Test builds
+`STITCH_TEST_BUILD=1 npm run build` makes a build that accepts **development keys** (signed with the committed
+`scripts/license/dev-key.json`), for the Playwright specs and local testing. The value is fixed when the app is built
+(`next.config.ts`), so a normal build can't be put into test mode at run time. Even a test build accepts development
+keys only with no `LICENSE_HOSTED_KEY`, against a database on the same machine (`localhost`), and not on the Windows
+program, so the variable changes nothing on the hosted app. When it is on, the server logs
+`TEST BUILD: development license keys are accepted` once, and Settings → Modules shows every admin a "Test build"
+pill. `next dev` and the check scripts (`npm run check scripts/checks/<name>.check.ts`) accept development keys too.
+
+---
+
 ## For maintainers
 
 ### Building the installers on GitHub

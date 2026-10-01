@@ -11,6 +11,7 @@ import { OpenSpecSource } from "@/components/local-manuals";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addNote, deleteNote, toggleNotePin } from "@/actions/records";
 import { NOTE_LABEL } from "@/lib/constants";
+import type { EquipmentKind } from "@/lib/equipment/types";
 import { Section, modelHref } from "@/components/ui";
 
 export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compact?: boolean }) {
@@ -146,46 +147,50 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
   );
 }
 
-/** Everything known about one brand + model: factory tension, gotchas, manuals on this PC. */
-export async function ModelPanel({ shopId, brand, model, showLink = true }: { shopId: string; brand: string; model: string; showLink?: boolean }) {
+/**
+ * Everything known about one brand + model: factory tension, gotchas, manuals on this PC. A non-sewing `kind` (one
+ * without the tension panel) skips the factory tension and timing sections and uses the kind's own quick links.
+ */
+export async function ModelPanel({ shopId, brand, model, showLink = true, kind }: { shopId: string; brand: string; model: string; showLink?: boolean; kind?: EquipmentKind }) {
+  const sewing = !kind || kind.panels.tension;
   const [specs, settings, picture, library, shop] = await Promise.all([
-    specsFor(brand, model),
-    settingsFor(brand, model),
+    sewing ? specsFor(brand, model) : [],
+    sewing ? settingsFor(brand, model) : [],
     pictureFor(brand, model),
     libraryFor(brand, model),
     db.shop.findUnique({ where: { id: shopId }, select: { libraryRoot: true } }),
   ]);
   const category = library[0]?.category ?? settings[0]?.category ?? specs[0]?.category ?? null;
+  const modelPage = showLink ? (
+    <Link href={modelHref(brand, model, kind?.key)} className="link text-sm">
+      Model page
+    </Link>
+  ) : undefined;
   return (
     <div className="space-y-4">
-      <Section title={`${brand} ${model}`}>
-        <MachineInfo brand={brand} model={model} picture={picture} category={category} />
+      <Section title={`${brand} ${model}`} actions={sewing ? undefined : modelPage}>
+        <MachineInfo brand={brand} model={model} picture={picture} category={category} links={sewing ? undefined : kind?.links(brand, model)} />
       </Section>
-      <Section
-        title={`Factory tension - ${brand} ${model}`}
-        actions={
-          showLink ? (
-            <Link href={modelHref(brand, model)} className="link text-sm">
-              Model page
-            </Link>
-          ) : undefined
-        }
-      >
-        {specs.length ? (
-          <SpecsTable specs={specs} compact />
-        ) : (
-          <p className="muted text-sm">
-            No gauge spec on file for this model.{" "}
-            <Link href={`/specs?q=${encodeURIComponent(brand)}`} className="link">
-              See other {brand} specs
-            </Link>
-            .
-          </p>
-        )}
-      </Section>
-      <Section title={`Timing and adjustments${settings.length ? ` (${settings.length})` : ""}`}>
-        <FactorySettings settings={settings} brand={brand} />
-      </Section>
+      {sewing && (
+        <>
+          <Section title={`Factory tension - ${brand} ${model}`} actions={modelPage}>
+            {specs.length ? (
+              <SpecsTable specs={specs} compact />
+            ) : (
+              <p className="muted text-sm">
+                No gauge spec on file for this model.{" "}
+                <Link href={`/specs?q=${encodeURIComponent(brand)}`} className="link">
+                  See other {brand} specs
+                </Link>
+                .
+              </p>
+            )}
+          </Section>
+          <Section title={`Timing and adjustments${settings.length ? ` (${settings.length})` : ""}`}>
+            <FactorySettings settings={settings} brand={brand} />
+          </Section>
+        </>
+      )}
       <Section title="Important facts and gotchas">
         <Gotchas shopId={shopId} brand={brand} model={model} />
       </Section>
