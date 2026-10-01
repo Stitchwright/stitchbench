@@ -10,6 +10,8 @@ import { modelKey, str } from "@/lib/format";
 import { assertId } from "@/lib/input";
 import { PHOTO_KINDS } from "@/lib/constants";
 import { requireModule } from "@/lib/modules";
+import { recordConsent } from "@/lib/messaging/consent";
+import { isNotifyBy } from "@/components/notify-by-field";
 import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
 import { withArticle } from "@/lib/equipment/types";
 import { readAnswers } from "@/lib/equipment/form";
@@ -166,15 +168,32 @@ export const saveCustomer = safe(async function saveCustomer(customerId: string 
     routeDay: kind === "TRADE" ? str(formData.get("routeDay")) : null,
     notes: str(formData.get("notes")),
   };
+  // "How should we tell them": written only when the form carried the field (the field is hidden while Marketing was
+  // never on); a change is a consent record. No consent field (smsConsent*) is ever written here.
+  let notifyBy: string | null = null;
+  if (formData.has("notifyBy")) {
+    const v = str(formData.get("notifyBy")) ?? "";
+    if (!isNotifyBy(v)) throw new UserError("Pick how to tell them.");
+    notifyBy = v;
+  }
+  const pref = (customerId: string, value: string) => ({ shopId: user.shopId, customerId, channel: "any", event: "notify_pref", source: "customer_page", detail: value, byUserId: user.id });
   if (customerId) {
     const c = await db.customer.findFirst({ where: { id: customerId, shopId: user.shopId } });
     if (!c) throw new UserError("Customer not found.");
-    await db.customer.update({ where: { id: customerId }, data });
+    const changed = notifyBy != null && notifyBy !== c.notifyBy;
+    await db.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id: customerId }, data: { ...data, ...(changed ? { notifyBy: notifyBy! } : {}) } });
+      if (changed) await recordConsent(tx, pref(customerId, notifyBy!));
+    });
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/customers");
     return;
   }
-  const c = await db.customer.create({ data: { ...data, shopId: user.shopId } });
+  const c = await db.$transaction(async (tx) => {
+    const made = await tx.customer.create({ data: { ...data, shopId: user.shopId, notifyBy: notifyBy ?? "" } });
+    if (notifyBy) await recordConsent(tx, pref(made.id, notifyBy));
+    return made;
+  });
   revalidatePath("/customers");
   redirect(`/customers/${c.id}`);
 });

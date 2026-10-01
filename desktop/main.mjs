@@ -18,6 +18,7 @@ import { migrate } from "./migrate.mjs";
 import { backup, restore, listBackups, readManifest } from "./backup.mjs";
 import { loadReference } from "./reference.mjs";
 import { ensureAppRole, APP_ROLE } from "./app-role.mjs";
+import { startLinksGate } from "./links-gate.mjs";
 
 const HERE = import.meta.dirname;
 const PKG = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
@@ -35,6 +36,7 @@ const LOG_FILE = path.join(DATA, "logs", `${FLAVOR}.log`);
 const ICON = path.join(HERE, "icon.png");
 
 let cfg, db, pool, server, win, tray;
+let gate = null; // the links gate (links-gate.mjs), running while publicUrl is set
 let quitting = false;
 let signupOpen = false;
 let setupToken = "";
@@ -130,6 +132,10 @@ function loadConfig() {
     backupsToKeep: 30,
     platformAdminEmails: "",
     openAtLogin: true,
+    // Customer links (estimate approval, unsubscribe) need an address customers can open. Set, the program serves
+    // ONLY those pages on 127.0.0.1:linksPort (links-gate.mjs) for a tunnel the shop runs; see INSTALL.md.
+    _publicUrl: "Optional https:// address customers can open (a tunnel you set up, pointed at the links port). Leave empty if unsure.",
+    publicUrl: "",
   };
   fs.mkdirSync(DATA, { recursive: true });
   const saved = readJson(CONFIG_FILE);
@@ -158,7 +164,69 @@ function loadConfig() {
   delete c.authSecret;
   // First run: write the defaults so the settings file shows what can be changed. Also drops moved secrets.
   if (!saved || "dbPassword" in saved || "authSecret" in saved) writeConfig(c);
+  // The links gate's port: next to the main port unless the settings file says otherwise (not written there by default).
+  const linksPort = Number.parseInt(c.linksPort, 10);
+  c.linksPort = linksPort > 0 ? linksPort : Number(c.port) + 1;
   return { ...c, dbPassword, appDbPassword, authSecret };
+}
+
+/**
+ * The public address for customer links, checked: an https:// URL with nothing but a host (no path, user, query or
+ * hash). { url, host } to use it (url without a trailing slash), or { why } when it is set but can't be used.
+ */
+function publicLinks(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return null;
+  let u;
+  try {
+    u = new URL(text);
+  } catch {
+    return { why: `"${text}" isn't a web address` };
+  }
+  if (u.protocol !== "https:") return { why: "it must start with https://" };
+  if (u.username || u.password) return { why: "it must not carry a user name or password" };
+  if (u.pathname !== "/" && u.pathname !== "") return { why: "it must be an address only, with no path after the host" };
+  if (u.search || u.hash) return { why: "it must have no ? or # part" };
+  return { url: u.origin, host: u.host };
+}
+
+let publicLinksChecked;
+/** The checked publicUrl, or null (with the reason logged once per start when it is set but unusable). */
+function links() {
+  if (publicLinksChecked === undefined) {
+    const r = publicLinks(cfg.publicUrl);
+    if (r?.why) log(`publicUrl ignored: ${r.why}`);
+    publicLinksChecked = r?.url ? r : null;
+  }
+  return publicLinksChecked;
+}
+
+/** The links gate in front of the server, once it answers. Kept running across server restarts (it forwards by port). */
+function startGate() {
+  const l = links();
+  if (!l || gate) return;
+  if (Number(cfg.linksPort) === Number(cfg.port)) {
+    log(`publicUrl ignored: linksPort ${cfg.linksPort} is the program's own port`);
+    return;
+  }
+  try {
+    const g = startLinksGate({ listenPort: cfg.linksPort, targetPort: cfg.port, publicHost: l.host });
+    g.on("listening", () => log(`links gate on 127.0.0.1:${cfg.linksPort} for ${l.url}`));
+    g.on("error", (e) => {
+      log("links gate:", e);
+      if (gate === g) gate = null;
+    });
+    gate = g;
+  } catch (e) {
+    log("links gate:", e);
+  }
+}
+
+function stopGate() {
+  const g = gate;
+  gate = null;
+  g?.close();
+  g?.closeAllConnections?.();
 }
 
 /** A settings file that can't be read: say which and why, and offer the last good copy. Returns true to try again. */
@@ -322,6 +390,9 @@ async function startServer() {
       SETUP_TOKEN: setupToken,
       APP_NAME: NAME,
       DEFAULT_SHOP_KIND: FLAVOR === "stitchshop" ? "retail" : "repair",
+      // Customer links: only with a checked public address, and then only the public pages on that host (src/proxy.ts),
+      // behind the links gate. Neither variable otherwise. TRUST_PROXY is never set here.
+      ...(links() ? { PUBLIC_URL: links().url, PUBLIC_LINKS_ONLY: "true" } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -344,6 +415,7 @@ async function startServer() {
       if ((await get(`http://127.0.0.1:${cfg.port}/login`)) === 200) {
         startedAt = Date.now();
         setStatus(null);
+        startGate(); // only once the server answers: a tunnel reaching the gate earlier would get 502s
         return;
       }
       if (server !== child) throw new Error(`The ${NAME} server stopped while starting. See the log.`);
@@ -506,7 +578,10 @@ async function restoreFromBackup() {
         await restore(pool, dir, FLAVOR);
         log(`restored ${dir}`);
         await setupAppRole(); // cheap, and covers a restore that touched what the server may use
-        dialog.showMessageBox({ message: "Backup restored.", detail: `The data from just before is saved in:\n${saved}` });
+        dialog.showMessageBox({
+          message: "Backup restored.",
+          detail: `The data from just before is saved in:\n${saved}\n\nMarketing messages are on hold until an owner or admin checks Messages -> Opt-outs and presses Resume.`,
+        });
       } catch (e) {
         log("restore failed:", e);
         dialog.showErrorBox("Restore failed", `${e instanceof Error ? e.message : e}\n\nNothing was changed.`);
@@ -680,6 +755,7 @@ async function quit() {
   log("quitting");
   // Last resort: whatever won't stop (a stuck connection, a postgres that won't die), the program still exits.
   setTimeout(() => app.exit(0), 30_000);
+  stopGate();
   await stopServer();
   await pool?.end().catch(() => {});
   // Only a postgres this program started and that still runs: stopping one that has already gone never returns.

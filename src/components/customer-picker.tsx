@@ -2,33 +2,40 @@
 
 import { useState } from "react";
 import { findCustomers, type CustomerHit } from "@/actions/register";
+import { NotifyByField } from "@/components/notify-by-field";
 
 /**
  * The "Existing customer" box on check-in: a search of the shop's own retail customers as you type (10 at most),
  * instead of every customer on the shop being sent down for a <select>. Picking one fills the hidden customerId the
  * same way the old <select> did; leaving it blank means "new customer" (fill in the fields below), as before.
+ * `prefix` names the fields `${prefix}customerId` / `${prefix}notifyBy`; with `notifyRequired`, a picked customer
+ * who hasn't been asked how to be told gets the required "How should we tell them" radios under the pick.
  */
-export function CustomerPicker({ initial }: { initial: CustomerHit | null }) {
+export function CustomerPicker({ initial, prefix = "", notifyRequired = false }: { initial: CustomerHit | null; prefix?: string; notifyRequired?: boolean }) {
   const [customer, setCustomer] = useState<CustomerHit | null>(initial);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
+  const notAsked = !!customer && !((customer as { notifyBy?: string }).notifyBy ?? "");
 
   return (
     <div className="field sm:col-span-2">
       <label htmlFor="customer-search" className="label">
         Existing customer
       </label>
-      <input type="hidden" name="customerId" value={customer?.id ?? ""} />
+      <input type="hidden" name={`${prefix}customerId`} value={customer?.id ?? ""} />
       {customer ? (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <span>
-            {customer.name}
-            {customer.phone ? ` · ${customer.phone}` : ""}
-          </span>
-          <button type="button" className="link text-xs" onClick={() => setCustomer(null)}>
-            change
-          </button>
-        </div>
+        <>
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span>
+              {customer.name}
+              {customer.phone ? ` · ${customer.phone}` : ""}
+            </span>
+            <button type="button" className="link text-xs" onClick={() => setCustomer(null)}>
+              change
+            </button>
+          </div>
+          {notifyRequired && notAsked && <NotifyByField required id={`${prefix}notifyBy`} name={`${prefix}notifyBy`} />}
+        </>
       ) : (
         <>
           <input

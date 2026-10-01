@@ -46,11 +46,14 @@ export function StatusSelect({
           const el = e.currentTarget;
           const next = el.value as TicketStatus;
           start(async () => {
-            const r = await runAction(() => setStatus(ticketId, next));
-            if (r?.error) {
+            // setStatus is a data action: besides ok / error it may carry the notice line for the toast ("A text goes
+            // to Mary Smith at 10:44 am..."), which runAction's ActionResult type doesn't name.
+            const r = (await runAction(() => setStatus(ticketId, next))) as Awaited<ReturnType<typeof setStatus>>;
+            if ("error" in r) {
               toast.error(r.error);
               el.value = status; // not saved: show what the ticket still says
-            } else toast.success(`Status: ${labels[next]}`);
+            } else if (r.note) toast.success(r.note, { duration: 8000 });
+            else toast.success(`Status: ${labels[next]}`);
           });
         }}
       >
