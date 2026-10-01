@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Your estimate", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 const when = (d: Date, tz: string) => fmtDateTime(d, tz, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).replace(", ", " at ").replace(/\s?(AM|PM)$/, (_, x: string) => ` ${x.toLowerCase()}`);
-const day = (d: Date, tz: string) => fmtDateTime(d, tz, { month: "short", day: "numeric", year: "numeric" });
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-5 px-5 py-10 text-base">{children}</main>;
@@ -102,7 +101,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
             </a>
           </div>
           <p className="muted text-sm">
-            This link works until {day(v.expiresAt, v.tz)}.{phone && <> Questions? Call {phone}.</>}
+            This link works until {when(v.expiresAt, v.tz)}.{phone && <> Questions? Call {phone}.</>}
           </p>
         </>
       )}

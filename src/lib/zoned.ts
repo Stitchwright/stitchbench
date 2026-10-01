@@ -161,6 +161,11 @@ export function fmtDay(d: Date, tz: string): string {
   return d.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric" });
 }
 
+/** "Tue, Oct 7, 2026" (a date that may be months away, or read long after) */
+export function fmtDayYear(d: Date, tz: string): string {
+  return d.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
 /** "6:00 pm" */
 export function fmtTime(d: Date, tz: string): string {
   return d.toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).replace(/\s?(AM|PM)$/, (_, x: string) => ` ${x.toLowerCase()}`);

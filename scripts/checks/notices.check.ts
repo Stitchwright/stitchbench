@@ -426,7 +426,7 @@ async function uncollected(m: Shop, n: Shop, linkId: string) {
   const stages = abandonStages(R, [7, 30], 60, 7, 10, NY);
   assert.ok(rows.every((r) => r.refType === "stage" && r.refId === stageKey(R, stages[0]) && r.status === "QUEUED"));
   assert.match(rows.find((r) => r.channel === "email")!.body, /ready to pick up since Mon, Aug 3/);
-  assert.match(rows.find((r) => r.channel === "email")!.body, /Please pick it up by Fri, Oct 2/);
+  assert.match(rows.find((r) => r.channel === "email")!.body, /Please pick it up by Fri, Oct 2, 2026/, "the abandon date carries its year");
   assert.match(rows.find((r) => r.channel === "email")!.body, /\$45\.00/);
   await runSchedulers(day(7, "10:50"), [m.shopId]);
   assert.equal((await abandonRows()).length, 2, "day 7 once");

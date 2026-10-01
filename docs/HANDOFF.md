@@ -285,9 +285,16 @@ and `messaging-core.check.ts` (render). What changed, for anyone reading the cod
   estimate once the link is stopped or expired; `/api/u/[token]` tolerates two clicks at once.
 
 Checked here: tsc, eslint, every check script, unit tests, and on a fresh test build the specs notices, estimate-links
-(with and without PUBLIC_URL) and smoke. Left as the review listed them (low severity): the scheduler's per-ticket
-abandonTarget queries every 5 minutes, unindexed closedAt / pickedUpAt / backAt scans, notice dates without a year
-(the design's fmtDay), "works until <date>" vs a timestamp expiry.
+(with and without PUBLIC_URL) and smoke.
+
+The low-severity leftovers were done the same evening (commit after 06ca44a): `uncollected()` computes the stages
+from the ready dates first and queries only the machines with a stage due (one query for the rows that exist, then
+`abandonTarget` for the few to queue); migration `20261001210000_notice_indexes` adds `Ticket(shopId, status,
+closedAt)`, `RepairJob(shopId, side, backAt)` and `RepairJob(shopId, side, pickedUpAt)`; `ready_date` / `abandon_date`
+carry the year (`fmtDayYear`, "Fri, Oct 2, 2026"; the design said fmtDay, changed on purpose: the abandon date can be
+months away and a letter is read later); the estimate page says the link works until a time, not a day; the slots read
+the time zone through `shopTimeZone()`. Checked: tsc, eslint, the notices / abandon / worker / estimate-links checks,
+unit tests, `prisma migrate diff` (no drift). The Playwright specs were not rerun for this one (no spec asserts on it).
 
 ## 3. What to do next, in order
 
