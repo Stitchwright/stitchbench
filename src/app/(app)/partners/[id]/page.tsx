@@ -9,6 +9,7 @@ import { monthPeriod, statementFor } from "@/lib/partners";
 import { PageHeader, Section, Empty, KV, JobStatusPill, OrderStatusPill } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { endPartner } from "@/actions/partners";
+import { PartnerRunsSlot } from "@/components/slots/partner-runs";
 
 export default async function PartnerPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -111,6 +112,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
+      <PartnerRunsSlot linkId={link.id} user={user} />
       <Section title="Machines" actions={!repairSide ? <Link href="/repairs" className="link text-sm">All repairs</Link> : undefined}>
         {jobs.length === 0 ? (
           <Empty>{repairSide ? `No machines from ${link.partnerName} yet.` : "No machines sent yet."}</Empty>

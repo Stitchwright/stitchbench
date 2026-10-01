@@ -7,6 +7,7 @@ import { Camera, X } from "lucide-react";
 import { takeInMachine } from "@/actions/repair-jobs";
 import { findCustomers, type CustomerHit } from "@/actions/register";
 import { shrinkImage } from "@/components/photo-upload";
+import { NotifyByField } from "@/components/notify-by-field";
 import { ACCESSORIES, MACHINE_TYPES } from "@/lib/constants";
 
 type Photo = { blob: Blob; url: string };
@@ -15,8 +16,12 @@ type Photo = { blob: Blob; url: string };
 const MAX_PHOTOS = 6;
 const MAX_PHOTO_BYTES = 2_600_000;
 
-/** Taking a customer's machine in at the sewing shop counter, for the partner repair shop. */
-export function IntakeForm({ partners }: { partners: { id: string; name: string }[] }) {
+/**
+ * Taking a customer's machine in at the sewing shop counter, for the partner repair shop.
+ * notifyRequired: Marketing is on and email or texts are ready, so "How should we tell them" must be answered for a
+ * customer who hasn't been asked yet. marketingHidden: the question isn't shown at all.
+ */
+export function IntakeForm({ partners, notifyRequired = false, marketingHidden = true }: { partners: { id: string; name: string }[]; notifyRequired?: boolean; marketingHidden?: boolean }) {
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -78,6 +83,11 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
                 change
               </button>
             </div>
+            {/* The search hit doesn't say whether they were asked how to be told, so while the answer is required it's
+                asked here; otherwise an optional change (blank keeps what they said before). */}
+            {!marketingHidden && (
+              <div className="mt-3">{notifyRequired ? <NotifyByField required name="notifyBy" /> : <NotifyByField name="notifyBy" label="Change how we tell them (blank keeps it as it is)" />}</div>
+            )}
           </div>
         ) : (
           <>
@@ -123,6 +133,7 @@ export function IntakeForm({ partners }: { partners: { id: string; name: string 
               </label>
               <input id="customerEmail" name="customerEmail" type="email" className="input" />
             </div>
+            {!marketingHidden && <NotifyByField required={notifyRequired} name="notifyBy" />}
           </>
         )}
       </section>

@@ -11,6 +11,10 @@ import { normalizeTerms } from "@/lib/partner-terms";
 import { kickPartnerSync, MAX_MONEY, sendToPartner, type JobEvent } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
 import { sameText } from "@/lib/input";
+import { answerRetailEstimate } from "@/lib/estimate-answer";
+import { applyNotifyBy, needNotifyBy } from "@/lib/customer-input";
+import { recordConsent } from "@/lib/messaging/consent";
+import { isNotifyBy } from "@/components/notify-by-field";
 
 const IMAGE = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -46,17 +50,25 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     // a refused intake leaves no customer behind for the corrected retry to duplicate.
     // Customer: an existing one, or a new one typed in.
     const pickedCustomerId = str(formData.get("customerId"));
+    // "How should we tell them": a non-blank valid value, or none (blank keeps a picked customer's earlier answer). With
+    // Marketing on and a channel ready, a customer who hasn't been asked yet must be asked now.
+    const typedNotify = str(formData.get("notifyBy"));
+    if (typedNotify != null && !isNotifyBy(typedNotify)) throw new UserError("Pick how to tell them.");
+    const notifyBy = typedNotify;
+    const needNotify = await needNotifyBy(shopId);
     let customerName: string;
-    let newCustomer: { name: string; phone: string; email: string | null } | null = null;
+    let newCustomer: { name: string; phone: string; email: string | null; notifyBy: string } | null = null;
     if (pickedCustomerId) {
       const c = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId } });
       if (!c) throw new UserError("Customer not found.");
+      if (needNotify && c.notifyBy === "" && !notifyBy) throw new UserError("Ask how they'd like to be told (text, email or a call).");
       customerName = c.name;
     } else {
       const name = str(formData.get("customerName"));
       const phone = str(formData.get("customerPhone"));
       if (!name || !phone) throw new UserError("Enter the customer's name and phone, so you can call them when it's ready.");
-      newCustomer = { name, phone, email: str(formData.get("customerEmail")) };
+      if (needNotify && !notifyBy) throw new UserError("Ask how they'd like to be told (text, email or a call).");
+      newCustomer = { name, phone, email: str(formData.get("customerEmail")), notifyBy: notifyBy ?? "" };
       customerName = name;
     }
     const brand = str(formData.get("brand"));
@@ -88,7 +100,14 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     // Checked as the repair shop's install checks it: past that, it would refuse the job after the tag was printed.
     if (preApprovedCents != null && (preApprovedCents < 0 || preApprovedCents > MAX_MONEY)) throw new UserError("Check the pre-approved amount.");
     await db.$transaction(async (tx) => {
-      const customerId = pickedCustomerId ?? (await tx.customer.create({ data: { shopId, ...newCustomer! } })).id;
+      let customerId: string;
+      if (pickedCustomerId) {
+        customerId = pickedCustomerId;
+        if (notifyBy) await applyNotifyBy(tx, shopId, customerId, formData, user.id, "intake");
+      } else {
+        customerId = (await tx.customer.create({ data: { shopId, ...newCustomer! } })).id;
+        if (notifyBy) await recordConsent(tx, { shopId, customerId, channel: "any", event: "notify_pref", source: "intake", detail: notifyBy, byUserId: user.id });
+      }
       const machine = existing ?? (await tx.machine.create({ data: { shopId, brand, model, modelKey: modelKey(model), serial, machineType, customerId } }));
       const sh = await tx.shop.update({ where: { id: shopId }, data: { nextTagNumber: { increment: 1 } }, select: { nextTagNumber: true } });
       const tag = String(sh.nextTagNumber - 1);
@@ -159,11 +178,10 @@ export const answerEstimate = safe(async function answerEstimate(jobId: string, 
   if (approvedCents != null && (approvedCents < 0 || approvedCents > MAX_MONEY)) throw new UserError("Check the approved amount.");
   const note = str(formData.get("note"));
   const at = new Date();
-  const events = [...((job.events as JobEvent[]) ?? []), { at: at.toISOString(), note: `Customer ${approval === "APPROVED" ? "approved" : "declined"}${note ? `: ${note}` : ""} (${user.name})` }];
-  await db.$transaction(async (tx) => {
-    await tx.repairJob.update({ where: { shopId_id: { shopId: user.shopId, id: job.id } }, data: { approval, approvedCents, events: events as Prisma.InputJsonValue } });
-    await sendToPartner(user.shopId, job.linkId, "job.reply", { id: job.id, approval, approvedCents, note, name: user.name, at: at.toISOString() }, tx);
-  });
+  // Recorded only if nobody answered first (an estimate link or a text reply may have): the job's history and the
+  // message to the repair shop are written by answerRetailEstimate.
+  const recorded = await db.$transaction((tx) => answerRetailEstimate(tx, { shopId: user.shopId, job, approval, approvedCents, note, byName: user.name, via: "counter", at }));
+  if (!recorded) throw new UserError("The customer's answer is already recorded (maybe by link). Reload the page.");
   refresh(job.id);
 });
 
