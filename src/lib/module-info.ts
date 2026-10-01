@@ -74,7 +74,7 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
 export const isModuleId = (s: unknown): s is ModuleId => typeof s === "string" && (MODULE_IDS as readonly string[]).includes(s);
 
 /** Who sells modules. The owner fills these in before the first release (INSTALL.md, "Paid modules"). */
-export const MODULE_SALES = { email: "", url: "" };
+export const MODULE_SALES = { email: "bwattendorf@gmail.com", url: "" };
 
 /** mailto: link for "Ask about {label}" / "Renew {label}", or null while MODULE_SALES.email is empty. */
 export function salesMailto(kind: "ask" | "renew", label: string, shop: { id: string; name: string }): string | null {
