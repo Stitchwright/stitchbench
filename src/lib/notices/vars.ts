@@ -3,7 +3,7 @@ import "server-only";
 import type { OutMessage, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { money, ticketNo } from "@/lib/format";
-import { fmtDay } from "@/lib/zoned";
+import { fmtDayYear } from "@/lib/zoned";
 import type { MessagingView } from "@/lib/messaging/settings";
 import { firstName } from "@/lib/messaging/templates";
 import { abandonDate, abandonStages, sendable, stageKey, type AbandonStage } from "@/lib/notices/abandon";
@@ -87,7 +87,7 @@ export type AbandonTarget = {
 };
 
 /** The abandon rule a partnership names (`terms.abandonedAfterDays`), else the shop's own. */
-function termDays(terms: unknown, fallback: number): number {
+export function termDays(terms: unknown, fallback: number): number {
   const v = terms && typeof terms === "object" ? (terms as { abandonedAfterDays?: unknown }).abandonedAfterDays : undefined;
   return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : fallback;
 }
@@ -163,10 +163,11 @@ export async function stageRows(tx: Db, shopId: string, ref: { ticketId?: string
 
 /** The merge fields a stage's wording adds to the ticket's or job's own: when it was ready, the abandon date, the fee. */
 export function abandonVars(t: AbandonTarget): Record<string, string> {
+  // With the year: the abandon date can be months away, and a letter is read long after it was sent.
   return {
     ...t.vars,
-    ready_date: fmtDay(t.start, t.tz),
-    abandon_date: fmtDay(abandonDate(t.start, t.abandonedAfterDays, t.tz), t.tz),
+    ready_date: fmtDayYear(t.start, t.tz),
+    abandon_date: fmtDayYear(abandonDate(t.start, t.abandonedAfterDays, t.tz), t.tz),
     storage_fee: money(t.storageFeeCents),
   };
 }

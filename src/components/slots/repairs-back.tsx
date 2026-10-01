@@ -5,6 +5,7 @@ import type { CurrentUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { markManyBack } from "@/actions/notices";
 import { ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
@@ -18,9 +19,9 @@ export async function RepairsBackSlot({ user }: { user: CurrentUser }) {
     select: { id: true, tag: true, customerName: true, brand: true, model: true, linkId: true, updatedAt: true, customer: { select: { name: true } } },
   });
   if (!jobs.length) return null;
-  const [gate, shop, links] = await Promise.all([
+  const [gate, tz, links] = await Promise.all([
     gateFor(shopId, "marketing"),
-    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } }),
+    shopTimeZone(shopId),
     db.partnerLink.findMany({ where: { shopId, id: { in: [...new Set(jobs.map((j) => j.linkId))] } }, select: { id: true, partnerName: true } }),
   ]);
   const partner = new Map(links.map((l) => [l.id, l.partnerName]));
@@ -55,7 +56,7 @@ export async function RepairsBackSlot({ user }: { user: CurrentUser }) {
                     {j.brand} {j.model}
                   </td>
                   <td>{partner.get(j.linkId) ?? ""}</td>
-                  <td className="num">{fmtDate(j.updatedAt, shop.timeZone)}</td>
+                  <td className="num">{fmtDate(j.updatedAt, tz)}</td>
                 </tr>
               ))}
             </tbody>

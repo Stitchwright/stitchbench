@@ -7,6 +7,7 @@ import { ABANDON_STAGE_LABEL } from "@/lib/constants";
 import { ticketNo } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { fmtDay } from "@/lib/zoned";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
 import { scheduleFor } from "@/lib/notices/vars";
@@ -20,13 +21,13 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
   const shopId = user.shopId;
   const now = new Date();
   const admin = user.role !== "TECH";
-  const [gate, ms, shop] = await Promise.all([
+  const [gate, ms, shop, tz] = await Promise.all([
     gateFor(shopId, "marketing"),
     messagingView(shopId),
-    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true, abandonedAfterDays: true } }),
+    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { abandonedAfterDays: true } }),
+    shopTimeZone(shopId),
   ]);
   const on = gate === "on";
-  const tz = shop.timeZone;
   const lines: { key: string; node: React.ReactNode }[] = [];
 
   // Marked ready by the repair shop: is it here?

@@ -14,7 +14,7 @@ import { shopsWith } from "@/lib/module-gate";
 import { addDays, dayStart, fmtWhen, monthsBetween, ymdOf, zonedTime } from "@/lib/zoned";
 import { abandonDate, abandonStages, sendable, stageKey } from "@/lib/notices/abandon";
 import { queueAbandonNotice } from "@/lib/notices/hooks";
-import { abandonTarget } from "@/lib/notices/vars";
+import { abandonTarget, termDays } from "@/lib/notices/vars";
 import { runBagsDue } from "@/lib/vac/bags-due";
 
 const HOUR = 3_600_000;
@@ -192,29 +192,45 @@ async function reminders(run: Run) {
 
 // ---------- 2. uncollected-machine notices ----------
 
+/**
+ * Every machine on the pickup shelf, every 5 minutes: the stages are arithmetic on the ready date, so nothing is
+ * queried per machine until a stage is due, and the rows that already exist are fetched in one query. Only the few
+ * machines with a stage due and no row yet are loaded in full (abandonTarget) and queued.
+ */
 async function uncollected(run: Run) {
   const { now, tz, shop, ms } = run;
-  type Cand = { ticketId?: string; jobId?: string };
-  const cands: Cand[] = [];
-  const tickets = await db.ticket.findMany({
-    where: { shopId: shop.id, status: "READY_FOR_PICKUP", pickupReadyAt: { not: null }, customerId: { not: null }, viaAccountId: null, jobType: "BENCH" },
-    select: { id: true, pickupReadyAt: true },
+  const [tickets, jobs] = await Promise.all([
+    db.ticket.findMany({
+      where: { shopId: shop.id, status: "READY_FOR_PICKUP", pickupReadyAt: { not: null }, customerId: { not: null }, viaAccountId: null, jobType: "BENCH" },
+      select: { id: true, pickupReadyAt: true },
+    }),
+    db.repairJob.findMany({ where: { shopId: shop.id, side: "retail", customerId: { not: null }, pickedUpAt: null, backAt: { not: null } }, select: { id: true, backAt: true, linkId: true } }),
+  ]);
+  const links = jobs.length ? await db.partnerLink.findMany({ where: { shopId: shop.id, id: { in: [...new Set(jobs.map((j) => j.linkId))] } }, select: { id: true, terms: true } }) : [];
+  const jobDays = new Map(links.map((l) => [l.id, termDays(l.terms, shop.abandonedAfterDays)]));
+  type Cand = { ref: { ticketId?: string; jobId?: string }; start: Date; days: number };
+  const cands: Cand[] = [
+    ...tickets.flatMap((t) => (t.pickupReadyAt ? [{ ref: { ticketId: t.id }, start: t.pickupReadyAt, days: shop.abandonedAfterDays }] : [])),
+    ...jobs.flatMap((j) => (j.backAt ? [{ ref: { jobId: j.id }, start: j.backAt, days: jobDays.get(j.linkId) ?? shop.abandonedAfterDays }] : [])),
+  ];
+  const due = cands.flatMap((c) => {
+    const s = sendable(abandonStages(c.start, ms.abandonDays, c.days, ms.finalNoticeDays, ms.reminderHour, tz), now, abandonDate(c.start, c.days, tz));
+    return s ? [{ ...c, key: stageKey(c.start, s) }] : [];
   });
-  for (const t of tickets) if (t.pickupReadyAt) cands.push({ ticketId: t.id });
-  const jobs = await db.repairJob.findMany({ where: { shopId: shop.id, side: "retail", customerId: { not: null }, pickedUpAt: null, backAt: { not: null } }, select: { id: true, backAt: true } });
-  for (const j of jobs) if (j.backAt) cands.push({ jobId: j.id });
-
-  for (const c of cands) {
+  if (!due.length) return;
+  const have = await db.outMessage.findMany({
+    where: { shopId: shop.id, kind: "abandon", refType: "stage", refId: { in: [...new Set(due.map((d) => d.key))] } },
+    select: { refId: true, ticketId: true, repairJobId: true },
+  });
+  const done = new Set(have.map((h) => `${h.ticketId ?? h.repairJobId}:${h.refId}`)); // sent, waiting, or recorded by hand
+  for (const d of due) {
     if (run.left <= 0) return;
-    const target = await abandonTarget(db, shop.id, { ticketId: c.ticketId, jobId: c.jobId });
-    if (!target) continue;
-    const stages = abandonStages(target.start, ms.abandonDays, target.abandonedAfterDays, ms.finalNoticeDays, ms.reminderHour, tz);
-    const s = sendable(stages, now, abandonDate(target.start, target.abandonedAfterDays, tz));
-    if (!s) continue;
-    const key = stageKey(target.start, s);
-    const where: Prisma.OutMessageWhereInput = { shopId: shop.id, kind: "abandon", refType: "stage", refId: key, ...(c.ticketId ? { ticketId: c.ticketId } : { repairJobId: c.jobId }) };
-    if (await db.outMessage.findFirst({ where, select: { id: true } })) continue; // sent, or recorded by hand
-    const r = await queueAbandonNotice(db, { shopId: shop.id, target, stage: s, ms, dedupeKey: `abandon:${c.ticketId ? `t:${c.ticketId}` : `j:${c.jobId}`}:${key}` });
+    if (done.has(`${d.ref.ticketId ?? d.ref.jobId}:${d.key}`)) continue;
+    const target = await abandonTarget(db, shop.id, d.ref);
+    if (!target) continue; // not direct (a partner's repair), SITE, or moved on meanwhile
+    const s = sendable(abandonStages(target.start, ms.abandonDays, target.abandonedAfterDays, ms.finalNoticeDays, ms.reminderHour, tz), now, abandonDate(target.start, target.abandonedAfterDays, tz));
+    if (!s || stageKey(target.start, s) !== d.key) continue;
+    const r = await queueAbandonNotice(db, { shopId: shop.id, target, stage: s, ms, dedupeKey: `abandon:${d.ref.ticketId ? `t:${d.ref.ticketId}` : `j:${d.ref.jobId}`}:${d.key}` });
     run.left -= r.queued.length;
   }
 }

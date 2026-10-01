@@ -10,6 +10,7 @@ import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { renderKind } from "@/lib/messaging/templates";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { abandonDate, abandonStages, currentStage } from "@/lib/notices/abandon";
 import { fmtDay, fmtTime, ymdOf } from "@/lib/zoned";
 import { abandonTarget, abandonVars, notDelivered, scheduleFor, stageRows, type StageView } from "@/lib/notices/vars";
@@ -68,14 +69,13 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
   ]);
   if (isJob ? !job || job.side !== "retail" : !ticket) return null;
 
-  const [shop, ms, gate, target, messages] = await Promise.all([
-    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } }),
+  const [tz, ms, gate, target, messages] = await Promise.all([
+    shopTimeZone(shopId),
     messagingView(shopId),
     gateFor(shopId, "marketing"),
     abandonTarget(db, shopId, isJob ? { jobId: id } : { ticketId: id }),
     db.outMessage.findMany({ where: { shopId, ...(isJob ? { repairJobId: id } : { ticketId: id }) }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
-  const tz = shop.timeZone;
   const on = gate === "on";
   const admin = user.role !== "TECH";
   const awaitingBack = isJob && !!job && !job.backAt && !job.pickedUpAt && READY_JOB_STATUSES.includes(job.status);

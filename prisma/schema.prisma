@@ -395,6 +395,7 @@ model Ticket {
 
   @@unique([shopId, number])
   @@index([shopId, status])
+  @@index([shopId, status, closedAt]) // review requests: collected in the last two days
   @@index([shopId, machineId, intakeAt])
   @@index([machineId])
   @@index([customerId])
@@ -1064,6 +1065,8 @@ model RepairJob {
   @@index([shopId, status])
   @@index([shopId, linkId])
   @@index([shopId, machineId])
+  @@index([shopId, side, backAt]) // uncollected-machine notices: back at the counter
+  @@index([shopId, side, pickedUpAt]) // review requests: picked up in the last two days
 }
 
 // A sewing shop's order of parts, notions or accessories from its partner repair shop. Same id on both sides.
