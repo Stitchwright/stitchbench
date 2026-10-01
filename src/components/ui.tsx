@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { TicketStatus } from "@/generated/prisma/enums";
-import { JOB_STATUS_LABEL, ORDER_STATUS_LABEL, STATUS_LABEL, STATUS_TONE } from "@/lib/constants";
+import { JOB_STATUS_LABEL, ORDER_STATUS_LABEL, SITE_STATUS_LABEL, STATUS_LABEL, STATUS_TONE } from "@/lib/constants";
 
 export function PageHeader({
   title,
@@ -29,8 +29,9 @@ export function PageHeader({
   );
 }
 
-export function StatusPill({ status }: { status: TicketStatus }) {
-  return <span className={`pill tone-${STATUS_TONE[status]}`}>{STATUS_LABEL[status]}</span>;
+/** A ticket's status; `site` uses the central vac install names (Booked, In progress, Completed). */
+export function StatusPill({ status, site = false }: { status: TicketStatus; site?: boolean }) {
+  return <span className={`pill tone-${STATUS_TONE[status]}`}>{site ? SITE_STATUS_LABEL[status] : STATUS_LABEL[status]}</span>;
 }
 
 /** A partner repair job's status, in the sewing shop's words or the repair shop's. */
@@ -81,6 +82,8 @@ export function KV({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-export function modelHref(brand: string, model: string) {
-  return `/models/${encodeURIComponent(brand)}/${encodeURIComponent(model)}`;
+/** The model page; a non-sewing kind goes in the query (no kind means sewing). */
+export function modelHref(brand: string, model: string, kind?: string | null) {
+  const base = `/models/${encodeURIComponent(brand)}/${encodeURIComponent(model)}`;
+  return kind && kind !== "sewing" ? `${base}?kind=${encodeURIComponent(kind)}` : base;
 }
