@@ -149,6 +149,7 @@ export function cleanSubject(s: string): string {
   return s
     .replace(/[\r\n\t]+/g, " ")
     .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/ {2,}/g, " ")
     .trim()
     .slice(0, 150);
 }

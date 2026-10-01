@@ -58,3 +58,6 @@ desktop/server/
 desktop/dist/
 desktop/dist-stitchshop/
 /public/pdfjs/
+
+# local scratch runs (scripts/local-test, sanity scripts)
+/.run/
