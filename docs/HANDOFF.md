@@ -40,7 +40,7 @@ stitchshop project twice); `desktop/backup-now.mjs` makes the same backup as the
 - Hosted StitchShop: https://stitchshop-production.up.railway.app (project `stitchshop`, service `stitchshop`).
 - Hosted StitchBench: https://stitchbench-production-e554.up.railway.app (project `stitchbench`, service `stitchbench`;
   owner login bwattendorf@gmail.com, password file in the owner's Documents folder).
-- StitchBench 1.6.0 installed on the owner's PC (since 30 Sep 2026); installers for both programs build with the
+- StitchBench 1.6.1 installed on the owner's PC (since 30 Sep 2026, evening; round3-tail and round3-tail2 deployed everywhere the same evening); installers for both programs build with the
   GitHub Actions workflow `installers.yml` (unsigned; `gh workflow run installers.yml --ref main` starts it).
 
 ## 1. Get set up on the PC
