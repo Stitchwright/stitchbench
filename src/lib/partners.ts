@@ -16,7 +16,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { isUserError, UserError } from "@/lib/action";
-import { checkHubUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
+import { checkHubUrl, formerInstall, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { inEighths } from "@/lib/register-math";
 import { modelKey } from "@/lib/format";
@@ -248,35 +248,65 @@ export async function redeemPartnerCode(shopId: string, shopName: string, contac
     out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName } })).json()) as typeof out;
   } else {
     const base = url ?? DEFAULT_HUB_URL;
-    let r: Response;
-    try {
-      r = await fetch(`${base}/v1/partners/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, shopRef: shopId, shopName, contact }),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch {
-      throw new UserError("Couldn't reach the hub. Check the internet connection and try again.");
+    // The code's hub is the one this install left, and it still knows the install: the same install again, for its
+    // partner shops only (the community part waits for a join key, as with any partner code), so what it had on the
+    // hub stays its own. Otherwise the code alone gets it a new install there.
+    const oldKey = st?.formerUrl === base ? st.formerInstallKey : null;
+    const former = oldKey ? await formerInstall(base, oldKey) : null;
+    if (former && oldKey) {
+      const fresh = await hubState();
+      if (fresh?.installKey) throw new UserError("This install joined a hub a moment ago. Enter the partner code again.");
+      const data = {
+        url: base,
+        hubName: former.hubName,
+        installId: former.installId,
+        installKey: oldKey,
+        joinedAt: new Date(),
+        scope: "partner",
+        cursor: null,
+        orderCursor: null,
+        partnerCursor: "0",
+        lastError: null,
+        formerUrl: null,
+        formerInstallId: null,
+        formerInstallKey: null,
+      };
+      await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+      out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName } })).json()) as typeof out;
+    } else {
+      let r: Response;
+      try {
+        r = await fetch(`${base}/v1/partners/join`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, shopRef: shopId, shopName, contact }),
+          signal: AbortSignal.timeout(30_000),
+        });
+      } catch {
+        throw new UserError("Couldn't reach the hub. Check the internet connection and try again.");
+      }
+      const j = (await r.json().catch(() => ({}))) as { error?: string; installId?: string; installKey?: string; hubName?: string } & typeof out;
+      if (!r.ok) throw new UserError(j.error ?? `The hub answered ${r.status}.`);
+      // Someone else on this install joined a hub meanwhile: keep theirs (this code was used; ask for a new one).
+      const fresh = await hubState();
+      if (fresh?.installKey) throw new UserError("This install joined a hub a moment ago. Ask for a new partner code and enter it again.");
+      const data = {
+        url: base,
+        hubName: j.hubName,
+        installId: j.installId,
+        installKey: j.installKey,
+        joinedAt: new Date(),
+        scope: "partner",
+        cursor: null,
+        orderCursor: null,
+        partnerCursor: "0",
+        formerUrl: null,
+        formerInstallId: null,
+        formerInstallKey: null,
+      };
+      await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+      out = j;
     }
-    const j = (await r.json().catch(() => ({}))) as { error?: string; installId?: string; installKey?: string; hubName?: string } & typeof out;
-    if (!r.ok) throw new UserError(j.error ?? `The hub answered ${r.status}.`);
-    // Someone else on this install joined a hub meanwhile: keep theirs (this code was used; ask for a new one).
-    const fresh = await hubState();
-    if (fresh?.installKey) throw new UserError("This install joined a hub a moment ago. Ask for a new partner code and enter it again.");
-    const data = {
-      url: base,
-      hubName: j.hubName,
-      installId: j.installId,
-      installKey: j.installKey,
-      joinedAt: new Date(),
-      scope: "partner",
-      cursor: null,
-      orderCursor: null,
-      partnerCursor: "0",
-    };
-    await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
-    out = j;
   }
   await saveLinkFromHub(shopId, out.side, out.link);
   const s1 = await hubState();
@@ -351,7 +381,7 @@ export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartne
       partnerName,
       status: l.status,
       endedAt,
-      ...(newTerms ? { terms, termsVersion: existing.termsVersion + 1, accepted: {}, proposedTerms: Prisma.DbNull, proposedBy: null } : {}),
+      ...(newTerms ? { terms, termsVersion: existing.termsVersion + 1, accepted: {}, proposedTerms: Prisma.DbNull, proposedBy: null, priorTerms: Prisma.DbNull, withdrawnTerms: Prisma.DbNull } : {}),
     },
   });
 }
@@ -359,6 +389,10 @@ export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartne
 // ---------- terms ----------
 
 type Proposal = { version: number; terms: PartnerTerms; by: { name: string; at: string } };
+/** The terms in force before this shop took the partner's proposal `adoptedVersion` as agreed (PartnerLink.priorTerms). */
+type PriorTerms = { terms: unknown; termsVersion: number; accepted: Accepted; adoptedVersion: number };
+/** A proposal this shop accepted that the partner had already replaced (PartnerLink.withdrawnTerms). */
+export type WithdrawnTerms = { version: number; terms: unknown; reason: string | null; at: string };
 
 export async function proposeTerms(shopId: string, linkId: string, terms: PartnerTerms, byName: string) {
   const l = await partnerLink(shopId, linkId);
@@ -390,7 +424,10 @@ export async function acceptTerms(shopId: string, linkId: string, byName: string
     terms = normalizeTerms(prop.terms);
     const other = l.side === "repair" ? "retail" : "repair";
     const next: Accepted = { [other]: { ...prop.by, version }, [l.side]: { name: byName, at, version } };
-    data = { terms, termsVersion: version, accepted: next as Json, proposedTerms: Prisma.DbNull, proposedBy: null };
+    // Taken as agreed here now; the partner's copy agrees once this acceptance reaches it. Should the partner have
+    // replaced the proposal before then, it says so (msg.rejected) and the terms in force before are put back.
+    const prior: PriorTerms = { terms: l.terms, termsVersion: l.termsVersion, accepted: (l.accepted as Accepted) ?? {}, adoptedVersion: version };
+    data = { terms, termsVersion: version, accepted: next as Json, proposedTerms: Prisma.DbNull, proposedBy: null, priorTerms: prior as Json, withdrawnTerms: Prisma.DbNull };
   } else {
     accepted[l.side as Side] = { name: byName, at, version };
     data = { accepted: accepted as Json };
@@ -733,26 +770,8 @@ async function pullMessages(cursor: string) {
             // An earlier try that failed is over with: it mustn't stay on the Partners page as still failing.
             await db.partnerFailure.deleteMany({ where: { shopId: shop.id, key } }).catch(() => {});
           } catch (e) {
-            const dataError = e instanceof PartnerDataError;
-            const dbError = !dataError && refusedForGood(e);
-            // The database's own words name source files and values: they go to the log, and the shop sees plain words.
-            if (!dataError) console.error(`partner sync: ${m.type} from a partner couldn't be applied:`, e instanceof Error ? e.message : e);
-            const msg = dataError ? (e as Error).message : dbError ? "this install couldn't store what was sent (a value out of range)" : "it couldn't be applied yet";
-            const prior = await db.partnerFailure.findUnique({ where: { shopId_key: { shopId: shop.id, key } } });
-            const tries = (prior?.tries ?? 0) + 1;
-            const skip = dataError || dbError || tries >= 3;
-            const data = storable(m.data);
-            await db.partnerFailure
-              .upsert({
-                where: { shopId_key: { shopId: shop.id, key } },
-                create: { shopId: shop.id, key, linkId: String(m.linkId).slice(0, 80), type: String(m.type).slice(0, 40), data, error: msg.slice(0, 1000), skipped: skip },
-                update: { tries, error: msg.slice(0, 1000), skipped: skip, at: new Date() },
-              })
-              .catch(() => ({ skipped: true }));
-            if (skip) {
-              await db.partnerSeen.create({ data: { shopId: shop.id, key } }).catch(() => {});
-              await tellRejected(shop.id, m, msg).catch(() => {});
-            } else {
+            const { skip } = await noteFailure(shop.id, key, m, e);
+            if (!skip) {
               // Everything else of this partnership waits behind it (an update mustn't overtake its job).
               held.add(hold);
               keep ??= doneThrough;
@@ -767,6 +786,82 @@ async function pullMessages(cursor: string) {
     since = next;
   }
   return received;
+}
+
+/**
+ * A message that couldn't be applied: written down for the Partners page (with the message's number on the hub, so
+ * it can be fetched whole and tried again). Bad data, or something the database refuses every time, is set aside at
+ * once; a passing failure is set aside after 3 tries, or at once when `setAside` (a try someone asked for). A message
+ * set aside counts as seen, so a feed that starts over doesn't apply it, and the partner is told.
+ */
+async function noteFailure(shopId: string, key: string, m: HubMessage, e: unknown, setAside = false) {
+  const dataError = e instanceof PartnerDataError;
+  const dbError = !dataError && refusedForGood(e);
+  // The database's own words name source files and values: they go to the log, and the shop sees plain words.
+  if (!dataError) console.error(`partner sync: ${m.type} from a partner couldn't be applied:`, e instanceof Error ? e.message : e);
+  const msg = dataError ? (e as Error).message : dbError ? "this install couldn't store what was sent (a value out of range)" : "it couldn't be applied yet";
+  const prior = await db.partnerFailure.findUnique({ where: { shopId_key: { shopId, key } } });
+  const tries = (prior?.tries ?? 0) + 1;
+  const skip = dataError || dbError || setAside || tries >= 3;
+  const seq = /^\d{1,30}$/.test(String(m.seq)) ? String(m.seq) : null;
+  await db.partnerFailure
+    .upsert({
+      where: { shopId_key: { shopId, key } },
+      create: { shopId, key, linkId: String(m.linkId).slice(0, 80), type: String(m.type).slice(0, 40), data: storable(m.data), error: msg.slice(0, 1000), skipped: skip, tries, seq },
+      update: { tries, error: msg.slice(0, 1000), skipped: skip, at: new Date(), ...(seq ? { seq } : {}) },
+    })
+    .catch(() => null);
+  if (skip) {
+    await db.partnerSeen.createMany({ data: [{ shopId, key }], skipDuplicates: true }).catch(() => {});
+    await tellRejected(shopId, m, msg).catch(() => {});
+  }
+  return { skip, msg };
+}
+
+/**
+ * The message a set-aside entry is about, from the hub again, whole (the copy kept here leaves photos out and is cut
+ * short): by its number there, or, for an entry from before the number was kept, by the message's own key (the
+ * partnership, the sender's side and the sender's id). Null when the hub doesn't have it, or is too old to look one up.
+ */
+async function fetchHubMessage(shopId: string, f: { key: string; seq: string | null }): Promise<HubMessage | null> {
+  const parts = f.key.split(":"); // linkId:fromSide:id:toSide, as pullMessages builds it
+  const byKey = parts.length === 4 && /^[A-Za-z0-9_-]{1,80}$/.test(parts[0]) && ["repair", "retail", "hub"].includes(parts[1]) && /^[A-Za-z0-9_-]{1,80}$/.test(parts[2]);
+  const path = f.seq && /^\d{1,18}$/.test(f.seq) ? `/v1/partners/messages/${f.seq}` : byKey ? `/v1/partners/links/${parts[0]}/messages/${parts[1]}/${parts[2]}` : null;
+  if (!path) return null;
+  let r: Response;
+  try {
+    r = await hubFetch(path, { signal: AbortSignal.timeout(120_000) });
+  } catch (e) {
+    if (hubStatus(e) === 404) return null;
+    throw e;
+  }
+  const { messages } = (await r.json()) as { messages?: HubMessage[] };
+  // The hub sends a copy per shop of this install the message is for: the one this entry belongs to.
+  return (messages ?? []).find((m) => m.toShopRef === shopId && `${m.linkId}:${m.fromSide}:${m.id}:${m.toSide}`.slice(0, 300) === f.key) ?? null;
+}
+
+/**
+ * Apply a message that was set aside once more (after the cause is fixed: a partnership restored, room made on the
+ * disk): fetched from the hub again, then through the same path as the sync's, so it is applied whole or not at all
+ * and never twice. One that fails again is set aside again, with the new reason.
+ */
+export async function retryPartnerMessage(shopId: string, key: string) {
+  const f = await db.partnerFailure.findUnique({ where: { shopId_key: { shopId, key } } });
+  if (!f) throw new UserError("That message isn't set aside any more.");
+  if (!(await hubState())?.installKey) throw new UserError("This install isn't on a hub now; the message can't be fetched again.");
+  const m = await fetchHubMessage(shopId, f);
+  if (!m) throw new UserError("The hub doesn't have that message any more (it keeps them for a year), or it is an older hub that can't look one up. Ask the partner shop to send it again.");
+  // A fresh start for it: the "seen" row written when it was set aside, and the entry itself, go first.
+  await db.$transaction([db.partnerSeen.deleteMany({ where: { shopId, key } }), db.partnerFailure.deleteMany({ where: { shopId, key } })]);
+  try {
+    await linkFor(shopId, m);
+    await applyOnce(shopId, key, m);
+  } catch (e) {
+    const { msg } = await noteFailure(shopId, key, m, e, true);
+    throw new UserError(`It couldn't be applied this time either: ${msg}.`);
+  }
+  // Whatever it caused (a new job's first update, an order's copy back) goes out now rather than next time.
+  kickPartnerSync();
 }
 
 /**
@@ -1323,9 +1418,22 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
       await tx.partnerOutbox.update({ where: { id: sent.id }, data: { deadAt: sent.deadAt ?? hubAt, error: reason } });
       const sentData = sent.data && typeof sent.data === "object" && !Array.isArray(sent.data) ? (sent.data as Obj) : {};
       if (sent.type === "terms.accept") {
+        const version = Number(sentData.version);
+        // We had taken their proposal as agreed, and they had replaced it before our acceptance arrived (their newer
+        // proposal is here, or on its way): the terms in force before come back, and the withdrawn ones are kept
+        // aside so the agreement page can say what happened.
+        const prior = link.priorTerms as PriorTerms | null;
+        if (prior && prior.adoptedVersion === version && version === link.termsVersion) {
+          const withdrawn: WithdrawnTerms = { version, terms: link.terms, reason: text(d.reason, 500), at: hubAt.toISOString() };
+          await tx.partnerLink.update({
+            where: lk,
+            data: { terms: prior.terms as Json, termsVersion: prior.termsVersion, accepted: prior.accepted as Json, priorTerms: Prisma.DbNull, withdrawnTerms: withdrawn as Json },
+          });
+          return;
+        }
         // Our acceptance didn't take on their side: these terms aren't agreed by both, whatever we recorded for them.
         const accepted = { ...((link.accepted as Accepted) ?? {}) };
-        if (Number(sentData.version) === link.termsVersion && accepted[partnerSide]?.version === link.termsVersion) {
+        if (version === link.termsVersion && accepted[partnerSide]?.version === link.termsVersion) {
           delete accepted[partnerSide];
           await tx.partnerLink.update({ where: lk, data: { accepted: accepted as Json } });
         }
@@ -1477,12 +1585,16 @@ async function newJobFromPartner(shopId: string, link: { id: string; partnerName
   }
 }
 
-/** A part number not yet used on this shop, from `number` with a suffix when needed. */
+/**
+ * A part number not yet used on this shop, from `number` with a suffix when needed. Numbers are one whatever their
+ * case here (a unique index on the lower-cased number), so the check is case-blind too: "abc-1" is taken by "ABC-1".
+ */
 async function freePartNumber(tx: Prisma.TransactionClient, shopId: string, number: string, suffix: string) {
-  if (!(await tx.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: number } }, select: { id: true } }))) return number;
+  const taken = (candidate: string) => tx.part.findFirst({ where: { shopId, partNumber: sameText(candidate) }, select: { id: true } });
+  if (!(await taken(number))) return number;
   for (let i = 1; i < 100; i++) {
     const candidate = `${number} (${suffix}${i > 1 ? ` ${i}` : ""})`;
-    if (!(await tx.part.findUnique({ where: { shopId_partNumber: { shopId, partNumber: candidate } }, select: { id: true } }))) return candidate;
+    if (!(await taken(candidate))) return candidate;
   }
   return `${number} (${crypto.randomUUID().slice(0, 8)})`;
 }
@@ -1501,7 +1613,7 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
   // The same item again, or the same number from this partner: one inventory entry.
   let part =
     (await tx.part.findFirst({ where: { shopId, consignLinkId: link.id, consignItemKey: itemKey } })) ??
-    (await tx.part.findFirst({ where: { shopId, consignLinkId: link.id, OR: [{ partNumber: number }, { altNumbers: { has: number } }] } }));
+    (await tx.part.findFirst({ where: { shopId, consignLinkId: link.id, OR: [{ partNumber: sameText(number) }, { altNumbers: { has: number } }] } }));
   if (!part) {
     const partNumber = await freePartNumber(tx, shopId, number, link.partnerName.slice(0, 20));
     const kind = KINDS.includes(String(it.kind)) ? String(it.kind) : "ACCESSORY";

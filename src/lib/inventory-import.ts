@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
 import { EXCEL_NUMBER } from "@/lib/input";
-import { MAX_CENTS, MAX_STOCK, numberKey, partKeys } from "@/lib/parts";
+import { MAX_CENTS, MAX_STOCK, isPartNumberClash, numberKey, partKeys } from "@/lib/parts";
 import { CONDITIONS, ORIGINS, numberNames, twinNumber } from "@/lib/part-labels";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 
@@ -81,7 +81,9 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
           select: { id: true, partNumber: true, description: true, brand: true, location: true, costCents: true, priceCents: true, unit: true, altNumbers: true, numberKeys: true, condition: true, origin: true, consignLinkId: true },
         })
       ).map((p): Item => ({ ...p, consigned: p.consignLinkId != null, fresh: false, changed: false, more: 0 }));
-      const taken = new Set(items.map((p) => p.partNumber));
+      // Every number in use, in lower case: the database holds a number once in any case (a partner's consigned
+      // items included), so a new item's number is checked the same way.
+      const taken = new Set(items.map((p) => p.partNumber.toLowerCase()));
       const byName = new Map<string, Item[]>();
       const byKey = new Map<string, Item[]>();
       const add = (map: Map<string, Item[]>, k: string, it: Item) => {
@@ -176,9 +178,9 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
           updated++;
         } else {
           // The number is taken by a partner's consigned item, or by this shop's own stock in another condition.
-          const clash = taken.has(partNumber) || same.some((p) => p.partNumber.toLowerCase() === lower);
+          const clash = taken.has(lower) || same.some((p) => p.partNumber.toLowerCase() === lower);
           const own = clash ? twinNumber(partNumber, condition ?? "NEW", same.length > 0) : partNumber;
-          if (own !== partNumber && taken.has(own)) {
+          if (own !== partNumber && taken.has(own.toLowerCase())) {
             unmatched.push(partNumber);
             skipped++;
             continue;
@@ -202,7 +204,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             changed: false,
             more: qty,
           };
-          taken.add(own);
+          taken.add(own.toLowerCase());
           index(it);
           fresh.push(it);
           if (qty) moves.push({ shopId, partId: it.id, qty, reason: "RECEIVED", userId, note: "Imported" });
@@ -210,6 +212,11 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
         }
       }
 
+      // The plan was made from one read: a number someone adds at the counter (in any case) while the sheet is being
+      // planned is refused by the database's key on the number, and the whole import rolls back.
+      const addedMeanwhile = (e: unknown) => {
+        throw isPartNumberClash(e) ? new UserError("A number in the sheet was added to the parts by someone else while the import ran, so nothing was imported. Check the parts list, then import again.") : e;
+      };
       for (let i = 0; i < fresh.length; i += BLOCK) {
         await tx.part.createMany({
           data: fresh.slice(i, i + BLOCK).map((it) => ({
@@ -230,7 +237,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             numberKeys: it.numberKeys,
             qtyOnHand: it.more,
           })),
-        });
+        }).catch(addedMeanwhile);
       }
       for (let i = 0; i < moves.length; i += BLOCK) await tx.stockMove.createMany({ data: moves.slice(i, i + BLOCK) });
       // Items that were here already: all their new details in one statement, all their added stock in another.

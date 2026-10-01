@@ -297,14 +297,32 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
   if (cur?.installKey && (await db.partnerLink.count({ where: { status: "ACTIVE" } }))) {
     throw new UserError("This install's partner shops are connected through its current hub. End those partnerships before moving to another hub.");
   }
-  const r = await reach(
-    `${base}/v1/register`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ joinKey: joinKey.trim(), name: shopName, contact }) },
-    base,
-  );
-  if (!r.ok) throw await failure(r);
-  const j = (await r.json()) as { installId: string; installKey: string; hubName: string };
-  // A different hub numbers its changes, orders and partner messages its own way: start every cursor over.
+  // Back on the hub this install left: while the hub still knows the install, it is the same install again (the join
+  // key makes it a member again), so the listings, orders and notes it had there stay its own. A hub that has
+  // forgotten it (rebuilt from an older export, or the admin removed it) gets a new registration as before.
+  const oldKey = cur?.formerUrl === base ? cur.formerInstallKey : null;
+  const former = oldKey ? await formerInstall(base, oldKey) : null;
+  let j: { installId: string; installKey: string; hubName: string };
+  if (former && oldKey) {
+    const r = await reach(
+      `${base}/v1/upgrade`,
+      { method: "POST", headers: { Authorization: `Bearer ${oldKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ joinKey: joinKey.trim() }) },
+      base,
+    );
+    if (!r.ok) throw await failure(r);
+    const u = (await r.json()) as { installId?: string; hubName?: string };
+    j = { installId: u.installId ?? former.installId, installKey: oldKey, hubName: u.hubName ?? former.hubName ?? "" };
+  } else {
+    const r = await reach(
+      `${base}/v1/register`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ joinKey: joinKey.trim(), name: shopName, contact }) },
+      base,
+    );
+    if (!r.ok) throw await failure(r);
+    j = (await r.json()) as typeof j;
+  }
+  // A different hub numbers its changes, orders and partner messages its own way: start every cursor over. (The same
+  // hub again starts over too: what was synced before went when the install left.)
   const data = {
     url: base,
     hubName: j.hubName,
@@ -316,20 +334,44 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
     partnerCursor: null,
     lastError: null,
     scope: "member",
+    formerUrl: null,
+    formerInstallId: null,
+    formerInstallKey: null,
   };
   await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
   // What the old connection synced goes: the first sync brings this hub's copy from the start. Kept, a listing of the
-  // shop's own would come back as another shop's (the new install is someone else to the hub), and one the new hub
+  // shop's own would come back as another shop's (a new install is someone else to the hub), and one the new hub
   // doesn't have would stay on show with nothing behind it.
   await clearHubCopies();
   // The notes this shop shared went to the old connection; another hub (or this one rebuilt) doesn't have them, so
-  // the first sync sends them again. The hub tells copies apart per install, so a hub that kept the old install's
-  // posts (one moved whole to a new address) would hold them twice; a re-join like that is rare.
+  // the first sync sends them again. Each carries its own id, so the same install on the same hub is answered with
+  // the note it already holds, not a second copy. A hub that kept the old install's posts under a new install (one
+  // moved whole to a new address) would hold them twice; a re-join like that is rare.
   await db.sharedPost.updateMany({ where: { hubId: { not: null } }, data: { hubId: null } });
   return j;
 }
 
-/** The synced copies of what the hub holds (links, notes, parts, listings), for a fresh start on another connection. */
+/**
+ * Whether the hub at `base` still knows the install this program left, under its old key: its id, name and scope
+ * there, or null when it doesn't (401; or a hub too old to answer /v1/me with an id). A hub that refuses the install
+ * (the admin blocked it) says so: leaving and joining again doesn't slip past a block with a fresh install.
+ */
+export async function formerInstall(base: string, installKey: string) {
+  const r = await reach(`${base}/v1/me`, { headers: { Authorization: `Bearer ${installKey}` } }, base);
+  if (r.status === 401 || r.status === 404) {
+    await r.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (!r.ok) throw await failure(r);
+  const me = (await r.json().catch(() => ({}))) as { installId?: string; hubName?: string; scope?: string };
+  return me.installId ? { installId: me.installId, hubName: me.hubName ?? null, scope: me.scope === "partner" ? "partner" : "member" } : null;
+}
+
+/**
+ * The synced copies of what the hub holds (links, notes, parts, listings, the figures it has), for a fresh start on
+ * another connection. Figures this install shared are kept with its own copy (FigureImage); the rest are only the
+ * hub's ids, and pictures fetched from it.
+ */
 async function clearHubCopies() {
   await db.$transaction([
     db.manualLink.deleteMany(),
@@ -338,6 +380,7 @@ async function clearHubCopies() {
     db.removedXPart.deleteMany(),
     db.listing.deleteMany(),
     db.listingPhoto.deleteMany(),
+    db.hubFigure.deleteMany(),
   ]);
 }
 
@@ -355,10 +398,27 @@ export async function leaveHub() {
   // Listings still for sale would take orders nobody here sees: they come off the marketplace (when the hub answers).
   const selling = await db.listing.findMany({ where: { mine: true, status: { in: ["ACTIVE", "PAUSED"] } }, select: { id: true } });
   for (const l of selling) await hubFetch(`/v1/listings/${hubId(l.id)}`, { method: "DELETE" }).catch(() => {});
-  await db.$transaction([db.listing.deleteMany(), db.listingPhoto.deleteMany()]);
+  // The figures known only as the hub's (ids, and pictures fetched from it) go with the connection: without it they
+  // would show as stored and fail to open. The links and notes stay readable until another connection replaces them.
+  await db.$transaction([db.listing.deleteMany(), db.listingPhoto.deleteMany(), db.hubFigure.deleteMany()]);
+  // The install's key is kept aside: joining this same hub again keeps the install (joinHub), so its listings, orders
+  // and shared notes there stay its own instead of becoming another shop's.
+  const s = await hubState();
   await db.hubState.updateMany({
     where: { id: 1 },
-    data: { url: null, installId: null, installKey: null, cursor: null, orderCursor: null, discordUrl: null, scope: "member", partnerCursor: null },
+    data: {
+      url: null,
+      installId: null,
+      installKey: null,
+      cursor: null,
+      orderCursor: null,
+      discordUrl: null,
+      scope: "member",
+      partnerCursor: null,
+      formerUrl: s?.url ?? null,
+      formerInstallId: s?.installId ?? null,
+      formerInstallKey: s?.installKey ?? null,
+    },
   });
 }
 

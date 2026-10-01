@@ -441,6 +441,8 @@ model Part {
   sources   PartSource[]
   saleLines SaleLine[]
 
+  // The number is also unique in any case: a unique index on (shopId, lower(partNumber)), which Prisma can't express,
+  // in migration 20260930220000_round3_tail2_part_number_ci. Writes catch its P2002 (partNumberClash in lib/parts.ts).
   @@unique([shopId, partNumber])
   @@index([numberKeys], type: Gin)
 }
@@ -706,6 +708,11 @@ model HubState {
   partnerError     String?
   // One partner sync at a time across every server process on this install
   partnerLockUntil DateTime?
+  // The connection this install left (Leave the hub): joining that hub again, while it still knows the install, keeps
+  // the same install, so the shop's listings, orders and shared notes stay its own. Dropped on joining any hub.
+  formerUrl        String?
+  formerInstallId  String?
+  formerInstallKey String?
 }
 
 // The community parts cross-reference (synced copy): one physical part, every number it goes by, what it fits.
@@ -874,6 +881,12 @@ model PartnerLink {
   accepted      Json      @default("{}") // { repair: { name, at, version }, retail: { ... } }
   proposedTerms Json? // a change one side offered, waiting for the other
   proposedBy    String?
+  // The terms in force before this shop took the partner's proposal as agreed ({ terms, termsVersion, accepted,
+  // adoptedVersion }): put back if the partner says it had replaced that proposal before the acceptance arrived
+  priorTerms    Json?
+  // A proposal this shop accepted that the partner had withdrawn meanwhile ({ version, terms, reason, at }): shown
+  // on the agreement page until the next proposal is accepted
+  withdrawnTerms Json?
   // Repair side: the trade account machines from this shop come in under
   accountId     String?
   // Retail side: the repair shop's catalog (parts, notions, accessories at partner prices)
@@ -1073,6 +1086,8 @@ model PartnerFailure {
   tries   Int      @default(1)
   skipped Boolean  @default(false)
   at      DateTime @default(now())
+  // The message's number on the hub, so "Try again" can fetch it whole (the data kept here leaves photos out)
+  seq     String?
 
   @@id([shopId, key])
 }

@@ -184,7 +184,8 @@ export function serverLibrary(): Promise<boolean> {
   return serverLib;
 }
 
-function serverUrl(path: string) {
+/** The /api/library/file URL for a server-prefixed library path (Range-request friendly: pdf.js can fetch just the pages it needs). */
+export function serverUrl(path: string) {
   return `/api/library/file?path=${encodeURIComponent(path.slice(SERVER_PREFIX.length).split("\\").join("/"))}`;
 }
 

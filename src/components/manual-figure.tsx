@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageIcon, ExternalLink, X } from "lucide-react";
-import { getLocalFile, loadIndex, manualSource, openLocal, type LibraryIndex } from "@/lib/local-manuals";
+import { getLocalFile, loadIndex, manualSource, openLocal, serverUrl, SERVER_PREFIX, type LibraryIndex } from "@/lib/local-manuals";
 
 // Figures show from the server when they've been saved (any device, any browser).
 // Otherwise they're drawn here from the tech's own copy of the manual and then saved,
@@ -28,11 +28,9 @@ async function loadDoc(path: string): Promise<PdfDoc> {
       // old, and tablets that don't update, lack. The worker copied to /public is the legacy one too.
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-      const data = new Uint8Array(await (await getLocalFile(path)).arrayBuffer());
       // Plain 2D-canvas rendering (no OffscreenCanvas / ImageDecoder). The wasm decoders are what draw scanned
       // pages (JBIG2 / JPEG 2000 images); without them those pages come out blank.
-      return (await pdfjs.getDocument({
-        data,
+      const common = {
         isOffscreenCanvasSupported: false,
         isImageDecoderSupported: false,
         wasmUrl: "/pdfjs/wasm/",
@@ -40,7 +38,14 @@ async function loadDoc(path: string): Promise<PdfDoc> {
         cMapPacked: true,
         standardFontDataUrl: "/pdfjs/standard_fonts/",
         iccUrl: "/pdfjs/iccs/",
-      }).promise) as unknown as PdfDoc;
+      };
+      // A manual from the shop PC's library: /api/library/file supports Range requests, so pdf.js can fetch just
+      // the pages it needs (disableAutoFetch) instead of downloading the whole 60-150 MB service manual up front.
+      // A manual read from the tech's own disk has no URL to range-request, so that one is still loaded whole.
+      const doc = path.startsWith(SERVER_PREFIX)
+        ? await pdfjs.getDocument({ url: serverUrl(path), disableRange: false, disableStream: false, disableAutoFetch: true, ...common }).promise
+        : await pdfjs.getDocument({ data: new Uint8Array(await (await getLocalFile(path)).arrayBuffer()), ...common }).promise;
+      return doc as unknown as PdfDoc;
     })();
     docs.set(path, p);
     p.catch(() => docs.delete(path));
