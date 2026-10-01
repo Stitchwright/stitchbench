@@ -24,7 +24,7 @@ async function waitingTicket(page: Page, customer: { name: string; email?: strin
   await page.goto("/tickets/new");
   await page.getByLabel("New customer name").fill(customer.name);
   if (customer.phone) await page.getByLabel("Phone", { exact: true }).fill(customer.phone);
-  if (customer.email) await page.getByLabel("Email (optional)").fill(customer.email);
+  if (customer.email) await page.getByLabel("Email address").fill(customer.email);
   await page.getByRole("radio", { name: customer.notify, exact: true }).check();
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
@@ -116,6 +116,9 @@ test("an estimate link: sent by email, opened signed out, approved after the con
   expect(stored[0].body).not.toContain(url!.split("/e/")[1]);
   expect(stored[0].body).toMatch(/\/e\/•••/);
 
+  // Back on the ticket (sendNow went to the Messages page): it stays open while the customer answers.
+  await page.goto(`/tickets/${ticketId}`);
+
   // The customer, signed out: the lines and the total, nothing else about them.
   const ctx = await browser.newContext();
   const link = await ctx.newPage();
@@ -188,7 +191,7 @@ test("without a public address: no link, they call or reply, a text reply shows 
   await page.goto(`/tickets/${ticketId}`);
   await expect(page.getByText("Yes please go ahead")).toBeVisible();
   await page.getByRole("button", { name: "They approved" }).click();
-  await expect(page.getByText("Recorded")).toBeVisible();
+  await expect(page.getByText("Recorded", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Status", { exact: true })).toHaveValue("ON_BENCH");
   const t = await sql<{ notes: string; approvedCents: number }>(`SELECT notes, "approvedCents" FROM "Ticket" WHERE id = $1`, [ticketId]);
