@@ -370,6 +370,11 @@ function StageText({ v, tz, names, marketing, auto }: { v: StageView; tz: string
       return <span>Past the notice window: decide by hand</span>;
     case "replaced":
       return <span>Not sent (a later notice was due)</span>;
+    case "coming":
+      // Not due yet: the date, and a word on who sends it when the day comes.
+      if (!marketing) return <span>Due {date} (by hand: Messages is off)</span>;
+      if (!auto) return <span>Due {date} (by hand: automatic notices are off)</span>;
+      return <span>Due {date}</span>;
     default:
       if (!marketing) return <span>Due {date}: send it by hand (Messages is off)</span>;
       if (!auto) return <span>Due {date}: send it by hand (automatic notices are off)</span>;
