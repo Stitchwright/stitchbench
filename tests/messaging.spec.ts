@@ -3,7 +3,7 @@
 // and TWILIO_API_BASE=http://127.0.0.1:<mock port>, MESSAGE_WORKER_SECONDS=5, and E2E_EMAIL in PLATFORM_ADMIN_EMAILS.
 // It makes its own company (Marketing switched on from Companies) and removes it at the end.
 import { test, expect, type Page } from "@playwright/test";
-import { OWNER, RUN, disconnect, expectRefused, login, signIn, sql } from "./helpers";
+import { OWNER, RUN, disconnect, login, sql } from "./helpers";
 import { setModule } from "./helpers/modules";
 import { clearMockSent, clearSink, eventually, mockInbound, mockSent, sendNow, sinkMessages } from "./helpers/messaging";
 
@@ -13,7 +13,7 @@ const PASSWORD = "e2e-password-1";
 const SINK_SMTP = process.env.SMTP_SINK_PORT ?? "2525";
 const SHOP_NUMBER = "+12125550100"; // the shop's Twilio number on the mock
 const company = `M ${RUN}`;
-const owner = { email: `m-${RUN}@stitchbench.test`, password: PASSWORD };
+const owner = { email: `m-${RUN.toLowerCase()}@stitchbench.test`, password: PASSWORD };
 let shopId: string;
 let admin: Page; // the e2e owner, platform admin, on Companies
 const made: string[] = [];
@@ -30,6 +30,13 @@ test.beforeAll(async ({ browser }) => {
   await expect(admin.getByText("Company created")).toBeVisible();
   shopId = (await sql<{ id: string }>(`SELECT id FROM "Shop" WHERE name = $1`, [company]))[0].id;
   made.push(shopId);
+  // Texts only go out 9:00-20:00 shop time: give the company a zone where it is mid-day right now, so the spec passes
+  // whatever the hour here.
+  const zone = ["America/New_York", "America/Los_Angeles", "Pacific/Honolulu", "Pacific/Auckland", "Asia/Tokyo", "Asia/Kolkata", "Europe/Berlin", "Atlantic/Azores"].find((tz) => {
+    const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(new Date()));
+    return h >= 10 && h <= 18;
+  })!;
+  await sql(`UPDATE "Shop" SET "timeZone" = $1 WHERE id = $2`, [zone, shopId]);
   await setModule(admin, company, "Marketing", true);
   await clearSink();
   await clearMockSent();
@@ -101,13 +108,13 @@ test("an admin sets up email and texts; secrets never reach the page; tests go o
 test("a tech sees the settings read-only", async ({ browser }) => {
   const o = await login(browser, owner);
   await o.goto("/settings");
-  await o.getByLabel("Name", { exact: true }).fill("M Tech");
-  await o.getByLabel("Email", { exact: true }).fill(`m-tech-${RUN}@stitchbench.test`);
-  await o.getByLabel("Temporary password (8+ characters)").fill(PASSWORD);
+  await o.locator("#u-name").fill("M Tech");
+  await o.locator("#u-email").fill(`m-tech-${RUN.toLowerCase()}@stitchbench.test`);
+  await o.locator("#u-pw").fill(PASSWORD);
   await o.getByRole("button", { name: "Add person" }).click();
   await expect(o.getByText(/Account created/)).toBeVisible();
   await o.context().close();
-  const t = await login(browser, { email: `m-tech-${RUN}@stitchbench.test`, password: PASSWORD });
+  const t = await login(browser, { email: `m-tech-${RUN.toLowerCase()}@stitchbench.test`, password: PASSWORD });
   await t.goto("/settings/messages");
   await expect(t.getByRole("heading", { name: "Email and text messages" })).toBeVisible();
   await expect(t.getByRole("button", { name: "Save email settings" })).toHaveCount(0);
@@ -147,9 +154,11 @@ test("how to tell them, consent on the tablet, opt-outs and a STOP reply", async
 
   // A STOP from another number: read by the worker, listed under Replies and Opt-outs.
   await mockInbound("+12125550199", "STOP");
+  // Replies are read at most every 5 minutes: let this run read again now.
+  await sql(`UPDATE "MessagingSettings" SET "inboundAt" = NULL WHERE "shopId" = $1`, [shopId]);
   await sendNow(page);
   await page.goto("/messages/replies");
-  await expect(page.getByText("+12125550199").or(page.getByText("(212) 555-0199"))).toBeVisible();
+  await expect(page.getByText("+12125550199").or(page.getByText("(212) 555-0199")).first()).toBeVisible();
   await page.goto("/messages/opt-outs");
   await expect(page.getByText("(212) 555-0199").or(page.getByText("+12125550199")).first()).toBeVisible();
   await page.context().close();
@@ -161,9 +170,12 @@ test("check-in asks how to tell a new customer while email is ready", async ({ b
   await page.getByLabel("New customer name").fill(`Needs Asking ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
+  // The question is required in the browser (the server refuses too: "Ask how they'd like to be told").
   await page.getByRole("button", { name: "Create ticket" }).click();
-  await expectRefused(page, /how they'd like to be told/);
-  await page.getByLabel("Email", { exact: true }).check();
+  await expect(page).toHaveURL(/\/tickets\/new/);
+  const emailChoice = page.getByRole("radio", { name: "Email", exact: true });
+  await expect(emailChoice).toHaveAttribute("required", "");
+  await emailChoice.check();
   await page.getByRole("button", { name: "Create ticket" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Janome MC6700P/ })).toBeVisible();
   await page.context().close();
@@ -180,5 +192,4 @@ test("with Marketing switched off the Messages item is locked and saving is refu
   await expect(page.getByText(/switched off/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Save rules" })).toHaveCount(0);
   await page.context().close();
-  await signIn(admin, OWNER).catch(() => {});
 });
