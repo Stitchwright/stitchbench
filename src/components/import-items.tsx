@@ -1,5 +1,6 @@
 "use client";
 
+import { parseTable } from "@/lib/parse-table";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { importItems, type ImportRow } from "@/actions/inventory-import";
@@ -23,38 +24,6 @@ const FIELDS: { key: Field; label: string; words: RegExp }[] = [
   { key: "condition", label: "Condition (new, used, refurbished)", words: /^(condition|cond)$/i },
   { key: "origin", label: "Made by (genuine, compatible, 3D printed)", words: /^(made ?by|origin|oem)$/i },
 ];
-
-/** Split pasted Excel cells (tabs) or a CSV file into rows, honouring "quoted, fields". */
-function parseTable(text: string): string[][] {
-  const delim = text.split("\n").slice(0, 5).some((l) => l.includes("\t")) ? "\t" : ",";
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quoted) {
-      if (ch === '"' && text[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (ch === '"') quoted = false;
-      else cell += ch;
-    } else if (ch === '"' && cell === "") quoted = true;
-    else if (ch === delim) {
-      row.push(cell.trim());
-      cell = "";
-    } else if (ch === "\n" || ch === "\r") {
-      if (ch === "\r" && text[i + 1] === "\n") i++;
-      row.push(cell.trim());
-      if (row.some((c) => c)) rows.push(row);
-      row = [];
-      cell = "";
-    } else cell += ch;
-  }
-  row.push(cell.trim());
-  if (row.some((c) => c)) rows.push(row);
-  return rows;
-}
 
 /** The text of a chosen file. Excel's plain "CSV (Comma delimited)" is Windows-1252, its "Unicode Text" is UTF-16; only UTF-8 reads as UTF-8. */
 async function readText(f: File) {

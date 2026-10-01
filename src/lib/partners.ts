@@ -25,6 +25,8 @@ import { normalizeTerms, repairCommission, termsKey, type Accepted, type Partner
 import { Prisma } from "@/generated/prisma/client";
 import { sameText } from "@/lib/input";
 import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
+import { hookContext, type HookCtx } from "@/lib/notices/context";
+import { onJobStatus } from "@/lib/notices/hooks";
 
 export const DEFAULT_HUB_URL = (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
 const FINAL = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
@@ -715,11 +717,15 @@ async function linkFor(shopId: string, m: HubMessage) {
  * transaction has committed, means it was applied, and nothing is done). False when it was applied already.
  */
 async function applyOnce(shopId: string, key: string, m: HubMessage) {
+  // applyMessage runs inside this transaction, and the notices hook a job.update calls must never open a second pool
+  // connection inside it (with a pool of one that would wait forever): what the hook needs is loaded here, before the
+  // transaction begins, and handed down.
+  const ctx = m.type === "job.update" ? await hookContext(shopId) : null;
   return db.$transaction(
     async (tx) => {
       const fresh = await tx.partnerSeen.createMany({ data: [{ shopId, key }], skipDuplicates: true });
       if (!fresh.count) return false;
-      await applyMessage(m, tx);
+      await applyMessage(m, tx, ctx);
       return true;
     },
     // An intake can carry several MB of photos, which a busy PC takes a while to write.
@@ -991,7 +997,7 @@ async function firstTime(tx: Prisma.TransactionClient, shopId: string, key: stri
  * Everything a message changes goes through `tx`, the transaction its "seen" row is written in (applyOnce), so it is
  * applied whole or not at all, and never twice.
  */
-async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
+async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient, ctx: HookCtx | null = null) {
   const shop = await tx.shop.findUnique({ where: { id: m.toShopRef } });
   if (!shop) return; // that company isn't on this install any more
   const shopId = shop.id;
@@ -1117,8 +1123,11 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
       const settled = job.paidAt != null && ((job.paidCents ?? 0) + (repairPaid ?? 0) >= (totalCents ?? 0) || (totalCents ?? 0) <= (job.totalCents ?? 0));
       const commission = settled && job.commissionCents != null ? job.commissionCents : repairCommission(lines, terms);
       // The repair shop asks for the customer's OK again (a second estimate): the last answer was to the first one, so
-      // the question is shown again.
-      const askAgain = status === "WAITING_CUSTOMER_OK" && job.status !== "WAITING_CUSTOMER_OK" && job.approval != null;
+      // the question is shown again (the approval is reset and the history says so).
+      const reopened = status === "WAITING_CUSTOMER_OK" && job.status !== "WAITING_CUSTOMER_OK" && job.approval != null;
+      if (reopened) events = withEvent(events, { at: at.toISOString(), note: "New estimate: waiting for the customer's answer again" });
+      // It was back at our counter and went to the repair shop again (not ready, not collected): the counter clock stops.
+      const leftCounter = !!job.backAt && !READY.includes(status) && status !== "COLLECTED";
       await tx.repairJob.update({
         where: { shopId_id: { shopId, id: job.id } },
         data: {
@@ -1129,7 +1138,8 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
           lines: lines as Json,
           commissionPct: settled ? job.commissionPct : terms.repairCommissionPct,
           commissionCents: commission,
-          ...(askAgain ? { approval: null, approvedCents: null } : {}),
+          ...(reopened ? { approval: null, approvedCents: null } : {}),
+          ...(leftCounter ? { backAt: null } : {}),
           repairNote: note,
           repairPaidCents: repairPaid,
           events,
@@ -1138,6 +1148,17 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
           snapshotAt: at,
         },
       });
+      // The notices hook (ready notices and the like), in this transaction with the context applyOnce loaded before it.
+      if (status !== job.status) {
+        if (!ctx) throw new Error("job.update applied without a hook context (applyOnce loads it before the transaction)");
+        await onJobStatus(
+          tx,
+          { id: job.id, shopId, linkId: link.id, customerId: job.customerId, status, backAt: leftCounter ? null : job.backAt, pickedUpAt: job.pickedUpAt ?? (status === "COLLECTED" ? at : null) },
+          status,
+          at,
+          ctx,
+        );
+      }
       return;
     }
 
@@ -1191,6 +1212,7 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient) {
         data: {
           status: t.status === "RETURNED_UNREPAIRED" ? t.status : "COLLECTED",
           closedAt: t.closedAt ?? at,
+          pickupReadyAt: null, // off the pickup shelf: no more uncollected-machine notices
           // The warranty runs from the hub's time, never the partner's clock: the ticket and invoice show it.
           warrantyUntil: t.status === "RETURNED_UNREPAIRED" ? t.warrantyUntil : (t.warrantyUntil ?? new Date(hubAt.getTime() + shop.warrantyDays * 86400000)),
         },

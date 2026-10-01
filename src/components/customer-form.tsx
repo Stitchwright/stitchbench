@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ActionForm, Submit } from "@/components/action-form";
+import { NotifyByField } from "@/components/notify-by-field";
 import type { ActionResult } from "@/lib/action";
 
 type C = {
@@ -14,9 +15,11 @@ type C = {
   commissionPct: number | null;
   routeDay: string | null;
   notes: string | null;
+  notifyBy?: string;
 };
 
-export function CustomerForm({ action, customer, submitLabel }: { action: (fd: FormData) => Promise<ActionResult>; customer?: C; submitLabel: string }) {
+/** `marketingHidden`: Marketing was never on for this company, so "how should we tell them" isn't asked here. */
+export function CustomerForm({ action, customer, submitLabel, marketingHidden = false }: { action: (fd: FormData) => Promise<ActionResult>; customer?: C; submitLabel: string; marketingHidden?: boolean }) {
   const [kind, setKind] = useState<C["kind"]>(customer?.kind ?? "RETAIL");
   return (
     <ActionForm action={action} success={customer ? "Saved" : undefined} className="grid-form">
@@ -53,6 +56,7 @@ export function CustomerForm({ action, customer, submitLabel }: { action: (fd: F
         </label>
         <input id="address" name="address" defaultValue={customer?.address ?? ""} className="input" />
       </div>
+      {kind === "RETAIL" && !marketingHidden && <NotifyByField defaultValue={customer?.notifyBy ?? ""} />}
       {kind === "TRADE" && (
         <>
           <div className="field">

@@ -5,6 +5,9 @@ import { getModules } from "@/lib/modules";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
 import { PartnerTodo } from "@/components/partner-todo";
+import { TodaySlot } from "@/components/slots/today";
+import { EstimatesTodoSlot } from "@/components/slots/estimates-todo";
+import { TodoLinesSlot } from "@/components/slots/todo-lines";
 
 export default async function RegisterPage() {
   const user = await requireUser();
@@ -46,6 +49,9 @@ export default async function RegisterPage() {
         }
       />
       <PartnerTodo shopId={user.shopId} />
+      <TodaySlot user={user} place="register" />
+      <EstimatesTodoSlot user={user} />
+      <TodoLinesSlot user={user} />
       <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} />
     </div>
   );
