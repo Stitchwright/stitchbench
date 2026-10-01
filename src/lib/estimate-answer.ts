@@ -46,6 +46,8 @@ export async function answerTicketEstimate(
     where: { id: a.ticket.id, shopId: a.ticket.shopId },
     data: {
       notes: [a.ticket.notes, line].filter(Boolean).join("\n").slice(-20_000),
+      estimateAnswer: a.approval,
+      estimateAnsweredAt: a.at,
       ...(a.approval === "APPROVED" && a.approvedCents != null ? { approvedCents: a.approvedCents } : {}),
     },
   });

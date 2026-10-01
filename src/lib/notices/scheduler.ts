@@ -68,9 +68,23 @@ async function runShop(now: Date, shopId: string) {
 
 const common = (shop: Shop, customer: { name: string } | undefined) => ({ first_name: firstName(customer?.name ?? ""), name: customer?.name ?? "", shop_name: shop.name, shop_phone: shop.phone ?? "" });
 
-async function customerNames(shopId: string, ids: string[]): Promise<Map<string, { name: string }>> {
-  const rows = ids.length ? await db.customer.findMany({ where: { shopId, id: { in: [...new Set(ids)] } }, select: { id: true, name: true } }) : [];
-  return new Map(rows.map((c) => [c.id, { name: c.name }]));
+async function customerNames(shopId: string, ids: string[]): Promise<Map<string, { name: string; email: string | null }>> {
+  const rows = ids.length ? await db.customer.findMany({ where: { shopId, id: { in: [...new Set(ids)] } }, select: { id: true, name: true, email: true } }) : [];
+  return new Map(rows.map((c) => [c.id, { name: c.name, email: c.email }]));
+}
+
+/**
+ * Marketing email needs the shop's postal address and, without a public unsubscribe link, someone reading replies
+ * (design 3.3). When that is missing, a SKIPPED row with the reason shows on the Messages page, so the shop knows why
+ * these customers hear nothing, instead of the message quietly falling back to a text they may not have agreed to.
+ */
+async function recordEmailSkip(tx: Prisma.TransactionClient, run: Run, a: { customerId: string; email: string | null; kind: "service_due" | "review"; dedupeKey: string; refType?: string; refId?: string; content: { subject?: string | null; body: string } }) {
+  if (run.marketingEmailOk) return;
+  const why = run.ms.postalAddress ?? run.shop.address ? "No watched reply-to address" : "No postal address set";
+  await tx.outMessage.createMany({
+    data: [{ shopId: run.shop.id, channel: "email", purpose: "marketing", kind: a.kind, customerId: a.customerId, address: a.email ?? "", subject: a.content.subject ?? null, body: a.content.body, status: "SKIPPED", error: why, dedupeKey: `${a.dedupeKey}:email:skipped`, sendAfter: run.now, refType: a.refType ?? null, refId: a.refId ?? null }],
+    skipDuplicates: true,
+  });
 }
 
 /** The base keys (without the ":channel" the queue adds) that already have a row, of any status. */
@@ -247,6 +261,8 @@ async function serviceDue(run: Run) {
         ms,
         content: (ch) => renderKind(ms, "service_due", ch, vars),
       });
+      // One row per customer and service date, not one a day, while the shop's email settings are incomplete.
+      if (!r.queued.length && !r.duplicate.length) await recordEmailSkip(tx, run, { customerId, email: names.get(customerId)?.email ?? null, kind: "service_due", dedupeKey: `svc:${customerId}:${latest.lastServiceAt.getTime()}`, refType: "machine", refId: list[0].machineId, content: renderKind(ms, "service_due", "email", vars) });
       // Marked even when every channel was skipped (no consent), so the customer isn't looked at again every day. Not
       // marked when mail couldn't be used because of the shop's own settings: that is fixed, not a customer's choice.
       if (r.queued.length || r.duplicate.length || run.marketingEmailOk) {
@@ -280,7 +296,7 @@ async function reviews(run: Run) {
   for (const s of sales) if (s.customerId) ids.add(s.customerId);
   if (!ids.size) return;
   const asked = new Date(now.getTime() - ms.reviewEveryDays * DAY);
-  const customers = await db.customer.findMany({ where: { shopId: shop.id, id: { in: [...ids] }, OR: [{ lastReviewAskAt: null }, { lastReviewAskAt: { lte: asked } }] }, select: { id: true, name: true } });
+  const customers = await db.customer.findMany({ where: { shopId: shop.id, id: { in: [...ids] }, OR: [{ lastReviewAskAt: null }, { lastReviewAskAt: { lte: asked } }] }, select: { id: true, name: true, email: true } });
   for (const c of customers) {
     if (run.left <= 0) return;
     const vars = { ...common(shop, c), review_link: ms.reviewUrl ?? "" };
@@ -298,7 +314,7 @@ async function reviews(run: Run) {
       if (r.queued.length) {
         await tx.customer.updateMany({ where: { id: c.id, shopId: shop.id }, data: { lastReviewAskAt: now } });
         run.left -= r.queued.length;
-      }
+      } else if (!r.duplicate.length) await recordEmailSkip(tx, run, { customerId: c.id, email: c.email, kind: "review", dedupeKey: `review:${c.id}:${today}`, content: renderKind(ms, "review", "email", vars) });
     });
   }
 }

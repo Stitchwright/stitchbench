@@ -40,14 +40,22 @@ export async function EstimatePanel({ target, id, user }: { target: "ticket" | "
   let waiting: boolean;
   let statusLabel: string;
   let customer: { id: string; name: string; phone: string | null } | null;
+  let counterAnswer: { answer: string; at: Date | null } | null = null; // a ticket's answer by phone or text reply
+  let answeredAt: Date | null = null;
   if (target === "ticket") {
-    const t = await db.ticket.findFirst({ where: { id, shopId }, select: { status: true, jobType: true, customer: { select: { id: true, name: true, phone: true } } } });
+    const t = await db.ticket.findFirst({
+      where: { id, shopId },
+      select: { status: true, jobType: true, viaAccountId: true, estimateAnswer: true, estimateAnsweredAt: true, customer: { select: { id: true, name: true, phone: true } } },
+    });
     if (!t) return null;
-    // A machine from a partner sewing shop: they call their customer.
+    // A machine from a partner sewing shop, or a dealer's: they tell their own customer (design 10.1, direct tickets only).
+    if (t.viaAccountId) return null;
     if (await db.repairJob.findFirst({ where: { shopId, ticketId: id, side: "repair" }, select: { id: true } })) return null;
-    waiting = t.status === "WAITING_CUSTOMER_OK";
+    waiting = t.status === "WAITING_CUSTOMER_OK" && !t.estimateAnswer;
     statusLabel = (t.jobType === "SITE" ? SITE_STATUS_LABEL : STATUS_LABEL)[t.status];
     customer = t.customer;
+    answeredAt = t.estimateAnsweredAt;
+    if (t.estimateAnswer) counterAnswer = { answer: t.estimateAnswer, at: t.estimateAnsweredAt };
   } else {
     const j = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id } }, select: { side: true, status: true, approval: true, customer: { select: { id: true, name: true, phone: true } } } });
     if (!j || j.side !== "retail") return null;
@@ -90,12 +98,24 @@ export async function EstimatePanel({ target, id, user }: { target: "ticket" | "
         </p>
       );
   }
-  // Sent without a link ("they call or reply").
+  // Sent without a link ("they call or reply"); one send's channels are queued within a minute of each other.
   const lastSent = sent.find((m) => m.status !== "SKIPPED" && m.status !== "CANCELLED");
-  const plainSent = !link && lastSent ? sent.filter((m) => m.status !== "SKIPPED" && m.status !== "CANCELLED" && m.createdAt.getTime() === lastSent.createdAt.getTime()) : [];
+  const plainSent = !link && lastSent ? sent.filter((m) => m.status !== "SKIPPED" && m.status !== "CANCELLED" && Math.abs(m.createdAt.getTime() - lastSent.createdAt.getTime()) < 60_000) : [];
   const answeredByLink = !!link?.answer;
+  if (counterAnswer && !answeredByLink) {
+    linkLine = (
+      <>
+        <p className="font-semibold">
+          {counterAnswer.answer === "APPROVED" ? "Approved" : "Declined"} by phone or text {counterAnswer.at ? stamp(counterAnswer.at, tz) : ""}
+        </p>
+        <p className="muted">Status now: {statusLabel}</p>
+      </>
+    );
+  }
 
-  const since = lastSent?.createdAt ?? link?.createdAt ?? null;
+  // Replies since this round of estimates: the oldest send after the last answer, so one between a send and a re-send shows too.
+  const round = sent.filter((m) => m.status !== "SKIPPED" && m.status !== "CANCELLED" && (!answeredAt || m.createdAt > answeredAt));
+  const since = round.length ? round[round.length - 1].createdAt : (link?.createdAt ?? null);
   const replies = waiting && since && customer ? await repliesSince(shopId, customer.phone, since) : [];
 
   // The send form.
@@ -218,7 +238,7 @@ export async function EstimatePanel({ target, id, user }: { target: "ticket" | "
             </AnswerForm>
           </div>
         )}
-        {!waiting && !link?.answer && <p className="muted">This {noun} isn&apos;t waiting for the customer&apos;s OK.</p>}
+        {!waiting && !link?.answer && !counterAnswer && <p className="muted">This {noun} isn&apos;t waiting for the customer&apos;s OK.</p>}
         {form}
       </div>
     </Section>

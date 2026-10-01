@@ -32,12 +32,13 @@ export async function EstimatesTodoSlot({ user }: { user: CurrentUser }) {
   const ticketIds = [...new Set([...answered.map((a) => a.ticketId), ...sent.map((m) => m.ticketId)].filter((x): x is string => !!x))];
   const jobIds = [...new Set([...answered.map((a) => a.repairJobId), ...sent.map((m) => m.repairJobId)].filter((x): x is string => !!x))];
   const [tickets, jobs, tz] = await Promise.all([
-    ticketIds.length ? db.ticket.findMany({ where: { shopId, id: { in: ticketIds } }, select: { id: true, number: true, status: true, customer: { select: { name: true, phone: true } } } }) : Promise.resolve([]),
+    ticketIds.length ? db.ticket.findMany({ where: { shopId, id: { in: ticketIds } }, select: { id: true, number: true, status: true, estimateAnswer: true, customer: { select: { name: true, phone: true } } } }) : Promise.resolve([]),
     jobIds.length ? db.repairJob.findMany({ where: { shopId, id: { in: jobIds }, side: "retail" }, select: { id: true, tag: true, status: true, approval: true, customerName: true, customer: { select: { name: true, phone: true } } } }) : Promise.resolve([]),
     shopTimeZone(shopId),
   ]);
   const refs = new Map<string, Ref>();
-  for (const t of tickets) refs.set(`t:${t.id}`, { label: `Ticket ${ticketNo(t.number)}`, href: `/tickets/${t.id}`, name: t.customer?.name ?? null, phone: t.customer?.phone ?? null, waiting: t.status === "WAITING_CUSTOMER_OK" });
+  // A ticket that was declined keeps its status (design 10.4) but is answered: it isn't waiting on anyone.
+  for (const t of tickets) refs.set(`t:${t.id}`, { label: `Ticket ${ticketNo(t.number)}`, href: `/tickets/${t.id}`, name: t.customer?.name ?? null, phone: t.customer?.phone ?? null, waiting: t.status === "WAITING_CUSTOMER_OK" && !t.estimateAnswer });
   for (const j of jobs) refs.set(`j:${j.id}`, { label: `Tag ${j.tag}`, href: `/repairs/${j.id}`, name: j.customer?.name ?? j.customerName, phone: j.customer?.phone ?? null, waiting: j.status === "WAITING_CUSTOMER_OK" && !j.approval });
 
   const answeredRows = answered.flatMap((a) => {

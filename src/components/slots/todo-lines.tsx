@@ -38,12 +38,6 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
   if (back.length) {
     const links = await db.partnerLink.findMany({ where: { shopId, id: { in: [...new Set(back.map((j) => j.linkId))] } }, select: { id: true, partnerName: true } });
     const partner = new Map(links.map((l) => [l.id, l.partnerName]));
-    async function here(id: string) {
-      "use server";
-      const r = await markBackAtCounter(id);
-      if ("error" in r) return r;
-      return /call/i.test(r.note) ? { error: r.note } : { ok: true as const };
-    }
     for (const j of back.slice(0, SHOWN)) {
       lines.push({
         key: `back-${j.id}`,
@@ -52,7 +46,7 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
             <Link href={`/repairs/${j.id}`} className="link">
               Tag {j.tag}: {partner.get(j.linkId) ?? "the repair shop"} marked it ready. Is it here?
             </Link>
-            <ActionButton action={here.bind(null, j.id)} className="btn btn-sm" success="Recorded">
+            <ActionButton action={markBackAtCounter.bind(null, j.id)} className="btn btn-sm" success="Recorded">
               {on ? "It's here: tell the customer" : "It's here"}
             </ActionButton>
           </span>

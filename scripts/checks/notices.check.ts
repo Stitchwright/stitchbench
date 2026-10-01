@@ -160,7 +160,7 @@ async function ready(m: Shop, n: Shop) {
     assert.equal(+r.sendAfter, +T0 + 120_000, "sendAfter = the status change + READY_NOTICE_DELAY_SECONDS");
     assert.equal(r.purpose, "notice");
   }
-  assert.match(r1.note ?? "", /^Ready\. A text and an email goes to Mary Smith at 10:44 am\. Change the status back before then to stop it\.$/, `toast: ${r1.note}`);
+  assert.match(r1.note ?? "", /^Ready\. A text and an email go to Mary Smith at 10:44 am\. Change the status back before then to stop it\.$/, `toast: ${r1.note}`);
 
   // Back to the bench: waiting rows are cancelled.
   await change(m.shopId, t1, "ON_BENCH", new Date(+T0 + 30_000));
@@ -174,7 +174,7 @@ async function ready(m: Shop, n: Shop) {
   assert.equal(all.length, 4, "a NEW row per channel for the second ready call");
   assert.equal(all.filter((r) => r.status === "QUEUED").length, 2);
   assert.equal(new Set(all.map((r) => r.dedupeKey)).size, 4);
-  assert.match(r2.note ?? "", /^Ready\. A text and an email goes to Mary Smith at /);
+  assert.match(r2.note ?? "", /^Ready\. A text and an email go to Mary Smith at /);
 
   // A double call with the same stale ticket: one row.
   const em = await customer(m.shopId, { name: "Ed Email", notifyBy: "email" });
@@ -237,9 +237,10 @@ async function retail(m: Shop, n: Shop, linkId: string, nLinkId: string) {
   assert.equal(await db.outMessage.count({ where: { shopId: m.shopId, repairJobId: j1 } }), 0, "onJobStatus to a ready state sends nothing");
 
   // "It's back": one row, sent now; a second call is refused.
-  const note = await recordBack(m.user, [j1], { single: true, now: T });
+  const back1 = await recordBack(m.user, [j1], { single: true, now: T });
   clearKick();
-  assert.match(note, /^Recorded\. Emails go to 1 customer now\.$/, note);
+  assert.match(back1.note, /^Recorded\. Emails go to 1 customer now\.$/, back1.note);
+  assert.equal(back1.callThem, false, "nothing for staff to do");
   const rows = await rowsOf(m.shopId, { repairJobId: j1, kind: "ready" });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].channel, "email");
@@ -260,7 +261,8 @@ async function retail(m: Shop, n: Shop, linkId: string, nLinkId: string) {
   const noAddr = await job(m.shopId, linkId, { customerId: await customer(m.shopId, { name: "No Address", notifyBy: "email", email: null }) });
   const many = await recordBack(m.user, [...three, noAddr, j1], { single: false, now: T });
   clearKick();
-  assert.match(many, /^Recorded\. Emails go to 3 customers now; 1 has no mobile number or email: call them\.$/, many);
+  assert.match(many.note, /^Recorded\. Emails go to 3 customers now; 1 has no mobile number or email: call them\.$/, many.note);
+  assert.equal(many.callThem, true, "someone must be called: shown as a warning");
   assert.equal(await db.outMessage.count({ where: { shopId: m.shopId, repairJobId: { in: three }, kind: "ready", status: "QUEUED" } }), 3, "3 jobs -> 3 rows");
   assert.equal((await db.repairJob.findMany({ where: { shopId: m.shopId, id: { in: [...three, noAddr] }, backAt: { not: null } } })).length, 4);
   await assert.rejects(recordBack(m.user, [j1, ...three], { single: false, now: T }), (e: unknown) => isUserError(e) && /Nothing to record/.test((e as Error).message));
@@ -274,7 +276,8 @@ async function retail(m: Shop, n: Shop, linkId: string, nLinkId: string) {
   const cn = await customer(n.shopId, { notifyBy: "email" });
   const jn = await job(n.shopId, nLinkId, { customerId: cn });
   const noteOff = await recordBack(n.user, [jn], { single: true, now: T });
-  assert.equal(noteOff, "Recorded. Messages are off: call the customer.");
+  assert.equal(noteOff.note, "Recorded. Messages are off: call the customer.");
+  assert.equal(noteOff.callThem, true, "Messages off: the toast is a warning, not an error and not a quiet Recorded");
   assert.equal(await db.outMessage.count({ where: { shopId: n.shopId } }), 0, "no message without Marketing");
   assert.ok((await db.repairJob.findUniqueOrThrow({ where: { shopId_id: { shopId: n.shopId, id: jn } } })).backAt, "backAt is recorded without Marketing");
   ok("retail: ready state sends nothing; \"It's back\" -> one row, a second call -> \"Already recorded.\"; 3 jobs -> 3 rows; leaving the counter cancels; Messages off only records backAt");
@@ -462,7 +465,7 @@ async function uncollected(m: Shop, n: Shop, linkId: string) {
   assert.equal(manual[0].status, "SENT");
   assert.equal(manual[0].providerId, "7021 0000 1111");
   assert.equal(manual[0].byUserId, m.user.id);
-  assert.equal(manual[0].dedupeKey, null);
+  assert.match(manual[0].dedupeKey ?? "", /^byhand:ticket:/, "a by-hand record is marked so the staff cap and the worker leave it alone");
   assert.equal(manual[0].address, "12 Elm St\nSpringfield".trim(), "the customer's postal address");
   assert.equal(+manual[0].sentAt!, +zonedTime(addDays("2026-08-10", 29), 12 * 60, NY), "given on the date entered, at noon");
   const sched2 = scheduleFor(R2, 60, NY, await db.messagingSettings.findUniqueOrThrow({ where: { shopId: m.shopId } }), D(30), await stageRows(db, m.shopId, { ticketId: t2 }));
@@ -579,16 +582,24 @@ async function stillWantedOthers(m: Shop, other: Shop) {
   const est = base({ kind: "estimate", refType: "estimate", refId: link.id, ticketId: t });
   assert.equal(await stillWanted(est), null);
   await db.ticket.update({ where: { id: t }, data: { status: "ON_BENCH" } });
-  assert.equal(await stillWanted(est), "The estimate was answered or changed");
+  assert.equal(await stillWanted(est), "The ticket isn't waiting for the customer's OK any more");
   await db.ticket.update({ where: { id: t }, data: { status: "WAITING_CUSTOMER_OK" } });
   await db.estimateLink.update({ where: { id: link.id }, data: { answeredAt: new Date(), answer: "APPROVED" } });
-  assert.equal(await stillWanted(est), "The estimate was answered or changed");
+  assert.equal(await stillWanted(est), "The customer already answered");
   await db.estimateLink.update({ where: { id: link.id }, data: { answeredAt: null, answer: null, revokedAt: new Date() } });
-  assert.equal(await stillWanted(est), "The estimate was answered or changed");
+  assert.equal(await stillWanted(est), "The estimate link was stopped or replaced");
   await db.estimateLink.update({ where: { id: link.id }, data: { revokedAt: null, expiresAt: new Date(Date.now() - 1000) } });
-  assert.equal(await stillWanted(est), "The estimate was answered or changed");
+  assert.equal(await stillWanted(est), "The estimate link expired");
+  await db.estimateLink.update({ where: { id: link.id }, data: { expiresAt: new Date(Date.now() + DAY) } });
   // another company's link id: not found -> not wanted
-  assert.equal(await stillWanted({ ...est, shopId: other.shopId }), "The estimate was answered or changed", "a link of another company is not found");
+  assert.equal(await stillWanted({ ...est, shopId: other.shopId }), "The estimate link was stopped or replaced", "a link of another company is not found");
+  // Answered by phone (the ticket keeps its status when declined): the queued message is not wanted, link or no link.
+  await db.ticket.update({ where: { id: t }, data: { estimateAnswer: "DECLINED", estimateAnsweredAt: new Date() } });
+  assert.equal(await stillWanted(est), "The ticket isn't waiting for the customer's OK any more", "declined by phone");
+  const noLink = base({ kind: "estimate", refType: "estimate", refId: null, ticketId: t });
+  assert.equal(await stillWanted(noLink), "The ticket isn't waiting for the customer's OK any more", "a 'they call or reply' row (no link) is checked too");
+  await db.ticket.update({ where: { id: t }, data: { estimateAnswer: null, estimateAnsweredAt: null } });
+  assert.equal(await stillWanted(noLink), null);
 
   // service due: a newer ticket for a listed machine
   const mid = await machine(m.shopId, c);

@@ -55,6 +55,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
         <div className="text-2xl font-bold">{v.shopName}</div>
         {phone && <div className="muted">{phone}</div>}
       </header>
+      {v.state !== "expired" && v.state !== "revoked" && (
       <section className="card card-pad space-y-3">
         <h1 className="h2">
           Estimate for your {v.machine}
@@ -77,6 +78,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
         </table>
         {v.note && <p className="whitespace-pre-wrap">{v.note}</p>}
       </section>
+      )}
 
       {v.state === "answered" && answeredText && (
         <p className="card card-pad" role="status">

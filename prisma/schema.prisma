@@ -351,6 +351,8 @@ model Ticket {
   workDone            String?
   preApprovedCents    Int? // customer OK'd up to this much over the service price
   approvedCents       Int?
+  estimateAnswer      String? // APPROVED | DECLINED: the customer's answer to the estimate (by link, phone or text reply); cleared when the ticket waits for an OK again
+  estimateAnsweredAt  DateTime?
   accessories         String[] // what came in with the machine
   accessoriesReturned String[] // the subset confirmed back with the customer
   // Service checklist: { "<item text>": { done: true, by: "<user name>", at: "<iso>" } }

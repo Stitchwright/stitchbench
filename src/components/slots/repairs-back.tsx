@@ -26,17 +26,9 @@ export async function RepairsBackSlot({ user }: { user: CurrentUser }) {
   const partner = new Map(links.map((l) => [l.id, l.partnerName]));
   const on = gate === "on";
 
-  async function back(fd: FormData) {
-    "use server";
-    const r = await markManyBack(fd);
-    if ("error" in r) return r;
-    // "...call them" is work for staff: show it as a warning rather than a quiet "Recorded".
-    return /call/i.test(r.note) ? { error: r.note } : { ok: true as const };
-  }
-
   return (
     <Section title="Marked ready by the repair shop. Are they here?">
-      <ActionForm action={back} success="Recorded" className="space-y-3">
+      <ActionForm action={markManyBack} success="Recorded" className="space-y-3">
         <div className="scroll-x">
           <table className="table">
             <thead>

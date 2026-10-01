@@ -6,13 +6,14 @@ import type { Prisma, OutMessage } from "@/generated/prisma/client";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import { SKIP_REASON_LABEL } from "@/lib/constants";
-import { addDays, fmtTime, parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
+import { addDays, fmtDay, fmtTime, parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
 import { fmtPhone, toE164, validEmail } from "@/lib/phone";
 import { UserError } from "@/lib/action";
 import { allow } from "@/lib/rate-limit";
 import type { CurrentUser } from "@/lib/session";
 import type { JobEvent } from "@/lib/partners";
 import { queueToCustomer } from "@/lib/messaging/queue";
+import { nextTextTime } from "@/lib/messaging/quiet";
 import { messagingView, type MessagingView } from "@/lib/messaging/settings";
 import { renderKind } from "@/lib/messaging/templates";
 import type { Channel, SkipReason } from "@/lib/messaging/types";
@@ -20,6 +21,7 @@ import type { TicketForStatus } from "@/lib/ticket-status";
 import { hookContext, type HookCtx } from "@/lib/notices/context";
 import { abandonDate, abandonStages, currentStage, parseStageKey, sendable, stageKey, type AbandonStage } from "@/lib/notices/abandon";
 import { abandonTarget, abandonVars, jobVars, ticketVars, type AbandonTarget } from "@/lib/notices/vars";
+import { estimateStillWanted } from "@/lib/estimate-links";
 import { bagsDueStillWanted } from "@/lib/vac/bags-due";
 
 type Tx = Prisma.TransactionClient;
@@ -44,6 +46,36 @@ function channelWords(channels: Channel[]): string {
   const hasText = channels.includes("sms");
   const hasMail = channels.includes("email");
   return hasText && hasMail ? "A text and an email" : hasText ? "A text" : "An email";
+}
+
+/** "8:32 pm", or "9:00 am tomorrow" / "9:00 am on Oct 7" when it is another day than `from` (shop time). */
+function timeWords(d: Date, from: Date, tz: string): string {
+  const day = ymdOf(d, tz);
+  const today = ymdOf(from, tz);
+  if (day === today) return fmtTime(d, tz);
+  return `${fmtTime(d, tz)} ${day === addDays(today, 1) ? "tomorrow" : `on ${fmtDay(d, tz)}`}`;
+}
+
+/** When a queued text really goes: the worker holds every text outside the shop's quiet hours. */
+function goesAt(q: { channel: Channel; address: string; sendAfter: Date }, ms: MessagingView, tz: string): Date {
+  return q.channel === "sms" ? nextTextTime(q.sendAfter, tz, ms, false, q.address) : q.sendAfter;
+}
+
+/**
+ * "A text and an email go to Mary at 8:32 pm" / "An email goes to Mary at 8:32 pm and a text at 9:00 am tomorrow": the
+ * channels that were queued, with the time each really goes out.
+ */
+function goesWhen(queued: { channel: Channel; address: string; sendAfter: Date }[], name: string, now: Date, ms: MessagingView, tz: string): string {
+  const at = new Map<Channel, Date>();
+  for (const q of queued) at.set(q.channel, goesAt(q, ms, tz));
+  const times = [...new Set([...at.values()].map((d) => d.getTime()))];
+  const channels = [...at.keys()];
+  if (times.length <= 1) {
+    const d = at.get(channels[0]) ?? now;
+    return `${channelWords(channels)} ${channels.length > 1 ? "go" : "goes"} to ${name} at ${timeWords(d, now, tz)}`;
+  }
+  const parts = channels.map((ch, i) => `${i === 0 ? (ch === "sms" ? "A text" : "An email") : ch === "sms" ? "a text" : "an email"} at ${timeWords(at.get(ch)!, now, tz)}`);
+  return `${parts[0]} goes to ${name} and ${parts.slice(1).join(" and ")}`;
 }
 
 /** The stage notice for a target, queued (also used by the scheduler and "Send the current notice now"). */
@@ -76,6 +108,13 @@ export async function queueAbandonNotice(
  * toast ("A text goes to Mary Smith at 10:44 am...") or null.
  */
 export async function onTicketStatus(tx: Tx, t: TicketForStatus, status: TicketStatus, at: Date, ctx: HookCtx): Promise<string | null> {
+  if (status !== "WAITING_CUSTOMER_OK") {
+    // No longer waiting for the customer's OK: an estimate still waiting to go out would only confuse them.
+    await tx.outMessage.updateMany({
+      where: { shopId: t.shopId, ticketId: t.id, status: "QUEUED", kind: "estimate" },
+      data: { status: "CANCELLED", error: "The ticket moved on before it went out" },
+    });
+  }
   if (status !== "READY_FOR_PICKUP") {
     // Leaving the pickup shelf: what was waiting to go out about it is stopped (whether or not Marketing is on).
     await tx.outMessage.updateMany({
@@ -101,7 +140,7 @@ export async function onTicketStatus(tx: Tx, t: TicketForStatus, status: TicketS
     content: (ch) => renderKind(ctx.ms, "ready", ch, v.vars),
   });
   const name = v.vars.name || "the customer";
-  if (r.queued.length) return `Ready. ${channelWords(r.queued.map((q) => q.channel))} goes to ${name} at ${fmtTime(sendAfter, ctx.tz)}. Change the status back before then to stop it.`;
+  if (r.queued.length) return `Ready. ${goesWhen(r.queued, name, at, ctx.ms, ctx.tz)}. Change the status back before then to stop it.`;
   if (!r.skipped.length) return null;
   const c = await tx.customer.findFirst({ where: { id: v.customerId, shopId: t.shopId }, select: { phone: true } });
   const phone = toE164(c?.phone);
@@ -135,6 +174,7 @@ export async function onJobsBack(tx: Tx, shopId: string, jobIds: string[], at: D
   });
   const sent = new Set<string>();
   const channels = new Set<Channel>();
+  let latest = at; // when the last of them goes out (texts wait for the shop's quiet hours to end)
   let skipped = 0;
   let noAddress = 0;
   for (const j of jobs) {
@@ -155,7 +195,11 @@ export async function onJobsBack(tx: Tx, shopId: string, jobIds: string[], at: D
     });
     if (r.queued.length) {
       sent.add(j.customerId);
-      for (const q of r.queued) channels.add(q.channel);
+      for (const q of r.queued) {
+        channels.add(q.channel);
+        const goes = goesAt(q, ctx.ms, ctx.tz);
+        if (goes > latest) latest = goes;
+      }
     } else if (r.skipped.length) {
       skipped += 1;
       if (r.skipped.every((s) => s.reason === "no_address")) noAddress += 1;
@@ -165,7 +209,8 @@ export async function onJobsBack(tx: Tx, shopId: string, jobIds: string[], at: D
   const parts: string[] = [];
   if (sent.size) {
     const label = channels.size === 1 ? (channels.has("sms") ? "Texts" : "Emails") : "Messages";
-    parts.push(`${label} go to ${sent.size} customer${sent.size === 1 ? "" : "s"} now`);
+    const when = latest > at ? `${channels.has("email") ? "by " : "at "}${timeWords(latest, at, ctx.tz)} (quiet hours)` : "now";
+    parts.push(`${label} go to ${sent.size} customer${sent.size === 1 ? "" : "s"} ${when}`);
   }
   if (skipped) parts.push(`${skipped} ${noAddress === skipped ? `ha${skipped === 1 ? "s" : "ve"} no mobile number or email` : "can't be messaged"}: call them`);
   return `Recorded. ${parts.join("; ")}.`;
@@ -190,7 +235,7 @@ export async function stillWanted(row: OutMessage): Promise<string | null> {
     case "reminder":
       return reminderWanted(row);
     case "estimate":
-      return estimateWanted(row);
+      return estimateStillWanted(row);
     case "service_due":
       return serviceDueWanted(row);
     case "consent_confirm":
@@ -255,23 +300,6 @@ async function reminderWanted(row: OutMessage): Promise<string | null> {
   return null;
 }
 
-async function estimateWanted(row: OutMessage): Promise<string | null> {
-  const changed = "The estimate was answered or changed";
-  if (!row.refId) return null;
-  const link = await db.estimateLink.findFirst({ where: { id: row.refId, shopId: row.shopId }, select: { answeredAt: true, revokedAt: true, expiresAt: true, ticketId: true, repairJobId: true } });
-  if (!link || link.answeredAt || link.revokedAt || link.expiresAt.getTime() <= Date.now()) return changed;
-  const ticketId = link.ticketId ?? row.ticketId;
-  const jobId = link.repairJobId ?? row.repairJobId;
-  if (ticketId) {
-    const t = await db.ticket.findFirst({ where: { id: ticketId, shopId: row.shopId }, select: { status: true } });
-    if (!t || t.status !== "WAITING_CUSTOMER_OK") return changed;
-  } else if (jobId) {
-    const j = await db.repairJob.findUnique({ where: { shopId_id: { shopId: row.shopId, id: jobId } }, select: { status: true } });
-    if (!j || j.status !== "WAITING_CUSTOMER_OK") return changed;
-  }
-  return null;
-}
-
 /** A listed machine came back in after the message was queued: a ticket or a retail job newer than the message. */
 async function serviceDueWanted(row: OutMessage): Promise<string | null> {
   if (!row.customerId) return null;
@@ -295,8 +323,11 @@ async function consentWanted(row: OutMessage): Promise<string | null> {
 
 export type NoticeTarget = { ticketId?: string | null; jobId?: string | null };
 
-/** "It's back at the counter" for retail jobs: backAt, a history line, and the ready notice (onJobsBack), in one transaction. */
-export async function recordBack(user: CurrentUser, ids: string[], o: { single: boolean; now?: Date }): Promise<string> {
+/**
+ * "It's back at the counter" for retail jobs: backAt, a history line, and the ready notice (onJobsBack), in one
+ * transaction. `callThem`: the note asks staff to call someone (Messages off, or a customer who can't be messaged).
+ */
+export async function recordBack(user: CurrentUser, ids: string[], o: { single: boolean; now?: Date }): Promise<{ note: string; callThem: boolean }> {
   const shopId = user.shopId;
   const at = o.now ?? new Date();
   const ctx = await hookContext(shopId, user.name); // before the transaction: the hook never opens a second connection
@@ -309,18 +340,22 @@ export async function recordBack(user: CurrentUser, ids: string[], o: { single: 
     if (j.backAt) throw new UserError("Already recorded.");
   } else if (!eligible.length) throw new UserError("Nothing to record: those are already recorded, picked up, or not ready yet.");
   eligible = eligible.slice(0, 100);
-  return db.$transaction(async (tx) => {
-    const done: string[] = [];
-    for (const j of eligible) {
-      const events = [...(Array.isArray(j.events) ? (j.events as JobEvent[]) : []), { at: at.toISOString(), note: `Back at the counter (${user.name})` }];
-      const r = await tx.repairJob.updateMany({ where: { shopId, id: j.id, backAt: null, pickedUpAt: null }, data: { backAt: at, events: events as Prisma.InputJsonValue } });
-      if (r.count) done.push(j.id);
-    }
-    if (!done.length) throw new UserError("Already recorded.");
-    const note = await onJobsBack(tx, shopId, done, at, user.id, ctx);
-    if (note) return note;
-    return ctx.marketing ? "Recorded." : `Recorded. Messages are off: call the ${done.length === 1 ? "customer" : "customers"}.`;
-  });
+  return db.$transaction(
+    async (tx) => {
+      const done: string[] = [];
+      for (const j of eligible) {
+        const events = [...(Array.isArray(j.events) ? (j.events as JobEvent[]) : []), { at: at.toISOString(), note: `Back at the counter (${user.name})` }];
+        const r = await tx.repairJob.updateMany({ where: { shopId, id: j.id, backAt: null, pickedUpAt: null }, data: { backAt: at, events: events as Prisma.InputJsonValue } });
+        if (r.count) done.push(j.id);
+      }
+      if (!done.length) throw new UserError("Already recorded.");
+      const note = await onJobsBack(tx, shopId, done, at, user.id, ctx);
+      if (note) return { note, callThem: /call them/.test(note) };
+      if (ctx.marketing) return { note: "Recorded.", callThem: false };
+      return { note: `Recorded. Messages are off: call the ${done.length === 1 ? "customer" : "customers"}.`, callThem: true };
+    },
+    { timeout: 60_000 },
+  );
 }
 
 /** The ticket or retail job must be this shop's: anything else is "not found", whatever shop it belongs to. */
@@ -371,8 +406,10 @@ export async function recordManual(
       address: found?.toString().trim().slice(0, 300) || "by hand",
       body: text,
       status: "SENT",
+      // "byhand:" rows were never sent from here: the staff cap (queue.ts) and the worker leave them alone.
+      dedupeKey: `byhand:${t.kind}:${t.id}:${now.getTime()}`,
       sentAt: zonedTime(date, 12 * 60, t.tz),
-      providerId: tracking ? tracking.slice(0, 200) : null,
+      providerId: f.how === "certified_mail" && tracking ? tracking.slice(0, 200) : null,
       ...(t.kind === "ticket" ? { ticketId: t.id } : { repairJobId: t.id }),
       refType: "stage",
       refId: `${t.start.getTime()}:${f.stage}`,
@@ -394,6 +431,14 @@ export async function sendNow(user: CurrentUser, target: NoticeTarget, kind: "re
     if (!t) throw new UserError(target.jobId ? "It isn't back at the counter, or was picked up." : "This ticket isn't waiting for pickup.");
     const stage = currentStage(abandonStages(t.start, ms.abandonDays, t.abandonedAfterDays, ms.finalNoticeDays, ms.reminderHour, t.tz), now);
     if (!stage) throw new UserError("There is no notice due: check the days under Settings -> Messages.");
+    const waiting = await db.outMessage.findFirst({
+      where: { shopId, kind: "abandon", refType: "stage", refId: stageKey(t.start, stage), status: { in: ["QUEUED", "SENDING"] }, ...(t.kind === "ticket" ? { ticketId: t.id } : { repairJobId: t.id }) },
+      select: { sendAfter: true, channel: true, address: true },
+    });
+    if (waiting) {
+      const goes = goesAt({ channel: waiting.channel as Channel, address: waiting.address, sendAfter: waiting.sendAfter }, ms, t.tz);
+      throw new UserError(`That notice is already waiting to go out (${timeWords(goes, now, t.tz)}).`);
+    }
     r = await queueAbandonNotice(db, { shopId, target: t, stage, ms, dedupeKey: `manual:abandon:${id}:${now.getTime()}`, sendAfter: now, byUserId: user.id, recordSkipped: false });
   } else {
     let customerId: string | null = null;

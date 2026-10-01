@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { isUserError } from "@/lib/action";
 import { db } from "@/lib/db";
-import { answerByToken, estimateByToken, ticketEstimateLines, recordEstimateAnswerAs, repliesSince, revokeEstimateLinkAs, sendEstimateAs, type SendEstimateInput } from "@/lib/estimate-links";
+import { answerByToken, estimateByToken, estimateStillWanted, ticketEstimateLines, recordEstimateAnswerAs, repliesSince, revokeEstimateLinkAs, sendEstimateAs, type SendEstimateInput } from "@/lib/estimate-links";
+import { hookContext } from "@/lib/notices/context";
+import { changeTicketStatus } from "@/lib/ticket-status";
 import { unseal } from "@/lib/messaging/secrets";
 import { messageRun } from "@/lib/messaging/worker";
 import type { CurrentUser } from "@/lib/session";
@@ -397,6 +399,86 @@ async function lines() {
   ok("ticketEstimateLines: each line, then Tax; the lines add up to the total");
 }
 
+
+/** The review of 1 Oct 2026: a declined ticket is answered, a phone approval takes the open link's total, queued sends stop, replies of the whole round. */
+async function reviewFixes(a: CheckShop) {
+  // Declined by phone: the ticket keeps its status (design 10.4) but is answered: no form, no link answers, no re-send until a new estimate.
+  const c = await customer(a.shopId, { name: "Dee Kline", phone: "+12125550177", notifyBy: "email" });
+  const t = await ticket(a.shopId, c.id);
+  await sendEstimateAs(user(a), "ticket", t.id, both);
+  const l1 = (await linkOf(a.shopId, t.id))[0];
+  const tok1 = await tokenOf(a.shopId, l1.id);
+  await recordEstimateAnswerAs(user(a), "ticket", t.id, { answer: "DECLINED", via: "phone", note: null });
+  let after = await db.ticket.findUniqueOrThrow({ where: { id: t.id } });
+  assert.equal(after.status, "WAITING_CUSTOMER_OK", "declined keeps the status");
+  assert.equal(after.estimateAnswer, "DECLINED");
+  assert.ok(after.estimateAnsweredAt, "the answer is kept on the ticket");
+  assert.equal((await estimateByToken(tok1))?.view.state, "revoked", "the link stops with the answer");
+  await expectError("declined twice", () => recordEstimateAnswerAs(user(a), "ticket", t.id, { answer: "APPROVED", via: "phone", note: null }), /isn't waiting/);
+  assert.equal(await estimateStillWanted({ kind: "estimate", shopId: a.shopId, refType: "estimate", refId: null, ticketId: t.id, repairJobId: null }), "The ticket isn't waiting for the customer's OK any more");
+  // A new estimate (the bill was revised): waiting for an answer again.
+  await sendEstimateAs(user(a), "ticket", t.id, both);
+  after = await db.ticket.findUniqueOrThrow({ where: { id: t.id } });
+  assert.equal(after.estimateAnswer, null, "a new estimate clears the old answer");
+  // Back to the bench and waiting again by status: cleared then too.
+  await db.ticket.update({ where: { id: t.id }, data: { estimateAnswer: "DECLINED", estimateAnsweredAt: new Date() } });
+  const ctx = await hookContext(a.shopId, "Check");
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: a.shopId }, select: { warrantyDays: true } });
+  await db.$transaction(async (tx) => {
+    const t1 = await tx.ticket.findUniqueOrThrow({ where: { id: t.id } });
+    await changeTicketStatus(tx, t1, "ON_BENCH", new Date(), shop.warrantyDays, ctx);
+    const t2 = await tx.ticket.findUniqueOrThrow({ where: { id: t.id } });
+    await changeTicketStatus(tx, t2, "WAITING_CUSTOMER_OK", new Date(), shop.warrantyDays, ctx);
+  });
+  assert.equal((await db.ticket.findUniqueOrThrow({ where: { id: t.id } })).estimateAnswer, null, "waiting for an OK again clears the answer");
+  ok("a declined ticket is answered (no re-answer, its link stops, the queued row isn't wanted); a new estimate or waiting again clears it");
+
+  // A phone approval records the OPEN link's total; with none open, the bill as it stands now.
+  const c2 = await customer(a.shopId, { name: "Tot Al" });
+  const t2 = await ticket(a.shopId, c2.id);
+  await sendEstimateAs(user(a), "ticket", t2.id, both);
+  const l2 = (await linkOf(a.shopId, t2.id))[0];
+  assert.equal(l2.totalCents, 15660);
+  await revokeEstimateLinkAs(user(a), l2.id); // the $156.60 link is stopped, then the bill grows
+  await db.ticketLine.create({ data: { ticketId: t2.id, kind: "PART", description: "Bobbin case", qty: 1, unitPriceCents: 2000, taxable: false } });
+  await recordEstimateAnswerAs(user(a), "ticket", t2.id, { answer: "APPROVED", via: "phone", note: null });
+  const t2b = await db.ticket.findUniqueOrThrow({ where: { id: t2.id } });
+  assert.equal(t2b.approvedCents, 17660, "the current bill, not the stopped link's $156.60");
+  assert.ok(t2b.notes?.includes("approved $176.60 by phone"), t2b.notes ?? "");
+  ok("a phone approval takes the current bill when the only link was stopped (an open link's total otherwise)");
+
+  // Queued estimate messages stop when the answer arrives (by phone here; by link in answerByToken).
+  const c3 = await customer(a.shopId, { name: "Que Ued", phone: "+12125550178" });
+  const t3 = await ticket(a.shopId, c3.id);
+  await sendEstimateAs(user(a), "ticket", t3.id, both);
+  clearKick();
+  const queued = await db.outMessage.findMany({ where: { shopId: a.shopId, ticketId: t3.id, kind: "estimate" } });
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].status, "QUEUED");
+  // A reply arrives, the estimate is re-sent, then staff record the answer: BOTH replies are handled (the whole round).
+  await db.inboundText.create({ data: { shopId: a.shopId, sid: `SM${uniq()}`, fromNumber: "+12125550178", body: "how much again?", receivedAt: new Date(+queued[0].createdAt + 1000), customerId: c3.id } });
+  await new Promise((r) => setTimeout(r, 1100));
+  await sendEstimateAs(user(a), "ticket", t3.id, both);
+  clearKick();
+  await db.inboundText.create({ data: { shopId: a.shopId, sid: `SM${uniq()}`, fromNumber: "+12125550178", body: "ok yes", receivedAt: new Date(), customerId: c3.id } });
+  await recordEstimateAnswerAs(user(a), "ticket", t3.id, { answer: "APPROVED", via: "text reply", note: null });
+  const rows = await db.outMessage.findMany({ where: { shopId: a.shopId, ticketId: t3.id, kind: "estimate" }, orderBy: { createdAt: "asc" } });
+  assert.deepEqual(rows.map((r) => r.status), ["CANCELLED", "CANCELLED"], rows.map((r) => `${r.status}:${r.error}`).join(", "));
+  // An approval moves the ticket to the bench first (the status hook cancels it then); a decline leaves closeOut to do it.
+  assert.match(rows[1].error ?? "", /^(The customer answered|The ticket moved on before it went out)$/);
+  const unhandled = await db.inboundText.count({ where: { shopId: a.shopId, fromNumber: "+12125550178", handledAt: null } });
+  assert.equal(unhandled, 0, "the reply between the send and the re-send is handled too");
+  ok("an answer cancels the estimate messages still queued and handles every reply of the round");
+
+  // A trade account's end customer never gets a link: the dealer tells them.
+  const dealer = await db.customer.create({ data: { shopId: a.shopId, name: "Quilt Corner", kind: "TRADE", email: `dealer-${uniq()}@a.test` } });
+  const c4 = await customer(a.shopId, { name: "End Customer" });
+  const t4 = await ticket(a.shopId, c4.id);
+  await db.ticket.update({ where: { id: t4.id }, data: { viaAccountId: dealer.id } });
+  await expectError("trade account", () => sendEstimateAs(user(a), "ticket", t4.id, both), /^This machine came in through a trade account; they tell their customer\.$/);
+  ok("a ticket that came in through a trade account can't be sent an estimate link");
+}
+
 async function main() {
   const t0 = Date.now();
   const prior = process.env.PUBLIC_URL;
@@ -416,6 +498,7 @@ async function main() {
     await secondLinkRevokesFirst(a, first);
     await answers(a);
     await counterAndPhone(a);
+    await reviewFixes(a);
     await sendRules(a);
     await noPublicAddress(a);
     await retailJob(b, repair);

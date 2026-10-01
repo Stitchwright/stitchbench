@@ -124,7 +124,11 @@ export function render(tpl: string, vars: Record<string, string>): string {
   const out = tpl.replace(/\{([a-z_]+)\}/g, (_, k: string) => {
     if (!Object.hasOwn(vars, k)) return "";
     const v = vars[k] ?? "";
-    return TRUSTED_FIELDS.includes(k) ? v : cleanText(v, 2000);
+    if (TRUSTED_FIELDS.includes(k)) return v;
+    // The "_line" fields our code builds start with their own separator (a space, or a blank line): keep it, the
+    // cleaning (which trims) is for what follows.
+    const lead = /^[ \n]{0,2}/.exec(v)?.[0] ?? "";
+    return lead + cleanText(v, 2000);
   });
   return out.replace(/\n{3,}/g, "\n\n");
 }
