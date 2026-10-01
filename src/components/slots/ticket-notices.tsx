@@ -35,6 +35,8 @@ function reasonOf(m: OutMessage): string | null {
 function sentLine(m: OutMessage, tz: string, names: Map<string, string>): string {
   const how = HOW_WORDS[m.channel] ?? m.channel;
   if (!m.byUserId) return `Sent by ${how} ${m.sentAt ? stamp(m.sentAt, tz) : ""}`.trim();
+  // Email and texts a person asked for still went out from here; "given" is for what was mailed, handed over or said.
+  if (m.channel === "email" || m.channel === "sms") return `Sent by ${how} ${m.sentAt ? stamp(m.sentAt, tz) : ""}, asked for by ${names.get(m.byUserId) ?? "staff"}`.replace(" ,", ",");
   const given = m.sentAt ? fmtDateTime(m.sentAt, tz, { month: "short", day: "numeric" }) : "";
   const recorded = fmtDateTime(m.createdAt, tz, { month: "short", day: "numeric" });
   const by = names.get(m.byUserId) ?? "staff";

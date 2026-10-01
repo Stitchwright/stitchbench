@@ -1,4 +1,4 @@
-# Handoff: where the work stands (30 Sep 2026)
+# Handoff: where the work stands (1 Oct 2026)
 
 Read this first in a new Claude Code session. Everything below is on `main` in both repos (bwattendorf/stitchbench
 and bwattendorf/stitchhub): the round-3 review fixes, the parts condition feature and Windows program 1.6.0 were
@@ -191,7 +191,7 @@ Before the first release of modules (INSTALL.md, "Paid modules"): fill `MODULE_S
 scheduling design's `foundation` (alone), then `vac-repair`, `vac-finder`, `vac-sales-warranty`, `appliance-repair`
 (section 13.1 build order).
 
-## 2g. Scheduling and messaging foundation (1 Oct 2026, branch `scheduling-foundation`, PR open)
+## 2g. Scheduling and messaging foundation (1 Oct 2026, branch `scheduling-foundation`, merged as PR #10)
 
 Built from `docs/plans/scheduling-messaging-design.md`, package `foundation` (section 15.1): migration
 `20261001130000_scheduling_messaging` (15 models; fields on Customer, Machine, Ticket, SaleLine, PartnerLink,
@@ -218,13 +218,50 @@ Worth knowing:
   register-bookings, shifts, partner-runs), each in its own worktree and database, then `modules-crossover` and the
   Vac Shop / appliance packages from the modules design.
 
+## 2h. Scheduling packages `notices` and `estimate-links` (1 Oct 2026, pushed straight to `main`)
+
+Both packages of the scheduling design (15.2 and 15.3) are on `main` and deployed to hosted StitchShop and hosted
+StitchBench; this PC's StitchBench 1.6.1 was updated in place the same day (and the installer file list now ships
+`desktop/links-gate.mjs`, which the in-place update had left out: the program would not start without it).
+
+- `notices`: `src/lib/notices/{hooks,scheduler,vars,abandon}.ts`, `src/actions/notices.ts`, the slots
+  `ticket-notices`, `job-notices`, `repairs-back`, `todo-lines`, the notice-letter pages under tickets and repairs,
+  `/u/[token]` and `/api/u/[token]` (unsubscribe, RFC 8058 one-click), `scripts/checks/abandon.check.ts`,
+  `notices.check.ts`, `seed-marketing.ts` (seeds one sent marketing email and prints its unsubscribe token:
+  `npx tsx --conditions=react-server scripts/checks/seed-marketing.ts --shop "<company>" --email <address>`),
+  `tests/notices.spec.ts`.
+- `estimate-links`: `src/lib/estimate-links.ts`, `src/actions/estimate-links.ts`, the slots `ticket-estimate`,
+  `job-estimate`, `estimates-todo`, `src/components/auto-refresh.tsx`, `/e/[token]` and `/api/e/[token]`,
+  `scripts/checks/estimate-links.check.ts`, `tests/estimate-links.spec.ts`.
+
+Checked here: tsc, eslint, the check scripts abandon (6 groups), notices (11), estimate-links (17) and worker (26), and
+on a test build (`STITCH_TEST_BUILD=1 npx next build`, server on :3501 with the sink on 2526/2581 and the mock on 3402,
+`MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1`, the package ports of design 16.3 with n = 1) the specs
+notices (3 tests), estimate-links with `PUBLIC_URL=http://localhost:3501` on the server and in the spec's process (the
+link tests) and again without it (the "they call or reply" tests), and smoke. Not checked by a spec (design 15.2
+acceptance 5): the "send it by hand (Messages is off)" wording with Marketing off and "Marked ready by the repair
+shop. Are they here?" on `/repairs`; both are in the slot code, look at them by hand on a retail company.
+
+Worth knowing:
+- The specs make their own company from Companies (the e2e owner must be in `PLATFORM_ADMIN_EMAILS` on the server),
+  switch Marketing on, set up email against the sink from Settings -> Messages, and delete the company at the end.
+- A text or email a person asked for shows on the ticket as "Sent by text ..., asked for by <name>"; only letters,
+  certified mail and phone calls say "Given by ... recorded by".
+- The dev database: when every Prisma query fails with "Server has closed the connection" while `docker exec psql`
+  works, the WSL relay on `[::1]:5433` is hanging (Node tries IPv6 first); run with
+  `DATABASE_URL=postgresql://stitchbench:stitchbench@127.0.0.1:5433/stitchbench` or restart Docker Desktop. On 1 Oct the
+  real cause was a full disk (0 bytes free); Docker Desktop had died with it and had to be started again.
+- Next: the remaining feature packages (campaigns, classes, appointments, register-bookings, shifts, partner-runs),
+  then `e2e-docs`, then `modules-crossover` and the Vac Shop / appliance packages.
+
 ## 3. What to do next, in order
 
 
 
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
-merged (PR #9, section 2f). Step 4.2's `foundation` package is built on branch `scheduling-foundation` with a PR open
-(section 2g). Next: merge it, then the feature packages of the scheduling design in parallel, then step 4.3.
+merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
+`estimate-links` packages are on `main` and deployed (section 2h). Next: the other feature packages of the scheduling
+design (campaigns, classes, appointments, register-bookings, shifts, partner-runs, then e2e-docs), then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
