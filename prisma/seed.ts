@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
-import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "../src/lib/service-menu";
+import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } from "../src/lib/service-menu";
 
 /**
  * The reference sets that ship with StitchBench. Loaded the same way as the Windows program's desktop/reference.mjs:
@@ -88,7 +88,7 @@ async function seedFirstShop() {
           passwordHash: await bcrypt.hash(password, 10),
         },
       },
-      serviceItems: doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: s.priceCents, sortOrder: i })) } : undefined,
+      serviceItems: doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: s.priceCents, sortOrder: i, equipmentKind: starterKindFor(s.name) })) } : undefined,
     },
   });
   console.log(`Shop "${shop.name}" created. Owner login: ${email}`);

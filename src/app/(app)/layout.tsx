@@ -7,17 +7,37 @@ import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
 import { isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
+import { getModules } from "@/lib/modules";
+import { fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
+import { GraceBanner, ModulePills, type GraceItem, type RenewPill } from "@/components/module-banner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [shop, hub, retailPartners] = await Promise.all([
-    db.shop.findUnique({ where: { id: user.shopId }, select: { name: true, doesRepair: true, sellsRetail: true, timeZone: true } }),
+  const [shop, hub, retailPartners, modules] = await Promise.all([
+    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true } }),
     db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
+    getModules(user.shopId),
   ]);
   const doesRepair = shop?.doesRepair ?? true;
+  const admin = user.role !== "TECH";
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
+  // Paid modules: a quiet renewal pill for admins, and a banner for everyone while a module is in its grace period.
+  // Layouts don't re-render on navigation, so these may be one navigation stale; the pages and actions are the real gates.
+  const shopRef = { id: user.shopId, name: shop?.name ?? "" };
+  const pills: RenewPill[] = admin ? MODULE_IDS.filter((id) => modules.states[id].status === "renew").map((id) => ({ id, label: modules.states[id].label, lastDay: fmtYmd(modules.states[id].lastDay ?? "").replace(/, \d{4}$/, "") })) : [];
+  const grace: GraceItem[] = MODULE_IDS.filter((id) => modules.states[id].status === "grace").map((id) => {
+    const s = modules.states[id];
+    const graceEnd = s.graceLastDay ? Date.parse(`${s.graceLastDay}T23:59:59Z`) : modules.now.getTime();
+    return {
+      label: s.label,
+      lastDay: fmtYmd(s.lastDay ?? ""),
+      graceLastDay: fmtYmd(s.graceLastDay ?? ""),
+      daysLeft: Math.max(0, Math.ceil((graceEnd - modules.now.getTime()) / 86_400_000)),
+      renewHref: salesMailto("renew", s.label, shopRef),
+    };
+  });
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -42,7 +62,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           doesRepair={doesRepair}
           sellsRetail={shop?.sellsRetail ?? false}
           retailPartners={retailPartners > 0}
+          gates={toNavGates(modules)}
         />
+        <ModulePills items={pills} />
         {offline && (
           <div className="px-4 pb-2">
             <span className="pill tone-wait text-xs" title="Sharing, the marketplace and messages to partner shops wait until the connection is back. Tickets, the register, customers and parts work as usual.">
@@ -63,7 +85,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </form>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">
+        <GraceBanner items={grace} admin={admin} />
+        {children}
+      </main>
     </div>
   );
 }

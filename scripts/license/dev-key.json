@@ -1,0 +1,7 @@
+{
+  "kid": "dev1",
+  "scope": "dev",
+  "note": "Development signing key: committed on purpose. Keys it signs count only in next dev, check scripts and a local test build (modules-design.md section 3.3).",
+  "x": "cYT5uNzPQTauwyFFy7M2yz1CXVlrD9NCLJEL3ozeiiA",
+  "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFD5f4rZQharV5XpWfoBzKpPicVDfu8CCJeSeGyMZJBH\n-----END PRIVATE KEY-----\n"
+}
