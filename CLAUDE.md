@@ -12,7 +12,7 @@
    https://stitchshop-production.up.railway.app (project `stitchshop`, this folder is linked to it: `railway up
    --service stitchshop --ci`); hosted StitchBench https://stitchbench-production-e554.up.railway.app (project
    `stitchbench`: `railway link --project stitchbench` first, then `railway up --service stitchbench --ci`, then link
-   back with `railway link --project stitchshop --service stitchshop`); StitchBench 1.6.0 installed on this PC
+   back with `railway link --project stitchshop --service stitchshop`); StitchBench 1.6.1 installed on this PC
    (`%LOCALAPPDATA%\Programs\StitchBench`, port 3100), updated in place with
    `scripts/local-test/update_installed.ps1 -Version <v>` after `npm run prepare-app` in `desktop/` (back up first:
    `node desktop/backup-now.mjs`). Deploys and merges must be run by the owner; when giving `!` commands, use
