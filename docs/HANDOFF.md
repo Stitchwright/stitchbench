@@ -191,12 +191,40 @@ Before the first release of modules (INSTALL.md, "Paid modules"): fill `MODULE_S
 scheduling design's `foundation` (alone), then `vac-repair`, `vac-finder`, `vac-sales-warranty`, `appliance-repair`
 (section 13.1 build order).
 
+## 2g. Scheduling and messaging foundation (1 Oct 2026, branch `scheduling-foundation`, PR open)
+
+Built from `docs/plans/scheduling-messaging-design.md`, package `foundation` (section 15.1): migration
+`20261001130000_scheduling_messaging` (15 models; fields on Customer, Machine, Ticket, SaleLine, PartnerLink,
+RepairJob), nodemailer 10, the messaging core (`src/lib/messaging/*`: settings with sealed secrets, templates, quiet
+hours, the consent gate, the queue, SMTP, Twilio, replies, service due, the worker and its timer), `src/lib/zoned.ts`,
+`ticket-status.ts` (`setStatus` is now a data action returning a toast note), `estimate-answer.ts`, `module-gate.ts`,
+Settings → Messages (Setup / Automatic messages / Rules), `/messages` (outbox, replies, opt-outs), consent on the counter
+tablet (`/consent/[customerId]`) and the paper form, "How should we tell them" on customers, check-in and take-in, the
+nav items Calendar / Classes / Messages (gated), the slot stubs and placeholder pages for the feature packages, the
+desktop links gate (`desktop/links-gate.mjs`, `publicUrl` in config.json) and the restore carry-over of opt-outs, the
+sink and mock (`npm run mail:sink`, `npm run sms:mock`), checks `messaging-core`, `worker`, `links-gate`,
+`restore-optouts`, and `tests/messaging.spec.ts`. Checked here: tsc, lint, unit tests, every check script, desktop tests,
+`STITCH_TEST_BUILD=1 npm run build`, and the Playwright specs messaging, smoke, roles, tenant, register and
+modules-basics on the test build with the sink and mock (16.3 shows the server variables).
+
+Worth knowing:
+- Nothing sends until a shop sets up email or texts in Settings → Messages and has Marketing on; `MESSAGES=off` stops
+  every send path on a dev copy. Hosted production needs `SETTINGS_KEY` before a password can be saved.
+- `tests/messaging.spec.ts` gives its company a time zone where it is mid-day, because texts only go out 9:00-20:00 shop
+  time; it also resets the shop's reply watermark before the STOP step (replies are read at most every 5 minutes).
+- The paper-form prototypes the design mentions under `scratch/` never existed here; the sink and mock were written
+  from the design's description.
+- Next: the feature packages of section 15 (notices, estimate-links, campaigns, classes, appointments,
+  register-bookings, shifts, partner-runs), each in its own worktree and database, then `modules-crossover` and the
+  Vac Shop / appliance packages from the modules design.
+
 ## 3. What to do next, in order
 
 
 
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
-built on branch `modules-foundation` with a PR open (section 2f). Next: merge it, then step 4.2.
+merged (PR #9, section 2f). Step 4.2's `foundation` package is built on branch `scheduling-foundation` with a PR open
+(section 2g). Next: merge it, then the feature packages of the scheduling design in parallel, then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
