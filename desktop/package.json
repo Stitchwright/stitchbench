@@ -39,6 +39,7 @@
       "backup.mjs",
       "reference.mjs",
       "app-role.mjs",
+      "links-gate.mjs",
       "icon.png",
       "package.json",
       "node_modules/**/*"
