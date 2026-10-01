@@ -1,11 +1,11 @@
 import { ExternalLink } from "lucide-react";
-import { quickLinks } from "@/lib/quick-links";
+import { quickLinks, type QuickLink } from "@/lib/quick-links";
 
 type Picture = { id: string; sourcePath: string; page: number; width: number; height: number } | null;
 
-/** The machine's picture (cut from its own manual) and one-tap links for this model. */
-export function MachineInfo({ brand, model, picture, category }: { brand: string; model: string; picture: Picture; category?: string | null }) {
-  const links = quickLinks(brand, model, category);
+/** The machine's picture (cut from its own manual) and one-tap links for this model. `links` (a non-sewing kind's) replace the sewing ones. */
+export function MachineInfo({ brand, model, picture, category, links: given }: { brand: string; model: string; picture: Picture; category?: string | null; links?: QuickLink[] }) {
+  const links = given ?? quickLinks(brand, model, category);
   const groups = [...new Set(links.map((l) => l.group))];
   return (
     <div className="grid gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">

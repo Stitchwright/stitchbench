@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { modelKey } from "@/lib/format";
+import { firstValues } from "@/lib/search-params";
+import { kindByKey } from "@/lib/equipment/shop";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ModelPanel } from "@/components/model-panel";
 import { ModelMachines, ModelPhotos } from "@/components/model-history";
@@ -10,13 +12,15 @@ import { SharedPosts } from "@/components/shared-posts";
 import { ManualLinks } from "@/components/manual-links";
 import { PartsThatFit } from "@/components/parts-that-fit";
 
-export default async function ModelPage({ params }: { params: Promise<{ brand: string; model: string }> }) {
+export default async function ModelPage({ params, searchParams }: { params: Promise<{ brand: string; model: string }>; searchParams: Promise<{ kind?: string }> }) {
   const user = await requireUser();
   const tz = await shopTimeZone(user.shopId);
   const p = await params;
   const brand = decodeURIComponent(p.brand);
   const model = decodeURIComponent(p.model);
   const key = modelKey(model);
+  // ?kind= says what the model is (a vacuum has no factory tension); missing means a sewing machine.
+  const kind = await kindByKey(user.shopId, firstValues(await searchParams).kind);
   const parts = await db.part.findMany({
     where: { shopId: user.shopId, OR: [{ fits: { contains: model, mode: "insensitive" } }, { fits: { contains: key, mode: "insensitive" } }] },
     orderBy: { partNumber: "asc" },
@@ -24,10 +28,14 @@ export default async function ModelPage({ params }: { params: Promise<{ brand: s
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`${brand} ${model}`} sub="Factory specs, gotchas, manuals, parts, and every one we've serviced." back={{ href: "/machines", label: "Machines" }} />
+      <PageHeader
+        title={`${brand} ${model}`}
+        sub={`${kind.panels.tension ? "Factory specs, gotchas" : "Gotchas"}, manuals, parts, and every one we've serviced.`}
+        back={{ href: "/machines", label: "Machines" }}
+      />
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
-          <ModelPanel shopId={user.shopId} brand={brand} model={model} showLink={false} />
+          <ModelPanel shopId={user.shopId} brand={brand} model={model} showLink={false} kind={kind} />
           <ManualLinks brand={brand} model={model} timeZone={tz} />
         </div>
         <div className="space-y-6 xl:col-span-2">

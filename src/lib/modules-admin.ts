@@ -20,8 +20,8 @@ export async function setCompanyModuleFor(admin: CurrentUser, fd: FormData) {
   const shopId = str(fd.get("shopId"));
   const shop = shopId ? await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, timeZone: true } }) : null;
   if (!shop) throw new UserError("Company not found.");
-  const module = str(fd.get("module"));
-  if (!isModuleId(module)) throw new UserError("Pick a module.");
+  const mod = str(fd.get("module"));
+  if (!isModuleId(mod)) throw new UserError("Pick a module.");
   const mode = str(fd.get("mode"));
   if (mode !== "on" && mode !== "off" && mode !== "none" && mode !== "extend") throw new UserError("Pick what to do.");
   const note = str(fd.get("note"))?.slice(0, 200) ?? null;
@@ -34,12 +34,12 @@ export async function setCompanyModuleFor(admin: CurrentUser, fd: FormData) {
     lastDay = typed ?? NO_END;
     if (!validYmd(lastDay) || lastDay < todayIn(shop.timeZone)) throw new UserError("Pick a date from today on, or leave it blank for no end date.");
     const grace = graceOf(fd);
-    key = signGrant({ shopId: shop.id, shopName: shop.name, module, lastDay, graceDays: grace, timeZone: shop.timeZone });
+    key = signGrant({ shopId: shop.id, shopName: shop.name, module: mod, lastDay, graceDays: grace, timeZone: shop.timeZone });
   } else if (mode === "extend") {
     if (!hostedSigner()) throw new UserError(NO_HOSTING_KEY);
     const period = str(fd.get("period"));
     if (period !== "m" && period !== "y") throw new UserError("Pick a month or a year.");
-    const rows = await db.moduleGrant.findMany({ where: { shopId: shop.id, module }, select: { id: true, mode: true, key: true, createdAt: true } });
+    const rows = await db.moduleGrant.findMany({ where: { shopId: shop.id, module: mod }, select: { id: true, mode: true, key: true, createdAt: true } });
     const pos = adminPosition(rows);
     const current = pos.onKey ? verifyLicense(pos.onKey, LICENSE_PUBLIC_KEYS) : null;
     const today = todayIn(shop.timeZone);
@@ -47,11 +47,11 @@ export async function setCompanyModuleFor(admin: CurrentUser, fd: FormData) {
     const start = current.payload.u >= today ? addDaysYmd(current.payload.u, 1) : today;
     lastDay = planLastDay(start, period);
     finalNote = period === "m" ? "Extended 1 month" : "Extended 1 year";
-    key = signGrant({ shopId: shop.id, shopName: shop.name, module, lastDay, graceDays: current.payload.g, timeZone: shop.timeZone });
+    key = signGrant({ shopId: shop.id, shopName: shop.name, module: mod, lastDay, graceDays: current.payload.g, timeZone: shop.timeZone });
   }
-  await db.moduleGrant.create({ data: { shopId: shop.id, module, mode: mode === "extend" ? "on" : mode, key, byEmail: admin.email, note: finalNote } });
+  await db.moduleGrant.create({ data: { shopId: shop.id, module: mod, mode: mode === "extend" ? "on" : mode, key, byEmail: admin.email, note: finalNote } });
   // A record outside the database too.
-  console.info(`[modules] ${JSON.stringify({ company: shop.id, module, mode, until: lastDay ?? null, by: admin.email })}`);
+  console.info(`[modules] ${JSON.stringify({ company: shop.id, module: mod, mode, until: lastDay ?? null, by: admin.email })}`);
   revalidatePath("/companies");
   revalidatePath("/", "layout");
 }

@@ -3,7 +3,7 @@ import "server-only";
 // The register's Vac Shop hooks (modules-design.md section 10.c). Foundation stub: the register's plumbing calls these;
 // the vac-sales-warranty package fills them in. Until then a unit or trade-in line is refused and nothing else happens.
 import type { Prisma, SaleLine } from "@/generated/prisma/client";
-import type { RegisterItem } from "@/actions/register";
+import type { RegisterItem } from "@/lib/register-item";
 import { UserError } from "@/lib/action";
 import type { TradeInInput } from "@/lib/vac/types";
 

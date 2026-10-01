@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { PHOTO_KINDS } from "@/lib/constants";
 import type { PhotoKind } from "@/generated/prisma/enums";
 import { formUpTo } from "@/lib/read-body";
+import { equipmentState, machineWorkable, ticketWorkable } from "@/lib/equipment/gate";
+import { blockedMessage } from "@/lib/module-info";
 
 const MAX_BYTES = 3 * 1024 * 1024; // photos are resized in the browser first; this is a backstop
 
@@ -21,10 +23,15 @@ export async function POST(req: Request) {
   if (file.size > MAX_BYTES) return new Response("Photo is too large (3 MB max).", { status: 413 });
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return new Response("Use a JPEG, PNG or WebP photo.", { status: 415 });
 
-  const machine = await db.machine.findFirst({ where: { id: machineId, shopId }, select: { id: true } });
+  const machine = await db.machine.findFirst({ where: { id: machineId, shopId }, select: { id: true, equipment: true } });
   if (!machine) return new Response("Machine not found.", { status: 404 });
   if (ticketId && !(await db.ticket.findFirst({ where: { id: ticketId, shopId, machineId }, select: { id: true } }))) {
     return new Response("Ticket not found.", { status: 404 });
+  }
+  // The module gate: a photo is work on the ticket (or on the machine when there is none). modules-design.md 6.4.
+  if (!(ticketId ? await ticketWorkable(shopId, ticketId) : await machineWorkable(shopId, machineId))) {
+    const state = await equipmentState(shopId, machine.equipment);
+    return new Response(state ? blockedMessage(state, user.role !== "TECH") : "This record is read-only.", { status: 403 });
   }
 
   const photo = await db.machinePhoto.create({

@@ -8,11 +8,13 @@ import { csvResponse } from "@/lib/csv";
 import { lineNet, type Tender } from "@/lib/register-math";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { CONDITION_NAME, ORIGIN_NAME } from "@/lib/part-labels";
-import { PAYMENT_LABEL, STATUS_LABEL } from "@/lib/constants";
+import { PAYMENT_LABEL, STATUS_LABEL, UNIT_CONDITION_LABEL, UNIT_STATUS_LABEL } from "@/lib/constants";
 import { dateIn, dateTimeIn, todayIn } from "@/lib/time-zone";
 import { shopTimeZone } from "@/lib/shop-zone";
 
 const dollars = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
+/** A JSON column (check-in answers, readings) as text; an empty object is an empty cell. */
+const json = (v: unknown) => (v && typeof v === "object" && Object.keys(v).length ? JSON.stringify(v) : "");
 
 async function rows(shopId: string, what: string, tz: string): Promise<unknown[][] | null> {
   const at = (d: Date | null | undefined) => dateTimeIn(d, tz);
@@ -53,10 +55,15 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
     }
     case "register-sales": {
       const sales = await db.sale.findMany({ where: { shopId }, include: { lines: true, customer: { select: { name: true } } }, orderBy: { createdAt: "asc" } });
+      // for_machine: the customer's vacuum a bag, belt or filter was bought for (Vac Shop), in one query for every line.
+      const machineIds = [...new Set(sales.flatMap((s) => s.lines.map((l) => l.machineId)).filter((id): id is string => !!id))];
+      const forMachine = new Map(
+        (machineIds.length ? await db.machine.findMany({ where: { id: { in: machineIds }, shopId }, select: { id: true, brand: true, model: true } }) : []).map((m) => [m.id, `${m.brand} ${m.model}`]),
+      );
       // One row per line; the sale-level columns (sale_discount = a "Discount on sale" on top of the line discounts, sale_tax,
       // sale_total, paid_by, change) repeat on each of its rows, so sum(line_total) - sale_discount + sale_tax = sale_total.
       const out: unknown[][] = [
-        ["sale", "date", "status", "customer", "item_number", "description", "qty", "unit_price", "line_discount", "line_total", "taxable", "sale_discount", "sale_tax", "sale_total", "paid_by", "change", "voided_at"],
+        ["sale", "date", "status", "customer", "item_number", "description", "qty", "unit_price", "line_discount", "line_total", "taxable", "sale_discount", "sale_tax", "sale_total", "paid_by", "change", "voided_at", "for_machine"],
       ];
       for (const s of sales) {
         const paid = (s.tenders as Tender[]).map((t) => `${t.method} ${dollars(t.amountCents)}`).join(" + ");
@@ -79,6 +86,7 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
             paid,
             dollars(s.changeCents),
             at(s.voidedAt),
+            l.machineId ? (forMachine.get(l.machineId) ?? "") : "",
           ]);
         }
       }
@@ -117,12 +125,15 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
           customer: true,
           viaAccount: true,
           tech: { select: { name: true } },
+          site: true,
         },
         orderBy: { number: "asc" },
       });
-      // One row per line; the ticket's own columns repeat on each (a ticket with no lines still gets one row).
+      // One row per line; the ticket's own columns repeat on each (a ticket with no lines still gets one row). The
+      // module columns come last so older spreadsheets keep working: job_type (BENCH or a SITE install), kind, the
+      // install's address, and the kind's check-in answers (the unit's and this visit's) and readings as JSON text.
       const out: unknown[][] = [
-        ["ticket", "status", "taken_in", "ready", "closed", "warranty_until", "customer", "phone", "via_account", "brand", "model", "serial", "tech", "service_requested", "problem", "diagnosis", "work_done", "accessories", "upper_found_g", "upper_left_g", "bobbin_found_g", "bobbin_left_g", "readings", "notes", "line_kind", "line_description", "qty", "unit_price", "line_total", "taxable", "ticket_tax", "ticket_total", "ticket_paid"],
+        ["ticket", "status", "taken_in", "ready", "closed", "warranty_until", "customer", "phone", "via_account", "brand", "model", "serial", "tech", "service_requested", "problem", "diagnosis", "work_done", "accessories", "upper_found_g", "upper_left_g", "bobbin_found_g", "bobbin_left_g", "readings", "notes", "line_kind", "line_description", "qty", "unit_price", "line_total", "taxable", "ticket_tax", "ticket_total", "ticket_paid", "job_type", "kind", "site_address", "details", "intake", "kind_readings"],
       ];
       for (const t of ts) {
         const tot = ticketTotals(t.lines, t.payments, t.taxRatePct);
@@ -152,7 +163,7 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
           Object.keys((t.measurements as object) ?? {}).length ? JSON.stringify(t.measurements) : "",
           t.notes,
         ];
-        const money = [dollars(tot.tax), dollars(tot.total), dollars(tot.paid)];
+        const money = [dollars(tot.tax), dollars(tot.total), dollars(tot.paid), t.jobType, t.machine.kind, t.site?.address ?? "", json(t.machine.details), json(t.intake), json(t.readings)];
         if (!t.lines.length) out.push([...head, "", "", "", "", "", "", ...money]);
         for (const l of t.lines) {
           out.push([...head, l.kind, l.description, l.qty, dollars(l.unitPriceCents), dollars(lineTotal(l)), l.taxable ? "yes" : "no", ...money]);
@@ -167,7 +178,7 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
         orderBy: [{ brand: "asc" }, { model: "asc" }, { serial: "asc" }],
       });
       return [
-        ["brand", "model", "serial", "type", "customer", "phone", "notes", "first_seen", "tickets", "last_in"],
+        ["brand", "model", "serial", "type", "customer", "phone", "notes", "first_seen", "tickets", "last_in", "kind", "equipment", "details"],
         ...ms.map((m) => [
           m.brand,
           m.model,
@@ -179,6 +190,43 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
           at(m.createdAt),
           m.tickets.map((t) => t.number).join(" "),
           at(m.tickets.at(-1)?.intakeAt),
+          m.kind,
+          m.equipment,
+          json(m.details),
+        ]),
+      ];
+    }
+    case "vac-units": {
+      // Vacuums for sale (Vac Shop): one row per unit, with the sale that sold it and the one that took it in trade.
+      const units = await db.stockUnit.findMany({
+        where: { shopId },
+        include: { machine: { select: { brand: true, model: true, serial: true, customer: { select: { name: true } } } } },
+        orderBy: { createdAt: "asc" },
+      });
+      const lineIds = [...new Set(units.flatMap((u) => [u.soldLineId, u.tradeInLineId]).filter((id): id is string => !!id))];
+      const saleNo = new Map(
+        (lineIds.length ? await db.saleLine.findMany({ where: { id: { in: lineIds }, sale: { shopId } }, select: { id: true, sale: { select: { number: true } } } }) : []).map((l) => [l.id, l.sale.number]),
+      );
+      return [
+        ["status", "condition", "brand", "model", "serial", "cost", "price", "sold_net", "warranty_months", "warranty_by", "sold", "sale_number", "buyer", "warranty_until", "registered", "registration_ref", "traded_in_on_sale"],
+        ...units.map((u) => [
+          UNIT_STATUS_LABEL[u.status] ?? u.status,
+          UNIT_CONDITION_LABEL[u.condition] ?? u.condition,
+          u.machine.brand,
+          u.machine.model,
+          u.machine.serial,
+          dollars(u.costCents),
+          dollars(u.priceCents),
+          dollars(u.soldNetCents),
+          u.warrantyMonths,
+          u.warrantyBy,
+          at(u.soldAt),
+          u.soldLineId ? (saleNo.get(u.soldLineId) ?? "") : "",
+          u.soldAt ? u.machine.customer?.name : "",
+          day(u.warrantyUntil),
+          at(u.registeredAt),
+          u.registrationRef,
+          u.tradeInLineId ? (saleNo.get(u.tradeInLineId) ?? "") : "",
         ]),
       ];
     }

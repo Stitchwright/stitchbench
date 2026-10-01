@@ -16,6 +16,9 @@
     "e2e": "playwright test",
     "test:unit": "tsx --conditions=react-server --test \"src/**/*.test.ts\" \"tests/unit/*.test.ts\"",
     "e2e:setup": "tsx scripts/e2e-setup.ts",
+    "license": "tsx scripts/license/issue.ts",
+    "license:keygen": "tsx scripts/license/keygen.ts",
+    "check": "tsx --conditions=react-server",
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {

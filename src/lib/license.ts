@@ -15,7 +15,7 @@ export type Verified = { ok: true; payload: LicensePayload; scope: KeyScope; kid
 export const NO_END = "2099-12-31";
 export const TRIAL_DAYS = 14;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
-export const validYmd = (s: unknown): s is string => typeof s === "string" && YMD.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+export const validYmd = (s: unknown): s is string => typeof s === "string" && YMD.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 
 /** Email programs wrap long lines: every space and line break goes. */
 export const cleanKeyText = (text: string) => String(text ?? "").replace(/\s+/g, "");

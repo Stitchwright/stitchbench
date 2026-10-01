@@ -97,6 +97,45 @@ test("backup and restore: the data comes back as it was, and what came after is 
   }
 });
 
+test("restore: license keys pasted after the backup come back, and the equipmentKind fix-up runs only for backups from before paid_modules", { skip }, async () => {
+  const t = await shop();
+  try {
+    // A menu the shop set to "every kind" (all null): a backup made after paid_modules must come back exactly like that.
+    await t.pool.query(`INSERT INTO "ServiceItem" (id, "shopId", name, "priceCents") VALUES ('s1', 'shop1', 'Hook timing only', 5500), ('s2', 'shop1', 'Storage fee (after 60 days)', 4500)`);
+    await t.pool.query(`INSERT INTO "License" (id, "shopId", "keyId", key) VALUES ('l0', 'shop1', 'KEY0', 'SB1.in-the-backup.sig')`);
+    const dir = await backup(t.pool, t.backups);
+    const kinds = async () => (await t.pool.query(`SELECT name, "equipmentKind" AS k FROM "ServiceItem" ORDER BY id`)).rows.map((r) => [r.name, r.k]);
+    const keys = async () => (await t.pool.query(`SELECT id, "shopId" FROM "License" ORDER BY id`)).rows.map((r) => `${r.shopId}:${r.id}`);
+
+    // After the backup: a key pasted for shop1, a second company with its own key, and shop1's key text changed in place.
+    await t.pool.query(`INSERT INTO "License" (id, "shopId", "keyId", key) VALUES ('l1', 'shop1', 'KEY1', 'SB1.pasted-later.sig')`);
+    await t.pool.query(`INSERT INTO "Shop" (id, name) VALUES ('shop2', 'Later')`);
+    await t.pool.query(`INSERT INTO "License" (id, "shopId", "keyId", key) VALUES ('l2', 'shop2', 'KEY2', 'SB1.other-company.sig')`);
+    await t.pool.query(`UPDATE "License" SET key = 'changed' WHERE id = 'l0'`);
+    await restore(t.pool, dir);
+    assert.deepEqual(await keys(), ["shop1:l0", "shop1:l1"], "the pasted key comes back; the later company's key goes with its company");
+    assert.equal((await t.pool.query(`SELECT key FROM "License" WHERE id = 'l0'`)).rows[0].key, "SB1.in-the-backup.sig", "a key the backup has is the backup's");
+    assert.deepEqual(await kinds(), [["Hook timing only", null], ["Storage fee (after 60 days)", null]], "a backup from after paid_modules is left as saved");
+
+    // The same backup presented as one from before paid_modules (no License table, an older last migration).
+    const file = path.join(dir, "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.ok(manifest.lastMigration >= "20261001120000_paid_modules");
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, lastMigration: "20260930220000_round3_tail2_part_number_ci", tables: manifest.tables.filter((x) => x.name !== "License") }));
+    await restore(t.pool, dir);
+    assert.deepEqual(await kinds(), [["Hook timing only", "sewing"], ["Storage fee (after 60 days)", null]], "an older backup gets the migration's backfill");
+    assert.deepEqual(await keys(), ["shop1:l0", "shop1:l1"], "an older backup keeps the keys the PC has");
+
+    // And one with no last migration recorded at all (before 1.4) gets the fix-up too.
+    await t.pool.query(`UPDATE "ServiceItem" SET "equipmentKind" = NULL`);
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, lastMigration: null, tables: manifest.tables.filter((x) => x.name !== "License") }));
+    await restore(t.pool, dir);
+    assert.deepEqual(await kinds(), [["Hook timing only", "sewing"], ["Storage fee (after 60 days)", null]]);
+  } finally {
+    await t.done();
+  }
+});
+
 test("restore: a backup from a newer version, a missing file or a damaged file is refused and changes nothing", { skip }, async () => {
   const t = await shop();
   try {

@@ -44,6 +44,13 @@ export function saleTotals(lines: Line[], orderDiscountCents: number, taxRatePct
   return { subtotal, orderDiscount, tax, total, paid, change, due: Math.max(0, total - paid) };
 }
 
+/** Each line's share of the whole-sale discount (the split saleTotals uses for tax): 0 for lines it doesn't come off. */
+export function discountShares(lines: Line[], orderDiscountCents: number): number[] {
+  const base = discountBase(lines);
+  const d = Math.max(0, Math.min(Math.round(orderDiscountCents), base));
+  return lines.map((l) => (base > 0 && l.discountable !== false && lineNet(l) > 0 ? Math.round((d * lineNet(l)) / base) : 0));
+}
+
 /**
  * Each line's part of the whole-sale discount, in line order: shared over the items being bought in proportion to
  * their price, so what each one sold for is known (a partner's consigned item is paid out on that). Adds up to the

@@ -10,6 +10,23 @@ import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { isPlatformAdmin } from "@/lib/shops";
 import type { Role } from "@/generated/prisma/enums";
 import { assertId } from "@/lib/input";
+import { shopKinds } from "@/lib/equipment/shop";
+import { requireModule } from "@/lib/modules";
+
+// The platform-admin logins control paid access (Companies): only their holder changes them.
+const ADMIN_LOGIN = "That login belongs to the StitchBench administrator. Only they can change it.";
+function protectAdminLogin(target: { id: string; email: string }, admin: { id: string }) {
+  if (isPlatformAdmin(target.email) && target.id !== admin.id) throw new UserError(ADMIN_LOGIN);
+}
+
+/** The "For" select: "" (every kind) -> null, else a kind key this company has. */
+async function equipmentKindOf(shopId: string, v: FormDataEntryValue | null) {
+  const key = str(v);
+  if (!key) return null;
+  const { all } = await shopKinds(shopId);
+  if (!all.some((k) => k.key === key)) throw new UserError("Pick what it's for.");
+  return key;
+}
 
 /** An IANA time zone this server knows (America/New_York...), or null. */
 function validTimeZone(tz: string | null) {
@@ -92,7 +109,11 @@ export const saveServiceItem = safe(async function saveServiceItem(itemId: strin
   const name = str(formData.get("name"));
   const price = toCents(formData.get("price"));
   if (!name || price == null) throw new UserError("Enter a name and price.");
-  const listing = { category: str(formData.get("category")), description: str(formData.get("description")) };
+  const listing = {
+    category: str(formData.get("category")),
+    description: str(formData.get("description")),
+    equipmentKind: await equipmentKindOf(user.shopId, formData.get("equipmentKind")),
+  };
   if (itemId) {
     const it = await db.serviceItem.findFirst({ where: { id: itemId, shopId: user.shopId } });
     if (!it) throw new UserError("Service not found.");
@@ -101,6 +122,31 @@ export const saveServiceItem = safe(async function saveServiceItem(itemId: strin
     const count = await db.serviceItem.count({ where: { shopId: user.shopId } });
     await db.serviceItem.create({ data: { shopId: user.shopId, name, priceCents: price, sortOrder: count, ...listing } });
   }
+  revalidatePath("/settings");
+  revalidatePath("/price-list");
+});
+
+/**
+ * The starter service menu for one kind of equipment (vacuums, stand mixers...), added once. Items whose suggested price
+ * is $0 are made inactive: the shop prices them, then switches them on. Names already on the menu (for any kind) are skipped.
+ */
+export const addStarterServices = safe(async function addStarterServices(kindKey: string) {
+  const user = await requireAdmin();
+  const { all } = await shopKinds(user.shopId);
+  const kind = all.find((k) => k.key === kindKey);
+  if (!kind) throw new UserError("Pick what it's for.");
+  if (kind.module) await requireModule(user, kind.module);
+  const existing = await db.serviceItem.findMany({ where: { shopId: user.shopId }, select: { name: true, equipmentKind: true } });
+  if (existing.some((s) => s.equipmentKind === kind.key)) throw new UserError(`${kind.plural} already have services.`);
+  const taken = new Set(existing.map((s) => s.name.trim().toLowerCase()));
+  let sortOrder = existing.length;
+  const rows = kind.serviceMenu
+    .filter((s) => !taken.has(s.name.trim().toLowerCase()))
+    .map((s) => {
+      const priceCents = s.priceCents ?? 0;
+      return { shopId: user.shopId, name: s.name, description: s.description ?? null, category: kind.label, equipmentKind: kind.key, priceCents, active: priceCents > 0, sortOrder: sortOrder++ };
+    });
+  if (rows.length) await db.serviceItem.createMany({ data: rows });
   revalidatePath("/settings");
   revalidatePath("/price-list");
 });
@@ -121,6 +167,7 @@ export const resetUserPassword = safe(async function resetUserPassword(userId: s
   // Your own password is changed under "My password", which asks for the current one first: a signed-in PC left
   // unattended can't be used to take the account over. And nobody else gets to reset the owner's.
   if (u.id === admin.id) throw new UserError("Change your own password under My password.");
+  protectAdminLogin(u, admin);
   if (u.role === "OWNER") throw new UserError("Only the owner can change the owner's password, under My password.");
   // Signed-in devices of that person have to sign in again with the new password.
   await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } });
@@ -153,6 +200,7 @@ export const setUserRole = safe(async function setUserRole(userId: string, formD
   if (role !== "ADMIN" && role !== "TECH") throw new UserError("Pick admin or tech.");
   const u = await db.user.findFirst({ where: { id: assertId(userId), shopId: admin.shopId } });
   if (!u) throw new UserError("User not found.");
+  protectAdminLogin(u, admin);
   if (u.role === "OWNER") throw new UserError("The owner's role can't be changed.");
   if (u.id === admin.id) throw new UserError("You can't change your own role.");
   if (u.role === role) return;
@@ -165,6 +213,7 @@ export const setUserActive = safe(async function setUserActive(userId: string, a
   const admin = await requireAdmin();
   const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
   if (!u) throw new UserError("User not found.");
+  protectAdminLogin(u, admin);
   if (u.role === "OWNER") throw new UserError("The owner account can't be switched off.");
   // Switching someone off also signs them out everywhere, at once.
   await db.user.update({ where: { id: userId }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });

@@ -11,6 +11,7 @@ import {
   itemByCode,
   pickupJobByTag,
   pickupJobs,
+  quickAddCustomer,
   saleForReturn,
   type CustomerHit,
   type PickupJob,
@@ -18,9 +19,12 @@ import {
   type SaleForReturn,
 } from "@/actions/register";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
+import { VacSupplyPicker } from "@/components/vac/supply-picker";
+import { VacUnitTools } from "@/components/vac/unit-tools";
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
+import type { TradeInInput, VacCartLine } from "@/lib/vac/types";
 
 type CartLine = {
   key: string;
@@ -43,7 +47,14 @@ type CartLine = {
   consigned?: boolean;
   /** "used", "compatible, not genuine Brother"...: the receipt says it after the description. */
   disclosure?: string;
+  /** Vac Shop: the customer's vacuum this supply is for; a vacuum sold from stock; a trade-in taken as credit. */
+  machineId?: string | null;
+  stockUnitId?: string;
+  tradeIn?: TradeInInput;
 };
+
+type NewCustomer = { name: string; phone: string; email: string; address: string };
+const EMPTY_CUSTOMER: NewCustomer = { name: "", phone: "", email: "", address: "" };
 
 const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
@@ -62,13 +73,17 @@ function setFieldText(el: HTMLInputElement | HTMLTextAreaElement, text: string) 
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: number; hasPartners: boolean; canSell: boolean }) {
+export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct: number; hasPartners: boolean; canSell: boolean; vac?: "on" | "readonly" | "off" }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [returnMode, setReturnMode] = useState(false);
   const [results, setResults] = useState<RegisterItem[]>([]);
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   const [custQ, setCustQ] = useState("");
   const [custHits, setCustHits] = useState<CustomerHit[]>([]);
+  // The "New customer" form: open with its fields, or closed.
+  const [newCustomer, setNewCustomerForm] = useState<NewCustomer | null>(null);
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const setNewCustomer = (open: boolean) => setNewCustomerForm(open ? EMPTY_CUSTOMER : null);
   const [orderDisc, setOrderDisc] = useState({ kind: "%" as "%" | "$", value: "" });
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [tenderAmt, setTenderAmt] = useState("");
@@ -82,8 +97,8 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
   // The sale as last sent and the key it went with: sent again unchanged (after a lost answer), it keeps the key.
   const pending = useRef<{ key: string; sent: string } | null>(null);
 
-  // A partner's repair bill is paid as billed: a whole-sale discount doesn't come off it.
-  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId })), [cart]);
+  // A partner's repair bill is paid as billed, and a trade-in is credit: a whole-sale discount doesn't come off them.
+  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn })), [cart]);
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
@@ -101,12 +116,24 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
     if (e.key === "Enter") code.current?.focus();
   };
 
-  function addItem(it: RegisterItem) {
+  /** An item scanned or picked, with the customer's vacuum it was bought for when the Vac Shop's picker found it. */
+  function addItem(it: RegisterItem, machineId: string | null = null) {
     const sign = returnMode ? -1 : 1;
+    // A vacuum in stock is sold once, as one line of 1.
+    if (it.stockUnitId) {
+      if (cart.some((l) => l.stockUnitId === it.stockUnitId)) {
+        toast.warning("That vacuum is already on this sale.");
+        return;
+      }
+      setDone(null);
+      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true }]);
+      return;
+    }
     setDone(null);
     setCart((c) => {
-      // The same item scanned again adds one more (not for fabric: each cut is its own line).
-      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign);
+      // The same item scanned again adds one more (not for fabric: each cut is its own line; not across vacuums: a
+      // supply bought for another vacuum is its own line).
+      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId);
       if (i >= 0) return c.map((l, j) => (j === i ? { ...l, qty: l.qty + sign } : l));
       return [
         ...c,
@@ -124,10 +151,42 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
           taxable: true,
           consigned: it.consigned,
           disclosure: it.disclosure,
+          machineId,
         },
       ];
     });
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
+  }
+
+  /** A unit, trade-in or return line the Vac Shop tools made: added as it comes. */
+  function addLine(line: VacCartLine) {
+    setDone(null);
+    setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line }]);
+  }
+
+  /** The "New customer" form: adds the customer and puts them on the sale. */
+  async function submitNewCustomer(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!newCustomer) return;
+    setAddingCustomer(true);
+    try {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(newCustomer)) fd.set(k, v);
+      const r = await quickAddCustomer(fd);
+      if ("error" in r) {
+        toast.error(r.error);
+        return;
+      }
+      setCustomer(r);
+      setCustHits([]);
+      setCustQ("");
+      setNewCustomerForm(null);
+      toast.success(`${r.name} added`);
+    } catch {
+      toast.error("Couldn't add the customer. Check the connection, then try again.");
+    } finally {
+      setAddingCustomer(false);
+    }
   }
 
   // A claim tag's barcode (T<tag>, or plain digits typed by hand) found a repair to pay for: the same line "Repair
@@ -308,6 +367,9 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
         unitPriceCents: l.unitPriceCents,
         discountCents: l.discountCents,
         taxable: l.taxable,
+        machineId: l.machineId ?? null,
+        stockUnitId: l.stockUnitId ?? null,
+        tradeIn: l.tradeIn ?? null,
       })),
       orderDiscountCents,
       tenders,
@@ -381,6 +443,10 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
               <Wrench size={14} aria-hidden /> Repair pickup
             </button>
           )}
+          {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
+          {vac && vac !== "off" && (
+            <VacUnitTools vac={vac} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />
+          )}
           <button type="button" className={`btn btn-sm ${returnMode ? "btn-primary" : ""}`} aria-pressed={returnMode} onClick={() => setReturnMode((r) => !r)}>
             <Undo2 size={14} aria-hidden /> Return mode {returnMode ? "on" : "off"}
           </button>
@@ -392,6 +458,16 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
               Add it to inventory
             </Link>{" "}
             (a store barcode can be looked up online there), or ring it up as a misc item.
+            {vac === "on" && (
+              <>
+                {" "}
+                A vacuum for sale? Add it under{" "}
+                <Link href="/vac/units" className="link" target="_blank">
+                  Vac Shop → For sale
+                </Link>
+                .
+              </>
+            )}
           </p>
         )}
         {returnMode && <p className="pill tone-wait">Return mode: scanned items come off the sale (negative quantity) and go back on the shelf.</p>}
@@ -534,7 +610,8 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                       aria-label={`Qty for ${l.description}`}
                       className="input num"
                       step={l.unit === "yd" ? 0.125 : 1}
-                      disabled={Boolean(l.repairJobId)}
+                      // A repair is paid as one line; a vacuum from stock or a trade-in is one machine.
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}
@@ -607,16 +684,57 @@ export function Register({ taxRatePct, hasPartners, canSell }: { taxRatePct: num
                 </button>
               </div>
             ) : (
-              <input
-                id="register-customer"
-                className="input"
-                placeholder="Name or phone"
-                value={custQ}
-                onChange={async (e) => {
-                  setCustQ(e.target.value);
-                  setCustHits(await findCustomers(e.target.value));
-                }}
-              />
+              <div className="flex items-end gap-2">
+                <input
+                  id="register-customer"
+                  className="input flex-1"
+                  placeholder="Name or phone"
+                  value={custQ}
+                  onChange={async (e) => {
+                    setCustQ(e.target.value);
+                    setCustHits(await findCustomers(e.target.value));
+                  }}
+                />
+                <button type="button" className="btn btn-sm whitespace-nowrap" aria-expanded={Boolean(newCustomer)} onClick={() => setNewCustomer(!newCustomer)}>
+                  <Plus size={14} aria-hidden /> New customer
+                </button>
+              </div>
+            )}
+            {!customer && newCustomer && (
+              <form className="space-y-2 rounded border border-line p-2" onSubmit={submitNewCustomer} aria-label="New customer">
+                <div className="field">
+                  <label htmlFor="new-customer-name" className="label">
+                    Name
+                  </label>
+                  <input id="new-customer-name" autoFocus className="input" value={newCustomer.name} onChange={(e) => setNewCustomerForm({ ...newCustomer, name: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="new-customer-phone" className="label">
+                    Phone
+                  </label>
+                  <input id="new-customer-phone" type="tel" className="input" value={newCustomer.phone} onChange={(e) => setNewCustomerForm({ ...newCustomer, phone: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="new-customer-email" className="label">
+                    Email
+                  </label>
+                  <input id="new-customer-email" type="email" className="input" value={newCustomer.email} onChange={(e) => setNewCustomerForm({ ...newCustomer, email: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="new-customer-address" className="label">
+                    Address
+                  </label>
+                  <input id="new-customer-address" className="input" value={newCustomer.address} onChange={(e) => setNewCustomerForm({ ...newCustomer, address: e.target.value })} />
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-primary btn-sm" disabled={addingCustomer}>
+                    {addingCustomer ? "Adding..." : "Add customer"}
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={() => setNewCustomerForm(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
             )}
             {!customer && custHits.length > 0 && (
               <ul className="divide-y divide-line rounded border border-line text-sm">

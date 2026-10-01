@@ -7,6 +7,7 @@ import { lineNet, qtyText, TENDER_LABEL, type Tender } from "@/lib/register-math
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
+import { SaleUnitNotes } from "@/components/vac/sale-unit-notes";
 import { voidSale } from "@/actions/register";
 
 /** A register receipt, narrow enough for an 80 mm receipt printer and fine on letter paper. */
@@ -61,6 +62,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
             </li>
           ))}
         </ul>
+        <SaleUnitNotes saleId={sale.id} shopId={user.shopId} />
         <div className="my-2 border-t border-dashed border-line" />
         <Line k="Subtotal" v={money(sale.subtotalCents)} />
         {sale.discountCents > 0 && <Line k="Discount" v={`-${money(sale.discountCents)}`} />}

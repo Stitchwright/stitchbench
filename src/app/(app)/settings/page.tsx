@@ -4,9 +4,13 @@ import { isInstallAdmin, requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
+import { getModules } from "@/lib/modules";
+import { shopKinds } from "@/lib/equipment/shop";
+import { fmtYmd, MODULE_IDS, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import {
+  addStarterServices,
   addUser,
   changePassword,
   resetUserPassword,
@@ -22,6 +26,41 @@ import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
 
 const d = (c: number) => (c / 100).toFixed(2);
+
+/** The "For" select on a menu item: every kind, or one kind of equipment. */
+function ForSelect({ id, value, kinds }: { id: string; value: string | null; kinds: { key: string; label: string }[] }) {
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>
+        For
+      </label>
+      <select id={id} name="equipmentKind" className="select" defaultValue={value ?? ""} title="For">
+        <option value="">Every kind</option>
+        {kinds.map((k) => (
+          <option key={k.key} value={k.key}>
+            {k.label}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+/** One short line for the Settings overview: "Vac Shop: on until Sep 30, 2027". */
+function moduleLine(s: ModuleState) {
+  const day = s.lastDay ? fmtYmd(s.lastDay) : null;
+  switch (s.status) {
+    case "on":
+    case "renew":
+      return `${s.label}: on until ${day ?? "no end date"}`;
+    case "grace":
+      return `${s.label}: ended ${day ?? ""}, working until ${s.graceLastDay ? fmtYmd(s.graceLastDay) : "-"}`;
+    case "lapsed":
+      return `${s.label}: ${s.switchedOff ? "switched off" : "ended"} ${day ?? ""}`.trimEnd();
+    default:
+      return null;
+  }
+}
 
 /** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
 async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: string }) {
@@ -103,13 +142,24 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
 export default async function SettingsPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
-  const [shop, services, users] = await Promise.all([
+  const [shop, services, users, modules, kinds, stockUnits] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId } }),
     db.serviceItem.findMany({ where: { shopId: user.shopId }, orderBy: { sortOrder: "asc" } }),
     db.user.findMany({ where: { shopId: user.shopId }, orderBy: { createdAt: "asc" } }),
+    getModules(user.shopId),
+    shopKinds(user.shopId),
+    db.stockUnit.count({ where: { shopId: user.shopId } }),
   ]);
   const checklist = shop.checklistItems?.length ? shop.checklistItems : DEFAULT_CHECKLIST;
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
+  const moduleLines = MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
+  // The "For" select offers the kinds new work may use, plus any kind an item already names (so it can be read and changed).
+  const usedKinds = new Set(services.map((s) => s.equipmentKind).filter(Boolean));
+  const usableKeys = new Set(kinds.usable.map((k) => k.key));
+  const forKinds = kinds.all.filter((k) => usableKeys.has(k.key) || usedKinds.has(k.key));
+  const otherKindsUsable = kinds.usable.some((k) => k.key !== "sewing");
+  const kindsWithoutMenu = kinds.usable.filter((k) => k.key !== "sewing" && !usedKinds.has(k.key));
+  const showVacExport = modules.states.vac.status !== "off" || stockUnits > 0;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -143,6 +193,23 @@ export default async function SettingsPage() {
         </div>
       )}
 
+      <Section title="Modules" id="modules">
+        <div className="space-y-2 text-sm">
+          {moduleLines.length ? (
+            <ul className="space-y-1">
+              {moduleLines.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No modules are on. Vac Shop, Small Appliance Repair, Scheduling and Marketing can be added.</p>
+          )}
+          <Link href={SETTINGS_MODULES_HREF} className="link">
+            Modules and license keys
+          </Link>
+        </div>
+      </Section>
+
       {admin && (
         <Section title="Your data">
           <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
@@ -160,6 +227,12 @@ export default async function SettingsPage() {
             <a href="/api/export/machines" className="btn btn-sm">
               Machines
             </a>
+            {showVacExport && (
+              // eslint-disable-next-line @next/next/no-html-link-for-pages
+              <a href="/api/export/vac-units" className="btn btn-sm">
+                Vacuums for sale
+              </a>
+            )}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/model-notes" className="btn btn-sm">
               Model notes
@@ -222,7 +295,7 @@ export default async function SettingsPage() {
       )}
 
       {admin && shop.doesRepair && (
-        <Section title="Service checklist">
+        <Section title={otherKindsUsable ? "Service checklist (sewing machines)" : "Service checklist"}>
           <ActionForm action={saveChecklist} success="Checklist saved" className="space-y-2">
             <label htmlFor="items" className="label">
               One item per line. Every ticket shows these to tick off.
@@ -230,96 +303,118 @@ export default async function SettingsPage() {
             <textarea id="items" name="items" rows={12} defaultValue={checklist.join("\n")} className="textarea" />
             <Submit>Save checklist</Submit>
           </ActionForm>
+          {otherKindsUsable && (
+            <p className="muted mt-3 text-sm">
+              Checklists for other kinds:{" "}
+              <Link href="/settings/equipment" className="link">
+                What you repair
+              </Link>
+            </p>
+          )}
         </Section>
       )}
 
       {admin && shop.doesRepair && (
-        <Section
-          title="Service menu and price list"
-          actions={
-            <Link href="/price-list" className="btn btn-sm">
-              View price list
-            </Link>
-          }
-        >
-          <p className="muted mb-3 text-sm">
-            The menu is what tickets bill from. The category groups items on the printed price list, and the description prints under the name.
-          </p>
-          <datalist id="svc-categories">
-            {categories.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-          <ul className="space-y-3">
-            {services.map((s) => (
-              <li key={s.id} className="border-b border-line pb-3 last:border-0">
-                <ActionForm action={saveServiceItem.bind(null, s.id)} success="Saved" className="grid gap-2 sm:grid-cols-[1fr_7rem_12rem_auto_auto]">
-                  <label className="sr-only" htmlFor={`sn-${s.id}`}>
-                    Service name
-                  </label>
-                  <input id={`sn-${s.id}`} name="name" defaultValue={s.name} className="input" />
-                  <label className="sr-only" htmlFor={`sp-${s.id}`}>
-                    Price
-                  </label>
-                  <input id={`sp-${s.id}`} name="price" defaultValue={d(s.priceCents)} className="input num" />
-                  <label className="sr-only" htmlFor={`sc-${s.id}`}>
-                    Category
-                  </label>
-                  <input id={`sc-${s.id}`} name="category" defaultValue={s.category ?? ""} list="svc-categories" className="input" placeholder="Category" />
-                  <label className="flex items-center gap-1 text-sm">
-                    <input type="checkbox" name="active" defaultChecked={s.active} className="check" /> Active
-                  </label>
-                  <Submit className="btn btn-sm">Save</Submit>
-                  <label className="sr-only" htmlFor={`sd-${s.id}`}>
-                    Description
-                  </label>
-                  <input
-                    id={`sd-${s.id}`}
-                    name="description"
-                    defaultValue={s.description ?? ""}
-                    className="input text-sm sm:col-span-5"
-                    placeholder="Description on the price list (optional)"
-                  />
-                </ActionForm>
-              </li>
-            ))}
-          </ul>
-          <ActionForm action={saveServiceItem.bind(null, null)} reset success="Service added" className="mt-4 grid gap-2 border-t border-line pt-4 sm:grid-cols-[1fr_7rem_12rem_auto]">
-            <label className="sr-only" htmlFor="new-sn">
-              New service
-            </label>
-            <input id="new-sn" name="name" className="input" placeholder="New service" required />
-            <label className="sr-only" htmlFor="new-sp">
-              Price
-            </label>
-            <input id="new-sp" name="price" className="input num" placeholder="$" required />
-            <label className="sr-only" htmlFor="new-sc">
-              Category
-            </label>
-            <input id="new-sc" name="category" list="svc-categories" className="input" placeholder="Category" />
-            <Submit className="btn">Add service</Submit>
-            <label className="sr-only" htmlFor="new-sd">
-              Description
-            </label>
-            <input id="new-sd" name="description" className="input text-sm sm:col-span-4" placeholder="Description on the price list (optional)" />
-          </ActionForm>
-          <p className="muted mt-2 text-xs">Prices on existing tickets don&apos;t change when you edit the menu.</p>
+        <div id="services">
+          <Section
+            title="Service menu and price list"
+            actions={
+              <Link href="/price-list" className="btn btn-sm">
+                View price list
+              </Link>
+            }
+          >
+            <p className="muted mb-3 text-sm">
+              The menu is what tickets bill from. The category groups items on the printed price list, and the description prints under the name.
+              {forKinds.length > 1 && " “For” says which kind of equipment an item is offered for: every kind, or one."}
+            </p>
+            <datalist id="svc-categories">
+              {categories.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+            <ul className="space-y-3">
+              {services.map((s) => (
+                <li key={s.id} className="border-b border-line pb-3 last:border-0">
+                  <ActionForm action={saveServiceItem.bind(null, s.id)} success="Saved" className="grid gap-2 sm:grid-cols-[1fr_7rem_10rem_9rem_auto_auto]">
+                    <label className="sr-only" htmlFor={`sn-${s.id}`}>
+                      Service name
+                    </label>
+                    <input id={`sn-${s.id}`} name="name" defaultValue={s.name} className="input" />
+                    <label className="sr-only" htmlFor={`sp-${s.id}`}>
+                      Price
+                    </label>
+                    <input id={`sp-${s.id}`} name="price" defaultValue={d(s.priceCents)} className="input num" />
+                    <label className="sr-only" htmlFor={`sc-${s.id}`}>
+                      Category
+                    </label>
+                    <input id={`sc-${s.id}`} name="category" defaultValue={s.category ?? ""} list="svc-categories" className="input" placeholder="Category" />
+                    <ForSelect id={`sk-${s.id}`} value={s.equipmentKind} kinds={forKinds} />
+                    <label className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" name="active" defaultChecked={s.active} className="check" /> Active
+                    </label>
+                    <Submit className="btn btn-sm">Save</Submit>
+                    <label className="sr-only" htmlFor={`sd-${s.id}`}>
+                      Description
+                    </label>
+                    <input
+                      id={`sd-${s.id}`}
+                      name="description"
+                      defaultValue={s.description ?? ""}
+                      className="input text-sm sm:col-span-6"
+                      placeholder="Description on the price list (optional)"
+                    />
+                  </ActionForm>
+                </li>
+              ))}
+            </ul>
+            <ActionForm action={saveServiceItem.bind(null, null)} reset success="Service added" className="mt-4 grid gap-2 border-t border-line pt-4 sm:grid-cols-[1fr_7rem_10rem_9rem_auto]">
+              <label className="sr-only" htmlFor="new-sn">
+                New service
+              </label>
+              <input id="new-sn" name="name" className="input" placeholder="New service" required />
+              <label className="sr-only" htmlFor="new-sp">
+                Price
+              </label>
+              <input id="new-sp" name="price" className="input num" placeholder="$" required />
+              <label className="sr-only" htmlFor="new-sc">
+                Category
+              </label>
+              <input id="new-sc" name="category" list="svc-categories" className="input" placeholder="Category" />
+              <ForSelect id="new-sk" value={null} kinds={forKinds} />
+              <Submit className="btn">Add service</Submit>
+              <label className="sr-only" htmlFor="new-sd">
+                Description
+              </label>
+              <input id="new-sd" name="description" className="input text-sm sm:col-span-5" placeholder="Description on the price list (optional)" />
+            </ActionForm>
+            {kindsWithoutMenu.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                {kindsWithoutMenu.map((k) => (
+                  <ActionButton key={k.key} action={addStarterServices.bind(null, k.key)} className="btn btn-sm" success="Added. Set prices in the list, then switch them on.">
+                    Add the starter {k.plural.toLowerCase()} list
+                  </ActionButton>
+                ))}
+              </div>
+            )}
+            <p className="muted mt-2 text-xs">Prices on existing tickets don&apos;t change when you edit the menu.</p>
 
-          <ActionForm action={savePriceListNote} success="Saved" className="mt-6 space-y-2 border-t border-line pt-4">
-            <label htmlFor="priceListNote" className="label">
-              Fine print at the bottom of the price list
-            </label>
-            <textarea
-              id="priceListNote"
-              name="priceListNote"
-              rows={3}
-              defaultValue={shop.priceListNote ?? ""}
-              className="textarea"
-              placeholder="e.g. Parts are extra. Prices are for machines in working order; we call before doing more."
-            />
-            <Submit className="btn btn-sm">Save fine print</Submit>
-          </ActionForm>
-        </Section>
+            <ActionForm action={savePriceListNote} success="Saved" className="mt-6 space-y-2 border-t border-line pt-4">
+              <label htmlFor="priceListNote" className="label">
+                Fine print at the bottom of the price list
+              </label>
+              <textarea
+                id="priceListNote"
+                name="priceListNote"
+                rows={3}
+                defaultValue={shop.priceListNote ?? ""}
+                className="textarea"
+                placeholder="e.g. Parts are extra. Prices are for machines in working order; we call before doing more."
+              />
+              <Submit className="btn btn-sm">Save fine print</Submit>
+            </ActionForm>
+          </Section>
+        </div>
       )}
 
       {admin && (
