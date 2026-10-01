@@ -174,3 +174,99 @@ export const UNIT_STATUS_TONE: Record<string, "neutral" | "ready" | "done"> = { 
 export const UNIT_CONDITION_LABEL: Record<string, string> = { NEW: "New", OPEN_BOX: "Open box", REFURB: "Refurbished", USED: "Used" };
 /** Cross-reference categories the bag / belt / filter finder reads (XPart.category, free text on the hub). */
 export const VAC_SUPPLY_CATEGORIES = ["Vacuum bag", "Vacuum belt", "Vacuum filter"] as const;
+
+// ---------- scheduling and messages (scheduling-messaging-design.md section 2.4) ----------
+
+export const MESSAGE_KIND_LABEL: Record<string, string> = {
+  ready: "Ready for pickup",
+  reminder: "Reminder",
+  estimate: "Estimate",
+  abandon: "Not picked up notice",
+  service_due: "Service reminder",
+  review: "Review request",
+  campaign: "Campaign",
+  class_notice: "Class message",
+  booking_notice: "Appointment message",
+  consent_confirm: "Text sign-up confirmation",
+  help_reply: "Reply to HELP",
+  bags_due: "Bags due reminder",
+  test: "Test",
+};
+export const ABANDON_STAGE_LABEL: Record<string, string> = { first: "First notice", second: "Second notice", third: "Third notice", fourth: "Fourth notice", final: "Final notice" };
+export const MESSAGE_STATUS_LABEL: Record<string, string> = {
+  QUEUED: "Waiting",
+  SENDING: "Sending",
+  SENT: "Sent",
+  FAILED: "Not sent",
+  SKIPPED: "Skipped",
+  CANCELLED: "Cancelled",
+  EXPIRED: "Too late",
+};
+export const MESSAGE_STATUS_TONE: Record<string, "neutral" | "work" | "wait" | "ready" | "done" | "bad"> = {
+  QUEUED: "wait",
+  SENDING: "work",
+  SENT: "done",
+  FAILED: "bad",
+  SKIPPED: "neutral",
+  CANCELLED: "neutral",
+  EXPIRED: "neutral",
+};
+export const CHANNEL_LABEL: Record<string, string> = {
+  email: "Email",
+  sms: "Text",
+  letter: "Letter (by hand)",
+  certified_mail: "Certified mail (by hand)",
+  phone: "Phone call (by hand)",
+};
+export const NOTIFY_BY_LABEL: Record<string, string> = {
+  "": "Not asked yet (email if we have one)",
+  email: "Email",
+  sms: "Text",
+  both: "Email and text",
+  none: "No messages (call them)",
+};
+export const SKIP_REASON_LABEL = {
+  channel_off: "Email or texts aren't set up",
+  no_address: "No email or mobile number on file",
+  opted_out: "Opted out",
+  unsubscribed: "Unsubscribed from marketing email",
+  no_text_consent: "Hasn't agreed to marketing texts",
+  not_asked: "Not asked if texts are OK",
+  prefers_other: "Prefers the other way",
+  no_messages: "Asked for no messages",
+  changed: "Their details changed after it was queued",
+  not_wanted: "No longer needed",
+  trade: "Trade account (no marketing)",
+  not_us: "Not a US number (no marketing texts)",
+  too_often: "Had 4 marketing texts in the last 30 days",
+  unread_reply: "They texted you back: read it first",
+  staff_cap: "Already 3 messages today",
+} as const;
+export const CONSENT_EVENT_LABEL: Record<string, string> = {
+  marketing_yes: "Agreed to marketing texts",
+  marketing_no: "Marketing texts withdrawn",
+  notify_pref: "Changed how to be told",
+  optout: "Opted out",
+  optin: "Opted back in",
+  help: "Asked for help (HELP)",
+};
+export const CONSENT_SOURCE_LABEL: Record<string, string> = {
+  counter: "At the counter",
+  intake: "At check-in",
+  customer_page: "Customer page",
+  paper_form: "Signed paper form",
+  tablet: "Signed on the counter tablet",
+  unsubscribe_link: "Unsubscribe link",
+  reply: "Text reply",
+  carrier: "Carrier (an earlier STOP)",
+  email_reply: "Replied UNSUBSCRIBE",
+  staff: "Recorded by staff",
+  import: "Imported list",
+  ticket: "Told us at pickup time",
+};
+export const CLASS_STATUS_LABEL: Record<string, string> = { OPEN: "Open", CLOSED: "Sign-ups closed", CANCELLED: "Cancelled" };
+export const CLASS_REMIND_LABEL: Record<string, string> = { every: "Before every meeting", first: "Before the first meeting only", never: "No reminders" };
+export const ENROLLMENT_STATUS_LABEL: Record<string, string> = { ENROLLED: "Signed up", WAITLIST: "Waiting list", CANCELLED: "Cancelled" };
+export const APPOINTMENT_STATUS_LABEL: Record<string, string> = { BOOKED: "Booked", DONE: "Done", NO_SHOW: "Didn't come", CANCELLED: "Cancelled" };
+export const RUN_STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", CANCELLED: "Cancelled", DONE: "Done" };
+export const CAMPAIGN_STATUS_LABEL: Record<string, string> = { DRAFT: "Draft", QUEUING: "Getting ready", SENDING: "Sending", SENT: "Sent", CANCELLED: "Cancelled" };

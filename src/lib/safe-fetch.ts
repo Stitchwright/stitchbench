@@ -21,7 +21,8 @@ for (const [a, bits] of [
   ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8],
 ] as const) blocked.addSubnet(a, bits, "ipv6");
 
-function privateAddress(ip: string) {
+/** A private, loopback, link-local, CGNAT, multicast or otherwise non-public address (also used by the mail-server check). */
+export function privateAddress(ip: string) {
   const type = net.isIPv4(ip) ? "ipv4" : net.isIPv6(ip) ? "ipv6" : null;
   return !type || blocked.check(ip, type);
 }
