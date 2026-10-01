@@ -160,12 +160,43 @@ notice: the register scan box takes a claim tag (T101 or 101) and a receipt (S10
 customer search instead of a long list; cross-reference history has "Load older"; the Companies form asks for a time zone.
 Still waiting on owner decisions: L7/L31, L42, L126, L127, L95, L134/I27 (section 2c).
 
+## 2f. Paid modules foundation (1 Oct 2026, branch `modules-foundation`, PR open)
+
+Built from `docs/plans/modules-design.md`, package `modules-foundation` (section 13.2), all of it: the schema and
+migration, the licensing library and gating API, Settings → Modules, the Companies switch, equipment kinds at check-in
+and on tickets, machines and model pages, the register's Vac Shop plumbing, the owner's CLI, the Windows restore
+changes, the check scripts and `tests/modules-basics.spec.ts`. Checked on this PC: `tsc`, `npm run lint`,
+`npm run test:unit`, `scripts/checks/{license,modules,equipment,modules-tenant}.check.ts`, the drift check, `npm run
+build` and `STITCH_TEST_BUILD=1 npm run build`, `cd desktop && npm test`, the CLI acceptance, and the Playwright specs
+modules-basics, smoke, register, auth, tenant and roles on the test build (hub, market, partners, inventory not re-run:
+they need the test hub). Nothing is deployed and no module is on anywhere: with no `k1` line in `src/lib/license-keys.ts`
+a pasted key verifies only on a development server, so shops see no change until the rollout checklist is done.
+
+Where it departs from the design, and why:
+- The migration is `20261001120000_paid_modules` (the design's `20260926120000` would sort before folders already on
+  `main`; the design itself asks for a later name). `desktop/backup.mjs`'s version-gated fix-up uses the new name. The
+  scheduling design's migration (`20260926150000_scheduling_messaging`) must be renamed the same way when it is built.
+- `RegisterItem` and the Part → item mapping moved to `src/lib/register-item.ts` (`viewItem`): a `"use server"` file may
+  export only async functions, and Turbopack refuses even a type re-export there. `registerUnitHits` builds items from it.
+- `createShopWithOwner`'s option is the existing `allowReserved` (the design's `byPlatformAdmin`).
+- The tickets CSV keeps its per-line layout and adds `job_type, kind, site_address, details, intake, kind_readings` at the
+  end (`readings` was already the name of the timing-readings column).
+- `src/lib/license.ts` `validYmd` guards an out-of-range date (the reference threw a RangeError).
+- `--key` in `npm run license` falls back to the newest non-retired pem when no compiled-in kid exists, with the warning.
+- The module notice shows only on pages and tickets that can't take new work; a ticket opened before a module ended shows
+  no notice while it can still be finished (D3).
+
+Before the first release of modules (INSTALL.md, "Paid modules"): fill `MODULE_SALES.email`, run keygen for `k1` and
+`h1`, commit their lines, set `LICENSE_HOSTED_KEY` / `LICENSE_HOSTED_KID` on the hosted services. Next packages: the
+scheduling design's `foundation` (alone), then `vac-repair`, `vac-finder`, `vac-sales-warranty`, `appliance-repair`
+(section 13.1 build order).
+
 ## 3. What to do next, in order
 
 
 
-Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Next: step 4.1, the
-`modules-foundation` package, in a fresh session.
+Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
+built on branch `modules-foundation` with a PR open (section 2f). Next: merge it, then step 4.2.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`

@@ -23,10 +23,14 @@ import {
   ShoppingCart,
   Wrench,
   Handshake,
+  Fan,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
+import type { ModuleId, NavGate } from "@/lib/module-info";
 
-type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean };
+// module: a paid module's item, shown while the module is on (or read-only with a lock once it has ended), hidden otherwise.
+type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId };
 
 // repair: shown to repair benches; retail: to shops with a counter; partners: to shops with partner shops. Unmarked: everyone.
 const items: Item[] = [
@@ -36,6 +40,8 @@ const items: Item[] = [
   { href: "/repairs", label: "Repairs", icon: Wrench, retail: true, partners: true },
   { href: "/invoices", label: "Invoices", icon: FileText, repair: true },
   { href: "/machines", label: "Machines", icon: Cog, repair: true },
+  // Vac Shop: whatever doesRepair and sellsRetail say (a StitchShop counter can sell vacuums too).
+  { href: "/vac", label: "Vac Shop", icon: Fan, module: "vac" },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/parts", label: "Parts", icon: Package },
   { href: "/partners", label: "Partner shops", icon: Handshake },
@@ -58,16 +64,19 @@ export function Nav({
   doesRepair = true,
   sellsRetail = false,
   retailPartners = false,
+  gates,
 }: {
   platformAdmin?: boolean;
   chatUrl?: string | null;
   doesRepair?: boolean;
   sellsRetail?: boolean;
   retailPartners?: boolean;
+  gates?: Partial<Record<ModuleId, NavGate>>;
 }) {
   const path = usePathname();
   const shown = items
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
+    .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
     .map((i) => (i.href === "/parts" && !doesRepair ? { ...i, label: "Inventory" } : i));
   // The most specific menu entry wins (/register/sales over /register).
   const activeHref = [...shown, ...platformItems]
@@ -87,8 +96,9 @@ export function Nav({
           Community chat
         </a>
       )}
-      {[...shown, ...(platformAdmin ? platformItems : [])].map(({ href, label, icon: Icon }) => {
+      {[...shown, ...(platformAdmin ? platformItems : [])].map(({ href, label, icon: Icon, module }) => {
           const active = href === activeHref;
+          const readonly = module != null && gates?.[module] === "readonly";
           return (
             <Link
               key={href}
@@ -100,6 +110,7 @@ export function Nav({
             >
               <Icon size={16} aria-hidden />
               {label}
+              {readonly && <Lock size={12} aria-label="Read only" />}
             </Link>
           );
         })}

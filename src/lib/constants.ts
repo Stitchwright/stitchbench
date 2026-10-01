@@ -124,6 +124,7 @@ export const DOC_TYPES = [
   "ErrorCodes",
   "WiringDiagram",
   "Schematic",
+  "Firmware",
   "Training",
   "Bulletin",
 ];
@@ -149,3 +150,27 @@ export const ORDER_STATUS_LABEL: Record<string, string> = {
   RECEIVED: "Received",
   CANCELLED: "Cancelled",
 };
+
+// ---------- paid modules (modules-design.md section 2.5) ----------
+
+// Central vac installs (Ticket.jobType SITE) use the ticket statuses under these names (like JOB_STATUS_LABEL).
+export const SITE_STATUS_ORDER: TicketStatus[] = ["WAITING_CUSTOMER_OK", "AT_SHOP_AWAITING_PICKUP", "WAITING_PARTS", "ON_BENCH", "COLLECTED", "RETURNED_UNREPAIRED"];
+export const SITE_STATUS_LABEL: Record<TicketStatus, string> = {
+  WAITING_CUSTOMER_OK: "Quote sent",
+  AT_SHOP_AWAITING_PICKUP: "Booked",
+  IN_TRUCK: "Booked",
+  WAITING_PARTS: "Waiting on parts",
+  ON_BENCH: "In progress",
+  READY_IN_TRUCK: "In progress",
+  READY_FOR_PICKUP: "In progress",
+  COLLECTED: "Completed",
+  ABANDONED: "Cancelled",
+  RETURNED_UNREPAIRED: "Cancelled",
+};
+/** Statuses that close a ticket: always allowed, even after its module ended (hand the machine back, take payment). */
+export const CLOSING_STATUSES: TicketStatus[] = ["COLLECTED", "RETURNED_UNREPAIRED", "ABANDONED"];
+export const UNIT_STATUS_LABEL: Record<string, string> = { IN_STOCK: "In stock", SOLD: "Sold", REMOVED: "Off sale" };
+export const UNIT_STATUS_TONE: Record<string, "neutral" | "ready" | "done"> = { IN_STOCK: "ready", SOLD: "done", REMOVED: "neutral" };
+export const UNIT_CONDITION_LABEL: Record<string, string> = { NEW: "New", OPEN_BOX: "Open box", REFURB: "Refurbished", USED: "Used" };
+/** Cross-reference categories the bag / belt / filter finder reads (XPart.category, free text on the hub). */
+export const VAC_SUPPLY_CATEGORIES = ["Vacuum bag", "Vacuum belt", "Vacuum filter"] as const;

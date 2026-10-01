@@ -10,6 +10,8 @@ import { startOfToday } from "@/lib/time-zone";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PartnerTodo } from "@/components/partner-todo";
 import { redirect } from "next/navigation";
+import { shopKinds } from "@/lib/equipment/shop";
+import { withArticle, type EquipmentKind } from "@/lib/equipment/types";
 
 // The low-stock list shows this many; the rest is one click away on the Parts page.
 const LOW_STOCK_SHOWN = 50;
@@ -26,9 +28,10 @@ export default async function Dashboard() {
   if (!shop.doesRepair) redirect("/register");
   const tz = await shopTimeZone(shopId);
   const low = { shopId, qtyOnHand: { lte: db.part.fields.reorderAt } };
-  const [open, lowStock, lowCount, todayPay] = await Promise.all([
+  const [open, lowStock, lowCount, todayPay, kinds] = await Promise.all([
+    // Bench tickets only: central vac installs aren't in custody, on the status tiles or in the storage-fee list.
     db.ticket.findMany({
-      where: { shopId, status: { in: OPEN_STATUSES } },
+      where: { shopId, jobType: "BENCH", status: { in: OPEN_STATUSES } },
       include: { machine: true, customer: true, viaAccount: true },
       orderBy: { intakeAt: "asc" },
     }),
@@ -40,7 +43,15 @@ export default async function Dashboard() {
       where: { ticket: { shopId }, paidAt: { gte: startOfToday(tz) }, method: { notIn: PAID_ELSEWHERE } },
       _sum: { amountCents: true },
     }),
+    shopKinds(shopId),
   ]);
+  // One "Check in a machine" button while only sewing machines come in; otherwise up to three: the shop's usual kind,
+  // sewing, then the rest in the usual order.
+  const checkIn: EquipmentKind[] = [];
+  for (const k of [kinds.usable.find((k) => k.key === shop.checkInKind), kinds.usable.find((k) => k.key === "sewing"), ...kinds.usable]) {
+    if (k && !checkIn.includes(k)) checkIn.push(k);
+  }
+  checkIn.splice(3);
 
   const byStatus = new Map(STATUS_ORDER.map((s) => [s, 0]));
   for (const t of open) byStatus.set(t.status, (byStatus.get(t.status) ?? 0) + 1);
@@ -54,9 +65,17 @@ export default async function Dashboard() {
         title="Bench"
         sub={`${custody} machine${custody === 1 ? "" : "s"} in our custody · ${open.length} open ticket${open.length === 1 ? "" : "s"} · ${money(todayPay._sum.amountCents ?? 0)} taken today`}
         actions={
-          <Link href="/tickets/new" className="btn btn-primary">
-            Check in a machine
-          </Link>
+          kinds.usable.length <= 1 ? (
+            <Link href="/tickets/new" className="btn btn-primary">
+              Check in a machine
+            </Link>
+          ) : (
+            checkIn.map((k, i) => (
+              <Link key={k.key} href={`/tickets/new?kind=${encodeURIComponent(k.key)}`} className={`btn ${i === 0 ? "btn-primary" : ""}`}>
+                Check in {withArticle(k.noun)}
+              </Link>
+            ))
+          )
         }
       />
 

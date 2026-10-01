@@ -7,51 +7,20 @@ import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { codeKeys, numberKey } from "@/lib/parts";
-import { disclosure, withDisclosure } from "@/lib/part-labels";
+import { withDisclosure } from "@/lib/part-labels";
 import { sameText } from "@/lib/input";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
-import { inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
+import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import { splitForReturn } from "@/lib/sale-return";
+import { applyUnitLine, prepareUnitLines, registerUnitHits, voidUnitLines } from "@/lib/vac/sale-units";
+import type { TradeInInput } from "@/lib/vac/types";
 import type { Prisma } from "@/generated/prisma/client";
-import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
+import { viewItem, type RegisterItem } from "@/lib/register-item";
 
-export type RegisterItem = {
-  id: string;
-  partNumber: string;
-  description: string;
-  priceCents: number | null;
-  unit: string | null;
-  qtyOnHand: number;
-  kind: string;
-  consigned: boolean;
-  /** "used", "compatible, not genuine Brother"...: what the receipt will say about it, empty for a new, genuine item. */
-  disclosure: string;
-};
-
-const view = (p: {
-  id: string;
-  partNumber: string;
-  description: string;
-  priceCents: number | null;
-  unit: string | null;
-  qtyOnHand: number;
-  kind: string;
-  consignLinkId: string | null;
-  brand: string | null;
-  condition: PartCondition;
-  origin: PartOrigin;
-}): RegisterItem => ({
-  id: p.id,
-  partNumber: p.partNumber,
-  description: p.description,
-  priceCents: p.priceCents,
-  unit: p.unit,
-  qtyOnHand: p.qtyOnHand,
-  kind: p.kind,
-  consigned: Boolean(p.consignLinkId),
-  disclosure: disclosure(p),
-});
+// RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
+// functions (even a type re-export trips the bundler), and the Vac Shop unit hooks (src/lib/vac/sale-units.ts) build items too.
+const view = viewItem;
 
 /**
  * A scanned barcode or typed number: the item, or null. The item with that number comes first, then items that only
@@ -78,7 +47,8 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   };
   const rank = (p: (typeof matches)[number]) => (exact(p) || twin(p) ? 0 : 8) + (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
   matches.sort((a, b) => rank(a) - rank(b));
-  return matches[0] ? view(matches[0]) : null;
+  // No part by that number: a vacuum in stock whose serial it is (Vac Shop).
+  return matches[0] ? view(matches[0]) : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code" }))[0] ?? null);
 }
 
 // A repair the customer can take home: the repair shop has sent it back.
@@ -107,7 +77,8 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
     orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
     take: 25,
   });
-  return parts.map(view);
+  // Vacuums in stock whose brand or model matches come after the parts (Vac Shop).
+  return [...parts.map(view), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];
 }
 
 export type PickupJob = {
@@ -240,6 +211,28 @@ export async function findCustomers(q: string): Promise<CustomerHit[]> {
   });
 }
 
+/**
+ * A customer added from the register (name, phone, email, address) without leaving the sale: the sale is then rung up
+ * under them. Returns the same shape the customer search gives, so the register picks it straight away.
+ */
+export async function quickAddCustomer(fd: FormData): Promise<CustomerHit | { error: string }> {
+  try {
+    const user = await requireUser();
+    const text = (k: string) => String(fd.get(k) ?? "").trim();
+    const name = text("name").slice(0, 120);
+    const phone = text("phone").slice(0, 40) || null;
+    const email = text("email").slice(0, 120) || null;
+    const address = text("address").slice(0, 300) || null;
+    if (!name || (!phone && !email)) throw new UserError("Enter a name and a phone or email.");
+    const c = await db.customer.create({ data: { shopId: user.shopId, kind: "RETAIL", name, phone, email, address }, select: { id: true, name: true, phone: true } });
+    revalidatePath("/customers", "layout");
+    return c;
+  } catch (e) {
+    if (isUserError(e)) return { error: e.message };
+    throw e;
+  }
+}
+
 export type SaleLineInput = {
   partId?: string | null;
   repairJobId?: string | null;
@@ -249,6 +242,10 @@ export type SaleLineInput = {
   unitPriceCents: number;
   discountCents?: number;
   taxable: boolean;
+  /** Vac Shop: the customer's vacuum this bag, belt or filter is for; a unit sold from stock; a trade-in taken as credit. */
+  machineId?: string | null;
+  stockUnitId?: string | null;
+  tradeIn?: TradeInInput | null;
 };
 
 export type SaleInput = {
@@ -297,9 +294,49 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
       // Paid, unless the bill went up after it was paid here: then the rest is paid the same way.
       if (j.paidAt && repairDue(j) <= 0) throw new UserError(`Repair tag ${j.tag} is already paid.`);
     }
+    // A supply bought for a customer's vacuum names one of this shop's vacuums.
+    const machineIds = [...new Set(input.lines.map((l) => l.machineId).filter(Boolean) as string[])];
+    if (machineIds.length && (await db.machine.count({ where: { shopId, id: { in: machineIds }, equipment: "VACUUM" } })) !== machineIds.length) {
+      throw new UserError("That vacuum isn't one of this shop's.");
+    }
     if (input.customerId && !(await db.customer.findFirst({ where: { id: input.customerId, shopId } }))) throw new UserError("Customer not found.");
+    // Vacuums sold from stock and trade-ins, checked and worded by the Vac Shop (by line index).
+    const units = await prepareUnitLines({
+      shopId,
+      role: user.role,
+      customerId: input.customerId ?? null,
+      lines: input.lines.map((l) => ({ stockUnitId: l.stockUnitId ?? null, tradeIn: l.tradeIn ?? null, qty: Number(l.qty), unitPriceCents: Math.round(Number(l.unitPriceCents)), taxable: Boolean(l.taxable) })),
+    });
 
-    const lines = input.lines.map((l) => {
+    const lines = input.lines.map((l, i) => {
+      if ((l.stockUnitId || l.tradeIn) && (l.partId || l.repairJobId)) throw new UserError("A line can only be one thing.");
+      const unitLine = units.get(i);
+      if (unitLine) {
+        const total = Math.abs(roundCents(unitLine.qty * unitLine.unitPriceCents));
+        if (unitLine.unitPriceCents > MAX_MONEY || total > MAX_MONEY) throw new UserError(`${unitLine.description} comes to more than $100,000. Check the price.`);
+        let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
+        if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+        disc = unitLine.discountable ? Math.min(disc, total) : 0;
+        return {
+          partId: null,
+          repairJobId: null,
+          pickedUp: false,
+          description: unitLine.description.slice(0, 200),
+          partNumber: null,
+          qty: unitLine.qty,
+          unit: null,
+          unitPriceCents: unitLine.unitPriceCents,
+          discountCents: disc,
+          taxable: unitLine.taxable,
+          discountable: unitLine.discountable,
+          costCents: unitLine.costCents,
+          consignLinkId: null,
+          consignItemKey: null,
+          machineId: null,
+          stockUnitId: unitLine.stockUnitId,
+          tradeIn: l.tradeIn ?? null,
+        };
+      }
       const part = l.partId ? parts.get(l.partId)! : null;
       const job = l.repairJobId ? jobs.get(l.repairJobId)! : null;
       let qty = Number(l.qty);
@@ -354,6 +391,9 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         costCents: part?.costCents ?? null,
         consignLinkId: part?.consignLinkId ?? null,
         consignItemKey: part?.consignItemKey ?? null,
+        machineId: l.machineId ?? null,
+        stockUnitId: null,
+        tradeIn: null,
       };
     });
 
@@ -371,16 +411,18 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
     if (problem) throw new UserError(problem);
+    // Each line's share of the whole-sale discount as the tax was worked out (what a vacuum really sold for).
+    const shares = discountShares(lines, totals.orderDiscount);
 
     // The sewing shop's share of consigned sales, as the partnership stands today (kept with each sale).
-    const shares = new Map<string, number>();
+    const consignShares = new Map<string, number>();
     for (const linkId of new Set(lines.map((l) => l.consignLinkId).filter(Boolean) as string[])) {
       const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } }, select: { terms: true } });
-      shares.set(linkId, normalizeTerms(link?.terms).consignSharePct);
+      consignShares.set(linkId, normalizeTerms(link?.terms).consignSharePct);
     }
 
-    // Each line's part of the whole-sale discount (what a consigned item really sold for).
-    const discountShares = orderDiscountShares(lines, totals.orderDiscount);
+    // Each line's part of the whole-sale discount, adding up to it exactly (what a consigned item really sold for).
+    const orderShares = orderDiscountShares(lines, totals.orderDiscount);
 
     const at = new Date();
     const sale = await db.$transaction(async (tx) => {
@@ -405,9 +447,13 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         },
       });
       for (const [i, l] of lines.entries()) {
-        const { pickedUp, discountable, ...row } = l;
+        // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
+        const { pickedUp, discountable, tradeIn, ...row } = l;
         void discountable;
         const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
+        if (l.stockUnitId || tradeIn) {
+          await applyUnitLine(tx, { shopId, saleNumber: number, customerId: input.customerId || null, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
+        }
         if (l.partId) {
           await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
           await tx.stockMove.create({
@@ -417,7 +463,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
         if (l.consignLinkId && l.consignItemKey) {
           // Consigned stock: the owner hears about every sale; the net price after the line discount and the line's part
           // of any whole-sale discount is what counts.
-          const net = Math.round((lineNet(l) - discountShares[i]) / l.qty);
+          const net = Math.round((lineNet(l) - orderShares[i]) / l.qty);
           const gross = Math.round(l.qty * net);
           await tx.consignSale.create({
             data: {
@@ -429,7 +475,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
               priceCents: net,
               saleNumber: number,
               soldAt: at,
-              shopKeepsCents: Math.round((gross * (shares.get(l.consignLinkId) ?? 0)) / 100),
+              shopKeepsCents: Math.round((gross * (consignShares.get(l.consignLinkId) ?? 0)) / 100),
             },
           });
           // A sale sells only what is still on the shelf and a return takes back only what was sold (the repair shop
@@ -486,6 +532,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
     revalidatePath("/register", "layout");
     revalidatePath("/repairs", "layout");
     revalidatePath("/parts", "layout");
+    revalidatePath("/vac", "layout");
     return { saleId: sale.id, number: sale.number, changeCents: sale.changeCents };
   } catch (e) {
     if (isUserError(e)) return { error: e.message };
@@ -512,6 +559,8 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
       data: { status: "VOIDED", voidedAt: at, note: [sale.note, `Void: ${reason || "no reason given"} (${user.name})`].filter(Boolean).join("\n") },
     });
     if (!done.count) throw new UserError("That sale is already void.");
+    // Vacuums sold go back in stock; trade-ins taken come back out (Vac Shop).
+    await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
     for (const l of sale.lines) {
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
@@ -539,4 +588,5 @@ export const voidSale = safe(async function voidSale(saleId: string, formData: F
   });
   revalidatePath("/register", "layout");
   revalidatePath("/parts", "layout");
+  revalidatePath("/vac", "layout");
 });

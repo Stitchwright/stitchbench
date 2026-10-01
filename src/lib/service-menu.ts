@@ -36,3 +36,12 @@ export const DEFAULT_CHECKLIST: string[] = [
   "Full stitch-out test done, sew-out attached",
   "Note written of anything else found",
 ];
+
+/**
+ * Which kind a starter service item is for: the storage fee, rush and diagnosis items are offered for every kind
+ * (null); everything else on the starter list is a sewing-machine service. The same rule as the paid_modules
+ * migration's backfill and the Windows restore fix-up (desktop/backup.mjs), so the seed, new companies and restores agree.
+ */
+export function starterKindFor(name: string): string | null {
+  return /^(storage fee|rush|diagnosis)/i.test(name) ? null : "sewing";
+}
