@@ -15,9 +15,9 @@ import {
   saleForReturn,
   type CustomerHit,
   type PickupJob,
-  type RegisterItem,
   type SaleForReturn,
 } from "@/actions/register";
+import type { RegisterItem } from "@/lib/register-item";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { VacUnitTools } from "@/components/vac/unit-tools";
