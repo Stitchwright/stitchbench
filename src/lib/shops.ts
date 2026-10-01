@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
-import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU } from "@/lib/service-menu";
+import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } from "@/lib/service-menu";
 import { serverTimeZone } from "@/lib/time-zone";
 
 export type ShopKind = "repair" | "retail" | "both";
@@ -65,7 +65,7 @@ export async function createShopWithOwner(
         timeZone: serverTimeZone() ?? knownTimeZone(input.timeZone) ?? undefined,
         checklistItems: DEFAULT_CHECKLIST,
         users: { create: { email, name: input.name.trim(), role: "OWNER", passwordHash } },
-        serviceItems: modes.doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i })) } : undefined,
+        serviceItems: modes.doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: 0, sortOrder: i, equipmentKind: starterKindFor(s.name) })) } : undefined,
       },
       select: { id: true, name: true },
     });

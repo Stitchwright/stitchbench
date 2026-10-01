@@ -15,6 +15,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { OPEN_STATUSES, PAYMENT_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { kickPartnerSync } from "@/lib/partners";
+import { saveIntakeFor, saveReadingsFor } from "@/lib/equipment/ticket-data";
 
 // $100,000 in cents: far above any real line or payment, and well inside what the books' whole numbers hold.
 const MAX_MONEY = 10_000_000;
@@ -538,3 +539,8 @@ export const removePayment = safe(async function removePayment(paymentId: string
   refresh(p.ticketId);
   revalidatePath("/sales");
 });
+
+// ---------- a kind's readings and intake answers (bodies in src/lib/equipment/ticket-data.ts) ----------
+
+export const saveReadings = safe(async (ticketId: string, fd: FormData) => saveReadingsFor(await requireUser(), ticketId, fd));
+export const saveIntake = safe(async (ticketId: string, fd: FormData) => saveIntakeFor(await requireUser(), ticketId, fd));
