@@ -80,7 +80,10 @@ async function shopCtx(tx: Db, shopId: string, ms: MessagingView) {
 /** Messages this person's staff triggered to an address in the last 24 h (the 3-a-day cap). */
 async function staffSentToday(tx: Db, shopId: string, address: string) {
   const since = new Date(Date.now() - 86_400_000);
-  return tx.outMessage.count({ where: { shopId, address, byUserId: { not: null }, createdAt: { gte: since }, status: { in: ["QUEUED", "SENDING", "SENT"] } } });
+  // Notices recorded by hand (hooks.ts recordManual, "byhand:" keys) are proof of a letter or a call, not sends from here.
+  return tx.outMessage.count({
+    where: { shopId, address, byUserId: { not: null }, createdAt: { gte: since }, status: { in: ["QUEUED", "SENDING", "SENT"] }, OR: [{ dedupeKey: null }, { NOT: { dedupeKey: { startsWith: "byhand:" } } }] },
+  });
 }
 
 type Row = Prisma.OutMessageCreateManyInput;

@@ -62,7 +62,9 @@ export function ActionForm({
             const r = await runAction(() => action(fd));
             if (r?.error) toast.error(r.error);
             else {
-              if (success) toast.success(success);
+              if (r?.warn) toast.warning(r.warn, { duration: 8000 });
+              else if (r?.note) toast.success(r.note, { duration: 8000 });
+              else if (success) toast.success(success);
               if (reset) form.reset();
             }
           });
@@ -123,6 +125,8 @@ export function ActionButton({
         start(async () => {
           const r = await runAction(action);
           if (r?.error) toast.error(r.error);
+          else if (r?.warn) toast.warning(r.warn, { duration: 8000 });
+          else if (r?.note) toast.success(r.note, { duration: 8000 });
           else if (success) toast.success(success);
         });
       }}

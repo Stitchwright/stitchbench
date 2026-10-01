@@ -15,8 +15,7 @@ import { fmtDay, fmtTime, ymdOf } from "@/lib/zoned";
 import { abandonTarget, abandonVars, notDelivered, scheduleFor, stageRows, type StageView } from "@/lib/notices/vars";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
 import { cancelMessage } from "@/actions/messaging";
-import { setNotifyBy } from "@/actions/consent";
-import { markBackAtCounter, recordManualNotice, sendNoticeNow } from "@/actions/notices";
+import { markBackAtCounter, recordManualNotice, sendNoticeNow, tellThenSendReady } from "@/actions/notices";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader, Section } from "@/components/ui";
@@ -92,28 +91,17 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
   const targetArg = isJob ? { jobId: id } : { ticketId: id };
   const customerId = (isJob ? job?.customerId : ticket?.customerId) ?? null;
   const newestReady = messages.find((m) => m.kind === "ready");
-  const needsAnswer = !!target && !!customerId && on && newestReady?.status === "SKIPPED" && (newestReady.error === "not_asked" || newestReady.error === "no_address");
-
-  async function tell(fd: FormData) {
-    "use server";
-    const r = await setNotifyBy(customerId ?? "", fd);
-    if (r.error) return r;
-    return sendNoticeNow(targetArg, "ready");
-  }
-  async function back() {
-    "use server";
-    const r = await markBackAtCounter(id);
-    if ("error" in r) return r;
-    // A note that says "call them" is something staff must do: show it as a warning, not a quiet "Recorded".
-    return /call/i.test(r.note) ? { error: r.note } : { ok: true as const };
-  }
+  // Skipped at queue time the row holds the reason's key; skipped by the worker at send time, its label.
+  const why = newestReady?.status === "SKIPPED" ? newestReady.error : null;
+  const notReachable = why === "not_asked" || why === "no_address" || why === SKIP_REASON_LABEL.not_asked || why === SKIP_REASON_LABEL.no_address;
+  const needsAnswer = !!target && !!customerId && on && notReachable;
 
   return (
     <Section title="Messages">
       <div className="space-y-4 text-sm">
         {awaitingBack && (
           <div className="flex flex-wrap items-center gap-3">
-            <ActionButton action={back} className="btn btn-primary btn-sm" success="Recorded">
+            <ActionButton action={markBackAtCounter.bind(null, id)} className="btn btn-primary btn-sm" success="Recorded">
               {on ? "It's back at the counter: tell the customer" : "It's back at the counter"}
             </ActionButton>
             <span className="muted">The repair shop marked it ready. Press this when it is here.</span>
@@ -160,7 +148,7 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
                 ["both", "Both"],
               ] as const
             ).map(([v, label]) => (
-              <ActionForm key={v} action={tell} success="Saved: the notice is queued">
+              <ActionForm key={v} action={tellThenSendReady.bind(null, targetArg, customerId ?? "")} success="Saved: the notice is queued">
                 <input type="hidden" name="notifyBy" value={v} />
                 <input type="hidden" name="source" value="ticket" />
                 <Submit className="btn btn-sm">{label}</Submit>

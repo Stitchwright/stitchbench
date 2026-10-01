@@ -135,13 +135,13 @@ async function targetOf(tx: Db, link: EstimateLink): Promise<{ machine: string; 
   if (link.ticketId) {
     const t = await tx.ticket.findFirst({
       where: { id: link.ticketId, shopId: link.shopId },
-      select: { number: true, status: true, jobType: true, machine: { select: { brand: true, model: true } }, customer: { select: { name: true } } },
+      select: { number: true, status: true, jobType: true, estimateAnswer: true, machine: { select: { brand: true, model: true } }, customer: { select: { name: true } } },
     });
     if (!t) return { machine: "machine", ref: "", waiting: false, customerName: null };
     return {
       machine: t.jobType === "SITE" ? "central vac install" : `${t.machine.brand} ${t.machine.model}`,
       ref: `ticket ${ticketNo(t.number)}`,
-      waiting: t.status === "WAITING_CUSTOMER_OK",
+      waiting: t.status === "WAITING_CUSTOMER_OK" && !t.estimateAnswer,
       customerName: t.customer?.name ?? null,
     };
   }
@@ -215,8 +215,9 @@ export async function answerByToken(token: string, answer: "APPROVED" | "DECLINE
       const approvedCents = answer === "APPROVED" ? link.totalCents : null;
       if (link.ticketId) {
         const t = await tx.ticket.findFirst({ where: { id: link.ticketId, shopId } });
-        if (t && t.status === "WAITING_CUSTOMER_OK") {
+        if (t && t.status === "WAITING_CUSTOMER_OK" && !t.estimateAnswer) {
           await answerTicketEstimate(tx, { ticket: t, warrantyDays: shop.warrantyDays, approval: answer, approvedCents, note: cleaned, via: "link", at: now, tz: ctx.tz, ctx });
+          await cancelQueuedEstimates(tx, shopId, { ticketId: t.id }, "The customer answered by link");
         } else if (t) {
           const line = `${fmtDateTime(now, ctx.tz)}: Answer by link arrived after it moved on (${answer === "APPROVED" ? "approved" : "declined"}).`;
           await tx.ticket.updateMany({ where: { id: t.id, shopId }, data: { notes: [t.notes, line].filter(Boolean).join("\n").slice(-20_000) } });
@@ -227,6 +228,7 @@ export async function answerByToken(token: string, answer: "APPROVED" | "DECLINE
           const byName = firstName(job.customer?.name ?? job.customerName);
           const done = await answerRetailEstimate(tx, { shopId, job, approval: answer, approvedCents, note: cleaned, byName, via: "link", at: now });
           if (!done) throw new Gone(); // the counter answered first
+          await cancelQueuedEstimates(tx, shopId, { repairJobId: job.id }, "The customer answered by link");
         } else if (job) {
           const events = [...((job.events as JobEvent[]) ?? []), { at: now.toISOString(), note: "Answer by link arrived after it moved on" }];
           await tx.repairJob.updateMany({ where: { shopId, id: job.id }, data: { events: events as Prisma.InputJsonValue } });
@@ -246,18 +248,25 @@ export async function estimateStillWanted(row: Pick<OutMessage, "kind" | "shopId
   if (row.kind !== "estimate") return null;
   if (row.refType === "estimate" && row.refId) {
     const link = await db.estimateLink.findFirst({ where: { id: row.refId, shopId: row.shopId } });
+    if (!link) return "The estimate link was stopped or replaced"; // not this company's, or gone
     if (link?.answer) return "The customer already answered";
     if (link?.revokedAt) return "The estimate link was stopped or replaced";
+    if (link && link.expiresAt.getTime() <= Date.now()) return "The estimate link expired";
   }
   if (row.ticketId) {
-    const t = await db.ticket.findFirst({ where: { id: row.ticketId, shopId: row.shopId }, select: { status: true } });
-    if (t && t.status !== "WAITING_CUSTOMER_OK") return "The ticket isn't waiting for the customer's OK any more";
+    const t = await db.ticket.findFirst({ where: { id: row.ticketId, shopId: row.shopId }, select: { status: true, estimateAnswer: true } });
+    if (t && (t.status !== "WAITING_CUSTOMER_OK" || t.estimateAnswer)) return "The ticket isn't waiting for the customer's OK any more";
   }
   if (row.repairJobId) {
     const j = await db.repairJob.findUnique({ where: { shopId_id: { shopId: row.shopId, id: row.repairJobId } }, select: { status: true, approval: true } });
     if (j && (j.status !== "WAITING_CUSTOMER_OK" || j.approval)) return "The repair isn't waiting for the customer's OK any more";
   }
   return null;
+}
+
+/** Estimate messages still waiting to go out about a ticket / job are stopped once there is an answer. */
+export async function cancelQueuedEstimates(tx: Db, shopId: string, where: { ticketId?: string; repairJobId?: string }, why: string): Promise<void> {
+  await tx.outMessage.updateMany({ where: { shopId, kind: "estimate", status: "QUEUED", ...where }, data: { status: "CANCELLED", error: why } });
 }
 
 /** The customer's text replies (not STOP-type, not yet marked handled) since `since`, oldest first. */
@@ -294,8 +303,10 @@ export async function estimateSubject(shopId: string, target: "ticket" | "job", 
       include: { machine: { select: { brand: true, model: true } }, customer: { select: { id: true, name: true, phone: true } }, lines: { orderBy: { createdAt: "asc" } } },
     });
     if (!t) throw new UserError("Ticket not found.");
+    // Direct tickets only (design 10.1, the same test as ticketVars().direct): a dealer or a partner shop tells their own customer.
     const partnerJob = await db.repairJob.findFirst({ where: { shopId, ticketId: t.id, side: "repair" }, select: { id: true } });
     if (partnerJob) throw new UserError("This customer came through another shop; they call their customer.");
+    if (t.viaAccountId) throw new UserError("This machine came in through a trade account; they tell their customer.");
     if (t.status !== "WAITING_CUSTOMER_OK") throw new UserError("This ticket isn't waiting for the customer's OK.");
     const bill = ticketEstimateLines(t);
     if (bill.totalCents <= 0) throw new UserError("There's nothing on the bill yet.");
@@ -407,6 +418,7 @@ export async function sendEstimateAs(user: CurrentUser, target: "ticket" | "job"
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true, phone: true } });
   const base = publicBaseUrl();
   await db.$transaction(async (tx) => {
+    if (s.ticketId) await tx.ticket.updateMany({ where: { id: s.ticketId, shopId }, data: { estimateAnswer: null, estimateAnsweredAt: null } });
     const link = base
       ? await createEstimateLink(tx, { shopId, ...where, customerId: s.customerId, totalCents: s.totalCents, lines: s.lines, note, days: ctx.ms.estimateLinkDays, byUserId: user.id })
       : null;
@@ -447,18 +459,19 @@ export async function recordEstimateAnswerAs(user: CurrentUser, target: "ticket"
   if (target === "ticket") {
     const t = await db.ticket.findFirst({ where: { id, shopId }, include: { lines: true, customer: { select: { phone: true } }, shop: { select: { warrantyDays: true } } } });
     if (!t) throw new UserError("Ticket not found.");
-    if (t.status !== "WAITING_CUSTOMER_OK") throw new UserError("This ticket isn't waiting for the customer's OK. Reload the page.");
+    if (t.status !== "WAITING_CUSTOMER_OK" || t.estimateAnswer) throw new UserError("This ticket isn't waiting for the customer's OK. Reload the page.");
     phone = t.customer?.phone ?? null;
     ids.ticketId = t.id;
-    const latest = await db.estimateLink.findFirst({ where: { shopId, ticketId: t.id }, orderBy: { createdAt: "desc" }, select: { totalCents: true } });
-    const approvedCents = answer === "APPROVED" ? (latest?.totalCents ?? ticketEstimateLines(t).totalCents) : null;
+    // What they approved: the open link's total (what they were shown), else the bill as it stands now.
+    const open = await db.estimateLink.findFirst({ where: { shopId, ticketId: t.id, answer: null, revokedAt: null, expiresAt: { gt: at } }, orderBy: { createdAt: "desc" }, select: { totalCents: true } });
+    const approvedCents = answer === "APPROVED" ? (open?.totalCents ?? ticketEstimateLines(t).totalCents) : null;
     const ctx = await hookContext(shopId, user.name);
     await db.$transaction(async (tx) => {
       // Guarded: the customer's link answer or another person's click may have moved it on already.
       const fresh = await tx.ticket.findFirst({ where: { id: t.id, shopId } });
-      if (!fresh || fresh.status !== "WAITING_CUSTOMER_OK") throw new UserError("The answer is already recorded. Reload the page.");
+      if (!fresh || fresh.status !== "WAITING_CUSTOMER_OK" || fresh.estimateAnswer) throw new UserError("The answer is already recorded. Reload the page.");
       await answerTicketEstimate(tx, { ticket: fresh, warrantyDays: t.shop.warrantyDays, approval: answer, approvedCents, note, via, at, tz: ctx.tz, ctx });
-      await closeOut(tx, shopId, { ticketId: t.id }, phone, at, user);
+      await closeOut(tx, shopId, { ticketId: t.id }, phone, at, user, t.estimateAnsweredAt);
     });
   } else {
     const j = await db.repairJob.findUnique({ where: { shopId_id: { shopId, id } }, include: { customer: { select: { phone: true } } } });
@@ -469,18 +482,22 @@ export async function recordEstimateAnswerAs(user: CurrentUser, target: "ticket"
     await db.$transaction(async (tx) => {
       const done = await answerRetailEstimate(tx, { shopId, job: j, approval: answer, approvedCents, note, byName: user.name, via, at });
       if (!done) throw new UserError("The answer is already recorded. Reload the page.");
-      await closeOut(tx, shopId, { repairJobId: j.id }, phone, at, user);
+      await closeOut(tx, shopId, { repairJobId: j.id }, phone, at, user, null);
     });
   }
   refreshTarget(ids);
 }
 
-/** After an answer: stop the open links, and mark the customer's unhandled replies since the estimate as handled. */
-async function closeOut(tx: Db, shopId: string, where: { ticketId?: string; repairJobId?: string }, phone: string | null, at: Date, user: CurrentUser) {
+/**
+ * After an answer: stop the open links and whatever estimate message is still waiting to go out, and mark the customer's
+ * unhandled replies since this round of estimates (the oldest send after the previous answer, if any) as handled.
+ */
+async function closeOut(tx: Db, shopId: string, where: { ticketId?: string; repairJobId?: string }, phone: string | null, at: Date, user: CurrentUser, previousAnswerAt: Date | null) {
   await tx.estimateLink.updateMany({ where: { shopId, ...where, answer: null, revokedAt: null }, data: { revokedAt: at, tokenSealed: null } });
+  await cancelQueuedEstimates(tx, shopId, where, "The customer answered");
   const number = toE164(phone);
   if (!number) return;
-  const first = await tx.outMessage.findFirst({ where: { shopId, kind: "estimate", ...where }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+  const first = await tx.outMessage.findFirst({ where: { shopId, kind: "estimate", ...where, ...(previousAnswerAt ? { createdAt: { gt: previousAnswerAt } } : {}) }, orderBy: { createdAt: "asc" }, select: { createdAt: true } });
   if (!first) return;
   await tx.inboundText.updateMany({ where: { shopId, fromNumber: number, keyword: null, handledAt: null, receivedAt: { gte: first.createdAt } }, data: { handledAt: at, handledBy: user.id } });
 }

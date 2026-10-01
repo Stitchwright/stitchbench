@@ -25,7 +25,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   const already = await db.suppression.findUnique({ where: { shopId_channel_address: { shopId: row.shopId, channel: "email", address: row.address } }, select: { scope: true } });
   if (!already) {
-    await db.$transaction((tx) => suppress(tx, { shopId: row.shopId, channel: "email", address: row.address, scope: "marketing", source: "unsubscribe_link", customerId: row.customerId }));
+    try {
+      await db.$transaction((tx) => suppress(tx, { shopId: row.shopId, channel: "email", address: row.address, scope: "marketing", source: "unsubscribe_link", customerId: row.customerId }));
+    } catch (e) {
+      // Two clicks at once: the other one wrote it (unique on shop + channel + address).
+      if ((e as { code?: string }).code !== "P2002") throw e;
+    }
   }
 
   const body = await readUpTo(req, 4096);

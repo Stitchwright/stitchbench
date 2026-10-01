@@ -15,7 +15,8 @@ export function isUserError(e: unknown): e is UserError {
   return e instanceof UserError || (typeof e === "object" && e !== null && (e as { userError?: unknown }).userError === true);
 }
 
-export type ActionResult = { ok: true; error?: undefined } | { ok?: false; error: string };
+/** `note`: shown instead of the form's fixed success words; `warn`: it worked, but says what staff must still do. */
+export type ActionResult = { ok: true; error?: undefined; note?: string; warn?: string } | { ok?: false; error: string; note?: undefined; warn?: undefined };
 
 export function safe<A extends unknown[]>(fn: (...args: A) => Promise<unknown>) {
   return async (...args: A): Promise<ActionResult> => {

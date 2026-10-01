@@ -254,6 +254,41 @@ Worth knowing:
 - Next: the remaining feature packages (campaigns, classes, appointments, register-bookings, shifts, partner-runs),
   then `e2e-docs`, then `modules-crossover` and the Vac Shop / appliance packages.
 
+## 2i. Deep review of the two packages, fixed (1 Oct 2026, evening, on `main`)
+
+`/code-review max 9af9b15..HEAD` (10 finder angles, verifiers) found 15 problems in notices and estimate-links; all are
+fixed, with regression groups in `estimate-links.check.ts` ("reviewFixes"), `notices.check.ts` (stillWanted estimate)
+and `messaging-core.check.ts` (render). What changed, for anyone reading the code:
+
+- Migration `20261001200000_ticket_estimate_answer`: `Ticket.estimateAnswer` / `estimateAnsweredAt`, written by
+  `answerTicketEstimate` whichever way the answer came (link, phone, text reply), cleared by `statusData` when the
+  ticket waits for an OK again and by `sendEstimateAs` (a revised estimate). A declined ticket keeps its status
+  (design 10.4) but is answered: the to-do, the panel, the link page and `estimateStillWanted` all use it.
+- `stillWanted` for estimate rows is `estimateStillWanted` (one copy): rows without a link are checked against the
+  ticket / job too, a missing or expired link cancels, and an answer (by link, by phone, or a status change away from
+  WAITING_CUSTOMER_OK) cancels the queued estimate messages (`cancelQueuedEstimates`, `onTicketStatus`).
+- Estimate links are for direct tickets only: a trade-account ticket (viaAccountId) is refused like a partner's.
+- A phone approval records the OPEN link's total, else the bill as it stands; `closeOut` handles the replies of the
+  whole round (since the previous answer), not just since the newest send.
+- `render()` keeps the leading space / blank line of the `_line` fields ("ready to pick up. Balance: $145.00.").
+- The ready toast and "It's back" note say when a text really goes (quiet hours: "9:00 am tomorrow"); "Send the
+  current notice now" refuses when that stage is already waiting to go out; by-hand notices carry a `byhand:` dedupe
+  key and don't count toward the 3-a-day staff cap; a tracking number is stored only for certified mail.
+- `ActionResult` has `note` (shown as the success toast) and `warn` (toast.warning: it worked, staff must call
+  someone); `markBackAtCounter` / `markManyBack` / `tellThenSendReady` return them, and the slots pass the actions
+  straight through (no inline "use server" closures). `recordBack` runs with a 60 s transaction timeout.
+- "They said: Text / Email / Both" shows for worker-skipped ready notices too (the row holds the label then).
+- Service-due and review requests: when marketing email can't be used (no postal address, or no watched reply-to on
+  the Windows program / without a public address) a SKIPPED row says so on the Messages page instead of a silent
+  fallback to texts.
+- `/api/e/[token]` reads at most 8 KB and always answers 303 back to the page; `/e/[token]` shows nothing of the
+  estimate once the link is stopped or expired; `/api/u/[token]` tolerates two clicks at once.
+
+Checked here: tsc, eslint, every check script, unit tests, and on a fresh test build the specs notices, estimate-links
+(with and without PUBLIC_URL) and smoke. Left as the review listed them (low severity): the scheduler's per-ticket
+abandonTarget queries every 5 minutes, unindexed closedAt / pickedUpAt / backAt scans, notice dates without a year
+(the design's fmtDay), "works until <date>" vs a timestamp expiry.
+
 ## 3. What to do next, in order
 
 

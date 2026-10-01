@@ -47,6 +47,11 @@ export function statusData(t: TicketForStatus, status: TicketStatus, at: Date, w
     if (commissionPct !== undefined && (closedAt !== t.closedAt || t.tradeCommissionPct == null)) data.tradeCommissionPct = commissionPct;
     data.warrantyUntil = status === "COLLECTED" ? (t.status === "COLLECTED" && t.warrantyUntil ? t.warrantyUntil : new Date(at.getTime() + warrantyDays * 86400000)) : null;
   }
+  // Waiting for the customer's OK again: the answer they gave last time is history (the notes keep it).
+  if (status === "WAITING_CUSTOMER_OK" && t.status !== "WAITING_CUSTOMER_OK") {
+    data.estimateAnswer = null;
+    data.estimateAnsweredAt = null;
+  }
   // The pickup shelf clock: every entry into "Ready - customer called" starts it; leaving clears it.
   if (status === "READY_FOR_PICKUP") {
     if (t.status !== "READY_FOR_PICKUP" || !t.pickupReadyAt) data.pickupReadyAt = at;

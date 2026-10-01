@@ -347,6 +347,9 @@ function templates() {
   assert.equal(render("{first_name} / {shop_name}", vars), "{shop_name} / Quilt Shop");
   assert.equal(render("a {nope} b", vars), "a  b", "an unknown field is empty");
   assert.equal(render("x\n\n\n\ny", {}), "x\n\ny", "runs of blank lines collapse");
+  assert.equal(render("ready to pick up.{amount_line} Questions?", { amount_line: " Balance: $145.00." }), "ready to pick up. Balance: $145.00. Questions?", "a _line field keeps the space it starts with");
+  assert.equal(render("on {when}.{location_line}{supplies_line}", { when: "Tue", location_line: " At Back room.", supplies_line: "\n\nBring: scissors" }), "on Tue. At Back room.\n\nBring: scissors", "and the blank line before Bring:");
+  assert.equal(render("Hi {name}", { name: "  spaced  " }), "Hi   spaced", "at most two leading separators are kept, the rest is cleaned");
   assert.equal(render("Hi {name}", { name: "Mary\r\nBcc: x@y.com" }), "Hi Mary Bcc: x@y.com", "CR/LF out of a customer-supplied value");
   assert.equal(render("Hi {name}", { name: "see http://evil.example/x or www.evil.example" }), "Hi see [link removed] or [link removed]", "links out of untrusted values");
   assert.equal(render("{review_link}", { review_link: "https://g.page/r/x" }), "https://g.page/r/x", "trusted fields keep their links");
