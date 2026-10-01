@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars -- foundation stub: the estimate-links package fills in the body */
-// The estimate link on a partner repair job (scheduling-messaging-design.md section 7.3). Foundation stub: renders nothing.
+// The estimate link on a partner repair job, below the counter's own answer form (scheduling-messaging-design.md 7.3, 10.5).
 import type { CurrentUser } from "@/lib/session";
+import { EstimatePanel } from "@/components/slots/ticket-estimate";
 
-export async function JobEstimateSlot(_props: { jobId: string; user: CurrentUser }) {
-  return null;
+export async function JobEstimateSlot({ jobId, user }: { jobId: string; user: CurrentUser }) {
+  return <EstimatePanel target="job" id={jobId} user={user} />;
 }
