@@ -24,6 +24,11 @@
 .DS_Store
 *.pem
 
+# license signing keys: the private halves stay out of the repo (scripts/license/keygen.ts refuses an --out inside it);
+# the development key is committed on purpose (modules-design.md section 3.3)
+/scripts/license/*.pem
+!/scripts/license/dev-key.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*

@@ -7,6 +7,8 @@ import { createShopWithOwner, type ShopKind } from "@/lib/shops";
 import { normalizeEmail } from "@/lib/email";
 import { redeemPartnerCode } from "@/lib/partners";
 import { str } from "@/lib/format";
+import { assertId } from "@/lib/input";
+import { setCompanyModuleFor, setHubWritesFor } from "@/lib/modules-admin";
 
 /** An IANA time zone this server knows (America/New_York...), or null for blank. Same check Settings uses. */
 function validTimeZone(tz: string | null) {
@@ -48,3 +50,9 @@ export const createCompany = safe(async function createCompany(formData: FormDat
     }
   }
 });
+
+/** The administrator's module switch for one company (modules-design.md section 8). Body: src/lib/modules-admin.ts. */
+export const setCompanyModule = safe(async (fd: FormData) => setCompanyModuleFor(await requirePlatformAdmin(), fd));
+
+/** Switch a company's writes to the community hub off (or back on). */
+export const setHubWrites = safe(async (shopId: string, off: boolean) => setHubWritesFor(await requirePlatformAdmin(), assertId(shopId), off));

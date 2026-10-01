@@ -96,7 +96,7 @@ export async function picturesFor(items: { brand: string; model: string }[]) {
   return out;
 }
 
-const DOC_ORDER: Record<string, number> = { ServiceManual: 0, TechnicalManual: 1, MaintenanceManual: 2, ErrorCodes: 3, OperatorManual: 4, Training: 5, Bulletin: 6, PartsList: 7 };
+const DOC_ORDER: Record<string, number> = { ServiceManual: 0, TechnicalManual: 1, MaintenanceManual: 2, ErrorCodes: 3, OperatorManual: 4, Firmware: 5, Training: 6, Bulletin: 7, PartsList: 8 };
 
 /** Every manual in the shop library for this brand + model. */
 export async function libraryFor(brand: string, model: string) {

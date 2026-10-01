@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { getModules } from "@/lib/modules";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
 import { PartnerTodo } from "@/components/partner-todo";
@@ -25,6 +26,10 @@ export default async function RegisterPage() {
       </div>
     );
   }
+  // Vac Shop tools: on while the module is active; read-only (returns, no sales from stock) while the shop still holds
+  // vacuums it sold or stocked after the module ended; off otherwise.
+  const vacState = (await getModules(user.shopId)).states.vac;
+  const vac = vacState.active ? "on" : (await db.stockUnit.count({ where: { shopId: user.shopId } })) > 0 ? "readonly" : "off";
   return (
     <div className="space-y-4">
       <PageHeader
@@ -41,7 +46,7 @@ export default async function RegisterPage() {
         }
       />
       <PartnerTodo shopId={user.shopId} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} />
     </div>
   );
 }

@@ -12,9 +12,15 @@ import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { OPEN_STATUSES, PAYMENT_LABEL, STATUS_ORDER } from "@/lib/constants";
-import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
+import { CLOSING_STATUSES, OPEN_STATUSES, PAYMENT_LABEL, SITE_STATUS_ORDER, STATUS_ORDER } from "@/lib/constants";
 import { kickPartnerSync } from "@/lib/partners";
+import { requireModule } from "@/lib/modules";
+import { canWorkOn, requireEquipment } from "@/lib/equipment/gate";
+import { checklistFor, kindOf, shopKinds } from "@/lib/equipment/shop";
+import { readAnswers } from "@/lib/equipment/form";
+import { saveIntakeFor, saveReadingsFor } from "@/lib/equipment/ticket-data";
+import { takeTicketNumber, typedTicketNumber } from "@/lib/ticket-number";
+import { INSTALL_CHECKLIST } from "@/lib/vac/installs";
 
 // $100,000 in cents: far above any real line or payment, and well inside what the books' whole numbers hold.
 const MAX_MONEY = 10_000_000;
@@ -26,9 +32,15 @@ function fits(v: string | null, label: string): string | null {
   return v;
 }
 
-async function ownTicket(shopId: string, ticketId: string) {
-  const t = await db.ticket.findFirst({ where: { id: ticketId, shopId }, include: { shop: true } });
+/**
+ * The ticket, by shop. "work" also checks the equipment gate (modules-design.md section 6.3): a ticket of a module that
+ * has ended can be finished only while it came in before the end and isn't closed. "close" (closing statuses, payments,
+ * returned accessories) is always allowed.
+ */
+async function ownTicket(shopId: string, ticketId: string, need: "work" | "close" = "work", role?: CurrentUser["role"]) {
+  const t = await db.ticket.findFirst({ where: { id: ticketId, shopId }, include: { shop: true, machine: { select: { equipment: true, kind: true } } } });
   if (!t) throw new UserError("Ticket not found.");
+  if (need === "work") await requireEquipment({ shopId, role }, t.machine.equipment, { ticket: t, closing: true });
   return t;
 }
 
@@ -73,13 +85,13 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   // Everything is checked first, and the new customer and machine are made in the same transaction as the ticket: a
   // refused check-in leaves nothing behind, so the retry doesn't add a second customer and machine.
 
-  // Customer: pick an existing one or type a new name.
-  const pickedCustomerId = str(formData.get("customerId"));
-  const newCustomer = str(formData.get("customerName"));
-  if (pickedCustomerId) {
-    const ok = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId } });
-    if (!ok) throw new UserError("Customer not found.");
-  }
+  // What is being checked in (the hidden `kind` field; an old form without one means a sewing machine). A picked
+  // machine's own kind applies instead. New work in a module needs the module on.
+  const kinds = await shopKinds(shopId);
+  const kindKey = str(formData.get("kind")) ?? "sewing";
+  const asked = kinds.all.find((k) => k.key === kindKey);
+  if (!asked) throw new UserError("Pick what you're checking in.");
+  let kind = asked;
 
   // Machine: pick an existing one, or brand + model (+ serial). An existing serial is reused.
   const pickedMachineId = str(formData.get("machineId"));
@@ -87,10 +99,23 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   const model = str(formData.get("model"));
   const serial = str(formData.get("serial"));
   if (pickedMachineId) {
-    const ok = await db.machine.findFirst({ where: { id: pickedMachineId, shopId } });
-    if (!ok) throw new UserError("Machine not found.");
-  } else if (!brand || !model) {
-    throw new UserError("Enter the machine's brand and model.");
+    const picked = await db.machine.findFirst({ where: { id: pickedMachineId, shopId } });
+    if (!picked) throw new UserError("Machine not found.");
+    kind = await kindOf(shopId, picked);
+    await requireEquipment(user, picked.equipment);
+  } else {
+    if (kind.module) await requireModule(user, kind.module);
+    // The module is on but the kind itself was taken off "What you repair".
+    if (!kinds.usable.some((k) => k.key === asked.key)) throw new UserError("Pick what you're checking in.");
+    if (!brand || !model) throw new UserError(`Enter the ${kind.noun}'s brand and model.`);
+  }
+
+  // Customer: pick an existing one or type a new name.
+  const pickedCustomerId = str(formData.get("customerId"));
+  const newCustomer = str(formData.get("customerName"));
+  if (pickedCustomerId) {
+    const ok = await db.customer.findFirst({ where: { id: pickedCustomerId, shopId } });
+    if (!ok) throw new UserError("Customer not found.");
   }
 
   const viaAccountId = str(formData.get("viaAccountId"));
@@ -101,37 +126,27 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   const otherAcc = str(formData.get("accessoriesOther"));
   if (otherAcc) accessories.push(...otherAcc.split(",").map((s) => s.trim()).filter(Boolean));
 
+  // The service picked has to be on this kind's menu (for every kind, or for this one).
   const serviceItemId = str(formData.get("serviceItemId"));
-  const serviceItem = serviceItemId ? await db.serviceItem.findFirst({ where: { id: serviceItemId, shopId } }) : null;
+  const serviceItem = serviceItemId
+    ? await db.serviceItem.findFirst({ where: { id: serviceItemId, shopId, OR: [{ equipmentKind: null }, { equipmentKind: kind.key }] } })
+    : null;
+  if (serviceItemId && !serviceItem) throw new UserError(`That service isn't on the ${kind.label} menu.`);
   const serviceRequested = fits(serviceItem?.name ?? str(formData.get("serviceRequested")), "Service requested");
   const problem = fits(str(formData.get("problem")), "Problem reported");
 
-  // A paper ticket number typed in (blank takes the next one): a whole number of up to 8 digits, like the counter in
-  // Settings. The column is a 32-bit integer and the counter moves past what is typed, so a number near the top of it
-  // would break every later check-in, and every job a partner sends.
-  const typedText = str(formData.get("number"))?.replace(/^#/, "") ?? null;
-  const typed = typedText == null ? null : /^\d{1,8}$/.test(typedText) ? Number(typedText) : 0;
-  if (typed === 0) throw new UserError("Paper ticket number: enter a whole number from 1 to 99999999, or leave it blank to use the next one.");
+  // The kind's questions: about the unit (kept on the machine) and about this visit (kept on the ticket).
+  const details = readAnswers(kind.intakeFields, "machine", formData);
+  const intake = readAnswers(kind.intakeFields, "ticket", formData);
+
+  // A paper ticket number typed in (blank takes the next one).
+  const typed = typedTicketNumber(str(formData.get("number")));
   const preApprovedCents = amountOf(formData.get("preApproved"), "Pre-approved");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
+  const { equipment, key: kindName } = kind;
 
   const ticket = await db.$transaction(async (tx) => {
-    let number: number;
-    if (typed) {
-      number = typed;
-      if (await tx.ticket.findFirst({ where: { shopId, number } })) throw new UserError(`Ticket ${number} already exists. Leave the number blank to use the next one.`);
-    } else {
-      // Taken atomically, skipping numbers already used (a partner job or a typed-in paper ticket may have them).
-      const next = async () => (await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: { increment: 1 } }, select: { nextTicketNumber: true } })).nextTicketNumber - 1;
-      number = await next();
-      if (await tx.ticket.findFirst({ where: { shopId, number }, select: { id: true } })) {
-        // The counter is behind the tickets (set back in Settings before that was refused): go straight past the
-        // highest number instead of trying the used ones one at a time.
-        const top = await tx.ticket.aggregate({ where: { shopId }, _max: { number: true } });
-        number = (top._max.number ?? 0) + 1;
-        await tx.shop.update({ where: { id: shopId }, data: { nextTicketNumber: number + 1 } });
-      }
-    }
+    const number = await takeTicketNumber(tx, shopId, typed);
 
     const customerId =
       pickedCustomerId ??
@@ -141,7 +156,13 @@ export const createTicket = safe(async function createTicket(formData: FormData)
 
     let machineId = pickedMachineId;
     if (!machineId) {
-      const existing = serial ? await tx.machine.findFirst({ where: { shopId, serial: sameText(serial), modelKey: modelKey(model!) } }) : null;
+      // The same serial of the same kind of thing. Never a vacuum that is in stock or off sale: a check-in can't
+      // reach into Vac Shop -> For sale (one the shop sold is the customer's now, so that one is reused).
+      const existing = serial
+        ? await tx.machine.findFirst({
+            where: { shopId, equipment, serial: sameText(serial), modelKey: modelKey(model!), OR: [{ stock: { is: null } }, { stock: { is: { status: "SOLD" } } }] },
+          })
+        : null;
       machineId = (
         existing ??
         (await tx.machine.create({
@@ -153,12 +174,15 @@ export const createTicket = safe(async function createTicket(formData: FormData)
             serial,
             machineType: str(formData.get("machineType")),
             customerId,
+            equipment,
+            kind: kindName,
+            details,
           },
         }))
       ).id;
     }
 
-    const t = await tx.ticket.create({
+    return tx.ticket.create({
       data: {
         shopId,
         number,
@@ -170,6 +194,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
         problem,
         preApprovedCents,
         accessories,
+        intake,
         taxRatePct: shop.taxRatePct,
         openedById: user.id,
         techId: user.id,
@@ -178,9 +203,6 @@ export const createTicket = safe(async function createTicket(formData: FormData)
           : undefined,
       },
     });
-    // A typed number ahead of the counter moves the counter past it (never back).
-    if (typed) await tx.$executeRaw`UPDATE "Shop" SET "nextTicketNumber" = GREATEST("nextTicketNumber", ${typed + 1}) WHERE id = ${shopId}`;
-    return t;
   });
 
   revalidatePath("/tickets");
@@ -193,7 +215,9 @@ export const createTicket = safe(async function createTicket(formData: FormData)
 export const setStatus = safe(async function setStatus(ticketId: string, status: TicketStatus) {
   const user = await requireUser();
   if (!STATUS_ORDER.includes(status)) throw new UserError("Unknown status.");
-  const t = await ownTicket(user.shopId, ticketId);
+  // Closing a ticket (collected, returned unrepaired, abandoned) is always allowed; any other status is work.
+  const t = await ownTicket(user.shopId, ticketId, CLOSING_STATUSES.includes(status) ? "close" : "work", user.role);
+  if (t.jobType === "SITE" && !SITE_STATUS_ORDER.includes(status)) throw new UserError("That status isn't used for installs.");
   if (status === "COLLECTED" && t.status !== "COLLECTED") {
     // A partner sewing shop's machine goes back to them, and they mark it collected when their customer pays and picks
     // it up. Set here, it would send "collected" and take the job off their register's pickup list, unpaid.
@@ -245,7 +269,7 @@ const TEXT_FIELDS = [
 
 export const saveTicketText = safe(async function saveTicketText(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  const t = await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId, "work", user.role);
   const techId = str(formData.get("techId"));
   if (techId) {
     const ok = await db.user.findFirst({ where: { id: techId, shopId: user.shopId } });
@@ -275,11 +299,11 @@ export const saveTicketText = safe(async function saveTicketText(ticketId: strin
 
 export const toggleChecklist = safe(async function toggleChecklist(ticketId: string, item: string, done: boolean) {
   const user = await requireUser();
-  const t = await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId, "work", user.role);
   const list = { ...((t.checklist as Prisma.JsonObject | null) ?? {}) };
   if (done) {
-    // The name comes from the browser: only what is on the shop's checklist is stored (not any key, of any size).
-    const items = t.shop.checklistItems?.length ? t.shop.checklistItems : DEFAULT_CHECKLIST;
+    // The name comes from the browser: only what is on this kind's checklist is stored (not any key, of any size).
+    const items = t.jobType === "SITE" ? INSTALL_CHECKLIST : checklistFor(await kindOf(user.shopId, t.machine), t.shop);
     if (!items.includes(item)) throw new UserError("That item isn't on the checklist any more. Reload the page.");
     list[item] = { done: true, by: user.name, at: new Date().toISOString() };
   } else delete list[item];
@@ -303,7 +327,7 @@ function reading(v: FormDataEntryValue | null, label: string, belowZeroOk: boole
 
 export const saveTension = safe(async function saveTension(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  await ownTicket(user.shopId, ticketId);
+  await ownTicket(user.shopId, ticketId, "work", user.role);
   await db.ticket.update({
     where: { id: ticketId },
     data: {
@@ -318,7 +342,7 @@ export const saveTension = safe(async function saveTension(ticketId: string, for
 
 export const saveMeasurements = safe(async function saveMeasurements(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  const t = await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId, "work", user.role);
   // Field names come from the browser: a Map (not an object, where "__proto__" would reach every object in the
   // server) keyed only by factory settings that exist.
   const read = new Map<string, { found?: string; left?: string }>();
@@ -349,8 +373,10 @@ export const saveMeasurements = safe(async function saveMeasurements(ticketId: s
 
 export const saveAccessories = safe(async function saveAccessories(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  const t = await ownTicket(user.shopId, ticketId);
-  const added = str(formData.get("add"));
+  // Ticking what went back is closing work, always allowed; adding items is work, so on a ticket that can't be worked
+  // on (its module ended) the "add" box is ignored and only the ticks are saved.
+  const t = await ownTicket(user.shopId, ticketId, "close", user.role);
+  const added = (await canWorkOn(user.shopId, t.machine.equipment, t)) ? str(formData.get("add")) : null;
   const accessories = [...t.accessories];
   if (added) accessories.push(...added.split(",").map((s) => s.trim()).filter(Boolean));
   const returned = formData.getAll("returned").map(String).filter((a) => accessories.includes(a));
@@ -360,7 +386,7 @@ export const saveAccessories = safe(async function saveAccessories(ticketId: str
 
 export const removeAccessory = safe(async function removeAccessory(ticketId: string, item: string) {
   const user = await requireUser();
-  const t = await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId, "work", user.role);
   await db.ticket.update({
     where: { id: ticketId },
     data: {
@@ -398,7 +424,7 @@ export async function findStockedParts(q: string): Promise<string[]> {
 
 export const addLine = safe(async function addLine(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  const t = await ownTicket(user.shopId, ticketId);
+  const t = await ownTicket(user.shopId, ticketId, "work", user.role);
   assertBillOpen(t, user);
   const kind = str(formData.get("kind")) as LineKind;
   // A price typed on the ticket: blank for the usual price, else $0 to $100,000. Money comes off as a Discount line,
@@ -487,8 +513,13 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
 
 export const removeLine = safe(async function removeLine(lineId: string) {
   const user = await requireUser();
-  const line = await db.ticketLine.findFirst({ where: { id: lineId, ticket: { shopId: user.shopId } }, include: { ticket: { select: { closedAt: true } } } });
+  const line = await db.ticketLine.findFirst({
+    where: { id: lineId, ticket: { shopId: user.shopId } },
+    include: { ticket: { select: { closedAt: true, intakeAt: true, status: true, machine: { select: { equipment: true } } } } },
+  });
   if (!line) throw new UserError("Line not found.");
+  // Taking a line off is work on the ticket (the same gate as adding one).
+  await requireEquipment(user, line.ticket.machine.equipment, { ticket: line.ticket, closing: true });
   assertBillOpen(line.ticket, user);
   if (line.kind === "PART" && line.partId) {
     const qty = line.qty;
@@ -509,7 +540,8 @@ export const removeLine = safe(async function removeLine(lineId: string) {
 
 export const addPayment = safe(async function addPayment(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  await ownTicket(user.shopId, ticketId);
+  // Taking payment closes work out: allowed whatever the module's state.
+  await ownTicket(user.shopId, ticketId, "close", user.role);
   const amount = toCents(formData.get("amount"));
   if (amount == null || amount === 0) throw new UserError("Enter the amount paid.");
   if (Math.abs(amount) > MAX_MONEY) throw new UserError("That's more than $100,000. Check the amount.");
@@ -538,3 +570,8 @@ export const removePayment = safe(async function removePayment(paymentId: string
   refresh(p.ticketId);
   revalidatePath("/sales");
 });
+
+// ---------- a kind's readings and intake answers (bodies in src/lib/equipment/ticket-data.ts) ----------
+
+export const saveReadings = safe(async (ticketId: string, fd: FormData) => saveReadingsFor(await requireUser(), ticketId, fd));
+export const saveIntake = safe(async (ticketId: string, fd: FormData) => saveIntakeFor(await requireUser(), ticketId, fd));

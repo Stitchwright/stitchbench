@@ -4,8 +4,10 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
 import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { PAYMENT_LABEL } from "@/lib/constants";
+import { kindOf } from "@/lib/equipment/shop";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader } from "@/components/ui";
+import { SiteInvoiceBlock } from "@/components/vac/site-invoice";
 
 export default async function Invoice({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -15,6 +17,8 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
     include: { shop: true, machine: true, customer: true, lines: { orderBy: { createdAt: "asc" } }, payments: { orderBy: { paidAt: "asc" } } },
   });
   if (!t) notFound();
+  const kind = await kindOf(user.shopId, t.machine);
+  const isSite = t.jobType === "SITE";
   const tot = ticketTotals(t.lines, t.payments, t.taxRatePct);
   const s = t.shop;
 
@@ -46,13 +50,15 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
             <div>{[t.customer?.phone, t.customer?.email].filter(Boolean).join(" · ")}</div>
           </div>
           <div>
-            <div className="label">Machine</div>
+            <div className="label">{isSite ? "Installed unit" : kind.key === "sewing" ? "Machine" : kind.label}</div>
             <div className="font-semibold">
               {t.machine.brand} {t.machine.model}
             </div>
             {t.machine.serial && <div className="mono">SN {t.machine.serial}</div>}
           </div>
         </section>
+
+        <SiteInvoiceBlock ticketId={t.id} shopId={user.shopId} />
 
         {(t.workDone || t.diagnosis) && (
           <section className="border-b border-line py-4 text-sm">
@@ -116,7 +122,11 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
             </p>
           )}
           {/* Only what was ticked as handed back; anything else is still with the shop. */}
-          {t.accessoriesReturned.length > 0 && <p className="mt-1">Returned with the machine: {t.accessoriesReturned.join(", ")}.</p>}
+          {t.accessoriesReturned.length > 0 && (
+            <p className="mt-1">
+              Returned with the {kind.noun}: {t.accessoriesReturned.join(", ")}.
+            </p>
+          )}
           {t.accessories.some((a) => !t.accessoriesReturned.includes(a)) && (
             <p className="mt-1">Still with us: {t.accessories.filter((a) => !t.accessoriesReturned.includes(a)).join(", ")}.</p>
           )}

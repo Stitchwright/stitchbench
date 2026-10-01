@@ -9,12 +9,14 @@ import { isPlatformAdmin } from "@/lib/shops";
 import { str } from "@/lib/format";
 import { modelHref } from "@/components/ui";
 import { hubJoined, syncSoon } from "@/lib/hub";
+import { requireHubWrites } from "@/lib/hub-writes";
 import type { NoteKind } from "@/generated/prisma/enums";
 
 const KINDS: NoteKind[] = ["GOTCHA", "TIP", "FACT"];
 
 export const sharePost = safe(async function sharePost(machineId: string, formData: FormData) {
   const user = await requireUser();
+  await requireHubWrites(user);
   const m = await db.machine.findFirst({ where: { id: machineId, shopId: user.shopId }, select: { brand: true, model: true, modelKey: true } });
   if (!m) throw new UserError("Machine not found.");
   const title = str(formData.get("title"));

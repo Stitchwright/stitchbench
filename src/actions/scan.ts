@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
+import { canWorkOn, equipmentState } from "@/lib/equipment/gate";
+import { blockedMessage } from "@/lib/module-info";
 import { MAX_STOCK, codeKeys, countStock, numberKey } from "@/lib/parts";
 import { withDisclosure } from "@/lib/part-labels";
 import { assertId, sameText } from "@/lib/input";
@@ -74,9 +76,17 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
   }
   if (mode === "ticket") {
     const t = ticketId
-      ? await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId, status: { in: OPEN_STATUSES } }, include: { shop: { select: { partsMarkupPct: true } } } })
+      ? await db.ticket.findFirst({
+          where: { id: ticketId, shopId: user.shopId, status: { in: OPEN_STATUSES } },
+          include: { shop: { select: { partsMarkupPct: true } }, machine: { select: { equipment: true } } },
+        })
       : null;
     if (!t) return { ok: false, code: c, message: "Pick an open ticket first." };
+    // A vacuum or appliance ticket whose module has ended (and that came in after it did): no new parts on it.
+    if (!(await canWorkOn(user.shopId, t.machine.equipment, t))) {
+      const state = await equipmentState(user.shopId, t.machine.equipment);
+      return { ok: false, code: c, message: `That ticket is read-only: ${state ? blockedMessage(state, user.role !== "TECH") : "it was made by a newer version of StitchBench."}` };
+    }
     // Never below 0, even for an item saved before prices were checked: a line can't lower the ticket's total.
     const unit = Math.max(0, part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100)));
     const [, p] = await db.$transaction([
