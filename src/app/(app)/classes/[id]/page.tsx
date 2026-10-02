@@ -185,6 +185,7 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
                         r.name
                       )}
                       {r.attendee && <div className="muted text-xs">for {r.attendee}</div>}
+                      {r.source === "online" && <span className="pill tone-neutral">online</span>}
                     </td>
                     <td className="num">{r.customer?.phone ? fmtPhone(r.customer.phone) : ""}</td>
                     <td className="num whitespace-nowrap">{fmtDate(r.createdAt, tz)}</td>

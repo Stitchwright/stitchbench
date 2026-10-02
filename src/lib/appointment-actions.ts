@@ -20,6 +20,12 @@ import { fmtWhen, parseHm, parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
 type Tx = Prisma.TransactionClient;
 const DAY = 86_400_000;
 
+/** A checkbox paired with a hidden "off": on when any value is "on", off when the only values say off, on when the field is missing. */
+function checkbox(fd: FormData, name: string): boolean {
+  const v = fd.getAll(name).map(String);
+  return v.length === 0 || v.includes("on");
+}
+
 async function asUser(user: CurrentUser): Promise<void> {
   await requireOn(user, "scheduling");
 }
@@ -87,8 +93,9 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
     resource,
     hours: hoursFromForm(fd) as unknown as Prisma.InputJsonValue,
     location: limited(str(fd.get("location")), 120, "The location"),
-    // The form sends a hidden "off" before the checkbox's "on": the first value alone would always read off.
-    active: fd.getAll("active").includes("on"),
+    // The form sends a hidden "off" before the checkbox's "on" (the first value alone would always read off); a form
+    // without the field at all means on.
+    active: checkbox(fd, "active"),
     sortOrder: Number.isInteger(sortOrder) ? Math.max(-1000, Math.min(1000, sortOrder)) : 0,
   };
   if (resource) {

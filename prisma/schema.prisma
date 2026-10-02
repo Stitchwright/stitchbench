@@ -57,6 +57,13 @@ model Shop {
   receiptNote        String?
   // The shop's own time zone: where days and months start for reports and statements
   timeZone           String   @default("America/New_York")
+  // Online booking (online-and-parts-design.md section 2): the public address /book/{bookingSlug}, on or off, the
+  // first offered time this many hours from now, how far ahead, and the welcome text.
+  bookingSlug        String?  @unique
+  bookingOn          Boolean  @default(false)
+  bookingLeadHours   Int      @default(24)
+  bookingDaysAhead   Int      @default(60)
+  bookingWelcome     String?
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
   checkInKind        String   @default("sewing")
   // Vac Shop "bags due": days between bag purchases
@@ -89,6 +96,7 @@ model Shop {
   equipmentKinds ShopEquipmentKind[]
   ticketSites    TicketSite[]
   partWaits      PartWait[]
+  bookingLinks   BookingLink[]
   stockUnits     StockUnit[]
   vacCares       VacCare[]
   // Scheduling and messages
@@ -1246,6 +1254,23 @@ model ShopEquipmentKind {
   @@unique([shopId, key])
 }
 
+// The link in an online booking's confirmation (online-and-parts-design.md section 2): the customer opens
+// /book/m/{token} to see, move or cancel their appointment or class seat. The token is hashed; it expires with the booking.
+model BookingLink {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  appointmentId String? // plain ids, always checked with shopId
+  enrollmentId  String?
+  customerId    String?
+  tokenHash     String    @unique
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+
+  @@index([shopId, appointmentId])
+  @@index([shopId, enrollmentId])
+}
+
 // A part a ticket is waiting for (online-and-parts-design.md section 1): recorded when the shop has to order it,
 // received when it is checked in (the parts_in notice goes out then), or cancelled when it isn't coming. Always
 // written after checking the ticket is this shop's.
@@ -1639,6 +1664,7 @@ model ShopClass {
   waitlist    Boolean        @default(true)
   remind      String         @default("every") // day-before reminders: every | first (meeting only) | never
   status      String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
+  online      Boolean        @default(false) // customers may sign up themselves on /book/{slug}
   firstAt     DateTime? // first and last meeting, kept in step by the actions (for lists)
   lastAt      DateTime?
   createdById String?
@@ -1687,6 +1713,7 @@ model Enrollment {
   refundedAt    DateTime?
   refundLineId  String?
   note          String?
+  source        String    @default("counter") // counter | online
   cancelledAt   DateTime?
   createdById   String?
   createdAt     DateTime  @default(now())
@@ -1712,6 +1739,7 @@ model AppointmentType {
   hours        Json          @default("[]")
   location     String?
   active       Boolean       @default(true)
+  online       Boolean       @default(false) // customers may book it themselves on /book/{slug}
   sortOrder    Int           @default(0)
   createdAt    DateTime      @default(now())
   appointments Appointment[]
@@ -1747,6 +1775,7 @@ model Appointment {
   refundedAt    DateTime?
   refundLineId  String?
   note          String?
+  source        String           @default("counter") // counter | online
   cancelledAt   DateTime?
   createdById   String?
   createdAt     DateTime         @default(now())

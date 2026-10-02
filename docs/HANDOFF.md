@@ -560,6 +560,34 @@ the design: the count in the toast after a stock count, the export columns, the 
 Its worker shares the dev database and sends or skips the check companies' queued rows, which made `notices.check`
 report a stage as not sent.
 
+## 2z. Package `online-booking`: customers book from the shop's website (2 Oct 2026, committed)
+
+`online-and-parts-design.md` section 2, the owner's second request. Migration `20261002150000_online_booking`:
+`Shop.bookingSlug` (unique) / `bookingOn` / `bookingLeadHours` / `bookingDaysAhead` / `bookingWelcome`,
+`AppointmentType.online`, `ShopClass.online`, `Appointment.source` and `Enrollment.source` ("counter" | "online"),
+and `BookingLink` (the hashed manage token, expiring a day after the booking). `src/lib/online-booking.ts`:
+`publicShop(slug)` (open only when switched on and Scheduling is active), `publicTypes`, `publicClasses` (open, with
+seats or a waiting list), `publicFreeTimes` (the type's free times over 14 days, none inside the lead time or past
+how far ahead), `bookOnline` (customer matched by mobile or email within the shop or made as RETAIL with how to tell
+them and a consent record; a trade account refused; the counter's room check under the same lock; the appointment
+marked `online`; a manage link; the `booking` confirmation with the link when Marketing is on), `signUpOnline`
+(`enrollIn`, the waiting list when full, the class_signup confirmation for a seat), `manageByToken`, `moveByToken`,
+`cancelByToken` (allowed until the lead time; queued messages cancelled), `bookingSettings` /
+`saveBookingSettingsFor`. Public pages outside `(app)`: `/book/{slug}`, `/book/{slug}/a/{typeId}` (times as links,
+then the form), `/book/{slug}/c/{classId}`, `/book/m/{token}` (the booking, cancel with a confirm step, move);
+`/api/book/{slug}` and `/api/book/m/{token}` POST (rate-limited per address and per shop, a honeypot field and a
+five-second minimum fill time, always a 303 back to a page that says what happened). `src/auth.config.ts` lets
+`/book/` through without a session; `src/lib/links-host.ts` and `desktop/links-gate.mjs` serve `/book/` and
+`/api/book/` on the public address. Settings → Online booking (`/settings/booking`, linked from Settings → Modules):
+the address, on / off, lead time, how far ahead, the welcome, which types and classes are offered, the link and an
+iframe snippet; without `PUBLIC_URL` it says what to set. "Booked online" shows on the appointment page and the
+roster. `scripts/checks/online-booking.check.ts` (8 groups incl. the last-slot race and the tenant section) passes;
+`tests/online-booking.spec.ts` (3 tests). Fees are paid at the counter in this version; a public page that frames
+well on another site is plain by design (no nav, the shop's name and phone at the top).
+Also here: the morning's checkbox fix (2x) is refined. A form with no `active` / `waitlist` field at all now means on
+(`checkbox()` in `appointment-actions.ts` and `class-actions.ts`); only a hidden `off` with no `on` means off. The
+appointments check, whose forms send neither, had started saving types inactive.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
@@ -586,10 +614,8 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
 **Asked for by the owner on 2 Oct 2026** (first-draft design in `docs/plans/online-and-parts-design.md`, for the owner to
 correct before building; its three open questions are at the end of that file):
 1. **Parts arrived notice.** Built and tested (section 2y).
-2. **Online booking on the shop's own website.** A public page (served through the public address, embeddable on
-   the shop's site) where customers book an appointment type or sign up for a class themselves, landing on the
-   calendar and roster with confirmations and consent. Offer it first on the hosted version, where the public
-   address comes with the account.
+2. **Online booking on the shop's own website.** Built (section 2z). Hosted first: the hosted services have
+   `PUBLIC_URL`; the Windows program needs its tunnel (Settings → Online booking says so).
 3. **An online shop.** Selling parts and supplies from the shop's own inventory (stock and prices from Parts, sales
    landing in the register's books), again hosted first for easy set-up.
 
