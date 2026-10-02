@@ -454,6 +454,20 @@ window, contact, Change and Set the power unit), `SiteInvoiceBlock`, `/vac/insta
 `/vac/installs/new`, `scripts/checks/vac-installs.check.ts` (9 groups incl. the tenant section). No schema change;
 `SiteJob` keeps the shape `src/lib/calendar.ts` already consumes, with the customer, unit and contact added.
 
+## 2u. Small Appliance Repair package `appliance-repair` (2 Oct 2026, committed, built without a browser run)
+
+Modules design 11. `src/lib/equipment/appliances.ts` (the four built-in kinds in full: stand mixer, 3D printer, resin
+3D printer, other appliance, with their types, brands, accessories and ticks, machine and ticket questions, checklists,
+unpriced starter menus and readings), `src/lib/equipment/lines.ts` (pure: `readListBox`, `readAccessoryBox` /
+`accessoryBoxText` with the "*" tick, `slug`, `uniqueKey`, `readQuestionRows` reading the `q.*` arrays by index with
+removal by key and "Question n:" errors), `src/lib/equipment/shop-kinds.ts` (`saveEquipmentKindFor`: a new kind by
+the label's slug, a given key the company has or doesn't yet, built-in and repeated names refused; `setKindActiveFor`;
+`saveCheckInKindFor`), `src/actions/equipment.ts`, `/settings/equipment` ("Check-in opens on", the built-in kinds
+read-only, the company's own kinds as forms with the question rows plus three blank ones, switch on / off, "Add your
+own kind"), `scripts/checks/equipment-lines.check.ts` (12 groups: pure plus the database and tenant sections). No
+schema change. Acceptance items 2 to 5 (the check-in forms, the ticket page readings, the dashboard order, the
+switched-off behaviour) need a browser: the test batch of 2p.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
