@@ -62,6 +62,7 @@ the internet, and other devices on the shop's own Wi-Fi keep working. What needs
 - Sharing a note, listing something on the marketplace, editing a manual link, "Download to library", and the
   barcode lookup say "No connection to the community hub" within a few seconds instead of hanging.
 - The sidebar shows *Offline since <time>* while the hub is out of reach and clears itself once it's back.
+- Emails and texts to customers wait in the outbox and go when the connection is back (see Messages below).
 
 ### Manuals
 Keep manuals in `C:\Manuals` (or change `libraryDir` in the settings file). Every device opens them through
@@ -104,6 +105,8 @@ makes it up if it is missing and resets the role's password to it at every start
 | `backupDir`, `backupsToKeep` | where backups go and how many are kept (default 30; `0` keeps them all) |
 | `platformAdminEmails` | emails that see the Companies page (only for hosting several companies) |
 | `openAtLogin` | start with Windows |
+| `publicUrl` | optional: the https address customers open for estimate and unsubscribe links (a tunnel pointed at the links port); see Messages below |
+| `linksPort` | the port that serves only the public pages (default the web port + 1) |
 
 ### Updating and uninstalling
 - **Update:** install the newer version over the old one. The database updates itself on the next start.
@@ -164,6 +167,9 @@ your password in **Settings**, and add your people under **Settings → People**
 | `SEED_SHOP_KIND` | optional: `repair`, `retail` or `both` for the first company (defaults to `DEFAULT_SHOP_KIND`) |
 | `DEFAULT_HUB_URL` | optional: the hub a partner code joins when no hub is set (defaults to the StitchHub on Railway) |
 | `UPC_LOOKUP`, `UPCITEMDB_KEY` | optional: `off` turns barcode lookups off; a UPCitemdb key uses a paid plan instead of 100 free a day |
+| `PUBLIC_URL` | the site's own https address, for customer links (estimate approval, unsubscribe) |
+| `SETTINGS_KEY` | a second long random secret: the mail password and Twilio secret are sealed with it (required before a shop can save them) |
+| `MESSAGES`, `MESSAGE_WORKER_SECONDS`, `MESSAGE_BATCH`, `READY_NOTICE_DELAY_SECONDS`, `SMTP_ALLOW_HOSTS` | optional; see **Messages** below |
 
 ### Manuals on the hosted version
 The server can't see your PCs. Each tech connects their manuals folder once in the browser (**My manuals →
@@ -383,6 +389,96 @@ program, so the variable changes nothing on the hosted app. When it is on, the s
 pill. `next dev` and the check scripts (`npm run check scripts/checks/<name>.check.ts`) accept development keys too.
 
 ---
+
+## Messages (email and texts to customers)
+
+With the **Marketing** module on, a shop can email and text its customers: "your machine is ready", estimate approval
+by link, uncollected-machine notices, class and appointment confirmations and reminders, service-due and review
+requests, and campaigns. With the **Scheduling** module on it gets the calendar, classes, appointments, staff shifts
+and partner pickup runs. Everything below is set up by an owner or admin in **Settings → Messages**; nothing is sent
+until email or texts are switched on there.
+
+### Email
+
+Any mail account with SMTP works. Pick the provider in Settings → Messages and fill in what it asks:
+
+- **Gmail / Google Workspace**: turn on 2-step verification, make an *app password* (Google Account → Security →
+  App passwords) and use that, not the account password. Host `smtp.gmail.com`, port 587, STARTTLS. Google allows
+  about 500 messages a day from a normal account; the shop's daily cap (Settings → Messages → Rules) defaults to 300.
+- **Microsoft 365 / Outlook.com**: `smtp.office365.com`, port 587, STARTTLS, with an app password when the account
+  has multi-factor sign-in. "Authenticated SMTP" must be allowed for the mailbox (an admin setting).
+- **Fastmail, a web host, or a transactional provider** (Postmark, SendGrid, Mailgun, Amazon SES): their SMTP host,
+  port 587 (STARTTLS) or 465 (TLS), and the user name and password or API key they give you.
+
+The **From address** is fixed in Settings (one per shop) and every email says who it is from. A **Reply-to** address
+is optional for notices and required for marketing email on the Windows program: unsubscribe requests arrive there as
+replies, and an admin ticks "Someone reads this mailbox at least once a week". Every marketing email carries the shop's
+**postal address** (the law requires it): fill it in under Rules, or it uses the shop address from Settings.
+
+Hosted (Railway): the mail server must be a public host with a certificate; a private or plain-text server is refused
+unless the operator lists it in `SMTP_ALLOW_HOSTS`. Railway does not offer port 25: use the provider's submission port
+(587 or 465) with a login, which every provider above does.
+
+### Texts (Twilio)
+
+Texts go through a Twilio account the shop owns. Settings → Messages asks for the Account SID, an Auth Token (or an
+API key SID and secret) and the Twilio number; "Send me a test" proves it works. Before texts can be switched on an
+admin confirms the shop's time zone, because texts only go out between 9:00 am and 8:00 pm shop time (quiet hours,
+changeable under Rules).
+
+- **Registration.** US carriers block business texts from unregistered numbers. A local (10-digit) number must be
+  registered for **A2P 10DLC** in the Twilio console (a brand and a campaign; a sole proprietor option exists for very
+  small shops); a toll-free number needs **toll-free verification** instead. Until that is done, sends fail with carrier
+  error 30034 and the program pauses texts after five such failures in a day and says why.
+- **Consent.** Notices about the customer's own repair or booking go to anyone who asked to be told by text. Marketing
+  texts need the customer's prior written consent, recorded in the program (the counter tablet form or the paper form
+  under Settings → Messages → Rules, with its code). An import never gives it.
+- **STOP / HELP.** Every marketing text ends "Reply STOP to opt out." A STOP reply stops every text to that number,
+  HELP gets the shop's name and phone, and any other reply shows under Messages → Replies for staff to read. Only the
+  customer's START lifts a STOP.
+- Marketing texts also respect the number's own time zone and go to US numbers only.
+
+### The Windows program's public address
+
+Customer links (estimate approval, one-click unsubscribe) need an address the customer's phone can open. The Windows
+program serves **only the public pages** on a second port, the *links port* (`linksPort` in the settings file,
+default the web port + 1, so 3101), and only when `publicUrl` is set. Point a tunnel at that port (Cloudflare Tunnel,
+Tailscale Funnel, ngrok, or a port forward with a certificate) and put its https address in `publicUrl`. Without a
+public address everything still works: estimates say "reply to this text or call us", and unsubscribes arrive by
+reply. Hosted installs set `PUBLIC_URL` to their own address.
+
+### When the internet is down
+
+- Messages wait in the outbox and go when the connection is back, in order; a ready notice is never lost.
+- Reminders are only sent up to two hours before the class or appointment; after that they expire quietly.
+- Texts held past quiet hours go out the next morning. Marketing older than 48 hours waits for a person to press
+  "Send them" on the Messages page.
+- Replies and delivery results are read when the connection is back; nothing is sent twice.
+
+### What is kept, and for how long
+
+The program keeps every message it sent or tried to send, every text reply, every consent event and every opt-out, and
+does not delete them. Keep them: a texting dispute can be raised for **four years** (the TCPA's limitation period), so
+`ConsentEvent` and `Suppression` must never be purged and the outbox (`OutMessage`) and replies (`InboundText`) should
+be kept at least that long. Backups include them; a restore carries opt-outs across and puts marketing on hold until an
+admin has looked.
+
+### Variables for messages and scheduling
+
+All optional. The Windows program sets the ones it needs from its settings file.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MESSAGES` | on | `off` stops every send path (timers, "Send now", tests): for a copy of the database you don't want to message anyone from |
+| `MESSAGE_WORKER_SECONDS` | 30 | how often the worker looks for messages to send |
+| `MESSAGE_BATCH` | 20 | messages per shop, per channel, per run |
+| `READY_NOTICE_DELAY_SECONDS` | 120 | how long a ready notice waits so a mistaken status click can be undone |
+| `PUBLIC_URL` | | the public https address for customer links (hosted installs; the Windows program takes it from `publicUrl`) |
+| `PUBLIC_LINKS_ONLY` | | `true`: requests whose Host is `PUBLIC_URL`'s host get only the public pages (always on in the Windows program) |
+| `SETTINGS_KEY` | `AUTH_SECRET` | the key the mail password and Twilio secret are sealed with; **required on a hosted production build** |
+| `SETTINGS_KEY_PREVIOUS` | | the old `SETTINGS_KEY` while rotating keys (read only; values are re-sealed with the new one) |
+| `SMTP_ALLOW_HOSTS` | | `host:port` list of private or plain mail servers a hosted install may use (tests: the sink) |
+| `TWILIO_API_BASE` | `https://api.twilio.com` | tests only: the Twilio mock |
 
 ## For maintainers
 
