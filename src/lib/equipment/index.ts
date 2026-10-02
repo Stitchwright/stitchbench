@@ -1,7 +1,6 @@
 // The registry of equipment kinds (modules-design.md section 9.3). Pure: no database. The shop's own kinds and the
 // "usable" rule (module on, kind active) are in ./shop.ts (server).
 import type { ModuleId } from "@/lib/module-info";
-import type { QuickLink } from "@/lib/quick-links";
 import { APPLIANCE_KINDS } from "./appliances";
 import { cleanFieldDefs } from "./form";
 import { SEWING_KIND } from "./sewing";
@@ -20,20 +19,8 @@ export function builtInKind(key: string | null | undefined): EquipmentKind | und
   return BUILT_IN_KINDS.find((k) => k.key === key);
 }
 
-const q = (s: string) => encodeURIComponent(s).replace(/%20/g, "+");
-
-/** Four searches (Google, eBay, YouTube) for a non-sewing kind: no maker-specific URLs. */
-export function genericLinks(noun: string): (brand: string, model: string) => QuickLink[] {
-  return (brand, model) => {
-    const bm = `${brand} ${model}`.trim();
-    return [
-      { group: "Parts", label: "eBay parts", url: `https://www.ebay.com/sch/i.html?_nkw=${q(bm + " parts")}` },
-      { group: "Videos", label: "YouTube: repair", url: `https://www.youtube.com/results?search_query=${q(bm + " repair")}` },
-      { group: "Manuals", label: "Service manual search", url: `https://www.google.com/search?q=${q(bm + " service manual pdf")}` },
-      { group: "Maker", label: `${brand} support`, url: `https://www.google.com/search?q=${q(`${brand} ${noun} support`)}` },
-    ];
-  };
-}
+import { genericLinks } from "./links";
+export { genericLinks };
 
 /** A kind for a machine whose shop kind was removed (or written by a newer version), so the record still renders. */
 export function genericKind(equipment: string, key: string, label?: string): EquipmentKind {
