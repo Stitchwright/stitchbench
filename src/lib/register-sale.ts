@@ -8,7 +8,7 @@ import type { CurrentUser } from "@/lib/session";
 import { withDisclosure } from "@/lib/part-labels";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
-import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, TENDER_METHODS, type Tender } from "@/lib/register-math";
+import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, ALL_TENDER_METHODS, type Tender } from "@/lib/register-math";
 import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/vac/sale-units";
 import type { TradeInInput } from "@/lib/vac/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -199,7 +199,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
 
     const tenders = rawTenders
       .map((t) => ({
-        method: TENDER_METHODS.includes(t?.method) ? t.method : "OTHER",
+        method: ALL_TENDER_METHODS.includes(t?.method) ? t.method : "OTHER",
         amountCents: Math.round(Number(t?.amountCents) || 0),
         note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
       }))

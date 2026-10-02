@@ -6,6 +6,7 @@ import { fmtDate, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
+import { ListingCard } from "@/components/shop/listing-card";
 import { PartFields } from "@/components/part-fields";
 import { addPartSource, moveStock, preferPartSource, removePartSource, updatePart } from "@/actions/parts";
 import { addPartToCrossRef } from "@/actions/xref";
@@ -49,6 +50,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   const tickets = await db.ticket.findMany({ where: { id: { in: ticketIds }, shopId: user.shopId }, select: { id: true, number: true } });
   const tno = new Map(tickets.map((t) => [t.id, t.number]));
   const consignedBy = p.consignLinkId ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: p.consignLinkId } } }) : null;
+  const shopFlags = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, shopOn: true } });
 
   return (
     <div className="space-y-6">
@@ -126,6 +128,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
               </div>
             )}
           </Section>
+          {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
               <p className="muted text-sm">No suppliers yet. Add where you buy it.</p>

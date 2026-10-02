@@ -218,6 +218,13 @@ export default async function SettingsPage() {
               Online booking (Scheduling)
             </Link>
           </div>
+          {shop.sellsRetail && (
+            <div>
+              <Link href="/settings/shop" className="link">
+                Online shop (hosted)
+              </Link>
+            </div>
+          )}
         </div>
       </Section>
 

@@ -23,54 +23,69 @@ enum Role {
 }
 
 model Shop {
-  id                 String   @id @default(cuid())
-  name               String
-  phone              String?
-  email              String?
-  address            String?
-  laborRateCents     Int      @default(9800)
-  taxRatePct         Float    @default(0)
-  partsMarkupPct     Float    @default(30)
-  warrantyDays       Int      @default(90)
-  abandonedAfterDays Int      @default(60)
-  storageFeeCents    Int      @default(4500)
-  nextTicketNumber   Int      @default(51)
+  id                  String   @id @default(cuid())
+  name                String
+  phone               String?
+  email               String?
+  address             String?
+  laborRateCents      Int      @default(9800)
+  taxRatePct          Float    @default(0)
+  partsMarkupPct      Float    @default(30)
+  warrantyDays        Int      @default(90)
+  abandonedAfterDays  Int      @default(60)
+  storageFeeCents     Int      @default(4500)
+  nextTicketNumber    Int      @default(51)
   // Where the shop keeps its manual library on every PC (links show this path)
-  libraryRoot        String   @default("C:\\Manuals")
+  libraryRoot         String   @default("C:\\Manuals")
   // Service checklist template, one item per line of work (edited in Settings)
-  checklistItems     String[]
+  checklistItems      String[]
   // Fine print at the bottom of the printed price list
-  priceListNote      String?
+  priceListNote       String?
   // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
-  payInstructions    String?
+  payInstructions     String?
   // Send the hub this company's monthly parts counts for the community's most-used list (counts only; off unless turned on)
-  shareUsage         Boolean  @default(false)
+  shareUsage          Boolean  @default(false)
   // What this company does: a repair bench (StitchBench), a sewing / quilt shop counter (StitchShop), or both
-  doesRepair         Boolean  @default(true)
-  sellsRetail        Boolean  @default(false)
-  nextSaleNumber     Int      @default(1001)
-  nextTagNumber      Int      @default(101)
-  nextOrderNumber    Int      @default(1001)
+  doesRepair          Boolean  @default(true)
+  sellsRetail         Boolean  @default(false)
+  nextSaleNumber      Int      @default(1001)
+  nextTagNumber       Int      @default(101)
+  nextOrderNumber     Int      @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
-  nextPartNumber     Int      @default(1)
+  nextPartNumber      Int      @default(1)
   // Line at the bottom of register receipts (returns policy, hours)
-  receiptNote        String?
+  receiptNote         String?
   // The shop's own time zone: where days and months start for reports and statements
-  timeZone           String   @default("America/New_York")
+  timeZone            String   @default("America/New_York")
   // Online booking (online-and-parts-design.md section 2): the public address /book/{bookingSlug}, on or off, the
   // first offered time this many hours from now, how far ahead, and the welcome text.
-  bookingSlug        String?  @unique
-  bookingOn          Boolean  @default(false)
-  bookingLeadHours   Int      @default(24)
-  bookingDaysAhead   Int      @default(60)
-  bookingWelcome     String?
+  bookingSlug         String?  @unique
+  bookingOn           Boolean  @default(false)
+  bookingLeadHours    Int      @default(24)
+  bookingDaysAhead    Int      @default(60)
+  bookingWelcome      String?
+  // The online shop (online-and-parts-design.md section 3): /shop/{bookingSlug} (the same public address as booking),
+  // on or off, pickup at the counter and / or flat-rate shipping, who takes the money ("own": the shop's Stripe account,
+  // its keys sealed below; "platform": the hosted service's account, paid out to the shop by hand), the welcome and
+  // the pickup instructions.
+  shopOn              Boolean  @default(false)
+  shopPickup          Boolean  @default(true)
+  shopShipping        Boolean  @default(false)
+  shopShipCents       Int      @default(0)
+  shopFreeOverCents   Int?
+  shopPayVia          String   @default("own")
+  shopWelcome         String?
+  shopPickupNote      String?
+  stripeKeySealed     String?
+  stripeWebhookSealed String?
+  nextWebOrderNumber  Int      @default(1001)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
-  checkInKind        String   @default("sewing")
+  checkInKind         String   @default("sewing")
   // Vac Shop "bags due": days between bag purchases
-  bagReminderDays    Int      @default(180)
+  bagReminderDays     Int      @default(180)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
-  hubWritesOff       Boolean  @default(false)
-  createdAt          DateTime @default(now())
+  hubWritesOff        Boolean  @default(false)
+  createdAt           DateTime @default(now())
 
   users          User[]
   customers      Customer[]
@@ -97,6 +112,8 @@ model Shop {
   ticketSites    TicketSite[]
   partWaits      PartWait[]
   bookingLinks   BookingLink[]
+  webOrders      WebOrder[]
+  partPhotos     PartPhoto[]
   stockUnits     StockUnit[]
   vacCares       VacCare[]
   // Scheduling and messages
@@ -514,8 +531,13 @@ model Part {
   origin          PartOrigin    @default(GENUINE)
   // The maker gave no number, so partNumber is a shop number (SB-00001): never presented as the maker's
   ownNumber       Boolean       @default(false)
+  // Listed in the online shop (section 3): needs a price; the customer's title and text, and up to four photos
+  online          Boolean       @default(false)
+  onlineTitle     String?
+  onlineText      String?
 
   moves     StockMove[]
+  photos    PartPhoto[]
   lines     TicketLine[]
   sources   PartSource[]
   saleLines SaleLine[]
@@ -1257,15 +1279,15 @@ model ShopEquipmentKind {
 // The link in an online booking's confirmation (online-and-parts-design.md section 2): the customer opens
 // /book/m/{token} to see, move or cancel their appointment or class seat. The token is hashed; it expires with the booking.
 model BookingLink {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   shopId        String
-  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   appointmentId String? // plain ids, always checked with shopId
   enrollmentId  String?
   customerId    String?
-  tokenHash     String    @unique
+  tokenHash     String   @unique
   expiresAt     DateTime
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([shopId, appointmentId])
   @@index([shopId, enrollmentId])
@@ -1274,6 +1296,64 @@ model BookingLink {
 // A part a ticket is waiting for (online-and-parts-design.md section 1): recorded when the shop has to order it,
 // received when it is checked in (the parts_in notice goes out then), or cancelled when it isn't coming. Always
 // written after checking the ticket is this shop's.
+// A photo of an item for the online shop (section 3): stored like MachinePhoto, served by /api/shop/photo/{id} while the item is listed.
+model PartPhoto {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId    String
+  part      Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  mime      String
+  data      Bytes
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([partId])
+}
+
+// An online order (section 3): made PENDING when the customer goes to pay, PAID by Stripe's word (the webhook or the
+// return page), READY when staff have it packed for pickup, DONE when picked up or shipped, CANCELLED when refunded or
+// never paid. `items` holds the lines as sold ([{ partId, partNumber, description, qty, unitPriceCents, short }]);
+// the sale in the register's books (saleId) is made at payment, with tender ONLINE.
+model WebOrder {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number          Int
+  status          String    @default("PENDING")
+  customerId      String?
+  name            String
+  phone           String?
+  email           String?
+  notify          String    @default("")
+  fulfil          String    @default("pickup") // pickup | ship
+  address         String?
+  items           Json      @default("[]")
+  subtotalCents   Int
+  shipCents       Int       @default(0)
+  taxCents        Int
+  totalCents      Int
+  refundedCents   Int       @default(0)
+  payVia          String    @default("own") // own | platform
+  stripeSessionId String?   @unique
+  stripeIntent    String?
+  tokenHash       String    @unique
+  linkSealed      String? // the order page's link (it carries the token), sealed, for the mail
+  saleId          String?
+  tracking        String?
+  note            String?
+  staffNote       String?
+  createdAt       DateTime  @default(now())
+  paidAt          DateTime?
+  readyAt         DateTime?
+  doneAt          DateTime?
+  cancelledAt     DateTime?
+
+  @@unique([shopId, number])
+  @@index([shopId, status, createdAt])
+  @@index([customerId])
+}
+
 model PartWait {
   id          String    @id @default(cuid())
   shopId      String
@@ -1479,6 +1559,8 @@ model MessagingSettings {
   reviewEveryDays    Int       @default(180)
   reviewAfterSales   Boolean   @default(false)
   estimateLinkDays   Int       @default(7)
+  // Online-order mail counts toward the marketing daily cap (off: it goes like a notice, uncapped)
+  ordersInCap        Boolean   @default(false)
   // Wording of the automatic messages, { "<key>.sms" | "<key>.email" | "<key>.subject": text }; missing = default
   templates          Json      @default("{}")
   updatedAt          DateTime  @updatedAt

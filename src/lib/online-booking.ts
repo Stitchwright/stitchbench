@@ -88,7 +88,7 @@ export async function publicFreeTimes(shop: PublicShop, type: AppointmentType, f
 export type OnlineCustomer = { name: string; phone: string | null; email: string | null; notify: string };
 
 /** The customer as the public form gave them: matched by mobile number or email within the shop, else made; the way to tell them recorded. */
-async function customerForOnline(tx: Db, shopId: string, c: OnlineCustomer): Promise<{ id: string; name: string }> {
+export async function customerForOnline(tx: Db, shopId: string, c: OnlineCustomer, source = "online booking"): Promise<{ id: string; name: string }> {
   const name = c.name.trim().slice(0, 120);
   if (name.length < 2) throw new UserError("Please give us your name.");
   const phone = c.phone ? toE164(c.phone) : null;
@@ -104,18 +104,18 @@ async function customerForOnline(tx: Db, shopId: string, c: OnlineCustomer): Pro
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, kind: true, notifyBy: true, phone: true, email: true },
   });
-  if (found?.kind === "TRADE") throw new UserError("That number or email belongs to a trade account. Please call us to book.");
+  if (found?.kind === "TRADE") throw new UserError(`That number or email belongs to a trade account. Please call us${source === "online booking" ? " to book" : ""}.`);
   if (found) {
     const data: Prisma.CustomerUpdateInput = {};
     if (!found.phone && phone) data.phone = phone;
     if (!found.email && email) data.email = email;
     if (notify && notify !== found.notifyBy) data.notifyBy = notify;
     if (Object.keys(data).length) await tx.customer.update({ where: { id: found.id }, data });
-    if (notify && notify !== found.notifyBy) await recordConsent(tx, { shopId, customerId: found.id, channel: "any", event: "notify_pref", source: "online booking", detail: notify });
+    if (notify && notify !== found.notifyBy) await recordConsent(tx, { shopId, customerId: found.id, channel: "any", event: "notify_pref", source, detail: notify });
     return { id: found.id, name: found.name };
   }
   const made = await tx.customer.create({ data: { shopId, kind: "RETAIL", name, phone, email, notifyBy: notify }, select: { id: true, name: true } });
-  if (notify) await recordConsent(tx, { shopId, customerId: made.id, channel: "any", event: "notify_pref", source: "online booking", detail: notify });
+  if (notify) await recordConsent(tx, { shopId, customerId: made.id, channel: "any", event: "notify_pref", source, detail: notify });
   return made;
 }
 

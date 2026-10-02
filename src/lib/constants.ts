@@ -191,6 +191,7 @@ export const MESSAGE_KIND_LABEL: Record<string, string> = {
   help_reply: "Reply to HELP",
   bags_due: "Bags due reminder",
   parts_in: "Parts arrived",
+  order_notice: "Online order",
   test: "Test",
 };
 export const ABANDON_STAGE_LABEL: Record<string, string> = { first: "First notice", second: "Second notice", third: "Third notice", fourth: "Fourth notice", final: "Final notice" };

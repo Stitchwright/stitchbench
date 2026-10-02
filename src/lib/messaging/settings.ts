@@ -87,6 +87,7 @@ export const MESSAGING_DEFAULTS: Omit<MessagingSettings, "shopId" | "updatedAt">
   reviewEveryDays: 180,
   reviewAfterSales: false,
   estimateLinkDays: 7,
+  ordersInCap: false,
   templates: {},
 };
 

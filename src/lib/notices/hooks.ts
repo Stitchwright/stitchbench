@@ -24,6 +24,7 @@ import { abandonTarget, abandonVars, jobVars, ticketVars, type AbandonTarget } f
 import { estimateStillWanted } from "@/lib/estimate-links";
 import { bagsDueStillWanted } from "@/lib/vac/bags-due";
 import { partsInStillWanted } from "@/lib/part-waits";
+import { orderNoticeStillWanted } from "@/lib/shop/online-shop";
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof db;
@@ -243,6 +244,8 @@ export async function stillWanted(row: OutMessage): Promise<string | null> {
       return consentWanted(row);
     case "parts_in":
       return partsInStillWanted(row);
+    case "order_notice":
+      return orderNoticeStillWanted(row);
     default:
       return null;
   }
