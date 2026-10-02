@@ -390,6 +390,27 @@ cancel / record with a user), `src/actions/partner-runs.ts`, `src/components/run
 replays, a third link, the non-owner's plan, a 30-day-old DONE, pushFeatures once), `tests/partner-runs.spec.ts`
 (HUB_URL only; its hub join steps are written from partners.spec.ts' shape and need a look on the first run).
 
+## 2q. Vac Shop packages `vac-repair` and `vac-finder` (2 Oct 2026, committed, built without a browser run)
+
+Modules design 10.a and 10.b. **vac-repair** (c57f675): the full vacuum kind in `src/lib/equipment/vacuum.ts` (30
+brands, 13 accessories, the `bagged` / `bagType` / `power` / `smell` intake fields, the 10-line checklist, the 16-name
+starter menu, suction / amps / brush-roll readings, `brandMatches`), the Vac Shop home with its counts and the
+"filed as sewing machines?" count, `/vac/convert`, `src/lib/equipment/links.ts` (genericLinks moved out of the
+registry to break a circular import), `scripts/checks/vacuum-kind.check.ts` (pure, 6 groups).
+**vac-finder**: `src/lib/vac/finder.ts` (`suppliesFor`: exact fits under the maker, the prefix "close match"
+fallback through `$queryRaw`, type / number search, one stock query with the brand-aware `partIsSupply` rule, the
+local Fits fallback, sort then cap at 60; `customerVacuumsFor`, `finderHref`, `newSupplyHref`, `VAC_SEARCH_SITES`),
+`src/actions/vac-finder.ts` (`vacSupplies`, `customerVacuums`: requireUser + requireModule vac), `src/lib/xref-rules.ts`
+(`numberOwner` moved out of the action file so a check can drive it), `src/actions/xref.ts` hardened (every hub write
+goes through `requireHubWrites` and sends its byName; remove, merge and roll back are `requireAdmin`), the xref form's
+category datalist and `category` default, `/xref` reading `category`, `kind`, `fits`, `name` for the add form and
+keeping "Brand, model" Fits lines, `/xref/[id]` hiding Remove / Merge / Roll back from techs, `/vac/finder` (brand +
+one box, groups Bags / Belts / Filters / Other, stock lines, Details and "This fits another model", the New bag /
+belt / filter links, the not-joined and offline notes), the register's `VacSupplyPicker` (a customer's vacuums as
+buttons, or brand + box; Add per stocked item with the vacuum's machineId), `SuppliesThatFit` on vacuum machine
+pages, `scripts/checks/vac-finder.check.ts` (13 groups incl. the tenant section). No schema change, no hub change.
+Not run in a browser: acceptance items 2 to 5 of package `vac-finder` (design 13.2) belong in the test batch of 2p.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
@@ -403,7 +424,8 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
 3. One at a time, with `E2E_BASE_URL=http://localhost:3501 PW_CHANNEL=chrome SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581
    TWILIO_MOCK_PORT=3402 PUBLIC_URL=http://localhost:3501`: campaigns (3 of its 4 tests unverified), classes,
    calendar, register-bookings, shifts; then notices, estimate-links and smoke again (the register and partners code
-   moved); partner-runs needs `HUB_URL` and the test hub on :3200.
+   moved); partner-runs needs `HUB_URL` and the test hub on :3200. Then the Vac Shop acceptance items of 2q by hand
+   (the finder page, the register picker, the xref admin-only controls).
 4. Expect label and selector slips in the new specs: they were written against the code, not a running page.
 5. Then push to `main`, deploy both hosted services, and update the Windows install (`npm run prepare-app`, the
    update script); then `e2e-docs`, `modules-crossover` and the Vac Shop / appliance packages.

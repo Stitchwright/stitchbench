@@ -1,14 +1,18 @@
 "use server";
 
-// The community parts cross-reference on the hub: add, fix, merge, remove, roll back.
+// The community parts cross-reference on the hub: add, fix, merge, remove, roll back. Every write goes through
+// requireHubWrites (a company the administrator cut off can't write, and on a multi-company install the change names
+// the company); remove, merge and roll back are for admins (modules-design.md 10.b).
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
-import { requireUser } from "@/lib/session";
-import { brandKey, str } from "@/lib/format";
+import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
+import { str } from "@/lib/format";
 import { byWhom, hubFetch, hubId, hubStatus, saveXPart, type HubXPart } from "@/lib/hub";
-import { numberKey, parseFits, parseNumbers, parseSources, partKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
+import { requireHubWrites } from "@/lib/hub-writes";
+import { numberKey, parseFits, parseNumbers, parseSources, partKeys, type XFit, type XSource } from "@/lib/parts";
+import { numberOwner } from "@/lib/xref-rules";
 
 const KINDS = ["PART", "ACCESSORY", "SUPPLY"];
 
@@ -18,20 +22,10 @@ function refresh(id?: string) {
   revalidatePath("/parts", "layout");
 }
 
-/**
- * The local entry that already has one of these numbers under the same brand (besides `except`): the hub's rule. The
- * same number from another maker is another part ("Janome, 12345" and "Singer, 12345"), and a one- or two-character
- * number says too little to tell parts apart.
- */
-async function numberOwner(numbers: XNumber[], except?: string) {
-  const want = numbers.map((n) => ({ brand: brandKey(n.brand), key: numberKey(n.number) })).filter((w) => w.key.length >= 3);
-  if (!want.length) return null;
-  const near = await db.xPart.findMany({
-    where: { numberKeys: { hasSome: want.map((w) => w.key) }, ...(except ? { id: { not: except } } : {}) },
-    select: { id: true, name: true, numbers: true },
-    take: 200,
-  });
-  return near.find((x) => (x.numbers as XNumber[]).some((xn) => want.some((w) => w.key === numberKey(xn.number) && w.brand === brandKey(xn.brand)))) ?? null;
+/** Who the hub's history names for this change: the person (and the company on a multi-company install). Throws when the company's hub writes are off. */
+async function who(user: CurrentUser) {
+  const byName = await requireHubWrites(user);
+  return { ...(await byWhom(user)), byName };
 }
 
 export const saveCrossRef = safe(async function saveCrossRef(id: string | null, formData: FormData) {
@@ -49,7 +43,7 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
     fits: parseFits(str(formData.get("fits")), (prev?.fits as XFit[]) ?? []),
     sources: parseSources(str(formData.get("sources")), (prev?.sources as XSource[]) ?? []),
     // The person and the company making the change: the hub's history shows the company, not the install.
-    ...(await byWhom(user)),
+    ...(await who(user)),
     note: str(formData.get("note")),
     // The version this form was filled from: the hub refuses the edit when the entry changed since (the whole entry is
     // replaced, so it would undo another shop's fix or the supplier scan's links).
@@ -79,14 +73,14 @@ export const saveCrossRef = safe(async function saveCrossRef(id: string | null, 
 
 /** Two entries turn out to be the same part: fold this one into the other. */
 export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formData: FormData) {
-  const user = await requireUser();
+  const user = await requireAdmin();
   const target = str(formData.get("into"));
   if (!target) throw new UserError("Enter a part number from the other entry.");
   const into =
     (await db.xPart.findUnique({ where: { id: target }, select: { id: true } })) ??
     (await db.xPart.findFirst({ where: { numberKeys: { has: numberKey(target) }, id: { not: id } }, select: { id: true } }));
   if (!into || into.id === id) throw new UserError("No other cross-reference entry has that part number.");
-  const merged = (await (await hubFetch(`/v1/xparts/${hubId(id)}/merge`, { method: "POST", json: { intoId: into.id, ...(await byWhom(user)), note: str(formData.get("note")) } })).json()) as HubXPart;
+  const merged = (await (await hubFetch(`/v1/xparts/${hubId(id)}/merge`, { method: "POST", json: { intoId: into.id, ...(await who(user)), note: str(formData.get("note")) } })).json()) as HubXPart;
   await saveXPart(merged);
   await db.xPart.deleteMany({ where: { id } });
   refresh(merged.id);
@@ -94,8 +88,8 @@ export const mergeCrossRef = safe(async function mergeCrossRef(id: string, formD
 });
 
 export const removeCrossRef = safe(async function removeCrossRef(id: string) {
-  const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: await byWhom(user) })).json()) as HubXPart;
+  const user = await requireAdmin();
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}`, { method: "DELETE", json: await who(user) })).json()) as HubXPart;
   // Kept aside as removed (listed on the cross-reference page, where it can be put back).
   await saveXPart({ ...x, deleted: true });
   refresh();
@@ -105,15 +99,15 @@ export const removeCrossRef = safe(async function removeCrossRef(id: string) {
 /** Put back an entry someone removed, with its numbers, fits and links as they were. */
 export const restoreCrossRef = safe(async function restoreCrossRef(id: string) {
   const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/restore`, { method: "POST", json: await byWhom(user) })).json()) as HubXPart;
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/restore`, { method: "POST", json: await who(user) })).json()) as HubXPart;
   await saveXPart(x);
   refresh(x.id);
   redirect(`/xref/${x.id}`);
 });
 
 export const revertCrossRef = safe(async function revertCrossRef(id: string, revisionId: string) {
-  const user = await requireUser();
-  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/revert`, { method: "POST", json: { revisionId, ...(await byWhom(user)) } })).json()) as HubXPart;
+  const user = await requireAdmin();
+  const x = (await (await hubFetch(`/v1/xparts/${hubId(id)}/revert`, { method: "POST", json: { revisionId, ...(await who(user)) } })).json()) as HubXPart;
   await saveXPart(x);
   refresh(id);
 });
