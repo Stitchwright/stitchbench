@@ -368,6 +368,15 @@ is on the sale), booking lines with their inputs off (an admin's refund price on
 "Ring up"; `/register?booking=enrollment:<id>` loads it; the sales report has Classes and Appointments buckets.
 `scripts/checks/register-bookings.check.ts` (6 groups), `tests/register-bookings.spec.ts` (3 tests, not yet run).
 
+## 2n. Scheduling package `shifts` (2 Oct 2026, committed, built without a browser run)
+
+Design 12.4 and package 15.8. `src/lib/shifts.ts` (weekShifts, minutesByName, hoursText, and the bodies saveShiftAs /
+deleteShiftAs / copyWeekAs), `src/actions/shifts.ts`, `src/components/shift-form.tsx`, the pages `/shifts` (grid people
+x days from the xl width, one list per day below it, hours per person, the signed-in person's row bold, add / change /
+delete / "Copy last week" for admins) and `/shifts/print`, `scripts/checks/shifts.check.ts` (5 groups),
+`tests/shifts.spec.ts` (3 tests, not yet run). Overlaps are refused per person (the same login, or the same name in
+any case); copyWeek copies by weekday and wall clock, so the DST week keeps 8:30 am.
+
 ## 3. What to do next, in order
 
 
@@ -375,8 +384,8 @@ is on the sale), booking lines with their inputs off (an admin's refund price on
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
 `estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j), `classes` (2k) and `appointments`
-(2l) and `register-bookings` (2m) are committed and await a browser run. Next: shifts, partner-runs, then e2e-docs,
-then step 4.3.
+(2l), `register-bookings` (2m) and `shifts` (2n) are committed and await a browser run. Next: partner-runs, then
+e2e-docs, then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
