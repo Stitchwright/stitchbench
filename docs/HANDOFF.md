@@ -774,6 +774,31 @@ accounts and billing: design first).
    as sharing); the Windows program must keep working offline, so AI features degrade to "unavailable" cleanly (or
    use a small local model for the simple tasks); per-call cost belongs in the paid-modules plan (an "Assistant"
    module) rather than in the $25 base price; log what was sent and answered so a tech can check it.
+14. **Railway: Config as Code to Infrastructure as Code before 2026-12-01** (file written 2 Oct 2026, not yet applied).
+   Railway stops reading `railway.json` on that date (every deploy prints the warning). `.railway/railway.ts` holds the
+   same four settings (healthcheck `/api/health`, 600 s timeout, restart ON_FAILURE, 5 retries) and nothing else:
+   `export const partial = "app"` so the Postgres service, not declared there, is left alone; the service and project
+   name come from the linked project (`ctx.projectName`), so the one file serves both `stitchshop` and `stitchbench`;
+   and the 11 variables both services hold are listed with `preserve()`, because IaC deletes any variable of a declared
+   service that the file leaves out (the first plan without that list said "11 to destroy"). Add a new variable's name
+   to that list before the next `railway config apply`. The `railway` npm package (3.12.0) is a devDependency because
+   the CLI refuses to evaluate the file without it; `tsc` and ESLint cover the file. The CLI's own `railway config
+   migrate` was run as a dry run only: it dropped the restart policy and named the service `stitchbench` inside project
+   `stitchshop`, so the file was written by hand. `railway config plan` against stitchshop (read-only, 2 Oct) shows
+   "0 to add, 1 to change, 0 to destroy": the four settings go from null to the railway.json values, which confirms
+   they live only in railway.json today and would be lost at the cutoff. Railway does not read `.railway/` on deploy,
+   so `railway up --service stitchshop --ci` behaves exactly as before until the steps below are done.
+   On this PC the SDK's CLI check fails ("requires Railway CLI 5.42.1 or newer" although 5.63.1 is installed) because
+   it runs `railway --version` without the `.exe`; run the config commands from PowerShell with
+   `$env:_ = "$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"` set first.
+   Owner, per project (stitchshop first; then `railway link --project stitchbench --service stitchbench`, repeat, and
+   `railway link --project stitchshop --service stitchshop` to link back): (1) `railway config plan`, must say
+   "0 to destroy" and list only the four deploy settings on the one service; (2) `railway config apply`; (3)
+   `railway config migrate --apply` (clears the service's "Railway Config File" setting so Railway stops reading
+   railway.json; without `--force` it does not overwrite the hand-written `.railway/railway.ts`); (4)
+   `railway up --service <name> --ci`, then confirm in the dashboard that the deploy waited on `/api/health`, that the
+   service's Settings show the healthcheck and the restart policy, and that the deprecation warning is gone. After
+   both projects are done, delete `railway.json` and commit.
 
 ## 4. Owner decisions already made (don't re-ask)
 
