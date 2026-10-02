@@ -464,9 +464,23 @@ removal by key and "Question n:" errors), `src/lib/equipment/shop-kinds.ts` (`sa
 the label's slug, a given key the company has or doesn't yet, built-in and repeated names refused; `setKindActiveFor`;
 `saveCheckInKindFor`), `src/actions/equipment.ts`, `/settings/equipment` ("Check-in opens on", the built-in kinds
 read-only, the company's own kinds as forms with the question rows plus three blank ones, switch on / off, "Add your
-own kind"), `scripts/checks/equipment-lines.check.ts` (12 groups: pure plus the database and tenant sections). No
+own kind"), `scripts/checks/equipment-lines.check.ts` (11 groups: pure plus the database and tenant sections). No
 schema change. Acceptance items 2 to 5 (the check-in forms, the ticket page readings, the dashboard order, the
 switched-off behaviour) need a browser: the test batch of 2p.
+
+## 2v. Package `modules-crossover` (2 Oct 2026, committed)
+
+Modules design 12.4 and 13.2. Of the shared edits, four were already in place (the calendar's install items, the
+estimate send gate in `sendEstimateAs`, `{machine}` "central vac install" in `ticketVars`, service due's equipment and
+BENCH-only query with the scheduler's `canWorkOn` skip; `stillWanted` now awaits `bagsDueStillWanted`, done in 2s).
+Made here: the `bags_due.sms` / `bags_due.email` defaults are the 10.c′ text (no "months since"), and
+`answerTicketEstimate`'s APPROVED branch moves a SITE ticket to Booked (AT_SHOP_AWAITING_PICKUP) and leaves a ticket
+that can no longer be worked on where it is (`ticketWorkable`), recording the answer either way.
+`scripts/checks/modules-crossover.check.ts` (6 groups: the copy, a queued bags_due cancelled after Stop reminders, an
+install's estimate approved by link, {machine} on an install, the install on the calendar, and after Vac Shop ends: a
+pre-lapse approval goes to the bench, a collected ticket can't be sent an estimate, closing out works, new work is
+refused, a post-lapse approval records the answer only). bags-due, estimate-links, notices, worker checks and the
+unit tests pass with the new copy.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 

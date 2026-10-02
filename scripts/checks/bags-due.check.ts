@@ -180,7 +180,8 @@ async function main() {
     assert.equal(msgs[0].status, "QUEUED");
     assert.match(msgs[0].dedupeKey ?? "", /^bags_due:.+:\d{4}-\d{2}-\d{2}:email$/);
     assert.match(msgs[0].body, /Hoover UH70120/);
-    assert.match(msgs[0].body, /about 6 months/);
+    assert.match(msgs[0].body, /time for new bags for your Hoover UH70120/);
+    assert.doesNotMatch(msgs[0].body, /months since/);
     assert.match(msgs[0].body, /We have Hoover Type Y in stock\./, "the stocked bag is offered");
     const careAfter = await db.vacCare.findUniqueOrThrow({ where: { machineId: v1.id } });
     assert.ok(careAfter.contactedAt && careAfter.contactedBy === "message");
