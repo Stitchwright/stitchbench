@@ -85,7 +85,7 @@ export default async function Dashboard() {
 
       <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {STATUS_ORDER.filter((s) => OPEN_STATUSES.includes(s)).map((s) => (
-          <Link key={s} href={`/tickets?status=${s}`} className="card card-pad hover:border-navy">
+          <Link key={s} href={s === "WAITING_PARTS" ? "/parts/on-order" : `/tickets?status=${s}`} className="card card-pad hover:border-navy">
             <div className="num text-2xl font-semibold">{byStatus.get(s)}</div>
             <div className="muted text-xs">{STATUS_LABEL[s]}</div>
           </Link>
