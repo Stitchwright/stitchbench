@@ -64,7 +64,7 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
+  if (!process.env.E2E_KEEP) for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
   await disconnect();
   await admin.context().close();
 });
@@ -163,7 +163,8 @@ test("an email campaign to everyone: the check, a test to the admin, the two-tap
 
 test("a text campaign skips people without written consent; the texts end with the STOP line", async ({ browser }) => {
   const h = hourIn("America/New_York");
-  test.skip(h < 10 || h > 18, "marketing texts go out 9:00-20:00 Eastern only; run this in the daytime");
+  // A marketing text to a mainland US number waits until it is 9:00 in every mainland zone (recipientZones): noon Eastern.
+  test.skip(h < 12 || h > 19, "marketing texts to US numbers go out 12:00-20:00 Eastern only; run this in the afternoon");
   const consented = await insert<{ id: string }>("Customer", { shopId, name: `Cara Consent ${RUN}`, phone: "+12125550171", notifyBy: "sms", smsConsentAt: new Date(), smsConsentPhone: "+12125550171", smsConsentSource: "paper" });
   await insert("Customer", { shopId, name: `Dan Doubtful ${RUN}`, phone: "+12125550172", notifyBy: "sms" });
   const page = await login(browser, owner);
