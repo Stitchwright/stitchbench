@@ -2,6 +2,7 @@
 import { ActionForm, Submit } from "@/components/action-form";
 import { saveCrossRef } from "@/actions/xref";
 import { fitsText, numbersText, sourcesText, type XFit, type XNumber, type XSource } from "@/lib/parts";
+import { VAC_SUPPLY_CATEGORIES } from "@/lib/constants";
 
 type X = {
   id: string;
@@ -16,7 +17,7 @@ type X = {
   updatedAt: Date;
 };
 
-export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; kind?: string; numbers?: string; fits?: string } }) {
+export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; kind?: string; category?: string; numbers?: string; fits?: string } }) {
   const id = x?.id ?? "new";
   return (
     <ActionForm action={saveCrossRef.bind(null, x?.id ?? null)} success={x ? "Saved for every shop" : undefined} className="space-y-3">
@@ -43,7 +44,13 @@ export function XrefForm({ x, defaults }: { x?: X; defaults?: { name?: string; k
           <label htmlFor={`xc-${id}`} className="label">
             Category
           </label>
-          <input id={`xc-${id}`} name="category" defaultValue={x?.category ?? ""} className="input" placeholder="Screw, Presser foot, Bobbin case..." />
+          <input id={`xc-${id}`} name="category" list={`xcl-${id}`} defaultValue={x?.category ?? defaults?.category ?? ""} className="input" placeholder="Screw, Presser foot, Bobbin case..." />
+          {/* The finder reads these three spellings exactly (modules-design.md 10.b). */}
+          <datalist id={`xcl-${id}`}>
+            {VAC_SUPPLY_CATEGORIES.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
         </div>
         <div className="field">
           <label htmlFor={`xs-${id}`} className="label">

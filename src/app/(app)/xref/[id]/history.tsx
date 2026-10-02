@@ -12,7 +12,7 @@ const ACTION: Record<string, string> = { added: "Added", edited: "Changed", merg
  * sends them a page at a time (50, each holding the whole entry): "Load older" asks for the next page, so an entry
  * with hundreds of versions still opens.
  */
-export function XrefHistory({ id }: { id: string }) {
+export function XrefHistory({ id, admin = true }: { id: string; admin?: boolean }) {
   const [open, setOpen] = useState(false);
   const [revs, setRevs] = useState<XRevision[] | null>(null);
   const [more, setMore] = useState(false);
@@ -66,7 +66,7 @@ export function XrefHistory({ id }: { id: string }) {
                         <strong>{ACTION[r.action] ?? r.action}</strong> {new Date(r.createdAt).toLocaleString()} by {r.byName || "someone"}
                         {r.byShop ? ` (${r.byShop})` : ""}
                       </span>
-                      {i > 0 && r.action !== "removed" && (
+                      {admin && i > 0 && r.action !== "removed" && (
                         <ActionButton action={revertCrossRef.bind(null, id, r.id)} className="btn btn-sm" confirm="Go back to this version?" success="Rolled back">
                           Roll back to this
                         </ActionButton>

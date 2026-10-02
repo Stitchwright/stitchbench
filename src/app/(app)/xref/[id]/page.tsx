@@ -17,6 +17,7 @@ const TONE: Record<string, string> = { tested: "tone-ready", maker: "tone-work",
 
 export default async function CrossRefEntry({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
+  const admin = user.role !== "TECH";
   const { id } = await params;
   const x = await db.xPart.findUnique({ where: { id } });
   if (!x) notFound();
@@ -81,8 +82,9 @@ export default async function CrossRefEntry({ params }: { params: Promise<{ id: 
             )}
           </Section>
 
-          <Section title="Fix this part" actions={<XrefHistory id={x.id} />}>
+          <Section title="Fix this part" actions={<XrefHistory id={x.id} admin={admin} />}>
             <XrefForm x={x} />
+            {admin && (
             <div className="mt-6 grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
               <ActionForm action={mergeCrossRef.bind(null, x.id)} className="space-y-2">
                 <label htmlFor="merge-into" className="label">
@@ -98,6 +100,7 @@ export default async function CrossRefEntry({ params }: { params: Promise<{ id: 
                 </ActionButton>
               </div>
             </div>
+            )}
           </Section>
         </div>
 

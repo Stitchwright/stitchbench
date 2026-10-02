@@ -11,13 +11,28 @@ import { restoreCrossRef } from "@/actions/xref";
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
 
-export default async function CrossRef({ searchParams }: { searchParams: Promise<{ q?: string; add?: string }> }) {
+/** A part's Fits as "Brand, model" lines: lines already written that way keep their brand, bare models get the part's. */
+function fitsLines(fits: string | null, brand: string | null): string {
+  const out: string[] = [];
+  for (const line of (fits ?? "").split(/[\n;]+/)) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.includes(",")) out.push(t);
+    else if (brand) out.push(...splitList(t).map((m) => `${brand}, ${m}`));
+  }
+  return out.join("\n");
+}
+
+export default async function CrossRef({ searchParams }: { searchParams: Promise<{ q?: string; add?: string; category?: string; kind?: string; fits?: string; name?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
   // A repeated parameter (?add=a&add=b) arrives as a list: only a single value counts.
   const one = (v: unknown) => (typeof v === "string" ? v : undefined);
   const term = one(sp.q)?.trim() ?? "";
   const add = one(sp.add);
+  // The finder's "New bag / belt / filter" links: the category, kind and vacuum come filled in.
+  const given = { category: one(sp.category)?.trim(), kind: one(sp.kind)?.trim(), fits: one(sp.fits)?.trim(), name: one(sp.name)?.trim() };
+  const hasGiven = Object.values(given).some(Boolean);
   const [joined, total, removed, offered] = await Promise.all([
     hubJoined(),
     db.xPart.count(),
@@ -32,7 +47,9 @@ export default async function CrossRef({ searchParams }: { searchParams: Promise
         name: offered.description,
         kind: offered.kind,
         numbers: [...new Set([...(offered.ownNumber ? [] : [baseNumber(offered.partNumber)]), ...offered.altNumbers.map(baseNumber)])].map((n) => (offered.brand ? `${offered.brand}, ${n}` : n)).join("\n"),
-        fits: offered.brand ? splitList(offered.fits).map((m) => `${offered.brand}, ${m}`).join("\n") : "",
+        // A Fits line written "Brand, model" (an aftermarket bag listing the vacuum's maker) keeps its brand; a bare
+        // model gets the part's own brand.
+        fits: fitsLines(offered.fits, offered.brand),
       }
     : undefined;
   const nk = numberKey(term);
@@ -138,7 +155,7 @@ export default async function CrossRef({ searchParams }: { searchParams: Promise
                   {!offered?.brand && " Put the maker's name before each number (Brand, number)."}
                 </p>
               )}
-              <XrefForm defaults={offer ?? (nk.length >= 3 && !rows.length ? { numbers: term } : undefined)} />
+              <XrefForm defaults={offer ?? (hasGiven ? given : nk.length >= 3 && !rows.length ? { numbers: term } : undefined)} />
             </div>
           </Section>
           {removed.length > 0 && (
