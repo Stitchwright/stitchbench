@@ -321,14 +321,32 @@ Worth knowing:
   `{first_name} {name} {shop_name} {shop_phone} {machine} {upcoming_classes}` (`checkTemplate`).
 - Next packages: classes, appointments, register-bookings, shifts, partner-runs, then e2e-docs.
 
+## 2k. Scheduling package `classes` (2 Oct 2026, committed, built without a browser run)
+
+Design 12.1 and package 15.5. `src/lib/classes.ts` (seatCounts, syncClassDates, classLine, meetingDays, enrollIn under
+the class lock, nextMeetings), `src/lib/class-actions.ts` (the bodies with a user: save / meetings / status / delete /
+enroll / cancel / moveUp / price / messageClass, and the register's openClassSeatsFor / enrollAtRegisterAs),
+`src/actions/classes.ts` and `class-register.ts` (thin wrappers), the pages `/classes`, `/classes/new`,
+`/classes/[id]`, `/classes/[id]/roster`, `/classes/print`, `src/components/class-form.tsx` (ClassForm + MeetingFields),
+the slot `customer-classes.tsx`, `scripts/checks/classes.check.ts` (8 groups), `tests/classes.spec.ts` (4 tests).
+
+Worth knowing:
+- The owner asked for the remaining packages to be written before the next build-and-test batch (the PC runs out of
+  memory with a Next build, the test server, Chrome and Docker together). So: tsc, eslint, every check script and the
+  unit tests pass; `tests/campaigns.spec.ts` (3 of 4 tests) and `tests/classes.spec.ts` (all) have NOT run yet. Run
+  them on the next test build, with PUBLIC_URL on the server and the sink and mock up.
+- `messageClass` sends one note per person, however many of their family are signed up; the register never waitlists.
+- `ymdParts` in `src/lib/zoned.ts` is exported now (meetingDays uses it).
+- Next packages: appointments, register-bookings, shifts, partner-runs, then e2e-docs.
+
 ## 3. What to do next, in order
 
 
 
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
-`estimate-links` packages are on `main` and deployed (section 2h), `campaigns` is on `main` (section 2j). Next: classes,
-appointments, register-bookings, shifts, partner-runs, then e2e-docs, then step 4.3.
+`estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j) and `classes` (2k) are committed
+and await a browser run. Next: appointments, register-bookings, shifts, partner-runs, then e2e-docs, then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`

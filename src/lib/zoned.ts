@@ -62,7 +62,8 @@ export function hmOf(minutes: number): string {
   return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 }
 
-function ymdParts(ymd: string) {
+/** The year, month and day of a yyyy-mm-dd string. */
+export function ymdParts(ymd: string) {
   const [y, m, d] = ymd.split("-").map(Number);
   return { y, m, d };
 }

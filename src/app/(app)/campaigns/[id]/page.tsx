@@ -20,7 +20,7 @@ import { ModuleOff } from "@/components/module-off";
 import { TwoTapButton } from "@/components/two-tap-button";
 import { KV, PageHeader, Section } from "@/components/ui";
 
-const CAMPAIGN_STATUS_TONE: Record<string, string> = { DRAFT: "neutral", QUEUING: "wait", SENDING: "wait", SENT: "ok", CANCELLED: "neutral" };
+const CAMPAIGN_STATUS_TONE: Record<string, string> = { DRAFT: "neutral", QUEUING: "wait", SENDING: "wait", SENT: "done", CANCELLED: "neutral" };
 
 /** Why people are left out, in a few words for the check line. */
 const WHY: Partial<Record<keyof CampaignPreview["skipped"], string>> = {
