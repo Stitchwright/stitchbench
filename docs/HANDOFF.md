@@ -357,6 +357,17 @@ Worth knowing:
   draws both the 7-column grid (xl) and the per-day list (below xl) and hides one with CSS.
 - The spec, like campaigns' and classes', has NOT run yet: it needs the next test build.
 
+## 2m. Scheduling package `register-bookings` (2 Oct 2026, committed, built without a browser run)
+
+Design 12.3 and package 15.7. The sale and void moved out of `src/actions/register.ts` into
+`src/lib/register-sale.ts` as `completeSaleAs(user, input)` / `voidSaleAs(user, saleId, reason)` (the actions are thin
+wrappers now, so a check script can drive a sale); the booking rules live there too (loadBookings, bookingLine,
+settleBooking, unsettleBooking, bookingsDueFor). `bookingsDue` is the register's data action; `register.tsx` has the
+"Classes & appointments" picker (Owed / Refund in return mode / Sign up for a class, with name + phone when no customer
+is on the sale), booking lines with their inputs off (an admin's refund price on), and the `preload` from a roster's
+"Ring up"; `/register?booking=enrollment:<id>` loads it; the sales report has Classes and Appointments buckets.
+`scripts/checks/register-bookings.check.ts` (6 groups), `tests/register-bookings.spec.ts` (3 tests, not yet run).
+
 ## 3. What to do next, in order
 
 
@@ -364,7 +375,8 @@ Worth knowing:
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
 `estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j), `classes` (2k) and `appointments`
-(2l) are committed and await a browser run. Next: register-bookings, shifts, partner-runs, then e2e-docs, then step 4.3.
+(2l) and `register-bookings` (2m) are committed and await a browser run. Next: shifts, partner-runs, then e2e-docs,
+then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
