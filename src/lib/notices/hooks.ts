@@ -223,7 +223,7 @@ const keyParts = (row: OutMessage) => (row.dedupeKey ?? "").split(":");
 /** Worker, right before sending: a reason to cancel ("The machine was picked up"), or null to send. */
 export async function stillWanted(row: OutMessage): Promise<string | null> {
   if (row.kind === "bags_due") {
-    const r: unknown = bagsDueStillWanted(row);
+    const r: unknown = await bagsDueStillWanted(row);
     if (typeof r === "string") return r;
     return r === false ? "It's no longer due" : null;
   }
