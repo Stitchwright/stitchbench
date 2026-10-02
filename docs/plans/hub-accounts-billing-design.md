@@ -393,7 +393,14 @@ included where there are shop rows), a Playwright spec on a test build, and touc
   Section 3.2 reads both as: the waiver is for the retail side only and follows the ACTIVE link; a direct subscriber
   that becomes partnered is told to cancel in the Portal (the hub does not cancel for them; open question 4).
 
-## 9. Open questions for the owner, each with a recommended answer
+## 9. Decisions (2 Oct 2026: the owner took the recommended answer on every question below)
+
+Each item keeps its alternative for the record; the recommended answer is the decision. In short: lapsed = read-only
+as modules-design 6.4; never-connected shops work for ever with a nag after 60 days; 14 days' grace; a partnered
+direct subscriber is told, not cancelled; "both" shops pay; the trial is per shop; 14-day full refund on a first
+charge; no sales tax on the subscription; account mail from one mailbox on the owner's domain; hub-started hosted
+companies land on the shared instance; the account email is the owner's login email for now; account deletion by
+the owner on request.
 
 1. **Lapsed behaviour for the base program.** Recommended: read-only as in modules-design 6.4, with payments,
    closing statuses, returns, voids, exports, backups and sync still allowed; public booking and the online shop
