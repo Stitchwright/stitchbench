@@ -75,11 +75,14 @@ test("a ticket records a part on order and goes to Waiting on parts; the on-orde
   ticketId = page.url().split("/").pop()!.split("?")[0];
 
   const card = page.locator("section", { has: page.getByRole("heading", { name: /Parts on order|Waiting on/ }) });
-  await card.locator("summary", { hasText: "Waiting on a part" }).click();
+  // The form is open already when nothing is on order; clicking its summary then would fold it away.
+  const details = card.locator("details", { hasText: "Waiting on a part" });
+  if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) await details.locator("summary").click();
   await card.getByLabel("What it is (the customer reads this)").fill("Bobbin case");
   await card.getByLabel("Supplier").fill("Sewing Parts Online");
   await card.getByRole("button", { name: "Record the part on order" }).click();
   await expect(page.getByText("Recorded", { exact: true })).toBeVisible();
+  await page.reload(); // the status select is uncontrolled: it shows the change after a reload, as the estimate spec does
   await expect(page.getByLabel("Status", { exact: true })).toHaveValue("WAITING_PARTS");
   await expect(page.getByRole("heading", { name: "Waiting on a part" })).toBeVisible();
 
