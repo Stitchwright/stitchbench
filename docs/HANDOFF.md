@@ -427,6 +427,20 @@ vacuum's intake fields) and `/vac/units/[id]` (details, history, registration, t
 company, the tenant section). No schema change. Acceptance items that need a browser (the register flows, the
 receipt, the export's `for_machine`) belong in the test batch of 2p.
 
+## 2s. Vac Shop package `vac-bags-due` (2 Oct 2026, committed, built without a browser run)
+
+Modules design 10.c′. `src/lib/vac/bags-due.ts` (`bagsDue`: bagged vacuums with a customer, not stopped or snoozed,
+the base date from the unit's sale, bags rung up for the vacuum, bag PART lines on its tickets, or bags on a sale with
+no vacuum picked when the customer has one bagged vacuum; "looks like bags" by the word or a part meeting a "Vacuum
+bag" cross-reference entry; the 14-day window and the contacted rule; the bag to offer from the finder;
+`bagsDueCount`; `bagsDueStillWanted` with its five reasons; `markCalledFor`, `snoozeBagsFor`, `stopBagsFor`,
+`saveBagDaysFor`; `sendBagRemindersFor` through `queueToCustomer` with channels "one" (or texts only when marketing
+email isn't allowed), dedupe `bags_due:{machineId}:{dueOn}`, contacted marks only where something queued;
+`runBagsDue` still a no-op by design), `src/actions/vac-bags-due.ts` (the send returns a note / warn toast),
+`/vac/bags-due` (the table with Called / Snooze 30 days / Stop reminders, the admin days setting, the send button
+with Marketing on, the call-list copy without it), `src/lib/notices/hooks.ts` now awaits `bagsDueStillWanted`,
+`scripts/checks/bags-due.check.ts` (9 groups, with the sink, incl. the tenant section). No schema change.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
