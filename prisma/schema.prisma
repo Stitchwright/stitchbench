@@ -88,6 +88,7 @@ model Shop {
   moduleGrants   ModuleGrant[]
   equipmentKinds ShopEquipmentKind[]
   ticketSites    TicketSite[]
+  partWaits      PartWait[]
   stockUnits     StockUnit[]
   vacCares       VacCare[]
   // Scheduling and messages
@@ -390,6 +391,7 @@ model Ticket {
 
   lines    TicketLine[]
   payments Payment[]
+  waits    PartWait[]
   photos   MachinePhoto[]
   site     TicketSite?
 
@@ -509,6 +511,7 @@ model Part {
   lines     TicketLine[]
   sources   PartSource[]
   saleLines SaleLine[]
+  waits     PartWait[]
 
   // The number is also unique in any case: a unique index on (shopId, lower(partNumber)), which Prisma can't express,
   // in migration 20260930220000_round3_tail2_part_number_ci. Writes catch its P2002 (partNumberClash in lib/parts.ts).
@@ -1241,6 +1244,33 @@ model ShopEquipmentKind {
   updatedAt      DateTime @updatedAt
 
   @@unique([shopId, key])
+}
+
+// A part a ticket is waiting for (online-and-parts-design.md section 1): recorded when the shop has to order it,
+// received when it is checked in (the parts_in notice goes out then), or cancelled when it isn't coming. Always
+// written after checking the ticket is this shop's.
+model PartWait {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  ticketId    String
+  ticket      Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  partId      String? // a stocked part, when it is one; null for a one-off ordered by description
+  part        Part?     @relation(fields: [partId], references: [id], onDelete: SetNull)
+  description String // what the customer hears: "Bobbin case"
+  qty         Float     @default(1)
+  supplier    String?
+  orderedAt   DateTime  @default(now())
+  expectedOn  String? // YYYY-MM-DD
+  receivedAt  DateTime?
+  receivedBy  String?
+  noticedAt   DateTime? // when the parts_in message was queued (never twice)
+  cancelledAt DateTime?
+  note        String?
+
+  @@index([shopId, receivedAt, cancelledAt])
+  @@index([ticketId])
+  @@index([partId])
 }
 
 // Where and when a SITE ticket's work happens (central vac installs). The ticket keeps the bill, status and power unit.
