@@ -561,7 +561,8 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
 
 ## 3. What to do next, in order
 
-**Asked for by the owner on 2 Oct 2026 (not designed yet; design before building):**
+**Asked for by the owner on 2 Oct 2026** (first-draft design in `docs/plans/online-and-parts-design.md`, for the owner to
+correct before building; its three open questions are at the end of that file):
 1. **Parts arrived notice.** When parts the shop had to order are checked in (a part order received), the customers
    whose tickets were Waiting on parts for them get an email or text saying the parts came in and the work is back on.
    Belongs with the notices (Marketing), kind `parts_in` or similar, with the same consent rules as a ready notice.
