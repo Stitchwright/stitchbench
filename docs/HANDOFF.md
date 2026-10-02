@@ -538,6 +538,28 @@ TWILIO_MOCK_PORT=3402 PUBLIC_URL=http://localhost:3501 npx playwright test tests
 (smoke reads `E2E_EMAIL` / `E2E_PASSWORD` itself). A `next build` run as a background shell was killed by the
 memory guard; run it in the foreground (about 4 minutes).
 
+## 2y. Package `parts-in`: parts a ticket is waiting for (2 Oct 2026, committed, check passes, spec unrun)
+
+`online-and-parts-design.md` section 1, the first of the owner's three requests. Migration
+`20261002120000_part_waits` adds `PartWait` (ticket, optional stocked part, description, qty, supplier, ordered /
+expected / received / cancelled, `noticedAt`). `src/lib/part-waits.ts`: `addWaitFor` (a part by number fills in the
+description and supplier; a description alone works; the ticket goes to Waiting on parts when asked),
+`receiveWaitsFor` (one or many; per ticket one `parts_in` message naming every part received together, `channels
+"preferred"`, dedupe per receipt, `noticedAt` only where something queued; "back on the bench" when asked and nothing
+else is on order; the words for the toast say who hears and who to call), `reopenWaitFor` (within an hour; cancels
+the queued message), `cancelWaitFor`, `openWaits`, `waitsForTicket`, `groupBySupplier`, `partsInStillWanted` (the
+worker's reasons: the wait gone, not received after all, the part isn't coming, the ticket closed).
+`src/actions/part-waits.ts`; the ticket card `src/components/slots/ticket-waits.tsx` (mounted above "Status and
+work"); `/parts/on-order` (by supplier, Received per row and "Received all of these" per supplier, Cancel; the Parts
+page links it as "On order"); message kind `parts_in` (notice) with its label, fields and default wording;
+`stillWanted` routes it. `scripts/checks/part-waits.check.ts` (11 groups incl. the tenant section) passes;
+`tests/parts-in.spec.ts` is written and not run (needs a rebuild: it belongs to the next test batch). Not done from
+the design: the count in the toast after a stock count, the export columns, the dashboard link.
+
+**Running the check scripts while a test server is up:** stop the server first (or start it with `MESSAGES=off`).
+Its worker shares the dev database and sends or skips the check companies' queued rows, which made `notices.check`
+report a stage as not sent.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
@@ -563,9 +585,7 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
 
 **Asked for by the owner on 2 Oct 2026** (first-draft design in `docs/plans/online-and-parts-design.md`, for the owner to
 correct before building; its three open questions are at the end of that file):
-1. **Parts arrived notice.** When parts the shop had to order are checked in (a part order received), the customers
-   whose tickets were Waiting on parts for them get an email or text saying the parts came in and the work is back on.
-   Belongs with the notices (Marketing), kind `parts_in` or similar, with the same consent rules as a ready notice.
+1. **Parts arrived notice.** Built (section 2y); its spec runs with the next batch.
 2. **Online booking on the shop's own website.** A public page (served through the public address, embeddable on
    the shop's site) where customers book an appointment type or sign up for a class themselves, landing on the
    calendar and roster with confirmations and consent. Offer it first on the hosted version, where the public

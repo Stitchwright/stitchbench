@@ -16,6 +16,7 @@ export const FIELDS: Record<string, string[]> = {
   service_due: [...COMMON_FIELDS, "machine", "months"],
   review: [...COMMON_FIELDS, "review_link"],
   bags_due: [...COMMON_FIELDS, "machine", "months", "bag_line"],
+  parts_in: [...COMMON_FIELDS, "machine", "ref", "parts", "eta_line"],
   consent_confirm: ["shop_name", "shop_phone"],
   help_reply: ["shop_name", "shop_phone"],
   campaign: [...COMMON_FIELDS, "machine", "upcoming_classes"],
@@ -25,7 +26,7 @@ export const FIELDS: Record<string, string[]> = {
 /** Values that may carry links or come from the shop's own settings: not cleaned. Everything else is cleanText()'d. */
 export const TRUSTED_FIELDS = ["shop_name", "shop_phone", "estimate_link", "review_link", "upcoming_classes", "total", "storage_fee"];
 
-const FULL_KEYS = ["ready", "reminder", "class_signup", "booking", "estimate", "estimate_nolink", "abandon", "abandon_final", "service_due", "review", "bags_due"];
+const FULL_KEYS = ["ready", "reminder", "class_signup", "booking", "estimate", "estimate_nolink", "abandon", "abandon_final", "service_due", "review", "bags_due", "parts_in"];
 export const TEMPLATE_KEYS: string[] = [...FULL_KEYS.flatMap((k) => [`${k}.sms`, `${k}.email`, `${k}.subject`]), "consent_confirm.sms", "help_reply.sms"];
 
 export const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -63,6 +64,10 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
   "bags_due.sms": "Hi {first_name}, time for new bags for your {machine}?{bag_line} Call {shop_phone} or stop by.",
   "bags_due.subject": "Time for new bags for your {machine}?",
   "bags_due.email": "Hi {first_name},\n\nIt's about time for new bags for your {machine}.{bag_line}\n\nCall us at {shop_phone} or stop by.",
+  // online-and-parts-design.md section 1: the part the shop had to order came in.
+  "parts_in.sms": "Hi {first_name}, the part for your {machine} ({ref}) came in: {parts}.{eta_line} We'll be in touch when it's ready.",
+  "parts_in.subject": "The part for your {machine} is in",
+  "parts_in.email": "Hi {first_name},\n\nThe part we ordered for your {machine} ({ref}) came in: {parts}.{eta_line}\n\nWe'll let you know when it's ready to pick up.",
   "consent_confirm.sms": "You're signed up for texts from {shop_name}. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.",
   "help_reply.sms": "{shop_name}: for help call {shop_phone}. Msg & data rates may apply. Reply STOP to opt out.",
 };
@@ -93,6 +98,8 @@ export const SAMPLE_VARS: Record<string, string> = {
   bag_line: " We have Hoover Type Y bags in stock.",
   upcoming_classes: "Beginning Quilting · Tue, Oct 7 at 6:00 pm · 3 seats left · $45.00",
   class_title: "Beginning Quilting",
+  parts: "a bobbin case and a feed dog assembly",
+  eta_line: " We expect to have it done by Oct 9.",
 };
 
 /** The saved wording for a key, or the default. */

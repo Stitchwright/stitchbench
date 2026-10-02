@@ -190,6 +190,7 @@ export const MESSAGE_KIND_LABEL: Record<string, string> = {
   consent_confirm: "Text sign-up confirmation",
   help_reply: "Reply to HELP",
   bags_due: "Bags due reminder",
+  parts_in: "Parts arrived",
   test: "Test",
 };
 export const ABANDON_STAGE_LABEL: Record<string, string> = { first: "First notice", second: "Second notice", third: "Third notice", fourth: "Fourth notice", final: "Final notice" };

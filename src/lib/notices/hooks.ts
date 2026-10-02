@@ -23,6 +23,7 @@ import { abandonDate, abandonStages, currentStage, parseStageKey, sendable, stag
 import { abandonTarget, abandonVars, jobVars, ticketVars, type AbandonTarget } from "@/lib/notices/vars";
 import { estimateStillWanted } from "@/lib/estimate-links";
 import { bagsDueStillWanted } from "@/lib/vac/bags-due";
+import { partsInStillWanted } from "@/lib/part-waits";
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof db;
@@ -240,6 +241,8 @@ export async function stillWanted(row: OutMessage): Promise<string | null> {
       return serviceDueWanted(row);
     case "consent_confirm":
       return consentWanted(row);
+    case "parts_in":
+      return partsInStillWanted(row);
     default:
       return null;
   }

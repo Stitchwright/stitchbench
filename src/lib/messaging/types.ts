@@ -16,9 +16,10 @@ export type MessageKind =
   | "consent_confirm"
   | "help_reply"
   | "bags_due"
+  | "parts_in"
   | "test";
 
-export const MESSAGE_KINDS: MessageKind[] = ["ready", "reminder", "estimate", "abandon", "service_due", "review", "campaign", "class_notice", "booking_notice", "consent_confirm", "help_reply", "bags_due", "test"];
+export const MESSAGE_KINDS: MessageKind[] = ["ready", "reminder", "estimate", "abandon", "service_due", "review", "campaign", "class_notice", "booking_notice", "consent_confirm", "help_reply", "bags_due", "parts_in", "test"];
 
 /** Notices are about something the customer started or owns; marketing encourages buying (TCPA / CAN-SPAM rules apply). */
 export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
@@ -30,6 +31,7 @@ export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
   booking_notice: "notice",
   consent_confirm: "notice",
   help_reply: "notice",
+  parts_in: "notice",
   test: "notice",
   service_due: "marketing",
   review: "marketing",
