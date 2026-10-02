@@ -339,14 +339,32 @@ Worth knowing:
 - `ymdParts` in `src/lib/zoned.ts` is exported now (meetingDays uses it).
 - Next packages: appointments, register-bookings, shifts, partner-runs, then e2e-docs.
 
+## 2l. Scheduling package `appointments` (2 Oct 2026, committed, built without a browser run)
+
+Design 12.2 and package 15.6. `src/lib/appointments.ts` (Hours, hoursFromForm / hoursText / withinHours, freeSlots,
+freeWeek, poolKey, overlapCount), `src/lib/calendar.ts` (calendarItems: appointments and blocks, class meetings, pickup
+runs, shifts when asked, installs through the vac stub), `src/lib/appointment-actions.ts` (saveApptTypeAs, bookAs,
+rescheduleApptAs, setApptStatusAs, linkedWords), `src/actions/appointments.ts`, the pages `/calendar` (Day / Week,
+"Show staff"), `/calendar/new` (free times as buttons), `/calendar/appointments/[id]`, `/calendar/types`, the
+components `calendar-view`, `appointment-form`, `appt-type-form`, the slots `today` (register strip / Dashboard card)
+and `customer-appointments`, `scripts/checks/appointments.check.ts` (10 groups), `tests/calendar.spec.ts` (4 tests).
+
+Worth knowing:
+- Types naming the same resource share its capacity AND its spelling: saving "longarm" next to "Longarm" stores
+  "Longarm", so the "already booked" message and the pool key agree.
+- `hoursText` groups days by window ("Mon, Wed 09:00-12:00, Sat 10:00-14:00"; runs of 3+ read "Tue-Sat").
+- The booking form reloads with `?type=` when the type changes (the server computes the free week); the Week view
+  draws both the 7-column grid (xl) and the per-day list (below xl) and hides one with CSS.
+- The spec, like campaigns' and classes', has NOT run yet: it needs the next test build.
+
 ## 3. What to do next, in order
 
 
 
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
-`estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j) and `classes` (2k) are committed
-and await a browser run. Next: appointments, register-bookings, shifts, partner-runs, then e2e-docs, then step 4.3.
+`estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j), `classes` (2k) and `appointments`
+(2l) are committed and await a browser run. Next: register-bookings, shifts, partner-runs, then e2e-docs, then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
