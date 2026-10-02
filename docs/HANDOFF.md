@@ -582,7 +582,7 @@ five-second minimum fill time, always a 303 back to a page that says what happen
 the address, on / off, lead time, how far ahead, the welcome, which types and classes are offered, the link and an
 iframe snippet; without `PUBLIC_URL` it says what to set. "Booked online" shows on the appointment page and the
 roster. `scripts/checks/online-booking.check.ts` (8 groups incl. the last-slot race and the tenant section) passes;
-`tests/online-booking.spec.ts` (3 tests). Fees are paid at the counter in this version; a public page that frames
+`tests/online-booking.spec.ts` (3 tests) passes on the rebuilt test build. Fees are paid at the counter in this version; a public page that frames
 well on another site is plain by design (no nav, the shop's name and phone at the top).
 Also here: the morning's checkbox fix (2x) is refined. A form with no `active` / `waitlist` field at all now means on
 (`checkbox()` in `appointment-actions.ts` and `class-actions.ts`); only a hidden `off` with no `on` means off. The

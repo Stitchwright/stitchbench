@@ -93,7 +93,7 @@ test("a customer, signed out, books a time and gets the confirmation page and em
   await times.first().click();
   await page.getByLabel("Your name").fill(customer.name);
   await page.getByLabel("Mobile number").fill("(212) 555-0199");
-  await page.getByLabel("Email").fill(customer.email);
+  await page.getByRole("textbox", { name: "Email" }).fill(customer.email);
   await page.getByRole("radio", { name: "Email" }).check();
   await page.getByLabel(/Anything we should know/).fill("First visit");
   await page.waitForTimeout(5_500); // the bot check: forms sent within five seconds are dropped
