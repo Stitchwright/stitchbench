@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { UserError } from "@/lib/action";
 import { isDesktop } from "@/lib/modules";
 
-export type SecretField = "smtpPass" | "twilioToken" | `estimateToken:${string}`;
+export type SecretField = "smtpPass" | "twilioToken" | "stripeKey" | "stripeWebhook" | `estimateToken:${string}` | `orderLink:${string}`;
 
 type DerivedKey = { kid: string; key: Buffer };
 

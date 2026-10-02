@@ -28,6 +28,7 @@ import {
   GraduationCap,
   Send,
   Lock,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
@@ -62,6 +63,7 @@ const items: Item[] = [
   { href: "/price-list", label: "Price list", icon: Tags, repair: true },
   { href: "/sales", label: "Sales log", icon: Receipt, repair: true },
   { href: "/register/sales", label: "Register sales", icon: Receipt, retail: true },
+  { href: "/register/online", label: "Online orders", icon: Globe, retail: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 const platformItems: Item[] = [{ href: "/companies", label: "Companies", icon: Building2 }];

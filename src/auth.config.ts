@@ -20,7 +20,7 @@ export const authConfig = {
       const isLoggedIn = !!auth?.user;
       const path = nextUrl.pathname;
       // Customers' own pages (unsubscribe, estimate approval): no session, and no redirect for someone signed in.
-      if (path.startsWith("/u/") || path.startsWith("/e/") || path.startsWith("/book/")) return true;
+      if (path.startsWith("/u/") || path.startsWith("/e/") || path.startsWith("/book/") || path.startsWith("/shop/")) return true;
       if (path.startsWith("/login") || path.startsWith("/signup")) {
         if (isLoggedIn) return Response.redirect(new URL("/", nextUrl));
         return true;

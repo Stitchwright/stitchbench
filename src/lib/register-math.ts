@@ -1,9 +1,11 @@
 // Register totals, the same in the browser (while ringing up) and on the server (when the sale is saved). Cents.
 
-export type TenderMethod = "CASH" | "CARD" | "CHECK" | "GIFT" | "OTHER";
+export type TenderMethod = "CASH" | "CARD" | "CHECK" | "GIFT" | "OTHER" | "ONLINE";
 export type Tender = { method: TenderMethod; amountCents: number; note?: string | null };
+/** What the counter takes. ONLINE is only ever written by the online shop at payment (online-and-parts-design.md section 3). */
 export const TENDER_METHODS: TenderMethod[] = ["CASH", "CARD", "CHECK", "GIFT", "OTHER"];
-export const TENDER_LABEL: Record<TenderMethod, string> = { CASH: "Cash", CARD: "Card", CHECK: "Check", GIFT: "Gift card", OTHER: "Other" };
+export const ALL_TENDER_METHODS: TenderMethod[] = [...TENDER_METHODS, "ONLINE"];
+export const TENDER_LABEL: Record<TenderMethod, string> = { CASH: "Cash", CARD: "Card", CHECK: "Check", GIFT: "Gift card", OTHER: "Other", ONLINE: "Paid online" };
 
 type Line = { qty: number; unitPriceCents: number; discountCents?: number; taxable: boolean; discountable?: boolean };
 

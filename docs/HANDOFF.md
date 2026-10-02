@@ -591,6 +591,34 @@ Also here: the morning's checkbox fix (2x) is refined. A form with no `active` /
 (`checkbox()` in `appointment-actions.ts` and `class-actions.ts`); only a hidden `off` with no `on` means off. The
 appointments check, whose forms send neither, had started saving types inactive.
 
+## 2aa. Package `online-shop`: an online shop from the inventory (2 Oct 2026, committed)
+
+`online-and-parts-design.md` section 3 as built (the owner's answers to its three questions: pickup and shipping,
+the shop's own Stripe account or the hosted service's, order mail in the daily cap, each a setting). Migration
+`20261003090000_online_shop`: `Shop.shopOn` / `shopPickup` / `shopShipping` / `shopShipCents` / `shopFreeOverCents` /
+`shopPayVia` / `shopWelcome` / `shopPickupNote` / `stripeKeySealed` / `stripeWebhookSealed` / `nextWebOrderNumber`,
+`Part.online` / `onlineTitle` / `onlineText`, `PartPhoto`, `WebOrder` (PENDING → PAID → READY → DONE, or
+CANCELLED; the items as sold; the sale in the books; the order link sealed), `MessagingSettings.ordersInCap`.
+`src/lib/shop/stripe.ts` (Checkout Sessions, refunds, the webhook signature; plain fetch against `STRIPE_API_BASE`),
+`src/lib/shop/online-shop.ts` (settings, listing and photos, the public store, catalog and search, the cart in the
+address, pricing as the counter, checkout, `applyPayment` once by webhook or return page with the sale under tender
+`ONLINE` and short lines refunded, the staff steps, the order mail `order_notice` with templates `order_paid` /
+`order_ready` / `order_shipped` / `order_cancelled`, `orderNoticeStillWanted`). Public pages `/shop/{slug}`,
+`/shop/{slug}/i/{partId}`, `/shop/{slug}/cart`, `/shop/o/{token}`; routes `/api/shop/{slug}` (cart and checkout),
+`/api/shop/stripe/{platform|shopId}`, `/api/shop/photo/{id}`; `src/auth.config.ts`, `links-host.ts` and
+`desktop/links-gate.mjs` let `/shop/` and `/api/shop/` through. Staff: `/register/online` (nav "Online orders"),
+Settings → Online shop (`/settings/shop`, linked from Settings for counters), the part page's "Online shop" card
+(`src/components/shop/listing-card.tsx`). Tender `ONLINE` ("Paid online") exists in the books only: the counter's
+buttons stay `TENDER_METHODS`. The worker's daily cap counts `order_notice` rows when the flag is on.
+`scripts/test-mail/stripe-mock.mjs` stands in for Stripe (its own payment page; webhooks signed to
+`STRIPE_MOCK_WEBHOOK_BASE`; `STRIPE_MOCK_PORT` 3403). `scripts/checks/online-shop.check.ts` (11 groups incl. the
+tenant section) passes; `tests/online-shop.spec.ts` (3 tests) passes on the test build with the mock. Hosted first:
+the hosted services need `STRIPE_API_BASE` unset (api.stripe.com) and, for the "through StitchShop's account"
+option, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` with a webhook at `/api/shop/stripe/platform`; a shop using
+its own account pastes its keys and adds the webhook Settings shows. Not in this version: Stripe Tax, customer
+accounts, variants, gift cards, discount codes. One rule to know: a customer who asked for no messages ("none")
+gets no order mail either, like booking.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
@@ -621,8 +649,8 @@ correct before building; its three open questions are at the end of that file):
 1. **Parts arrived notice.** Built and tested (section 2y).
 2. **Online booking on the shop's own website.** Built (section 2z). Hosted first: the hosted services have
    `PUBLIC_URL`; the Windows program needs its tunnel (Settings → Online booking says so).
-3. **An online shop.** Selling parts and supplies from the shop's own inventory (stock and prices from Parts, sales
-   landing in the register's books), again hosted first for easy set-up.
+3. **An online shop.** Built (section 2aa). Hosted first: the services need the Stripe environment described there
+   before a shop can take an order.
 
 
 

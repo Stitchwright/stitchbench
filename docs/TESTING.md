@@ -22,7 +22,7 @@ Everything here is in the repo. Nothing needs the owner's PC except the Windows-
    `notices.check` and `online-booking.check`. Current list: license, links-gate, modules, modules-tenant, equipment,
    equipment-lines, vacuum-kind, abandon, restore-optouts, messaging-core, worker, notices, estimate-links,
    audiences, campaigns, classes, appointments, register-bookings, shifts, partner-runs, vac-finder, vac-units,
-   bags-due, vac-installs, modules-crossover, part-waits, online-booking.
+   bags-due, vac-installs, modules-crossover, part-waits, online-booking, online-shop (starts the Stripe mock itself).
 3. **Playwright specs** against a **test build** (dev license keys work; the Companies page can switch modules on).
 
 ## The test build and its servers
@@ -31,14 +31,15 @@ Everything here is in the repo. Nothing needs the owner's PC except the Windows-
 # the build (about four minutes; run it in the foreground: a backgrounded build has been killed by memory pressure)
 STITCH_TEST_BUILD=1 npx next build
 
-# the sink and the Twilio mock (background)
+# the sink, the Twilio mock and the Stripe mock (background; the Stripe mock posts its webhooks to the server)
 SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581 node scripts/test-mail/smtp-sink.mjs &
 TWILIO_MOCK_PORT=3402 node scripts/test-mail/twilio-mock.mjs &
+STRIPE_MOCK_PORT=3403 STRIPE_MOCK_WEBHOOK_BASE=http://localhost:3501/api/shop/stripe node scripts/test-mail/stripe-mock.mjs &
 
 # the server (background)
 PLATFORM_ADMIN_EMAILS=bwattendorf@gmail.com,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526 \
-TWILIO_API_BASE=http://127.0.0.1:3402 MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1 \
-PUBLIC_URL=http://localhost:3501 npx next start -p 3501 &
+TWILIO_API_BASE=http://127.0.0.1:3402 STRIPE_API_BASE=http://127.0.0.1:3403 MESSAGE_WORKER_SECONDS=5 \
+READY_NOTICE_DELAY_SECONDS=1 PUBLIC_URL=http://localhost:3501 npx next start -p 3501 &
 
 # the e2e logins (idempotent)
 npm run e2e:setup
@@ -53,13 +54,13 @@ database, so serial is the rule):
 
 ```
 E2E_BASE_URL=http://localhost:3501 E2E_EMAIL=e2e@stitchbench.test E2E_PASSWORD=e2e-password-1 \
-SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581 TWILIO_MOCK_PORT=3402 PUBLIC_URL=http://localhost:3501 \
+SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581 TWILIO_MOCK_PORT=3402 STRIPE_MOCK_PORT=3403 PUBLIC_URL=http://localhost:3501 \
 npx playwright test tests/<name>.spec.ts --workers 1
 ```
 
 Order that has run clean (2 Oct 2026): smoke, modules-basics, notices, estimate-links, campaigns, classes, calendar,
-register-bookings, shifts, appliances, vac-shop, modules-lapse, scheduling-messaging, parts-in, online-booking, then
-two-servers and partner-runs with their extras below.
+register-bookings, shifts, appliances, vac-shop, modules-lapse, scheduling-messaging, parts-in, online-booking,
+online-shop, then two-servers and partner-runs with their extras below.
 
 - **campaigns**: its text-campaign test runs only between **12:00 and 20:00 Eastern** (a marketing text to a US
   number waits until it is 9:00 in every mainland zone, so noon Eastern). Outside that it skips itself.
@@ -69,8 +70,10 @@ two-servers and partner-runs with their extras below.
   set `E2E_SECOND_URL=http://localhost:3500`; without it the spec skips.
 - **partner-runs** (and partners, hub, market): need a test StitchHub on :3200 (the stitchhub repo,
   `scripts/local-test/start_hub.bat` shows its environment) that this install has joined, and `HUB_URL=http://localhost:3200`.
+- **online-shop**: needs the Stripe mock on :3403 with `STRIPE_MOCK_WEBHOOK_BASE` pointing at the server, and the
+  server started with `STRIPE_API_BASE=http://127.0.0.1:3403`; the spec pays on the mock's own page.
 - `E2E_KEEP=1` leaves a spec's throwaway company behind after a run (classes, campaigns, register-bookings,
-  partner-runs, parts-in, online-booking), to look at the rows when something fails. Delete it afterwards:
+  partner-runs, parts-in, online-booking, online-shop), to look at the rows when something fails. Delete it afterwards:
   `DELETE FROM "Shop" WHERE name LIKE '<prefix> %'`.
 - The specs read and write the database directly through `pg` with `DATABASE_URL`; `modules-lapse` also runs
   `scripts/license/dev.ts --grant`, so the spec process needs `DATABASE_URL` too (`.env` covers it).

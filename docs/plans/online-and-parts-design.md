@@ -182,7 +182,7 @@ Settings page spells both out.
 
 ---
 
-## 3. An online shop from the inventory (package `online-shop`, scope only)
+## 3. An online shop from the inventory (package `online-shop`, built 2 Oct 2026)
 
 ### What the owner described
 
@@ -213,11 +213,47 @@ the hosted version where it integrates easily.
 - **Not in the first version**: customer accounts and passwords, variants and options, gift cards, discount codes,
   marketplace-style selling between shops (the hub's market already covers shop-to-shop).
 
-### Open questions for the owner
+### The owner's answers (2 Oct 2026): "all yes, but selectable options"
 
-1. Pickup only, or shipping too, in the first version?
-2. Does every shop connect its own Stripe account (Connect Standard), or does StitchBench collect and pay out?
-3. Should online orders count toward the daily mail cap like marketing, or like notices?
+1. Pickup and shipping both, each a setting (`Shop.shopPickup`, `shopShipping`, a flat rate and a free-over amount).
+2. Both ways, a setting (`Shop.shopPayVia`): "own", the shop's own Stripe account (its secret key and webhook signing
+   secret pasted into Settings and sealed like the mail password; no Connect onboarding), or "platform", the hosted
+   service's account from `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` (offered only where those are set; the
+   operator pays the shop out by hand, the order's `payVia` says which orders those were).
+3. A setting (`MessagingSettings.ordersInCap`): off, order mail goes like a notice; on, it counts toward the
+   marketing daily cap and waits for the next shop-day at the cap.
+
+### As built
+
+- **Address**: the same slug as online booking (`Shop.bookingSlug`): `/shop/{slug}`, `/shop/{slug}/i/{partId}`,
+  `/shop/{slug}/cart?c=…`, `/shop/o/{token}`. The cart lives in the address (`id:qty,id:qty`, 30 lines, 99 each,
+  fabric in eighths), so there are no cookies and the page works inside another site's iframe.
+- **Catalog**: `Part.online` with a price and not consigned; `onlineTitle` / `onlineText`; up to four `PartPhoto`s
+  (bytes in the database like MachinePhoto, served by `/api/shop/photo/{id}` only while listed and the shop is on).
+  In stock / out of stock, never the count; search by number, words, brand, fit; kinds as categories.
+- **Pricing**: exactly as the counter (`saleTotals` with the shop's one rate); shipping a misc untaxed line; free
+  over the threshold. Stripe Tax is not in this version.
+- **Checkout**: the customer matched or made as booking does (`customerForOnline`, source "online shop"); a
+  `WebOrder` PENDING with its number, items as sold and a hashed token (the order link sealed into the row for the
+  mail); a Stripe Checkout Session (plain fetch, `src/lib/shop/stripe.ts`, `STRIPE_API_BASE` for the mock) whose
+  lines are each item at its line total, then tax and shipping, so Stripe's total is the order's; idempotent per
+  order. The payment page is Stripe's; the card never touches StitchBench.
+- **Payment**: the webhook (`/api/shop/stripe/platform` or `/api/shop/stripe/{shopId}`, the signature checked
+  against the endpoint's own secret, a shop's secret never confirming another shop's order) and the return page
+  (`?paid=1` asks Stripe for the session) both call `applyPayment`, which claims PENDING -> PAID once, sells what is
+  on the shelf through `completeSaleAs` under the shop's first owner with tender `ONLINE` (stock off, reports and
+  CSVs unchanged), refunds the difference for lines short of stock (nothing left: a full refund and CANCELLED), and
+  queues the `order_notice` message (`order_paid`; the SMS says the refund too). A failure after the claim leaves
+  the order PAID with the problem in `staffNote`.
+- **Staff**: `/register/online` (nav "Online orders"): paid and ready orders; Ready for pickup (`order_ready` with
+  the pickup instructions), Picked up, Shipped with tracking (`order_shipped`), Cancel and refund for owners and
+  admins (the rest refunded, the sale voided so stock comes back, `order_cancelled`), a note. The sale link opens
+  the register's sale. PENDING orders two hours old are cancelled (`expireStaleOrders`; Stripe's expiry event too).
+- **Settings → Online shop** (`/settings/shop`, counters only): the address, on, welcome, pickup and its
+  instructions, shipping with the rate and free-over, who takes the money with the keys, the webhook address to
+  paste into Stripe, the mail-cap flag, the link and the iframe snippet. Hosted first: without `PUBLIC_URL` the page
+  says so (the Windows program would need the tunnel and a reachable webhook).
+- **Not in this version**: Stripe Tax, customer accounts, variants, gift cards, discount codes, shipping taxed.
 
 ---
 

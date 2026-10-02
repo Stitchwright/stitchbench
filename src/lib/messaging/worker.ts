@@ -320,14 +320,16 @@ async function sendRow(t: Turn, row: OutMessage) {
     if (at.getTime() > now.getTime()) return defer(row, at);
   }
 
-  // 8.5 Marketing daily caps: at the cap, every due marketing row of the channel moves to the next shop-day.
-  if (marketing) {
+  // 8.5 Marketing daily caps: at the cap, every due marketing row of the channel moves to the next shop-day. Online-order
+  // mail counts too when Settings -> Online shop says so (online-and-parts-design.md section 3).
+  const capped: Prisma.OutMessageWhereInput = v.ordersInCap ? { OR: [{ purpose: "marketing" }, { kind: "order_notice" }] } : { purpose: "marketing" };
+  if (marketing || (v.ordersInCap && kind === "order_notice")) {
     const dayStart = zonedTime(ymdOf(now, t.tz), 0, t.tz);
     const cap = channel === "email" ? v.emailDailyCap : v.smsDailyCap;
-    const n = await db.outMessage.count({ where: { shopId, channel, purpose: "marketing", OR: [{ status: "SENT", sentAt: { gte: dayStart } }, { status: "SENDING", claimedAt: { gte: dayStart } }] } });
+    const n = await db.outMessage.count({ where: { shopId, channel, AND: [capped, { OR: [{ status: "SENT", sentAt: { gte: dayStart } }, { status: "SENDING", claimedAt: { gte: dayStart } }] }] } });
     if (n >= cap) {
       const next = zonedTime(addDays(ymdOf(now, t.tz), 1), v.quietStart, t.tz);
-      await db.outMessage.updateMany({ where: { shopId, channel, purpose: "marketing", ...dueWhere(now) }, data: { sendAfter: next } });
+      await db.outMessage.updateMany({ where: { shopId, channel, ...capped, ...dueWhere(now) }, data: { sendAfter: next } });
       t.stop[channel] = true;
       return;
     }

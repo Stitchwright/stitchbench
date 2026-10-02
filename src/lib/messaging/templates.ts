@@ -17,6 +17,10 @@ export const FIELDS: Record<string, string[]> = {
   review: [...COMMON_FIELDS, "review_link"],
   bags_due: [...COMMON_FIELDS, "machine", "months", "bag_line"],
   parts_in: [...COMMON_FIELDS, "machine", "ref", "parts", "eta_line"],
+  order_paid: [...COMMON_FIELDS, "order", "items", "total", "short_line", "fulfil_line", "order_link"],
+  order_ready: [...COMMON_FIELDS, "order", "items", "pickup_line", "order_link"],
+  order_shipped: [...COMMON_FIELDS, "order", "items", "tracking_line", "order_link"],
+  order_cancelled: [...COMMON_FIELDS, "order", "refund_line", "order_link"],
   consent_confirm: ["shop_name", "shop_phone"],
   help_reply: ["shop_name", "shop_phone"],
   campaign: [...COMMON_FIELDS, "machine", "upcoming_classes"],
@@ -24,9 +28,9 @@ export const FIELDS: Record<string, string[]> = {
 };
 
 /** Values that may carry links or come from the shop's own settings: not cleaned. Everything else is cleanText()'d. */
-export const TRUSTED_FIELDS = ["shop_name", "shop_phone", "estimate_link", "review_link", "upcoming_classes", "total", "storage_fee"];
+export const TRUSTED_FIELDS = ["shop_name", "shop_phone", "estimate_link", "review_link", "upcoming_classes", "total", "storage_fee", "order_link", "items"];
 
-const FULL_KEYS = ["ready", "reminder", "class_signup", "booking", "estimate", "estimate_nolink", "abandon", "abandon_final", "service_due", "review", "bags_due", "parts_in"];
+const FULL_KEYS = ["ready", "reminder", "class_signup", "booking", "estimate", "estimate_nolink", "abandon", "abandon_final", "service_due", "review", "bags_due", "parts_in", "order_paid", "order_ready", "order_shipped", "order_cancelled"];
 export const TEMPLATE_KEYS: string[] = [...FULL_KEYS.flatMap((k) => [`${k}.sms`, `${k}.email`, `${k}.subject`]), "consent_confirm.sms", "help_reply.sms"];
 
 export const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -67,6 +71,18 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
   // online-and-parts-design.md section 1: the part the shop had to order came in.
   "parts_in.sms": "Hi {first_name}, the part for your {machine} ({ref}) came in: {parts}.{eta_line} We'll be in touch when it's ready.",
   "parts_in.subject": "The part for your {machine} is in",
+  "order_paid.sms": "Thanks, {first_name}! We have your order {order} ({total}).{short_line}{fulfil_line} Details: {order_link}",
+  "order_paid.subject": "Your order {order}",
+  "order_paid.email": "Hi {first_name},\n\nThanks for your order {order}:\n\n{items}\n\nTotal: {total}.{short_line}{fulfil_line}\n\nDetails: {order_link}\n\nQuestions? Call us at {shop_phone}.",
+  "order_ready.sms": "Hi {first_name}, your order {order} is ready to pick up.{pickup_line} Details: {order_link}",
+  "order_ready.subject": "Your order {order} is ready to pick up",
+  "order_ready.email": "Hi {first_name},\n\nYour order {order} is ready to pick up:\n\n{items}\n\n{pickup_line}\n\nDetails: {order_link}\n\nQuestions? Call us at {shop_phone}.",
+  "order_shipped.sms": "Hi {first_name}, your order {order} has shipped.{tracking_line} Details: {order_link}",
+  "order_shipped.subject": "Your order {order} has shipped",
+  "order_shipped.email": "Hi {first_name},\n\nYour order {order} is on its way:\n\n{items}\n\n{tracking_line}\n\nDetails: {order_link}\n\nQuestions? Call us at {shop_phone}.",
+  "order_cancelled.sms": "Hi {first_name}, your order {order} was cancelled.{refund_line} Questions? Call {shop_phone}.",
+  "order_cancelled.subject": "Your order {order} was cancelled",
+  "order_cancelled.email": "Hi {first_name},\n\nYour order {order} was cancelled.{refund_line}\n\nDetails: {order_link}\n\nQuestions? Call us at {shop_phone}.",
   "parts_in.email": "Hi {first_name},\n\nThe part we ordered for your {machine} ({ref}) came in: {parts}.{eta_line}\n\nWe'll let you know when it's ready to pick up.",
   "consent_confirm.sms": "You're signed up for texts from {shop_name}. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.",
   "help_reply.sms": "{shop_name}: for help call {shop_phone}. Msg & data rates may apply. Reply STOP to opt out.",
@@ -100,6 +116,14 @@ export const SAMPLE_VARS: Record<string, string> = {
   class_title: "Beginning Quilting",
   parts: "a bobbin case and a feed dog assembly",
   eta_line: " We expect to have it done by Oct 9.",
+  order: "#1001",
+  items: "Bobbin case (Janome 102261103) x 1  $16.00\nSchmetz 90/14 needles x 2  $11.90",
+  fulfil_line: " We'll let you know when it's ready to pick up.",
+  pickup_line: "Come to the counter with your order number.",
+  tracking_line: " Tracking: 9400 1000 0000 0000 0000 00.",
+  refund_line: " $27.90 goes back to your card in a few days.",
+  short_line: " One item was out of stock; $11.90 goes back to your card in a few days.",
+  order_link: "https://example.com/shop/o/sample",
 };
 
 /** The saved wording for a key, or the default. */
