@@ -7,7 +7,8 @@ import "server-only";
 //   sewing shop -> repair shop : job.new, job.reply, job.paid, job.pickedup, job.cancel, order.new, order.update
 //                                (received / cancelled), consign.sale, consign.count, consign.return
 //   repair shop -> sewing shop : job.update, catalog, order.update (accepted / delivered / cancelled), consign.place
-//   either                     : terms.propose, terms.accept, settle.paid
+//   either                     : terms.propose, terms.accept, settle.paid, pickup.plan (the run's owner), pickup.ok,
+//                                pickup.cancel, pickup.done, caps.update (what the install can do)
 //   hub                        : link.created, link.ended
 //
 // The other shop may be careless or hostile, so every message is checked before it's applied: it must come from the
@@ -26,7 +27,9 @@ import { Prisma } from "@/generated/prisma/client";
 import { sameText } from "@/lib/input";
 import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
 import { hookContext, type HookCtx } from "@/lib/notices/context";
-import { onJobStatus } from "@/lib/notices/hooks";
+import { onJobsBack, onJobStatus } from "@/lib/notices/hooks";
+import { changeTicketStatus } from "@/lib/ticket-status";
+import { planOutcome, receivedList, type RunPlan, type Side as RunSide } from "@/lib/partner-runs";
 
 export const DEFAULT_HUB_URL = (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
 const FINAL = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
@@ -720,7 +723,7 @@ async function applyOnce(shopId: string, key: string, m: HubMessage) {
   // applyMessage runs inside this transaction, and the notices hook a job.update calls must never open a second pool
   // connection inside it (with a pool of one that would wait forever): what the hook needs is loaded here, before the
   // transaction begins, and handed down.
-  const ctx = m.type === "job.update" ? await hookContext(shopId) : null;
+  const ctx = m.type === "job.update" || RUN_TYPES.has(m.type) ? await hookContext(shopId) : null;
   return db.$transaction(
     async (tx) => {
       const fresh = await tx.partnerSeen.createMany({ data: [{ shopId, key }], skipDuplicates: true });
@@ -926,6 +929,7 @@ async function doPartnerSync(): Promise<PartnerSyncResult> {
     try {
       await pushJobUpdates();
       await pushCatalogs();
+      await pushFeatures();
       const sent = await pushOutbox();
       const received = await pullMessages(st.partnerCursor ?? "0");
       // Anything the messages just caused (a new job's first update) goes out now rather than next time.
@@ -983,7 +987,15 @@ const FROM: Record<string, "repair" | "retail" | "either" | "hub"> = {
   "consign.count": "retail",
   "consign.return": "retail",
   "msg.rejected": "either",
+  "pickup.plan": "either",
+  "pickup.ok": "either",
+  "pickup.cancel": "either",
+  "pickup.done": "either",
+  "caps.update": "either",
 };
+
+/** The run messages (applyRun checks the side rules of design 13.1 itself). */
+const RUN_TYPES = new Set(["pickup.plan", "pickup.ok", "pickup.cancel", "pickup.done"]);
 
 // New work isn't taken from a partnership that has ended; updates and settlements still are (the last statement).
 const NEW_WORK = new Set(["job.new", "order.new", "consign.place", "catalog"]);
@@ -1432,6 +1444,24 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient, ctx: Ho
       return;
     }
 
+    case "pickup.plan":
+    case "pickup.ok":
+    case "pickup.cancel":
+    case "pickup.done":
+      return applyRun(tx, shopId, link, partnerSide, m.type, d, at, ctx);
+
+    case "caps.update": {
+      const features = strings(d.features).slice(0, 20);
+      const hadPickup = link.features.includes("pickup");
+      await tx.partnerLink.update({ where: lk, data: { features } });
+      // An upgraded partner that can take runs now gets every scheduled run of ours at its current plan.
+      if (!hadPickup && features.includes("pickup")) {
+        const runs = await tx.partnerRun.findMany({ where: { shopId, linkId: link.id, status: "SCHEDULED", ownerSide: link.side } });
+        for (const r of runs) await sendRun(tx, shopId, link.id, "pickup.plan", runPlan(r, "") as unknown as Json);
+      }
+      return;
+    }
+
     case "msg.rejected": {
       // The partner couldn't take something we sent: it's shown with what we sent, and on the job or order it was about.
       const sent = await tx.partnerOutbox.findFirst({ where: { shopId, linkId: link.id, id: idOf(d.id, "message") } });
@@ -1789,4 +1819,169 @@ async function runningBalance(shopId: string, linkId: string, terms: PartnerTerm
 }
 
 // Statement months and the zone helpers live with the other shop-time-zone helpers.
+// ---------- partner pickup runs (scheduling-messaging-design.md section 13) ----------
+
+type RunRow = Prisma.PartnerRunGetPayload<object>;
+type LinkForRun = { id: string; side: string; partnerName: string };
+
+/** The plan as it goes to the partner (`pickup.plan`): everything the owner decides, at this revision. */
+export function runPlan(run: RunRow, name: string): RunPlan {
+  return {
+    id: run.id,
+    rev: run.rev,
+    ownerSide: run.ownerSide as RunSide,
+    startsAt: run.startsAt.toISOString(),
+    endsAt: run.endsAt ? run.endsAt.toISOString() : null,
+    driver: run.driver as RunSide,
+    collect: run.collect,
+    deliver: run.deliver,
+    note: run.note,
+    name,
+    at: new Date().toISOString(),
+  };
+}
+
+/** A run message to the partner, in the transaction that changed the run. */
+export async function sendRun(tx: Prisma.TransactionClient, shopId: string, linkId: string, type: string, data: Json) {
+  await sendToPartner(shopId, linkId, type, data, tx);
+}
+
+/** The plan's fields as a partner sent them, checked against the message's own `at` (a replay still applies). */
+function runPlanOf(d: Obj, at: Date) {
+  const startsAt = new Date(String(d.startsAt ?? ""));
+  if (Number.isNaN(startsAt.getTime())) return bad("the run has no start");
+  if (startsAt.getTime() < at.getTime() - 60 * 86400_000 || startsAt.getTime() > at.getTime() + 366 * 86400_000) return bad("the run's start is out of range");
+  let endsAt: Date | null = null;
+  if (d.endsAt != null && d.endsAt !== "") {
+    endsAt = new Date(String(d.endsAt));
+    if (Number.isNaN(endsAt.getTime()) || endsAt < startsAt || endsAt.getTime() >= startsAt.getTime() + 24 * 3600_000) return bad("the run's end is out of range");
+  }
+  const driver: RunSide = d.driver === "retail" ? "retail" : "repair";
+  const ids = (v: unknown, what: string) => arr(v, 200, what).map((x) => idOf(x, what));
+  return { rev: int(d.rev, 1, 1_000_000, "rev"), startsAt, endsAt, driver, collect: ids(d.collect, "collect"), deliver: ids(d.deliver, "deliver"), note: text(d.note, 1000), name: text(d.name, 80) ?? "the partner" };
+}
+
+const dayWords = (d: Date, tz: string) => d.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric" });
+
+/**
+ * A run message from the partner (design 13.2 "Apply"), idempotent: a replay changes nothing. `from` is the partner's
+ * side; `ctx` is the notices context loaded before the transaction (the hand-off's status changes queue notices).
+ */
+export async function applyRun(tx: Prisma.TransactionClient, shopId: string, link: LinkForRun, from: RunSide, type: string, d: Obj, at: Date, ctx: HookCtx | null) {
+  const id = idOf(d.id, "run id");
+  const local = await tx.partnerRun.findUnique({ where: { shopId_id: { shopId, id } } });
+  const state = local ? { status: local.status as "SCHEDULED" | "CANCELLED" | "DONE", ownerSide: local.ownerSide as RunSide, rev: local.rev, okRev: local.okRev, collectedAt: local.collectedAt?.toISOString() ?? null, deliveredAt: local.deliveredAt?.toISOString() ?? null } : null;
+  switch (type) {
+    case "pickup.plan": {
+      const p = runPlanOf(d, at);
+      const owner: RunSide = d.ownerSide === "retail" ? "retail" : "repair";
+      const plan: RunPlan = { id, rev: p.rev, ownerSide: owner, startsAt: p.startsAt.toISOString(), endsAt: p.endsAt?.toISOString() ?? null, driver: p.driver, collect: p.collect, deliver: p.deliver, note: p.note, name: p.name, at: at.toISOString() };
+      const outcome = planOutcome(state, plan, from);
+      if (outcome === "ignore") return;
+      const fields = { startsAt: p.startsAt, endsAt: p.endsAt, driver: p.driver, collect: p.collect, deliver: p.deliver, note: p.note, rev: p.rev };
+      if (outcome === "create") {
+        await tx.partnerRun.create({ data: { id, shopId, linkId: link.id, ownerSide: owner, ...fields, events: [{ at: at.toISOString(), side: from, what: "scheduled", name: p.name }] as Json } });
+      } else {
+        await tx.partnerRun.updateMany({ where: { shopId, id, status: "SCHEDULED", rev: { lt: p.rev } }, data: { ...fields, events: withRunEvent(local!.events, { at: at.toISOString(), side: from, what: "changed", name: p.name }) } });
+      }
+      return;
+    }
+    case "pickup.ok": {
+      if (!local || local.status !== "SCHEDULED") return;
+      const rev = int(d.rev, 1, 1_000_000, "rev");
+      if (rev !== local.rev || local.okRev === rev) return; // an OK of an older plan: the page says "changed since"
+      await tx.partnerRun.updateMany({ where: { shopId, id, status: "SCHEDULED", rev }, data: { okRev: rev, okAt: at, events: withRunEvent(local.events, { at: at.toISOString(), side: from, what: "ok", name: text(d.name, 80) ?? undefined }) } });
+      return;
+    }
+    case "pickup.cancel": {
+      if (!local || local.status !== "SCHEDULED") return;
+      await tx.partnerRun.updateMany({ where: { shopId, id, status: "SCHEDULED" }, data: { status: "CANCELLED", cancelledAt: at, events: withRunEvent(local.events, { at: at.toISOString(), side: from, what: "cancelled", name: text(d.name, 80) ?? undefined, note: text(d.note, 1000) ?? undefined }) } });
+      return;
+    }
+    case "pickup.done": {
+      if (!local) return;
+      const side: RunSide = d.side === "retail" ? "retail" : "repair";
+      if (side !== from) return bad("pickup.done names the wrong side");
+      const list = arr(d.list, 200, "list").map((x) => idOf(x, "job"));
+      const which = receivedList(side);
+      if (local[which + "At" as "collectedAt" | "deliveredAt"]) return; // the first record stands
+      await tx.partnerRun.updateMany({
+        where: { shopId, id, [which + "At"]: null },
+        data: { [which]: list, [which + "At"]: at, status: "DONE", events: withRunEvent(local.events, { at: at.toISOString(), side: from, what: which, name: text(d.name, 80) ?? undefined }) },
+      });
+      await runEffects(tx, shopId, link, side, list, at, null, ctx);
+      return;
+    }
+  }
+}
+
+function withRunEvent(events: unknown, e: { at: string; side: string; what: string; name?: string; note?: string }): Json {
+  const list = Array.isArray(events) ? (events as Json[]) : [];
+  return [...list, e as unknown as Json].slice(-MAX_EVENTS) as Json;
+}
+
+/**
+ * What a hand-off changes (design 13.3). `side` is who recorded the list: the repair shop's `collected` (the driver
+ * took these) or the sewing shop's `delivered` (these reached its counter). On the side that recorded it the machines
+ * change status here; on the other side (applied from the message) only what that side owns changes.
+ */
+export async function runEffects(tx: Prisma.TransactionClient, shopId: string, link: LinkForRun, side: RunSide, list: string[], at: Date, byUserId: string | null, ctx: HookCtx | null) {
+  if (!list.length) return;
+  const tz = await shopTimeZone(shopId);
+  const day = dayWords(at, tz);
+  const jobs = await tx.repairJob.findMany({ where: { shopId, linkId: link.id, side: link.side, id: { in: list } } });
+  if (!jobs.length) return;
+  const context = ctx ?? (await hookContext(shopId));
+  const shop = await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { warrantyDays: true } });
+  if (side === "repair") {
+    if (link.side === "repair") {
+      // Recorded here: the machines the driver took are in the truck.
+      for (const j of jobs) {
+        if (!j.ticketId) continue;
+        const t = await tx.ticket.findFirst({ where: { id: j.ticketId, shopId } });
+        if (t && t.status === "AT_SHOP_AWAITING_PICKUP") await changeTicketStatus(tx, t, "IN_TRUCK", at, shop.warrantyDays, context);
+      }
+    } else {
+      // The sewing shop hears the driver took them: a line on each job (the repair shop's job.update sets the status).
+      for (const j of jobs) await tx.repairJob.update({ where: { shopId_id: { shopId, id: j.id } }, data: { events: withEvent(j.events, { at: at.toISOString(), note: `Handed to the driver (run ${day})` }) } });
+    }
+    return;
+  }
+  if (link.side === "retail") {
+    // Recorded here: the fixed machines are back at the counter; the ready notice goes (Marketing on).
+    const back: string[] = [];
+    for (const j of jobs) {
+      if (j.backAt || j.pickedUpAt) continue;
+      const r = await tx.repairJob.updateMany({ where: { shopId, id: j.id, backAt: null, pickedUpAt: null }, data: { backAt: at, events: withEvent(j.events, { at: at.toISOString(), note: `Back at the counter (run ${day})` }) } });
+      if (r.count) back.push(j.id);
+    }
+    if (back.length) await onJobsBack(tx, shopId, back, at, byUserId, context);
+  } else {
+    // The repair shop hears they arrived: the tickets come off "in truck" onto the sewing shop's shelf.
+    for (const j of jobs) {
+      if (!j.ticketId) continue;
+      const t = await tx.ticket.findFirst({ where: { id: j.ticketId, shopId } });
+      if (t && t.status === "READY_IN_TRUCK") await changeTicketStatus(tx, t, "READY_FOR_PICKUP", at, shop.warrantyDays, context);
+    }
+  }
+}
+
+/** Tells every active partner what this install can do (`caps.update`), once per change. */
+export async function pushFeatures() {
+  const features = ["pickup"]; // this version takes runs, whatever the modules
+  const h = hash(features);
+  const links = await db.partnerLink.findMany({ where: { status: "ACTIVE" }, select: { shopId: true, id: true, featuresHash: true } });
+  for (const l of links) {
+    if (l.featuresHash === h) continue;
+    try {
+      await db.$transaction([
+        db.partnerOutbox.create({ data: { shopId: l.shopId, linkId: l.id, type: "caps.update", data: { features } as Json } }),
+        db.partnerLink.update({ where: { shopId_id: { shopId: l.shopId, id: l.id } }, data: { featuresHash: h } }),
+      ]);
+    } catch (e) {
+      console.error("partner sync: caps.update couldn't be queued:", e instanceof Error ? e.message : e);
+    }
+  }
+}
+
 export { monthPeriod, zonedMidnight, zonedParts } from "@/lib/time-zone";
