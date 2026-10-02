@@ -4,6 +4,8 @@
 import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { fmtDay } from "@/lib/zoned";
+import { shopTimeZone } from "@/lib/shop-zone";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { modelKey, str, toCents } from "@/lib/format";
@@ -205,6 +207,9 @@ export const cancelJob = safe(async function cancelJob(jobId: string, formData: 
   const user = await requireUser();
   const job = await retailJob(user.shopId, jobId);
   if (job.status !== "AT_SHOP_AWAITING_PICKUP") throw new UserError("The repair shop already has it. Ask them to send it back unrepaired.");
+  // On a run the repair shop recorded as collected: it is in their truck even if their job.update hasn't arrived yet.
+  const taken = await db.partnerRun.findFirst({ where: { shopId: user.shopId, linkId: job.linkId, collected: { has: job.id } }, select: { startsAt: true } });
+  if (taken) throw new UserError(`It went to the repair shop on the run of ${fmtDay(taken.startsAt, await shopTimeZone(user.shopId))}. Ask them to send it back unrepaired.`);
   const note = str(formData.get("note"));
   const at = new Date();
   const events = [...((job.events as JobEvent[]) ?? []), { at: at.toISOString(), status: "RETURNED_UNREPAIRED", note: `Cancelled at the counter${note ? `: ${note}` : ""}` }];

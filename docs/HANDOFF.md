@@ -377,6 +377,37 @@ delete / "Copy last week" for admins) and `/shifts/print`, `scripts/checks/shift
 `tests/shifts.spec.ts` (3 tests, not yet run). Overlaps are refused per person (the same login, or the same name in
 any case); copyWeek copies by weekday and wall clock, so the DST week keeps 8:30 am.
 
+## 2o. Scheduling package `partner-runs` (2 Oct 2026, committed, built without a browser run)
+
+Design 13 and package 15.9. `src/lib/partner-runs.ts` (pure: canDo, planOutcome, receivedList, okWords),
+`src/lib/partners.ts` (the five message types in FROM, `applyRun`, `runPlan`, `sendRun`, `runEffects`,
+`pushFeatures`; `caps.update` re-sends our scheduled runs to a partner that just learned to take them; the run messages
+get a notices context in applyOnce), `src/lib/partner-run-actions.ts` (rideJobs, defaultStart, propose / change / OK /
+cancel / record with a user), `src/actions/partner-runs.ts`, `src/components/run-form.tsx`, the pages
+`/partners/[id]/runs/new` and `/partners/[id]/runs/[runId]`, the slots `partner-runs`, `job-run`, `repairs-runs`,
+`dashboard-runs`, the three run lines in `partner-todo.tsx`, `cancelJob` refusing a collected job,
+`scripts/checks/partner-runs.check.ts` (9 groups: the pure rules, both flows relayed through PartnerOutbox + applyRun,
+replays, a third link, the non-owner's plan, a 30-day-old DONE, pushFeatures once), `tests/partner-runs.spec.ts`
+(HUB_URL only; its hub join steps are written from partners.spec.ts' shape and need a look on the first run).
+
+## 2p. The next test batch (what to run before trusting the pages)
+
+Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
+server, Chrome and Docker together). Checked: tsc, eslint, every check script, the unit tests. To finish:
+
+1. `STITCH_TEST_BUILD=1 npx next build` (stop the test server first; a `prepare-app` in desktop/ overwrites `.next`
+   with a non-test build, so rebuild after one).
+2. Sink `SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581`, mock `TWILIO_MOCK_PORT=3402`, server on :3501 with
+   `PLATFORM_ADMIN_EMAILS=...,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526 TWILIO_API_BASE=http://127.0.0.1:3402
+   MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1 PUBLIC_URL=http://localhost:3501`.
+3. One at a time, with `E2E_BASE_URL=http://localhost:3501 PW_CHANNEL=chrome SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581
+   TWILIO_MOCK_PORT=3402 PUBLIC_URL=http://localhost:3501`: campaigns (3 of its 4 tests unverified), classes,
+   calendar, register-bookings, shifts; then notices, estimate-links and smoke again (the register and partners code
+   moved); partner-runs needs `HUB_URL` and the test hub on :3200.
+4. Expect label and selector slips in the new specs: they were written against the code, not a running page.
+5. Then push to `main`, deploy both hosted services, and update the Windows install (`npm run prepare-app`, the
+   update script); then `e2e-docs`, `modules-crossover` and the Vac Shop / appliance packages.
+
 ## 3. What to do next, in order
 
 
@@ -384,8 +415,8 @@ any case); copyWeek copies by weekday and wall clock, so the DST week keeps 8:30
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
 `estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j), `classes` (2k) and `appointments`
-(2l), `register-bookings` (2m) and `shifts` (2n) are committed and await a browser run. Next: partner-runs, then
-e2e-docs, then step 4.3.
+(2l), `register-bookings` (2m), `shifts` (2n) and `partner-runs` (2o) are committed: every feature package of the
+scheduling design is written. Next: the test batch of 2p, then e2e-docs, then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
