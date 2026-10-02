@@ -117,7 +117,8 @@ function classFields(fd: FormData) {
     feeCents: fee,
     taxable: fd.get("taxable") === "on",
     seats,
-    waitlist: fd.get("waitlist") !== "off",
+    // The form sends a hidden "off" before the checkbox's "on": the first value alone would always read off.
+    waitlist: fd.getAll("waitlist").includes("on"),
     remind,
   };
 }

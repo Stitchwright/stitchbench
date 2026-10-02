@@ -38,7 +38,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const vac = vacState.active ? "on" : (await db.stockUnit.count({ where: { shopId: user.shopId } })) > 0 ? "readonly" : "off";
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
-  const m = booking && /^(enrollment|appointment):[a-z0-9]{20,40}$/.exec(booking);
+  const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
   if (m) {
     const due = await bookingsDueFor(user.shopId, await shopTimeZone(user.shopId), null, false);
     preload = due.find((d) => d.kind === m[1] && d.id === m[2]) ?? null;

@@ -164,7 +164,7 @@ test("the register shows the one-line Today strip; a repair-only company sees /c
 
   const rep = await login(browser, repairOwner);
   await rep.goto("/calendar");
-  await expect(rep.getByRole("link", { name: "Book" })).toBeVisible();
+  await expect(rep.getByRole("link", { name: "Book" }).first()).toBeVisible();
   await expect(rep.getByRole("link", { name: /Machine drop-off/ })).toBeVisible();
   await rep.goto("/");
   const card = rep.locator("section", { has: rep.getByRole("heading", { name: "Today" }) });

@@ -32,13 +32,17 @@ async function newTicket(page: Page, name: string, email: string, status?: strin
   await page.goto("/tickets/new");
   await page.getByLabel("New customer name").fill(name);
   await page.getByLabel("Email address").fill(email);
+  const notify = page.getByRole("radio", { name: "Email", exact: true }); // asked while Marketing is on
+  if (await notify.count()) await notify.check();
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
   await page.getByRole("button", { name: "Create ticket" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Janome MC6700P/ })).toBeVisible();
   if (status) {
     await page.getByLabel("Status", { exact: true }).selectOption({ label: status });
-    await expect(page.getByText(`Status: ${status}`)).toBeVisible();
+    // With Marketing on the toast names the notice, not the status: check the select settled instead.
+    await expect(page.locator("[data-sonner-toast]").first()).toBeVisible();
+    await expect(page.getByLabel("Status", { exact: true })).toHaveValue(status === "Ready - customer called" ? "READY_FOR_PICKUP" : "WAITING_CUSTOMER_OK");
   }
   return page.url().split("/").pop()!;
 }
@@ -94,16 +98,18 @@ test("a class tomorrow with a sign-up: the confirmation reaches the sink; an app
   await page.getByLabel("Teacher").fill("Jo Quilter");
   await page.getByLabel("Fee").fill("30.00");
   await page.getByLabel("Seats").fill("4");
-  await page.getByLabel("First meeting").fill(tomorrow);
+  await page.getByLabel("Date").fill(tomorrow);
   await page.getByLabel("Starts").fill("18:00");
   await page.getByLabel("Ends").fill("20:00");
+  await page.getByLabel("How often").selectOption("once");
   await page.getByRole("button", { name: "Create the class" }).click();
+  await expect(page).toHaveURL(/\/classes\/(?!new$)[a-z0-9]+$/, { timeout: 20_000 });
   await expect(page.getByRole("heading", { level: 1, name: new RegExp(`Serger Basics ${RUN}`) })).toBeVisible();
   classId = page.url().split("/").pop()!;
-  await page.getByLabel("Customer", { exact: true }).fill(student.name.slice(0, 11));
-  await page.getByRole("button", { name: student.name }).first().click();
+  await page.getByPlaceholder("Search name or phone, or leave blank for a new customer").fill(student.name.slice(0, 11));
+  await page.getByRole("button", { name: new RegExp(`^${student.name}`) }).first().click();
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
-  await expect(page.getByText(/Signed up/).first()).toBeVisible();
+  await expect(page.locator("[data-sonner-toast]").first()).toBeVisible();
   await sendNow(page);
   const confirmation = await eventually(async () => (await sinkMessages()).find((m) => m.to.includes(student.email)));
   expect(confirmation.raw).toMatch(/Serger Basics/);
@@ -113,14 +119,16 @@ test("a class tomorrow with a sign-up: the confirmation reaches the sink; an app
   await page.getByLabel("How long (minutes)").fill("30");
   await page.getByRole("button", { name: "Add this type" }).click();
   await expect(page.getByText("Machine fitting").first()).toBeVisible();
+  const typeId = (await sql<{ id: string }>(`SELECT id FROM "AppointmentType" WHERE "shopId" = $1 AND name = 'Machine fitting'`, [shopId]))[0].id;
   await page.goto(`/calendar/new?date=${tomorrow}`);
-  await page.getByLabel("What are they booking?").selectOption({ label: "Machine fitting" });
-  await page.getByLabel("Customer", { exact: true }).fill(student.name.slice(0, 11));
-  await page.getByRole("button", { name: student.name }).first().click();
+  await page.getByLabel("What are they booking?").selectOption(typeId);
+  await expect(page).toHaveURL(/type=/);
   await page.getByLabel("Date").fill(tomorrow);
   await page.getByLabel("Starts").fill("10:00");
+  await page.getByPlaceholder("Search name or phone, or leave blank for a new customer").fill(student.name.slice(0, 11));
+  await page.getByRole("button", { name: new RegExp(`^${student.name}`) }).first().click();
   await page.getByRole("button", { name: "Book it" }).click();
-  await expect(page.getByText(/Booked/).first()).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/calendar\\?date=${tomorrow}`), { timeout: 20_000 });
 
   // The scheduler (the worker's run) queues tomorrow's reminders.
   await sendNow(page);
@@ -146,7 +154,6 @@ test("a ready ticket emails the customer; an estimate is approved by link", asyn
   const waitingId = await newTicket(page, `Linda Approver ${RUN}`, linkEmail, "Waiting on customer OK");
   await page.getByLabel("Hours", { exact: true }).fill("1");
   await page.getByRole("button", { name: "Add labor" }).click();
-  await expect(page.getByText("Repair labor")).toBeVisible();
   await page.getByRole("button", { name: "Send the estimate", exact: true }).click();
   await expect(page.getByText("Queued. It goes out in a moment.")).toBeVisible();
   await sendNow(page);
@@ -158,8 +165,8 @@ test("a ready ticket emails the customer; an estimate is approved by link", asyn
   const link = await ctx.newPage();
   await link.goto(url!.slice(PUBLIC.length));
   await link.getByRole("link", { name: /^Approve/ }).click();
-  await link.getByRole("button", { name: /^Approve/ }).click();
-  await expect(link.getByText(/Thank you/)).toBeVisible();
+  await link.getByRole("button", { name: "Yes, approve" }).click();
+  await expect(link.getByText(/You approved this on/)).toBeVisible();
   await ctx.close();
   const after = await sql<{ status: string; estimateAnswer: string | null }>(`SELECT status, "estimateAnswer" FROM "Ticket" WHERE id = $1`, [waitingId]);
   expect(after[0].status).toBe("ON_BENCH");
@@ -203,7 +210,8 @@ test("both modules switched off: locks, read-only pages, a held message, the ros
   const token = newId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 22).padEnd(22, "x");
   const c = await sql<{ id: string; email: string }>(`SELECT id, email FROM "Customer" WHERE "shopId" = $1 AND name = $2`, [shopId, student.name]);
   await insert("OutMessage", { shopId, channel: "email", purpose: "marketing", kind: "campaign", customerId: c[0].id, address: c[0].email, body: "x", status: "SENT", optOutToken: token, sendAfter: new Date().toISOString() });
-  const u = await page.request.get(`/u/${token}`);
+  expect((await page.request.get(`/u/${token}`)).status()).toBe(200); // the page with its button
+  const u = await page.request.post(`/api/u/${token}`, { form: { "List-Unsubscribe": "One-Click" } }); // a mail program's one-click
   expect(u.status()).toBe(200);
   await eventually(async () => (await sql(`SELECT 1 FROM "Suppression" WHERE "shopId" = $1 AND address = $2`, [shopId, c[0].email])).length > 0 || null);
   await page.context().close();

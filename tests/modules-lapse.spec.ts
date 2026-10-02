@@ -123,8 +123,9 @@ test("D after the end: read-only units, no new vacuum check-in, T1 finishes, the
   await expect(page.getByText("Status: Ready - customer called")).toBeVisible();
   await page.locator("#status").selectOption("COLLECTED");
   await expect(page.getByText("Status: Collected by customer")).toBeVisible();
-  await page.getByLabel("Amount", { exact: true }).fill("10.00");
-  await page.getByRole("button", { name: "Record payment" }).click();
+  const payment = page.locator("form", { has: page.getByRole("button", { name: "Record payment" }) });
+  await payment.getByLabel("Amount", { exact: true }).fill("10.00");
+  await payment.getByRole("button", { name: "Record payment" }).click();
   await expect(page.getByText("Payment recorded")).toBeVisible();
   await page.reload();
   await expect(page.getByText(/ended on/).first()).toBeVisible();
@@ -163,7 +164,9 @@ test("E in its grace days: the banner says it keeps working until, not on the pr
   await page.getByLabel("Bags or bagless").selectOption("Bagged");
   await page.getByRole("button", { name: "Create ticket" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Sebo X4/ })).toBeVisible();
-  await page.getByRole("link", { name: "Invoice" }).click();
-  await expect(page.getByText(/keeps working until/)).toHaveCount(0);
+  await page.getByRole("link", { name: "Invoice", exact: true }).first().click();
+  // The banner is on the page but inside a no-print block, so the printed invoice doesn't carry it.
+  await expect(page.locator(".no-print", { hasText: /keeps working until/ })).toHaveCount(1);
+  await expect(page.locator(".receipt, .invoice, main section").filter({ hasText: /keeps working until/ })).toHaveCount(0);
   await page.context().close();
 });

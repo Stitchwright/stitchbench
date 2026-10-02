@@ -499,6 +499,45 @@ roster, the classes CSV, the unsubscribe link; back on, the held message goes ou
 titles an install "Install: {customer}" (the ticket number when the install has no customer).
 Expect label and selector slips on the first run: these specs belong to the test batch of 2p.
 
+## 2x. The test batch, run (2 Oct 2026 morning, on this PC)
+
+Every spec ran on a test build at :3501 with the sink (:2526 / :2581), the Twilio mock (:3402), a second server at
+:3500 for two-servers and the local test hub at :3200 for partner-runs. Final results, one spec at a time:
+smoke 1, modules-basics 4, notices 4, estimate-links 2 (+1 expected skip: the no-PUBLIC_URL variant), campaigns 3
+(+1 skipped: the text campaign runs only 10:00-18:00 Eastern; rerun it in the daytime), classes 4, calendar 4,
+register-bookings 3, shifts 3, appliances 5, vac-shop 6, modules-lapse 3, scheduling-messaging 5, two-servers 1,
+partner-runs 1. All passing.
+
+**Real bugs the batch caught (fixed, in the build):**
+- `src/app/(app)/campaigns/[id]/page.tsx` counted the admin's "Send me a test" message among the campaign's recipients
+  (Sent 3 for 2 people). It now counts kind `campaign` only.
+- `src/lib/class-actions.ts` read the class form's waiting-list checkbox with `fd.get("waitlist") !== "off"`; the form
+  sends a hidden `off` before the checkbox's `on`, so the first value was always `off` and no class ever kept a
+  waiting list. Now `fd.getAll("waitlist").includes("on")`.
+- `src/lib/appointment-actions.ts` had the same slip for an appointment type's "Bookable now": every type saved
+  inactive, so the booking form had nothing to pick. Same fix.
+- `src/app/(app)/register/page.tsx` parsed `?booking=enrollment:<id>` with one capture group, so the id was never
+  read and "Ring up" from a roster opened an empty register. The id is captured now.
+
+**Spec slips fixed** (labels written against the code): URL checks that accepted `/x/new` before the redirect
+(campaigns, classes, partner-runs), text that appears twice (toasts and status lines, select options, folded
+previews, nested lists), rows matched by raw text where a cell's edit form lists every user (shifts), a `StockUnit`
+insert without `updatedAt`, the ready toast with Marketing on naming the notice instead of the status, the
+estimate link's "Yes, approve" button, the one-click unsubscribe being a POST, one customer per address for
+two-servers, the take-in form's ids and "Take it in and make the claim tag", the run form naming a machine
+"Tag 101 · Mary M. · Bernina B770". Specs `classes`, `register-bookings` and `partner-runs` accept `E2E_KEEP=1` to
+leave their companies behind after a failure.
+
+**How it was run** (the scripts live in this session's scratchpad; recreate as needed): the bundled Chromium
+(`npx playwright install chromium`; the installed Chrome quit when the owner closed Chrome to free memory), the
+server started with `PLATFORM_ADMIN_EMAILS=bwattendorf@gmail.com,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526
+TWILIO_API_BASE=http://127.0.0.1:3402 MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1
+PUBLIC_URL=http://localhost:3501 npx next start -p 3501`, specs with `E2E_BASE_URL=http://localhost:3501
+E2E_EMAIL=e2e@stitchbench.test E2E_PASSWORD=e2e-password-1 SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581
+TWILIO_MOCK_PORT=3402 PUBLIC_URL=http://localhost:3501 npx playwright test tests/<name>.spec.ts --workers 1`
+(smoke reads `E2E_EMAIL` / `E2E_PASSWORD` itself). A `next build` run as a background shell was killed by the
+memory guard; run it in the foreground (about 4 minutes).
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
@@ -521,6 +560,17 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
    update script); then `e2e-docs`, `modules-crossover` and the Vac Shop / appliance packages.
 
 ## 3. What to do next, in order
+
+**Asked for by the owner on 2 Oct 2026 (not designed yet; design before building):**
+1. **Parts arrived notice.** When parts the shop had to order are checked in (a part order received), the customers
+   whose tickets were Waiting on parts for them get an email or text saying the parts came in and the work is back on.
+   Belongs with the notices (Marketing), kind `parts_in` or similar, with the same consent rules as a ready notice.
+2. **Online booking on the shop's own website.** A public page (served through the public address, embeddable on
+   the shop's site) where customers book an appointment type or sign up for a class themselves, landing on the
+   calendar and roster with confirmations and consent. Offer it first on the hosted version, where the public
+   address comes with the account.
+3. **An online shop.** Selling parts and supplies from the shop's own inventory (stock and prices from Parts, sales
+   landing in the register's books), again hosted first for easy set-up.
 
 
 

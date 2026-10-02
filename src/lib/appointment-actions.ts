@@ -87,7 +87,8 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
     resource,
     hours: hoursFromForm(fd) as unknown as Prisma.InputJsonValue,
     location: limited(str(fd.get("location")), 120, "The location"),
-    active: fd.get("active") !== "off",
+    // The form sends a hidden "off" before the checkbox's "on": the first value alone would always read off.
+    active: fd.getAll("active").includes("on"),
     sortOrder: Number.isInteger(sortOrder) ? Math.max(-1000, Math.min(1000, sortOrder)) : 0,
   };
   if (resource) {

@@ -33,7 +33,8 @@ async function newCampaign(page: Page, o: { name: string; channel: "email" | "sm
   if (o.channel === "email") await page.getByLabel("Subject").fill(o.subject ?? "Hello");
   await page.getByLabel(o.channel === "email" ? "What the email says" : "What the text says").fill(o.body);
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL(/\/campaigns\/[a-z0-9]+$/, { timeout: 20_000 });
+  // Not /campaigns/new itself: the id appears once the save has redirected.
+  await expect(page).toHaveURL(/\/campaigns\/(?!new$)[a-z0-9]+$/, { timeout: 20_000 });
   return page.url().split("/").pop()!;
 }
 
