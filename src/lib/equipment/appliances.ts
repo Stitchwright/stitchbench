@@ -1,7 +1,7 @@
 // The built-in small-appliance kinds (Small Appliance Repair module). Foundation stub: each kind's identity, types
 // and brands; the appliance-repair package fills in accessories, intake fields, checklists, menus and readings
 // (modules-design.md section 11.1).
-import { genericLinks } from "./index";
+import { genericLinks } from "./links";
 import type { EquipmentKind } from "./types";
 
 function kind(a: Pick<EquipmentKind, "key" | "label" | "plural" | "noun" | "modelHint" | "types" | "brands">): EquipmentKind {
