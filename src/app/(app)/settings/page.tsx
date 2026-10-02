@@ -213,6 +213,11 @@ export default async function SettingsPage() {
           <Link href={SETTINGS_MODULES_HREF} className="link">
             Modules and license keys
           </Link>
+          <div>
+            <Link href="/settings/booking" className="link">
+              Online booking (Scheduling)
+            </Link>
+          </div>
         </div>
       </Section>
 

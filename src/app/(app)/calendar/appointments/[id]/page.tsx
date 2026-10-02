@@ -94,6 +94,7 @@ export default async function AppointmentPage({ params }: { params: Promise<{ id
             }
           />
           <KV k="Note" v={a.note} />
+          {a.source === "online" && <KV k="Booked" v="Online, by the customer" />}
           {!a.blocked && (
             <KV
               k="Fee"

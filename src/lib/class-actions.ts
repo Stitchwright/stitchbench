@@ -20,6 +20,12 @@ import { fmtDay, fmtWhen, rangeFromForm, wall, ymdOf, zonedTime } from "@/lib/zo
 
 type Tx = Prisma.TransactionClient;
 
+/** A checkbox paired with a hidden "off": on when any value is "on", off when the only values say off, on when the field is missing. */
+function checkbox(fd: FormData, name: string): boolean {
+  const v = fd.getAll(name).map(String);
+  return v.length === 0 || v.includes("on");
+}
+
 async function asUser(user: CurrentUser): Promise<void> {
   await requireOn(user, "scheduling");
 }
@@ -117,8 +123,9 @@ function classFields(fd: FormData) {
     feeCents: fee,
     taxable: fd.get("taxable") === "on",
     seats,
-    // The form sends a hidden "off" before the checkbox's "on": the first value alone would always read off.
-    waitlist: fd.getAll("waitlist").includes("on"),
+    // The form sends a hidden "off" before the checkbox's "on" (the first value alone would always read off); a form
+    // without the field at all means on.
+    waitlist: checkbox(fd, "waitlist"),
     remind,
   };
 }
