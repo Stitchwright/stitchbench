@@ -139,7 +139,10 @@ Opt-in suites (each skips itself unless its variables are set):
   port> TWILIO_API_BASE=http://127.0.0.1:<mock port> MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1
   PUBLIC_URL=http://localhost:<port>`; the spec process gets `SMTP_SINK_PORT`, `SMTP_SINK_HTTP`, `TWILIO_MOCK_PORT`
   and the same `PUBLIC_URL`. Each spec makes its own company from the Companies page (the E2E user must be in
-  `PLATFORM_ADMIN_EMAILS`) and removes it. `tests/partner-runs.spec.ts` needs `HUB_URL` as well.
+  `PLATFORM_ADMIN_EMAILS`) and removes it. `tests/partner-runs.spec.ts` needs `HUB_URL` as well. The modules specs
+  (`vac-shop`, `appliances`, `modules-lapse`, `modules-basics`) run on the same test build; `modules-lapse` runs
+  `scripts/license/dev.ts --grant` and needs `DATABASE_URL` in the spec process. `scheduling-messaging` walks both
+  modules together, and `two-servers` needs a second server on the same database (`E2E_SECOND_URL`).
 - When several feature packages are built at once, each gets its own git worktree, database (`stitchbench_feat_<key>`)
   and ports (package number n: sink 2525+n, mock 3401+n, server 3500+n), so builds, workers and test servers never
   share anything (design section 16.3).

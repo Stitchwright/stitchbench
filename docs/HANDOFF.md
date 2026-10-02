@@ -482,6 +482,23 @@ pre-lapse approval goes to the bench, a collected ticket can't be sent an estima
 refused, a post-lapse approval records the answer only). bags-due, estimate-links, notices, worker checks and the
 unit tests pass with the new copy.
 
+## 2w. Packages `modules-e2e` and the two `e2e-docs` specs (2 Oct 2026, committed, not yet run)
+
+Modules design 13.2 `modules-e2e` and scheduling design 15.10. Five Playwright specs, written against the code and
+never run: `tests/vac-shop.spec.ts` (check in, work and collect a vacuum; the finder with a local part and the
+register's picker ringing a bag up for the customer's vacuum; a unit received, sold with its warranty line on the
+receipt, a trade-in and its void; an install made, its power unit set, completed, "Work done at" on the invoice;
+"Install: {customer}" on the calendar's day; bags due for a unit sold 200 days ago), `tests/appliances.spec.ts`
+(mixer, 3D printer, resin printer, the shop's own Espresso machine with a relabelled question, "Check-in opens on"),
+`tests/modules-lapse.spec.ts` (companies D and E with ended keys through `dev.ts --grant`; read-only units, no new
+vacuum check-in, T1 finished, the unit returned, the export; E's "keeps working until" banner),
+`tests/scheduling-messaging.spec.ts` (both modules: a class sign-up with its confirmation, an appointment, reminders
+queued, a ready email, an estimate approved by link, both modules off with locks, read-only pages, a held message, the
+roster, the classes CSV, the unsubscribe link; back on, the held message goes out) and `tests/two-servers.spec.ts`
+(skipped without `E2E_SECOND_URL`: 30 queued notices arrive once each across two servers). `src/lib/calendar.ts` now
+titles an install "Install: {customer}" (the ticket number when the install has no customer).
+Expect label and selector slips on the first run: these specs belong to the test batch of 2p.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
@@ -495,8 +512,10 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
 3. One at a time, with `E2E_BASE_URL=http://localhost:3501 PW_CHANNEL=chrome SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581
    TWILIO_MOCK_PORT=3402 PUBLIC_URL=http://localhost:3501`: campaigns (3 of its 4 tests unverified), classes,
    calendar, register-bookings, shifts; then notices, estimate-links and smoke again (the register and partners code
-   moved); partner-runs needs `HUB_URL` and the test hub on :3200. Then the Vac Shop acceptance items of 2q by hand
-   (the finder page, the register picker, the xref admin-only controls).
+   moved); partner-runs needs `HUB_URL` and the test hub on :3200. Then the new specs of 2w: vac-shop, appliances,
+   modules-lapse (needs `DATABASE_URL` in the spec process for `dev.ts --grant`), scheduling-messaging, and
+   two-servers with a second server on :3501 and `E2E_SECOND_URL`. Then the Vac Shop acceptance items of 2q by hand
+   (the xref admin-only controls).
 4. Expect label and selector slips in the new specs: they were written against the code, not a running page.
 5. Then push to `main`, deploy both hosted services, and update the Windows install (`npm run prepare-app`, the
    update script); then `e2e-docs`, `modules-crossover` and the Vac Shop / appliance packages.
@@ -509,7 +528,12 @@ Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). 
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
 `estimate-links` packages are on `main` and deployed (section 2h); `campaigns` (2j), `classes` (2k) and `appointments`
 (2l), `register-bookings` (2m), `shifts` (2n) and `partner-runs` (2o) are committed: every feature package of the
-scheduling design is written. Next: the test batch of 2p, then e2e-docs, then step 4.3.
+scheduling design is written, and so are e2e-docs (the INSTALL and README sections, the two specs in 2w) and every
+package of the modules design: `vac-repair` and `vac-finder` (2q), `vac-sales-warranty` (2r), `vac-bags-due` (2s),
+`central-vac-installs` (2t), `appliance-repair` (2u), `modules-crossover` (2v) and `modules-e2e` (2w). Steps 4.2 and
+4.3 are therefore written but not browser-tested. Next: the test batch of 2p (now including the 2w specs), then push
+the local commits to `main`, deploy both hosted services and update the Windows install, then step 4.4 / 5 (StitchHub
+accounts and billing: design first).
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`

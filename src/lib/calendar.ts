@@ -75,7 +75,7 @@ export async function calendarItems(shopId: string, from: Date, to: Date, o: { s
   // Central-vac installs (the vac module's siteJobsBetween applies its own gate; a stub returns [] until it ships).
   for (const s of await siteJobsBetween(shopId, from, to)) {
     const start = s.startsAt ?? from;
-    items.push({ kind: "install", id: s.ticketId, start, end: s.endsAt ?? new Date(start.getTime() + 2 * 3_600_000), title: `Install: ticket ${ticketNo(s.number)}`, sub: s.address, href: `/tickets/${s.ticketId}`, tone: s.status === "COLLECTED" ? "done" : "work" });
+    items.push({ kind: "install", id: s.ticketId, start, end: s.endsAt ?? new Date(start.getTime() + 2 * 3_600_000), title: `Install: ${s.customerName ?? `ticket ${ticketNo(s.number)}`}`, sub: s.address, href: `/tickets/${s.ticketId}`, tone: s.status === "COLLECTED" ? "done" : "work" });
   }
   return items.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
