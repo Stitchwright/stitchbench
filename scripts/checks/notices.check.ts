@@ -620,9 +620,11 @@ async function stillWantedOthers(m: Shop, other: Shop) {
   assert.equal(await stillWanted(cc), "Consent withdrawn");
 
   // everything else: never
-  for (const kind of ["review", "campaign", "class_notice", "booking_notice", "help_reply", "test", "bags_due"]) {
+  for (const kind of ["review", "campaign", "class_notice", "booking_notice", "help_reply", "test"]) {
     assert.equal(await stillWanted(base({ kind })), null, `${kind}: never cancelled here`);
   }
+  // bags_due has its own rule (vac-bags-due's bagsDueStillWanted): this company has no Vac Shop, so it is cancelled.
+  assert.equal(await stillWanted(base({ kind: "bags_due" })), "Vac Shop is off");
   ok("stillWanted for every kind of 9.4: ready, abandon, reminder, estimate, service_due, consent_confirm, and \"others: never\"");
 }
 
