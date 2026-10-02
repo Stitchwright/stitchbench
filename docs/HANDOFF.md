@@ -590,6 +590,8 @@ appointments check, whose forms send neither, had started saving types inactive.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
+(How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
+
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
 server, Chrome and Docker together). Checked: tsc, eslint, every check script, the unit tests. To finish:
 
