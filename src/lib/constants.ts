@@ -265,6 +265,7 @@ export const CONSENT_SOURCE_LABEL: Record<string, string> = {
   ticket: "Told us at pickup time",
 };
 export const CLASS_STATUS_LABEL: Record<string, string> = { OPEN: "Open", CLOSED: "Sign-ups closed", CANCELLED: "Cancelled" };
+export const CLASS_STATUS_TONE: Record<string, string> = { OPEN: "ready", CLOSED: "neutral", CANCELLED: "bad" };
 export const CLASS_REMIND_LABEL: Record<string, string> = { every: "Before every meeting", first: "Before the first meeting only", never: "No reminders" };
 export const ENROLLMENT_STATUS_LABEL: Record<string, string> = { ENROLLED: "Signed up", WAITLIST: "Waiting list", CANCELLED: "Cancelled" };
 export const APPOINTMENT_STATUS_LABEL: Record<string, string> = { BOOKED: "Booked", DONE: "Done", NO_SHOW: "Didn't come", CANCELLED: "Cancelled" };

@@ -12,7 +12,7 @@ import { ModuleOff } from "@/components/module-off";
 import { MessagesTabs } from "@/components/messages-tabs";
 import { Empty, PageHeader } from "@/components/ui";
 
-const CAMPAIGN_STATUS_TONE: Record<string, string> = { DRAFT: "neutral", QUEUING: "wait", SENDING: "wait", SENT: "ok", CANCELLED: "neutral" };
+const CAMPAIGN_STATUS_TONE: Record<string, string> = { DRAFT: "neutral", QUEUING: "wait", SENDING: "wait", SENT: "done", CANCELLED: "neutral" };
 
 export default async function CampaignsPage() {
   const user = await requireUser();
