@@ -247,6 +247,10 @@ export default async function SettingsPage() {
               Repair tickets and their lines
             </a>
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/part-waits" className="btn btn-sm">
+              Parts on order
+            </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/machines" className="btn btn-sm">
               Machines
             </a>

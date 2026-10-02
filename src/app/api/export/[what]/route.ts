@@ -216,6 +216,7 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
           viaAccount: true,
           tech: { select: { name: true } },
           site: true,
+          waits: { orderBy: { orderedAt: "asc" } },
         },
         orderBy: { number: "asc" },
       });
@@ -223,7 +224,7 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
       // module columns come last so older spreadsheets keep working: job_type (BENCH or a SITE install), kind, the
       // install's address, and the kind's check-in answers (the unit's and this visit's) and readings as JSON text.
       const out: unknown[][] = [
-        ["ticket", "status", "taken_in", "ready", "closed", "warranty_until", "customer", "phone", "via_account", "brand", "model", "serial", "tech", "service_requested", "problem", "diagnosis", "work_done", "accessories", "upper_found_g", "upper_left_g", "bobbin_found_g", "bobbin_left_g", "readings", "notes", "line_kind", "line_description", "qty", "unit_price", "line_total", "taxable", "ticket_tax", "ticket_total", "ticket_paid", "job_type", "kind", "site_address", "details", "intake", "kind_readings"],
+        ["ticket", "status", "taken_in", "ready", "closed", "warranty_until", "customer", "phone", "via_account", "brand", "model", "serial", "tech", "service_requested", "problem", "diagnosis", "work_done", "accessories", "upper_found_g", "upper_left_g", "bobbin_found_g", "bobbin_left_g", "readings", "notes", "line_kind", "line_description", "qty", "unit_price", "line_total", "taxable", "ticket_tax", "ticket_total", "ticket_paid", "job_type", "kind", "site_address", "details", "intake", "kind_readings", "parts_waiting", "parts_received"],
       ];
       for (const t of ts) {
         const tot = ticketTotals(t.lines, t.payments, t.taxRatePct);
@@ -253,13 +254,35 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
           Object.keys((t.measurements as object) ?? {}).length ? JSON.stringify(t.measurements) : "",
           t.notes,
         ];
-        const money = [dollars(tot.tax), dollars(tot.total), dollars(tot.paid), t.jobType, t.machine.kind, t.site?.address ?? "", json(t.machine.details), json(t.intake), json(t.readings)];
+        // Parts on order for it ("description x qty (supplier)"), and the ones that came in.
+        const waitWords = (w: { description: string; qty: number; supplier: string | null }) => `${w.description}${w.qty !== 1 ? ` x ${w.qty}` : ""}${w.supplier ? ` (${w.supplier})` : ""}`;
+        const money = [
+          dollars(tot.tax),
+          dollars(tot.total),
+          dollars(tot.paid),
+          t.jobType,
+          t.machine.kind,
+          t.site?.address ?? "",
+          json(t.machine.details),
+          json(t.intake),
+          json(t.readings),
+          t.waits.filter((w) => !w.receivedAt && !w.cancelledAt).map(waitWords).join("; "),
+          t.waits.filter((w) => w.receivedAt).map(waitWords).join("; "),
+        ];
         if (!t.lines.length) out.push([...head, "", "", "", "", "", "", ...money]);
         for (const l of t.lines) {
           out.push([...head, l.kind, l.description, l.qty, dollars(l.unitPriceCents), dollars(lineTotal(l)), l.taxable ? "yes" : "no", ...money]);
         }
       }
       return out;
+    }
+    case "part-waits": {
+      // Every part a ticket waited for: on order, received or cancelled, with its dates and who was told.
+      const ws = await db.partWait.findMany({ where: { shopId }, include: { ticket: { select: { number: true, customer: { select: { name: true } } } }, part: { select: { partNumber: true } } }, orderBy: { orderedAt: "asc" } });
+      return [
+        ["ticket", "customer", "part_number", "description", "qty", "supplier", "ordered", "expected", "received", "received_by", "customer_told", "cancelled", "note"],
+        ...ws.map((w) => [w.ticket.number, w.ticket.customer?.name, w.part?.partNumber, w.description, w.qty, w.supplier, at(w.orderedAt), w.expectedOn, at(w.receivedAt), w.receivedBy, at(w.noticedAt), at(w.cancelledAt), w.note]),
+      ];
     }
     case "machines": {
       const ms = await db.machine.findMany({

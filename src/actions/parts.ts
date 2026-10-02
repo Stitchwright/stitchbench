@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { isUserError, safe, UserError, type ActionResult } from "@/lib/action";
+import { openWaits } from "@/lib/part-waits";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { MAX_STOCK, centsField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
@@ -120,36 +121,52 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   revalidatePath("/parts");
 });
 
-/** Receive stock (+) or correct the count (set to what's on the shelf). */
-export const moveStock = safe(async function moveStock(partId: string, formData: FormData) {
-  assertId(partId);
-  const user = await requireUser();
-  const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
-  if (!p) throw new UserError("Part not found.");
-  // A partner's consigned stock is placed, counted and taken back by the partner; receiving the shop's own units into
-  // it would pay the partner for them when they sell.
-  if (p.consignLinkId) throw new UserError(`${p.partNumber} is a partner's consigned stock: its stock comes and goes through the partnership. Add your own stock as a separate item.`);
-  const mode = str(formData.get("mode"));
-  const raw = Number(str(formData.get("qty")) ?? "NaN");
-  if (!Number.isFinite(raw)) throw new UserError("Enter a quantity.");
-  // Fabric is counted in yards (to the eighth); everything else in whole pieces.
-  const n = p.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
-  if (n < 0 || n > MAX_STOCK) throw new UserError(`Enter a quantity from 0 to ${MAX_STOCK.toLocaleString("en-US")}.`);
-  const note = str(formData.get("note"));
-  if (mode === "count") {
-    await countStock(user.shopId, partId, n, user.id, note ?? "Shelf count");
-  } else {
-    if (n <= 0) throw new UserError("Enter how many arrived.");
-    const cost = centsField(formData.get("cost"), "Cost");
-    await db.$transaction([
-      db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost != null ? { costCents: cost } : {}) } }),
-      db.stockMove.create({ data: { shopId: user.shopId, partId, qty: n, reason: "RECEIVED", userId: user.id, note } }),
-    ]);
+/** Receive stock (+) or correct the count (set to what's on the shelf). Received stock that tickets are waiting for says so in the toast. */
+export async function moveStock(partId: string, formData: FormData): Promise<ActionResult> {
+  try {
+    assertId(partId);
+    const user = await requireUser();
+    const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
+    if (!p) throw new UserError("Part not found.");
+    // A partner's consigned stock is placed, counted and taken back by the partner; receiving the shop's own units into
+    // it would pay the partner for them when they sell.
+    if (p.consignLinkId) throw new UserError(`${p.partNumber} is a partner's consigned stock: its stock comes and goes through the partnership. Add your own stock as a separate item.`);
+    const mode = str(formData.get("mode"));
+    const raw = Number(str(formData.get("qty")) ?? "NaN");
+    if (!Number.isFinite(raw)) throw new UserError("Enter a quantity.");
+    // Fabric is counted in yards (to the eighth); everything else in whole pieces.
+    const n = p.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
+    if (n < 0 || n > MAX_STOCK) throw new UserError(`Enter a quantity from 0 to ${MAX_STOCK.toLocaleString("en-US")}.`);
+    const note = str(formData.get("note"));
+    if (mode === "count") {
+      await countStock(user.shopId, partId, n, user.id, note ?? "Shelf count");
+    } else {
+      if (n <= 0) throw new UserError("Enter how many arrived.");
+      const cost = centsField(formData.get("cost"), "Cost");
+      await db.$transaction([
+        db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost != null ? { costCents: cost } : {}) } }),
+        db.stockMove.create({ data: { shopId: user.shopId, partId, qty: n, reason: "RECEIVED", userId: user.id, note } }),
+      ]);
+    }
+    revalidatePath(`/parts/${partId}`);
+    revalidatePath("/parts");
+    revalidatePath("/");
+    if (mode !== "count") {
+      const waiting = await openWaits(user.shopId, { partId });
+      if (waiting.length) {
+        const n = waiting.length;
+        return {
+          ok: true,
+          warn: `Received. ${n} ticket${n === 1 ? " is" : "s are"} waiting for this part: mark ${n === 1 ? "it" : "them"} received under Parts, On order, so the customer${n === 1 ? "" : "s"} hear${n === 1 ? "s" : ""} it's in.`,
+        };
+      }
+    }
+    return { ok: true };
+  } catch (e) {
+    if (isUserError(e)) return { error: e.message };
+    throw e;
   }
-  revalidatePath(`/parts/${partId}`);
-  revalidatePath("/parts");
-  revalidatePath("/");
-});
+}
 
 // ---------- where to buy (this shop's own suppliers for a part) ----------
 
