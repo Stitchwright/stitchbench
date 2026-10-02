@@ -284,6 +284,44 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
         ...ws.map((w) => [w.ticket.number, w.ticket.customer?.name, w.part?.partNumber, w.description, w.qty, w.supplier, at(w.orderedAt), w.expectedOn, at(w.receivedAt), w.receivedBy, at(w.noticedAt), at(w.cancelledAt), w.note]),
       ];
     }
+    case "web-orders": {
+      // Every online order, oldest first: the customer as the order took it, the items as sold ("description (number)
+      // x qty"), the money, the dates of each step and the sale it was written in the books as.
+      const os = await db.webOrder.findMany({ where: { shopId }, orderBy: [{ createdAt: "asc" }, { number: "asc" }] });
+      const saleIds = [...new Set(os.map((o) => o.saleId).filter((id): id is string => !!id))];
+      const saleNo = new Map((saleIds.length ? await db.sale.findMany({ where: { id: { in: saleIds }, shopId }, select: { id: true, number: true } }) : []).map((s) => [s.id, s.number]));
+      type Item = { partNumber: string | null; description: string; qty: number };
+      const itemWords = (items: unknown) => (Array.isArray(items) ? (items as Item[]).map((i) => `${i.description}${i.partNumber ? ` (${i.partNumber})` : ""} x ${i.qty}`).join("; ") : "");
+      return [
+        ["number", "status", "customer", "phone", "email", "fulfil", "address", "items", "subtotal", "shipping", "tax", "total", "refunded", "pay_via", "tax_via", "created", "paid", "ready", "done", "cancelled", "tracking", "sale_number", "note", "staff_note"],
+        ...os.map((o) => [
+          o.number,
+          o.status,
+          o.name,
+          o.phone,
+          o.email,
+          o.fulfil,
+          o.address,
+          itemWords(o.items),
+          dollars(o.subtotalCents),
+          dollars(o.shipCents),
+          dollars(o.taxCents),
+          dollars(o.totalCents),
+          dollars(o.refundedCents),
+          o.payVia,
+          o.taxVia,
+          at(o.createdAt),
+          at(o.paidAt),
+          at(o.readyAt),
+          at(o.doneAt),
+          at(o.cancelledAt),
+          o.tracking,
+          o.saleId ? (saleNo.get(o.saleId) ?? "") : "",
+          o.note,
+          o.staffNote,
+        ]),
+      ];
+    }
     case "machines": {
       const ms = await db.machine.findMany({
         where: { shopId },

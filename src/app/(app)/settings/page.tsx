@@ -257,6 +257,12 @@ export default async function SettingsPage() {
             <a href="/api/export/part-waits" className="btn btn-sm">
               Parts on order
             </a>
+            {shop.sellsRetail && (
+              // eslint-disable-next-line @next/next/no-html-link-for-pages
+              <a href="/api/export/web-orders" className="btn btn-sm">
+                Online orders
+              </a>
+            )}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/machines" className="btn btn-sm">
               Machines

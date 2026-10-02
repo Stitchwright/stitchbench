@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money, ticketNo } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { fmtWhen } from "@/lib/zoned";
 import { ticketTotals } from "@/lib/ticket-math";
+import { ORDER_STATUS_LABEL, type OrderStatus } from "@/lib/shop/online-shop";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { CustomerForm } from "@/components/customer-form";
 import { CustomerMessages } from "@/components/customer-messages";
@@ -32,6 +34,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       (j) => [j.ticketId!, j.commissionCents],
     ),
   );
+  // The customer's online orders, newest first (WebOrder.customerId is a plain column, so its own query).
+  const orders = await db.webOrder.findMany({
+    where: { shopId: user.shopId, customerId: c.id },
+    orderBy: [{ createdAt: "desc" }, { number: "desc" }],
+    select: { id: true, number: true, status: true, fulfil: true, totalCents: true, createdAt: true },
+  });
   const tickets = c.kind === "TRADE" ? c.viaTickets : c.tickets;
   const owed = tickets.reduce((s, t) => s + Math.max(0, ticketTotals(t.lines, t.payments, t.taxRatePct).balance), 0);
   const commission =
@@ -99,6 +107,32 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 ))}
               </ul>
             )}
+          </Section>
+        )}
+        {orders.length > 0 && (
+          <Section title="Online orders">
+            <ul className="divide-y divide-line text-sm">
+              {orders.map((o) => {
+                const status = o.status as OrderStatus;
+                // Paid and ready orders are on the staff page's to-do list; the rest show under "Show all".
+                const href = status === "PAID" || status === "READY" ? "/register/online" : "/register/online?all=1";
+                return (
+                  <li key={o.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <span className="flex items-center gap-2">
+                      <Link href={href} className="link mono">
+                        #{o.number}
+                      </Link>
+                      <span className="pill">{ORDER_STATUS_LABEL[status] ?? o.status}</span>
+                      <span className="muted">{o.fulfil === "ship" ? "Ship" : "Pickup"}</span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="num">{money(o.totalCents)}</span>
+                      <span className="num muted">{fmtWhen(o.createdAt, tz)}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </Section>
         )}
         <CustomerClassesSlot customerId={c.id} user={user} />
