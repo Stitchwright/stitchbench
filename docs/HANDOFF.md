@@ -702,11 +702,15 @@ accounts and billing: design first).
 5. **StitchHub dealer accounts and billing** (owner decisions, not yet designed): dealers register (email
    confirmation), sign in and reset passwords on StitchHub; they buy monthly or yearly through Stripe
    (Checkout + Customer Portal, webhooks): add-on modules, hosted StitchBench (company created automatically),
-   the Windows program itself (read-only when it lapses, never lose data), and hub membership (replaces
-   emailing join keys; grandfather current members). The hub signs license keys with its own revocable key and
-   installs refresh them when online. Password resets: hub account by email; hosted app by email; Windows
-   tray "Reset a password" on the shop PC; and from the hub account to a Windows install (only if that shop
-   opted in on its PC, signed, one-time, short-lived, owner login only, shown on the PC).
+   the Windows program itself (read-only when it lapses, never lose data). Hub membership itself is free (the
+   26 Sep decision below): an account replaces emailing join keys; current members are grandfathered. The hub
+   signs license keys with its own revocable key and installs refresh them when online. Password resets: hub
+   account by email; hosted app by email; Windows tray "Reset a password" on the shop PC (decided, not built
+   yet); and from the hub account to a Windows install (only if that shop opted in on its PC, signed, one-time,
+   short-lived, owner login only, shown on the PC). **Designed 2 Oct 2026:**
+   `docs/plans/hub-accounts-billing-design.md`, the owner took every recommended answer; build its five packages
+   in order (hub-accounts, base-license, hub-billing, hosted-provisioning, terms-launch), each with a check and a
+   spec, the ultra review before each deploy.
 6. Later rounds (owner approved): off-site backup, gift cards/store credit, reports + sales-tax report +
    QuickBooks export, audit log; then layaway/special orders, block-of-the-month clubs, kits, purchase orders,
    loaners, per-ticket time clock, warranty claims, drop-off signature. Needs owner decisions first: card
