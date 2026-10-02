@@ -411,6 +411,22 @@ buttons, or brand + box; Add per stocked item with the vacuum's machineId), `Sup
 pages, `scripts/checks/vac-finder.check.ts` (13 groups incl. the tenant section). No schema change, no hub change.
 Not run in a browser: acceptance items 2 to 5 of package `vac-finder` (design 13.2) belong in the test batch of 2p.
 
+## 2r. Vac Shop package `vac-sales-warranty` (2 Oct 2026, committed, built without a browser run)
+
+Modules design 10.c. `src/lib/vac/units.ts` (`warrantyEnd` in shop time with the day clamped, `warrantyThrough`,
+`unitDescription`, `listUnits` on the four tabs with the search, `unitDetail`, `receiveUnitsFor` one unit per serial
+with the customer's-vacuum and already-in-stock refusals, `updateUnitFor`, `setUnitOffSaleFor`,
+`recordRegistrationFor`, `unitFromAbandonedFor` at the ticket's unpaid balance, `unitsForSaleFor`,
+`unitsToReturnFor`), `src/lib/vac/sale-units.ts` (the register hooks: `prepareUnitLines` with the per-line rules and
+the lapsed gate that still allows a return, `applyUnitLine` for sale / return / trade-in with the `prev` snapshot on
+a traded-back unit, `voidUnitLines` in both orders, `registerUnitHits`), `src/actions/vac-units.ts`, the register's
+`VacUnitTools` (Vacuum for sale, Trade-in, Return a vacuum), `UnitBadge` (with "Put up for sale" on an abandoned
+vacuum), `SaleUnitNotes` on the receipt, `/vac/units` (tabs, table, the admin "Add vacuums for sale" form with the
+vacuum's intake fields) and `/vac/units/[id]` (details, history, registration, the admin edit and off-sale forms),
+`scripts/checks/vac-units.check.ts` (15 groups through the real `completeSaleAs` / `voidSaleAs`, the gate on a lapsed
+company, the tenant section). No schema change. Acceptance items that need a browser (the register flows, the
+receipt, the export's `for_machine`) belong in the test batch of 2p.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
