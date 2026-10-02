@@ -553,7 +553,7 @@ worker's reasons: the wait gone, not received after all, the part isn't coming, 
 work"); `/parts/on-order` (by supplier, Received per row and "Received all of these" per supplier, Cancel; the Parts
 page links it as "On order"); message kind `parts_in` (notice) with its label, fields and default wording;
 `stillWanted` routes it. `scripts/checks/part-waits.check.ts` (11 groups incl. the tenant section) passes;
-`tests/parts-in.spec.ts` is written and not run (needs a rebuild: it belongs to the next test batch). Not done from
+`tests/parts-in.spec.ts` (3 tests) passes on the rebuilt test build. Not done from
 the design: the count in the toast after a stock count, the export columns, the dashboard link.
 
 **Running the check scripts while a test server is up:** stop the server first (or start it with `MESSAGES=off`).
@@ -585,7 +585,7 @@ server, Chrome and Docker together). Checked: tsc, eslint, every check script, t
 
 **Asked for by the owner on 2 Oct 2026** (first-draft design in `docs/plans/online-and-parts-design.md`, for the owner to
 correct before building; its three open questions are at the end of that file):
-1. **Parts arrived notice.** Built (section 2y); its spec runs with the next batch.
+1. **Parts arrived notice.** Built and tested (section 2y).
 2. **Online booking on the shop's own website.** A public page (served through the public address, embeddable on
    the shop's site) where customers book an appointment type or sign up for a class themselves, landing on the
    calendar and roster with confirmations and consent. Offer it first on the hosted version, where the public
