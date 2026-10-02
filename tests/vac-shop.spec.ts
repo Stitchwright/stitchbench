@@ -98,8 +98,9 @@ test("a vacuum is checked in, its checklist and readings filled, billed and coll
   await expect(page.getByText("Status: Ready - customer called")).toBeVisible();
   await page.locator("#status").selectOption("COLLECTED");
   await expect(page.getByText("Status: Collected by customer")).toBeVisible();
-  await page.getByLabel("Amount", { exact: true }).fill("10.00");
-  await page.getByRole("button", { name: "Record payment" }).click();
+  const payment = page.locator("form", { has: page.getByRole("button", { name: "Record payment" }) });
+  await payment.getByLabel("Amount", { exact: true }).fill("10.00");
+  await payment.getByRole("button", { name: "Record payment" }).click();
   await expect(page.getByText("Payment recorded")).toBeVisible();
   await page.context().close();
 });
@@ -207,7 +208,7 @@ test("a central vac install: made, its site and power unit set, completed, and o
   const site = page.locator("section", { has: page.getByRole("heading", { name: "The site" }) });
   await expect(site.getByRole("link", { name: /12 Oak St, Springfield/ })).toBeVisible();
   await expect(site.getByText("to be chosen")).toBeVisible();
-  await site.getByText("Set the power unit", { exact: true }).click();
+  await site.locator("summary", { hasText: "Set the power unit" }).click();
   await site.getByLabel("Brand").fill("NuTone");
   await site.getByLabel("Model").fill("PP650");
   await site.getByLabel("Serial").fill(`PU${RUN}`);
@@ -219,7 +220,7 @@ test("a central vac install: made, its site and power unit set, completed, and o
   await page.getByRole("button", { name: "Add labor" }).click();
   await page.locator("#status").selectOption("COLLECTED");
   await expect(page.getByText(/Status: Completed/)).toBeVisible();
-  await page.getByRole("link", { name: "Invoice" }).click();
+  await page.getByRole("link", { name: "Invoice", exact: true }).first().click();
   await expect(page.getByText("Work done at")).toBeVisible();
   await expect(page.getByText("12 Oak St, Springfield")).toBeVisible();
   await page.goto("/vac/installs?tab=done");
@@ -235,12 +236,12 @@ test("with Scheduling on, the install shows on the calendar's day as 'Install: {
 });
 
 test("bags due lists a bagged vacuum sold 200 days ago", async ({ browser }) => {
-  const m = await insert<{ id: string }>("Machine", { shopId, customerId, brand: "Hoover", model: "WindTunnel", modelKey: "WINDTUNNEL", serial: `BD${RUN}`, equipment: "VACUUM", kind: "vacuum", details: JSON.stringify({ bagged: "Bagged", bagType: "Type Y" }) });
-  await insert("StockUnit", { shopId, machineId: m.id, status: "SOLD", condition: "NEW", soldAt: new Date(Date.now() - 200 * DAY).toISOString(), priceCents: 29900, soldNetCents: 29900 });
+  const m = await insert<{ id: string }>("Machine", { shopId, customerId, brand: "Hoover", model: "UH70120", modelKey: "UH70120", serial: `BD${RUN}`, equipment: "VACUUM", kind: "vacuum", details: JSON.stringify({ bagged: "Bagged", bagType: "Type Y" }) });
+  await insert("StockUnit", { shopId, machineId: m.id, status: "SOLD", condition: "NEW", soldAt: new Date(Date.now() - 200 * DAY).toISOString(), priceCents: 29900, soldNetCents: 29900, updatedAt: new Date().toISOString() });
   const page = await login(browser, owner);
   await page.goto("/vac/bags-due");
   const row = page.getByRole("row", { name: new RegExp(customerName) });
-  await expect(row).toContainText("Hoover WindTunnel");
+  await expect(row).toContainText("Hoover UH70120");
   await expect(row).toContainText("overdue");
   await expect(row).toContainText("Hoover Type Y bags (3)");
   await row.getByRole("button", { name: "Snooze 30 days" }).click();

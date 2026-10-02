@@ -51,8 +51,9 @@ test("30 queued notices go out exactly once across two servers", async ({ browse
 
     await clearSink();
     const addresses = Array.from({ length: COUNT }, (_, i) => `two-${RUN.toLowerCase()}-${i}@customer.test`);
-    const c = await insert<{ id: string }>("Customer", { shopId, name: `Two Customer ${RUN}`, email: addresses[0], notifyBy: "email" });
+    // One customer per address: the worker re-checks each row against its customer before sending.
     for (const [i, address] of addresses.entries()) {
+      const c = await insert<{ id: string }>("Customer", { shopId, name: `Two Customer ${RUN} ${i}`, email: address, notifyBy: "email" });
       await insert("OutMessage", { shopId, channel: "email", purpose: "notice", kind: "ready", customerId: c.id, address, subject: `Ready ${i}`, body: `Your machine is ready (${i}).`, status: "QUEUED", dedupeKey: `two:${RUN}:${i}`, sendAfter: new Date().toISOString() });
     }
     // Both workers run every 2 s: everything should be out well within a minute.

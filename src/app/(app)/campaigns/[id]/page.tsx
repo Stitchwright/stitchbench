@@ -153,10 +153,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     );
   }
 
-  // Queued, sending, sent or cancelled: progress and the recipients.
+  // Queued, sending, sent or cancelled: progress and the recipients (the campaign's own messages: an admin's "Send me a test" is kind "test" and doesn't count).
   const [byStatus, rows] = await Promise.all([
-    db.outMessage.groupBy({ by: ["status"], where: { shopId, campaignId: c.id }, _count: { _all: true } }),
-    db.outMessage.findMany({ where: { shopId, campaignId: c.id }, orderBy: { createdAt: "desc" }, take: 500, select: { id: true, customerId: true, address: true, status: true, error: true, sentAt: true, deliveryStatus: true } }),
+    db.outMessage.groupBy({ by: ["status"], where: { shopId, campaignId: c.id, kind: "campaign" }, _count: { _all: true } }),
+    db.outMessage.findMany({ where: { shopId, campaignId: c.id, kind: "campaign" }, orderBy: { createdAt: "desc" }, take: 500, select: { id: true, customerId: true, address: true, status: true, error: true, sentAt: true, deliveryStatus: true } }),
   ]);
   const count = (s: string) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
   const customerIds = [...new Set(rows.map((r) => r.customerId).filter((x): x is string => !!x))];

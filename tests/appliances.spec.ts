@@ -57,7 +57,7 @@ test("a stand mixer: Tilt-head / Bowl-lift, Bowl size, the dime test and the mix
   await expect(page.getByRole("heading", { level: 1, name: /KitchenAid KSM150PS/ })).toBeVisible();
   await expect(page.getByLabel("Dime test (planetary mixers) as found")).toBeVisible();
   await expect(page.getByLabel("Old grease removed, gearbox cleaned")).toBeVisible();
-  await expect(page.getByText("5 qt")).toBeVisible();
+  await expect(page.getByText("5 qt", { exact: true }).first()).toBeVisible();
   await page.getByLabel("Dime test (planetary mixers) as left").selectOption("pass");
   await page.getByRole("button", { name: "Save readings" }).click();
   await expect(page.getByText("Readings saved")).toBeVisible();
@@ -83,7 +83,7 @@ test("a 3D printer asks Filament in use and Nozzle size (no Resin), and its tick
   await page.getByLabel("Test print as left").selectOption("pass");
   await page.getByRole("button", { name: "Save readings" }).click();
   await expect(page.getByText("Readings saved")).toBeVisible();
-  await expect(page.getByText("6.2.1")).toBeVisible();
+  await expect(page.getByLabel("Firmware version as left")).toHaveValue("6.2.1");
   await page.context().close();
 });
 
@@ -135,20 +135,24 @@ test("What you repair: Espresso machine with a Boiler type question; relabelling
   await page.getByRole("button", { name: "Create ticket" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /Gaggia Classic Pro/ })).toBeVisible();
   const ticketUrl = page.url();
-  await expect(page.getByText("Boiler type")).toBeVisible();
-  await expect(page.getByText("Dual", { exact: true })).toBeVisible();
+  // The answer shows in Details and again in the intake form's own select: the first is enough.
+  await expect(page.getByText("Boiler type").first()).toBeVisible();
+  await expect(page.getByText("Dual", { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel("Descaled")).toBeVisible();
 
   // Relabel the question: the key (and so the answer) stays.
   await page.goto("/settings/equipment");
-  const mine = page.locator("details", { has: page.getByText("Espresso machine", { exact: true }) }).first();
+  // Scoped to "Your own kinds": the built-in "Other appliance" lists "Espresso machine" as a type too.
+  const own = page.locator("section", { has: page.getByRole("heading", { name: "Your own kinds" }) });
+  const mine = own.locator("details", { hasText: "Espresso machine" }).first();
   await mine.locator("summary").click();
   await mine.getByLabel("Question 1").fill("Boiler");
   await mine.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
   await page.goto(ticketUrl);
-  await expect(page.getByText("Boiler", { exact: true })).toBeVisible();
-  await expect(page.getByText("Dual", { exact: true })).toBeVisible();
+  await expect(page.getByText("Boiler", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Dual", { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel("Boiler", { exact: true })).toHaveValue("Dual");
   await page.context().close();
 });
 

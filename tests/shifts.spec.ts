@@ -70,9 +70,9 @@ test("an admin adds shifts for a user and for 'Ann (Saturdays)'; the totals show
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
   await page.reload();
   const grid = page.getByRole("table", { name: "Shifts" });
-  await expect(grid.locator("tr", { hasText: "Shf Tech" })).toContainText("4h");
-  await expect(grid.locator("tr", { hasText: "Ann (Saturdays)" })).toContainText("6h 30m");
-  await expect(grid.locator("tr", { hasText: "Shf Tech" })).toContainText(/9 am-1 pm Counter/);
+  await expect(grid.getByRole("row", { name: /^Shf Tech/ })).toContainText("4h");
+  await expect(grid.getByRole("row", { name: /^Ann \(Saturdays\)/ })).toContainText("6h 30m");
+  await expect(grid.getByRole("row", { name: /^Shf Tech/ })).toContainText(/9 am-1 pm Counter/);
   // The same person twice at once is refused.
   await add.getByLabel("Who").selectOption({ label: "Shf Tech" });
   await add.getByLabel("Date").fill(W.tuesday);
@@ -87,10 +87,11 @@ test("copy to next week; the print view lists them; the Calendar's Staff tab ope
   const page = await login(browser, owner);
   await page.goto(`/shifts?week=${W.after}`);
   await page.getByRole("button", { name: "Copy last week" }).click();
-  await expect(page).toHaveURL(new RegExp(`/shifts\\?week=${W.after}`), { timeout: 20_000 });
+  // The page was already on this week: wait for the copied rows to show before counting them.
+  await expect(page.getByRole("table", { name: "Shifts" }).getByRole("row", { name: /^Ann \(Saturdays\)/ })).toBeVisible({ timeout: 20_000 });
+  await expect(page).toHaveURL(new RegExp(`/shifts\\?week=${W.after}`));
   const rows = await sql<{ name: string }>(`SELECT name FROM "Shift" WHERE "shopId" = $1 ORDER BY "startsAt"`, [shopId]);
   expect(rows).toHaveLength(4);
-  await expect(page.getByRole("table", { name: "Shifts" }).locator("tr", { hasText: "Ann (Saturdays)" })).toBeVisible();
 
   await page.goto(`/shifts/print?week=${W.sunday}`);
   await expect(page.getByText(/who's working/)).toBeVisible();

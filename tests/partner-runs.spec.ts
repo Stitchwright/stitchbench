@@ -55,14 +55,14 @@ test.beforeAll(async ({ browser }) => {
   // The partnership through the hub: the repair shop's invite code, redeemed by the sewing shop.
   const rep = await login(browser, repairOwner);
   await rep.goto("/partners");
-  await rep.getByRole("button", { name: /Invite a (sewing|quilt) shop|Make a code/i }).first().click();
-  const code = (await rep.getByText(/stitchpartner:|^[A-Z0-9]{6,}$/).first().innerText()).trim();
+  await rep.getByRole("button", { name: "Make partner code" }).click();
+  const code = (await rep.getByTestId("partner-code").textContent())!.trim();
   await rep.context().close();
   const ret = await login(browser, retailOwner);
   await ret.goto("/partners");
-  await ret.getByLabel(/code/i).first().fill(code);
-  await ret.getByRole("button", { name: /Join|Use the code|Add/i }).first().click();
-  await expect(ret.getByText(repairCo)).toBeVisible({ timeout: 30_000 });
+  await ret.getByLabel("Partner code").fill(code);
+  await ret.getByRole("button", { name: "Connect" }).click();
+  await expect(ret.getByText(repairCo).first()).toBeVisible({ timeout: 30_000 });
   await ret.context().close();
   linkId = (await sql<{ id: string }>(`SELECT id FROM "PartnerLink" WHERE "shopId" = $1`, [retailShopId]))[0].id;
   // Both installs are this one: the feature is announced by the sync; set it directly so the first run isn't refused.
@@ -72,7 +72,7 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
+  if (!process.env.E2E_KEEP) for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
   await disconnect();
   await admin.context().close();
 });
@@ -81,19 +81,20 @@ test("the sewing shop schedules a run with its waiting machine; the repair shop 
   const ret = await login(browser, retailOwner);
   // Take a machine in for the repair shop.
   await ret.goto("/repairs/new");
-  await ret.getByLabel("New customer name").fill(`Mary Sender ${RUN}`);
-  await ret.getByLabel("Phone", { exact: true }).fill("(212) 555-0151");
-  await ret.getByLabel("Brand", { exact: true }).fill("Bernina");
-  await ret.getByLabel("Model", { exact: true }).fill("B770");
-  await ret.getByRole("button", { name: /Take it in|Create|Save/ }).first().click();
-  await expect(ret).toHaveURL(/\/repairs\/[a-z0-9]+/);
+  await ret.locator("#customerName").fill(`Mary Sender ${RUN}`);
+  await ret.locator("#customerPhone").fill("(212) 555-0151");
+  await ret.locator("#brand").fill("Bernina");
+  await ret.locator("#model").fill("B770");
+  await ret.locator("#problem").fill("Tension off, needs a tune-up");
+  await ret.getByRole("button", { name: "Take it in and make the claim tag" }).click();
+  await expect(ret).toHaveURL(/\/repairs\/(?!new$)[0-9a-f-]+$/, { timeout: 20_000 }); // the job page, not /repairs/new
   const jobId = ret.url().split("/").pop()!;
   const rep = await login(browser, repairOwner);
   await syncBoth(ret, rep);
 
   await ret.goto(`/partners/${linkId}/runs/new`);
   await expect(ret.getByRole("heading", { name: /Schedule a run with/ })).toBeVisible();
-  await expect(ret.getByRole("checkbox", { name: /Mary S\./ })).toBeChecked();
+  await expect(ret.getByRole("checkbox", { name: /Bernina B770/ })).toBeChecked();
   await ret.getByRole("button", { name: "Schedule it and tell them" }).click();
   await expect(ret).toHaveURL(/\/runs\/[0-9a-f-]+$/, { timeout: 20_000 });
   const runId = ret.url().split("/").pop()!;
@@ -110,7 +111,7 @@ test("the sewing shop schedules a run with its waiting machine; the repair shop 
   const ticket = await sql<{ status: string }>(`SELECT t.status FROM "Ticket" t JOIN "RepairJob" j ON j."ticketId" = t.id WHERE j.id = $1 AND j."shopId" = $2`, [jobId, repairShopId]);
   expect(ticket[0].status).toBe("IN_TRUCK");
   await ret.goto(`/repairs/${jobId}`);
-  await expect(ret.getByText(/Handed to the driver/)).toBeVisible();
+  await expect(ret.getByText(/Handed to the driver/).first()).toBeVisible();
   await rep.context().close();
   await ret.context().close();
 });

@@ -48,7 +48,7 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
+  if (!process.env.E2E_KEEP) for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
   await disconnect();
   await admin.context().close();
 });
@@ -66,7 +66,7 @@ test("from the roster, Ring up opens the register with the class line; the URL g
   await expect(page.getByText(`Ann Able ${RUN}`).first()).toBeVisible(); // the sale took the booking's customer
   await page.getByRole("button", { name: "Cash", exact: true }).click();
   await page.getByRole("button", { name: "Complete sale" }).click();
-  await expect(page.getByText(/Sale #\d+ done/)).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(/Sale #\d+ done/);
   const paid = await sql<{ paidCents: number; paidLineId: string }>(`SELECT "paidCents", "paidLineId" FROM "Enrollment" WHERE id = $1`, [enrollmentId]);
   expect(paid[0].paidCents).toBe(4500);
   expect(paid[0].paidLineId).toBeTruthy();
@@ -92,13 +92,13 @@ test("the register's picker signs a new customer up and adds the line; return mo
   await expect(page.getByText("Pick the customer first")).toBeVisible();
   await row.getByLabel("Name").fill(`Walk In ${RUN}`);
   await row.getByLabel("Phone").fill("(212) 555-0177");
-  await row.getByRole("button", { name: "Sign up", exact: true }).click();
+  await row.getByRole("button", { name: "Sign up", exact: true }).last().click(); // the form's submit, not the row's own button
   await expect(page.getByText(/Signed up: Class: Beginning Quilting/)).toBeVisible();
   const sale = page.getByRole("table", { name: "Sale" });
   await expect(sale.getByText(new RegExp(`Class: Beginning Quilting ${RUN}`))).toBeVisible();
   await page.getByRole("button", { name: "Cash", exact: true }).click();
   await page.getByRole("button", { name: "Complete sale" }).click();
-  await expect(page.getByText(/Sale #\d+ done/)).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(/Sale #\d+ done/);
   const rows = await sql<{ name: string; paidCents: number | null }>(`SELECT name, "paidCents" FROM "Enrollment" WHERE "classId" = $1 ORDER BY "createdAt"`, [classId]);
   expect(rows).toHaveLength(2);
   expect(rows[1]).toMatchObject({ name: `Walk In ${RUN}`, paidCents: 4500 });
@@ -110,7 +110,7 @@ test("the register's picker signs a new customer up and adds the line; return mo
   await page.locator("li", { hasText: `Walk In ${RUN}` }).getByRole("button", { name: "Refund $45.00" }).click();
   await page.getByRole("button", { name: "Cash", exact: true }).click();
   await page.getByRole("button", { name: "Complete refund" }).click();
-  await expect(page.getByText(/Sale #\d+ done/)).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(/Sale #\d+ done/);
   const refunded = await sql<{ refundedCents: number | null }>(`SELECT "refundedCents" FROM "Enrollment" WHERE "classId" = $1 AND name = $2`, [classId, `Walk In ${RUN}`]);
   expect(refunded[0].refundedCents).toBe(4500);
   await page.context().close();
@@ -119,7 +119,7 @@ test("the register's picker signs a new customer up and adds the line; return mo
 test("the sales report shows a Classes bucket", async ({ browser }) => {
   const page = await login(browser, owner);
   await page.goto("/register/sales");
-  await expect(page.getByText("Classes", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: `#${saleNumber}` }).or(page.getByText(`#${saleNumber}`)).first()).toBeVisible();
+  await expect(page.getByText("Classes", { exact: true }).first()).toBeVisible(); // the report bucket (the nav has a Classes item too)
+  await expect(page.getByRole("link", { name: String(saleNumber), exact: true }).first()).toBeVisible(); // the report links the bare sale number
   await page.context().close();
 });

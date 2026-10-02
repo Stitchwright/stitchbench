@@ -51,7 +51,8 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
+  // E2E_KEEP=1 leaves the company behind to look at after a failure.
+  if (!process.env.E2E_KEEP) for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
   await disconnect();
   await admin.context().close();
 });
@@ -89,6 +90,7 @@ test("a class with 4 weekly meetings and 2 seats; 3 sign-ups, the third waits", 
   await page.getByLabel("Teacher").fill("Jo Quilter");
   await page.getByLabel("Fee").fill("45.00");
   await page.getByLabel("Seats").fill("2");
+  await page.getByLabel("Keep a waiting list when it's full").check();
   await page.getByLabel("What to bring").fill("Rotary cutter and a mat");
   await page.getByLabel("Date").fill(nextTuesday());
   await page.getByLabel("Starts").fill("18:00");
@@ -96,7 +98,7 @@ test("a class with 4 weekly meetings and 2 seats; 3 sign-ups, the third waits", 
   await page.getByLabel("How often").selectOption("weekly");
   await page.getByLabel("How many times").fill("4");
   await page.getByRole("button", { name: "Create the class" }).click();
-  await expect(page).toHaveURL(/\/classes\/[a-z0-9]+$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/classes\/(?!new$)[a-z0-9]+$/, { timeout: 20_000 });
   classId = page.url().split("/").pop()!;
   await expect(page.getByRole("heading", { name: "Meetings (4)" })).toBeVisible();
   await expect(page.getByText("0 of 2 seats")).toBeVisible();
@@ -135,7 +137,8 @@ test("cancel one, move the waiting person up with a text, set a price for one pe
   await expect(page.getByText("Moved up")).toBeVisible();
   await page.reload();
   await expect(page.getByText("2 of 2 seats")).toBeVisible();
-  const note = await sql<{ status: string; body: string; channel: string }>(`SELECT status, body, channel FROM "OutMessage" WHERE "shopId" = $1 AND kind = 'class_notice' AND "customerId" = $2`, [shopId, waitingCustomerId]);
+  // Her newest class notice (the waiting-list text came earlier).
+  const note = await sql<{ status: string; body: string; channel: string }>(`SELECT status, body, channel FROM "OutMessage" WHERE "shopId" = $1 AND kind = 'class_notice' AND "customerId" = $2 ORDER BY "createdAt" DESC LIMIT 1`, [shopId, waitingCustomerId]);
   expect(note).toHaveLength(1);
   expect(note[0].channel).toBe("sms");
   expect(note[0].body).toMatch(/Good news: a seat opened up for you in Beginning Quilting/);
