@@ -39,6 +39,12 @@ cost) or hosted on Railway.
   There's also a Community chat link to the group's Discord. The hub's server code is public:
   https://github.com/bwattendorf/stitchhub.
 - **Sales log** by date range, with CSV export.
+- **Messages** (paid module *Marketing*): email and texts to customers through the shop's own mail account and
+  Twilio number: "it's ready" notices, estimate approval by link, uncollected-machine notices and letters, service-due
+  and review requests, and campaigns to chosen groups; consent, STOP and unsubscribe handled by the book.
+- **Scheduling** (paid module *Scheduling*): a day and week calendar, appointment types with shared resources (two
+  longarms), classes with seats, waiting lists, rosters and reminders, class and appointment fees rung up at the
+  register, staff shifts, and pickup runs planned with a partner shop.
 
 ## StitchShop: sewing and quilt shops, and their repair shop
 The same program, set to **Sewing / quilt shop** (at sign-up, or Settings → What this company does), becomes
@@ -100,7 +106,14 @@ PW_CHANNEL=chrome E2E_BASE_URL=http://localhost:3000 E2E_EMAIL=e2e@stitchbench.t
 they run one file at a time, in order.
 
 Two smaller suites run without the app or a browser (the Checks workflow runs both):
-- `npm run test:unit` tests the guards on "Download to library" (`tests/unit/`).
+- `npm run test:unit` tests the guards on "Download to library" and the pure messaging code (`tests/unit/`,
+  `src/**/*.test.ts`).
+- **Check scripts** `scripts/checks/*.check.ts`, run one at a time with `npm run check scripts/checks/<name>.check.ts`
+  against the dev database: each makes a throwaway company (`Check <run>`), drives the library code with a user, and
+  removes what it made. They cover modules and licenses, the messaging core and worker, notices, estimate links,
+  audiences, campaigns, classes, appointments, register bookings, shifts and partner runs. The ones that send start the
+  **SMTP sink** (`npm run mail:sink`, `scripts/test-mail/smtp-sink.mjs`) and the **Twilio mock** (`npm run sms:mock`,
+  `scripts/test-mail/twilio-mock.mjs`) on ephemeral ports themselves.
 - The Windows program's database code (migrations, reference data, backup and restore) runs against a scratch
   Postgres whose user is a superuser: `cd desktop && npm ci --ignore-scripts`, then
   `TEST_DATABASE_URL=postgresql://user:password@localhost:5433/postgres npm test`.
@@ -119,6 +132,17 @@ Opt-in suites (each skips itself unless its variables are set):
   `MANUAL_BRAND` and `MANUAL_MODEL`, default Janome MC6700P; the E2E shop needs a machine of that model).
 - `tests/shop-library.spec.ts` runs against the Windows program (`SHOP_LIBRARY=1`).
 - `tests/walkthrough.spec.ts` records the demo screens (`DEMO_DIR`).
+
+- The messaging and scheduling specs (`messaging`, `notices`, `estimate-links`, `campaigns`, `classes`, `calendar`,
+  `register-bookings`, `shifts`) run against a **test build** (`STITCH_TEST_BUILD=1 npx next build`, then
+  `npx next start`) with the sink and the mock running and the server told about them: `SMTP_ALLOW_HOSTS=127.0.0.1:<sink
+  port> TWILIO_API_BASE=http://127.0.0.1:<mock port> MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1
+  PUBLIC_URL=http://localhost:<port>`; the spec process gets `SMTP_SINK_PORT`, `SMTP_SINK_HTTP`, `TWILIO_MOCK_PORT`
+  and the same `PUBLIC_URL`. Each spec makes its own company from the Companies page (the E2E user must be in
+  `PLATFORM_ADMIN_EMAILS`) and removes it. `tests/partner-runs.spec.ts` needs `HUB_URL` as well.
+- When several feature packages are built at once, each gets its own git worktree, database (`stitchbench_feat_<key>`)
+  and ports (package number n: sink 2525+n, mock 3401+n, server 3500+n), so builds, workers and test servers never
+  share anything (design section 16.3).
 
 `scripts/local-test/` has the Windows helpers used for the review: a test hub, a test app, and a runner for the
 specs above.
