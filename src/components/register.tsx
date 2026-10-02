@@ -2,9 +2,11 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, CameraOff, Trash2, Undo2, Wrench, Plus } from "lucide-react";
+import { Camera, CameraOff, CalendarDays, Trash2, Undo2, Wrench, Plus } from "lucide-react";
 import {
+  bookingsDue,
   completeSale,
   findCustomers,
   findItems,
@@ -18,6 +20,8 @@ import {
   type SaleForReturn,
 } from "@/actions/register";
 import type { RegisterItem } from "@/lib/register-item";
+import type { BookingDue } from "@/lib/booking-types";
+import { enrollAtRegister, openClassSeats } from "@/actions/class-register";
 import { beep, useBarcodeCamera } from "@/components/barcode-camera";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { VacUnitTools } from "@/components/vac/unit-tools";
@@ -51,6 +55,9 @@ type CartLine = {
   machineId?: string | null;
   stockUnitId?: string;
   tradeIn?: TradeInInput;
+  /** A class seat or an appointment paid or refunded here (design 12.3): one each, priced by the server. */
+  enrollmentId?: string;
+  appointmentId?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -73,7 +80,8 @@ function setFieldText(el: HTMLInputElement | HTMLTextAreaElement, text: string) 
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct: number; hasPartners: boolean; canSell: boolean; vac?: "on" | "readonly" | "off" }) {
+export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { taxRatePct: number; hasPartners: boolean; canSell: boolean; vac?: "on" | "readonly" | "off"; preload?: BookingDue | null }) {
+  const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [returnMode, setReturnMode] = useState(false);
   const [results, setResults] = useState<RegisterItem[]>([]);
@@ -89,6 +97,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
   const [tenderAmt, setTenderAmt] = useState("");
   const [misc, setMisc] = useState<{ description: string; price: string; taxable: boolean } | null>(null);
   const [jobs, setJobs] = useState<PickupJob[] | null>(null);
+  // The "Classes & appointments" picker: what is owed (or refundable in return mode) and the classes with seats.
+  const [bookings, setBookings] = useState<{ due: BookingDue[]; seats: Awaited<ReturnType<typeof openClassSeats>>; refunds: boolean } | null>(null);
+  const [signup, setSignup] = useState<{ classId: string; name: string; phone: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ id: string; number: number; change: number } | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
@@ -98,7 +109,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
   const pending = useRef<{ key: string; sent: string } | null>(null);
 
   // A partner's repair bill is paid as billed, and a trade-in is credit: a whole-sale discount doesn't come off them.
-  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn })), [cart]);
+  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId })), [cart]);
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
@@ -163,6 +174,66 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
     setDone(null);
     setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line }]);
   }
+
+  /** A class seat or appointment: one line, the booking's price and tax; a refund in return mode. */
+  function addBooking(b: BookingDue, refund: boolean) {
+    const id = b.kind === "enrollment" ? { enrollmentId: b.id } : { appointmentId: b.id };
+    if (cart.some((l) => (b.kind === "enrollment" ? l.enrollmentId : l.appointmentId) === b.id)) {
+      toast.warning(`${b.description} is already on this sale.`);
+      return;
+    }
+    setDone(null);
+    setCart((c) => [...c, { key: newKey(), ...id, description: b.description, unit: null, qty: refund ? -1 : 1, unitPriceCents: b.dueCents, priced: true, discountPct: 0, taxable: b.taxable }]);
+    if (!customer && b.customerId) setCustomer({ id: b.customerId, name: b.customerName, phone: null });
+  }
+
+  /** The "Classes & appointments" button: what is owed (or refundable), and the classes with seats. */
+  async function openBookings() {
+    try {
+      const refunds = returnMode;
+      const [due, seats] = await Promise.all([bookingsDue(customer?.id ?? null, refunds), refunds ? Promise.resolve([]) : openClassSeats()]);
+      setBookings({ due, seats, refunds });
+      setJobs(null);
+    } catch {
+      toast.error("Couldn't load the classes and appointments. Check the connection, then try again.");
+    }
+  }
+
+  /** "Sign up for a class" from the picker: the sign-up is made and its line added. */
+  async function signUpHere(classId: string, who: { name: string; phone: string } | null) {
+    const fd = new FormData();
+    if (customer) fd.set("customerId", customer.id);
+    else if (who) {
+      fd.set("customerName", who.name);
+      fd.set("customerPhone", who.phone);
+    } else {
+      toast.error("Pick the customer first.");
+      document.getElementById("register-customer")?.focus();
+      setSignup({ classId, name: "", phone: "" });
+      return;
+    }
+    const r = await enrollAtRegister(classId, fd);
+    if ("error" in r) {
+      toast.error(r.error);
+      return;
+    }
+    toast.success(`Signed up: ${r.description}`);
+    if (r.dueCents > 0) addBooking(r, false);
+    else if (!customer && r.customerId) setCustomer({ id: r.customerId, name: r.customerName, phone: null });
+    setSignup(null);
+    setBookings(null);
+  }
+
+  // Opened from a roster's "Ring up": the line is on the sale once, then the address goes back to /register so the
+  // next sale doesn't carry it.
+  const preloaded = useRef(false);
+  useEffect(() => {
+    if (!preload || preloaded.current) return;
+    preloaded.current = true;
+    addBooking(preload, false);
+    router.replace("/register");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
 
   /** The "New customer" form: adds the customer and puts them on the sale. */
   async function submitNewCustomer(e: React.FormEvent<HTMLFormElement>) {
@@ -370,6 +441,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
         machineId: l.machineId ?? null,
         stockUnitId: l.stockUnitId ?? null,
         tradeIn: l.tradeIn ?? null,
+        enrollmentId: l.enrollmentId ?? null,
+        appointmentId: l.appointmentId ?? null,
       })),
       orderDiscountCents,
       tenders,
@@ -391,6 +464,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
       setCustomer(null);
       setReturnMode(false);
       setJobs(null);
+      setBookings(null);
       code.current?.focus();
     } catch {
       toast.error("The sale didn't go through (no connection, or a problem on the server). Press Complete sale again: a sale that did save won't be saved twice.");
@@ -443,6 +517,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
               <Wrench size={14} aria-hidden /> Repair pickup
             </button>
           )}
+          <button type="button" className="btn btn-sm" onClick={openBookings}>
+            <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
+          </button>
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {vac && vac !== "off" && (
             <VacUnitTools vac={vac} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />
@@ -570,6 +647,69 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
           </div>
         )}
 
+        {bookings && (
+          <div className="card card-pad space-y-3">
+            <div className="space-y-2">
+              <strong className="text-sm">{bookings.refunds ? "Paid here and refundable" : "Owed"}</strong>
+              {bookings.due.length === 0 ? (
+                <p className="muted text-sm">{bookings.refunds ? "Nothing paid here to refund." : customer ? `${customer.name} owes nothing for classes or appointments.` : "Nothing owed for classes or appointments."}</p>
+              ) : (
+                <ul className="divide-y divide-line text-sm">
+                  {bookings.due.map((b) => (
+                    <li key={`${b.kind}:${b.id}`} className="flex items-center justify-between gap-2 py-1.5">
+                      <span>
+                        {b.description} · {b.customerName}
+                      </span>
+                      <button type="button" className="btn btn-sm" disabled={cart.some((l) => (b.kind === "enrollment" ? l.enrollmentId : l.appointmentId) === b.id)} onClick={() => { addBooking(b, bookings.refunds); setBookings(null); }}>
+                        {bookings.refunds ? `Refund ${money(b.dueCents)}` : `Add ${money(b.dueCents)}`}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {!bookings.refunds && (
+              <div className="space-y-2">
+                <strong className="text-sm">Sign up for a class</strong>
+                {bookings.seats.length === 0 ? (
+                  <p className="muted text-sm">No open classes with seats.</p>
+                ) : (
+                  <ul className="divide-y divide-line text-sm">
+                    {bookings.seats.map((c) => (
+                      <li key={c.id} className="space-y-1 py-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span>
+                            {c.title}
+                            {c.firstAt ? ` · ${new Date(c.firstAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}` : ""} · {c.seatsLeft} seat{c.seatsLeft === 1 ? "" : "s"} left{c.feeCents ? ` · ${money(c.feeCents)}` : ""}
+                          </span>
+                          <button type="button" className="btn btn-sm" onClick={() => signUpHere(c.id, null)}>
+                            Sign up{customer ? ` ${customer.name.split(" ")[0]}` : ""}
+                          </button>
+                        </div>
+                        {signup?.classId === c.id && !customer && (
+                          <form
+                            className="flex flex-wrap items-end gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void signUpHere(c.id, { name: signup.name, phone: signup.phone });
+                            }}
+                          >
+                            <input className="input" placeholder="Name" aria-label="Name" value={signup.name} onChange={(e) => setSignup({ ...signup, name: e.target.value })} required />
+                            <input className="input" placeholder="Phone" aria-label="Phone" value={signup.phone} onChange={(e) => setSignup({ ...signup, phone: e.target.value })} required />
+                            <button type="submit" className="btn btn-sm btn-primary">
+                              Sign up
+                            </button>
+                          </form>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="card overflow-x-auto">
           <table className="table w-full text-sm" aria-label="Sale">
             <thead>
@@ -610,8 +750,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
                       aria-label={`Qty for ${l.description}`}
                       className="input num"
                       step={l.unit === "yd" ? 0.125 : 1}
-                      // A repair is paid as one line; a vacuum from stock or a trade-in is one machine.
-                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn)}
+                      // A repair is paid as one line; a vacuum from stock or a trade-in is one machine; a class seat or appointment is one each.
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.enrollmentId || l.appointmentId)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}
@@ -629,8 +769,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
                       aria-label={`Price for ${l.description}`}
                       inputMode="decimal"
                       className="input num"
-                      // A tech can type the price of an item that has none, not change one that has.
-                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId)}
+                      // A tech can type the price of an item that has none, not change one that has. A booking is priced by
+                      // the server; an owner or admin may lower a refund (a cancellation fee).
+                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => {
                         const cents = toCents(e.target.value);
@@ -649,7 +790,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac }: { taxRatePct
                       className="input num"
                       min={0}
                       max={100}
-                      disabled={!canSell || Boolean(l.repairJobId)}
+                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                       onKeyDown={backToScan}
