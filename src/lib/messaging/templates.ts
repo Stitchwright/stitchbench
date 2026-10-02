@@ -60,9 +60,9 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
   "review.subject": "How did we do?",
   "review.email": "Hi {first_name},\n\nThanks for coming in. If you have a minute, a short review helps a small shop a lot:\n\n{review_link}\n\nThank you!",
   // modules-design.md 12.4 #1: right after a vacuum sale too, so no "since you got bags".
-  "bags_due.sms": "Hi {first_name}, it's been about {months} months since you got bags for your {machine}.{bag_line} Call {shop_phone} or stop by.",
+  "bags_due.sms": "Hi {first_name}, time for new bags for your {machine}?{bag_line} Call {shop_phone} or stop by.",
   "bags_due.subject": "Time for new bags for your {machine}?",
-  "bags_due.email": "Hi {first_name},\n\nIt's been about {months} months since you picked up bags for your {machine}.{bag_line}\n\nCall us at {shop_phone} or stop by.",
+  "bags_due.email": "Hi {first_name},\n\nIt's about time for new bags for your {machine}.{bag_line}\n\nCall us at {shop_phone} or stop by.",
   "consent_confirm.sms": "You're signed up for texts from {shop_name}. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.",
   "help_reply.sms": "{shop_name}: for help call {shop_phone}. Msg & data rates may apply. Reply STOP to opt out.",
 };

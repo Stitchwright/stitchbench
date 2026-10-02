@@ -4,6 +4,7 @@ import type { Prisma, RepairJob } from "@/generated/prisma/client";
 import { sendToPartner, type JobEvent } from "@/lib/partners";
 import type { HookCtx } from "@/lib/notices/context";
 import { changeTicketStatus, type TicketForStatus } from "@/lib/ticket-status";
+import { ticketWorkable } from "@/lib/equipment/gate";
 import { money } from "@/lib/format";
 import { fmtDateTime } from "@/lib/format";
 
@@ -34,7 +35,8 @@ export async function answerRetailEstimate(
 
 /**
  * A direct ticket: the answer goes into the notes; an approval sets approvedCents and moves a waiting ticket to the
- * bench (through changeTicketStatus, so the status hook runs).
+ * bench (through changeTicketStatus, so the status hook runs). An approved install quote (jobType SITE) becomes Booked,
+ * not In progress; a ticket whose module has ended keeps its status for staff to decide (modules-design.md 12.4 #4).
  */
 export async function answerTicketEstimate(
   tx: Prisma.TransactionClient,
@@ -52,6 +54,9 @@ export async function answerTicketEstimate(
     },
   });
   if (a.approval === "APPROVED" && a.ticket.status === "WAITING_CUSTOMER_OK") {
-    await changeTicketStatus(tx, a.ticket, "ON_BENCH", a.at, a.warrantyDays, a.ctx);
+    const site = (await tx.ticket.findFirst({ where: { id: a.ticket.id, shopId: a.ticket.shopId }, select: { jobType: true } }))?.jobType === "SITE";
+    if (await ticketWorkable(a.ticket.shopId, a.ticket.id)) {
+      await changeTicketStatus(tx, a.ticket, site ? "AT_SHOP_AWAITING_PICKUP" : "ON_BENCH", a.at, a.warrantyDays, a.ctx);
+    }
   }
 }
