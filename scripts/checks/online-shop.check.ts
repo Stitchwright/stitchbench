@@ -43,7 +43,7 @@ import {
   startCheckout,
   type OrderItem,
 } from "@/lib/shop/online-shop";
-import { startStripeMock } from "../test-mail/stripe-mock.mjs";
+import { MOCK_TAX_RATE, startStripeMock } from "../test-mail/stripe-mock.mjs";
 import { checkShop, cleanup, clearKick, messagingFor, withSink } from "./lib";
 import { expectNotFound, RUN } from "./tenant";
 
@@ -474,6 +474,65 @@ async function main() {
     assert.ok(r.status === 200 && r.body === "not this endpoint");
     assert.equal((await db.webOrder.findUniqueOrThrow({ where: { id: o6.id } })).status, "PENDING");
     ok("tenant: another company's orders, parts and photos are not found; a shop's webhook can't confirm another shop's order");
+
+    // 12. Stripe Tax: shipped orders taxed at checkout by Stripe, pickup at the rate; the sale records Stripe's tax; a short line keeps its share.
+    process.env.STRIPE_SECRET_KEY = "sk_test_platform1234567";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_platform1234567";
+    await expectError(
+      "Stripe Tax through the platform",
+      () => saveShopSettingsFor(a.user, base({ slug: slugA, on: "on", shipping: "on", shipRate: "6.00", payVia: "platform", taxVia: "stripe" })),
+      /own Stripe account only/,
+    );
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    await saveShopSettingsFor(a.user, base({ slug: slugA, on: "on", shipping: "on", shipRate: "6.00", taxVia: "stripe", pickupNote: "Ring the bell." }));
+    assert.equal((await shopSettings(a.shopId)).taxVia, "stripe");
+    const taxStore = (await publicStore(slugA))!;
+    assert.equal(taxStore.taxVia, "stripe");
+    await db.part.update({ where: { id: foot.id }, data: { qtyOnHand: 10 } });
+    const two = cartWith(new Map(), foot.id, 2);
+    const pickTax = await priceCart(taxStore, two, "pickup");
+    assert.ok(!pickTax.taxAtCheckout && pickTax.taxCents === saleTotals([{ qty: 2, unitPriceCents: 2999, taxable: true }], 0, 6.35).tax, "pickup: the rate");
+    const shipTax = await priceCart(taxStore, two, "ship");
+    assert.ok(shipTax.taxAtCheckout && shipTax.taxCents === 0 && shipTax.shipCents === 600 && shipTax.totalCents === 5998 + 600, "shipped: before tax");
+    const r7 = await startCheckout(
+      { slug: slugA, cart: two, customer: cust("Tara Taxed", null, "tara@example.test"), fulfil: "ship", address: "Tara Taxed, 9 Oak St, Hartford CT 06103", note: null },
+      now,
+    );
+    const o7 = await db.webOrder.findUniqueOrThrow({ where: { id: r7.orderId } });
+    assert.ok(o7.taxVia === "stripe" && o7.taxCents === 0 && o7.totalCents === 6598);
+    const sess7 = mock.sessions.get(o7.stripeSessionId!)!;
+    assert.ok(sess7.automatic_tax.enabled && sess7.line_items.data.length === 2, "automatic tax, no tax line of ours");
+    assert.equal(sess7.line_items.data[1].price_data.product_data.tax_code, "txcd_92010001", "shipping carries its tax code");
+    assert.equal(sess7.line_items.data[0].price_data.tax_behavior, "exclusive");
+    const tax7 = Math.round(5998 * MOCK_TAX_RATE) + Math.round(600 * MOCK_TAX_RATE);
+    assert.equal(sess7.amount_total, 6598 + tax7);
+    // One sold at the counter meanwhile: the short line keeps its share of the tax.
+    await db.part.update({ where: { id: foot.id }, data: { qtyOnHand: 1 } });
+    await mock.pay(sess7.id);
+    await confirmFromReturn(r7.token, now);
+    const paid7 = await db.webOrder.findUniqueOrThrow({ where: { id: o7.id } });
+    const keptTax7 = Math.round(Math.round(5998 * MOCK_TAX_RATE) / 2) + Math.round(600 * MOCK_TAX_RATE);
+    const keptTotal7 = 2999 + 600 + keptTax7;
+    assert.ok(paid7.status === "PAID" && paid7.taxCents === tax7 && paid7.totalCents === 6598 + tax7, "the order shows what Stripe charged");
+    assert.equal(paid7.refundedCents, 6598 + tax7 - keptTotal7, "the short line and its tax refunded");
+    const sale7 = await db.sale.findUniqueOrThrow({ where: { id: paid7.saleId! }, include: { lines: true } });
+    assert.ok(sale7.taxCents === keptTax7 && sale7.totalCents === keptTotal7 && sale7.subtotalCents === 3599, `the sale carries Stripe's tax (${sale7.taxCents} / ${sale7.totalCents})`);
+    assert.ok(Math.abs(sale7.taxRatePct - (keptTax7 / 2999) * 100) < 0.01, "the effective rate recorded");
+    assert.match(sale7.note ?? "", /tax by Stripe Tax/);
+    assert.deepEqual(sale7.tenders, [{ method: "ONLINE", amountCents: keptTotal7, note: "Online order #1007" }]);
+    const ref7 = mock.refunds.find((r) => r.payment_intent === paid7.stripeIntent);
+    assert.equal(ref7?.amount, paid7.refundedCents);
+    assert.equal((await orderByToken(r7.token))?.taxVia, "stripe");
+    // A pickup order under Stripe Tax: the rate, nothing automatic.
+    await db.part.update({ where: { id: foot.id }, data: { qtyOnHand: 5 } });
+    const r8 = await startCheckout({ slug: slugA, cart: cartWith(new Map(), foot.id, 1), customer: cust("Pat Pickup", null, "pat@example.test"), fulfil: "pickup", address: null, note: null }, now);
+    const o8 = await db.webOrder.findUniqueOrThrow({ where: { id: r8.orderId } });
+    const sess8 = mock.sessions.get(o8.stripeSessionId!)!;
+    assert.ok(
+      o8.taxVia === "rate" && !sess8.automatic_tax.enabled && sess8.amount_total === o8.totalCents && o8.taxCents === saleTotals([{ qty: 1, unitPriceCents: 2999, taxable: true }], 0, 6.35).tax,
+    );
+    ok("Stripe Tax: own account only; shipped orders taxed by Stripe at checkout (shipping with its code), the sale carrying Stripe's tax and a short line its share; pickup orders at the rate");
 
     console.log(`online-shop.check: ${steps} groups passed`);
   } finally {

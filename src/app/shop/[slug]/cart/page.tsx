@@ -98,8 +98,14 @@ export default async function CartPage({ params, searchParams }: { params: Promi
                 <span className="num">{money(priced.taxCents)}</span>
               </div>
             )}
+            {priced.taxAtCheckout && (
+              <div className="flex justify-between">
+                <span>Sales tax</span>
+                <span className="muted">worked out at checkout from your address</span>
+              </div>
+            )}
             <div className="flex justify-between text-base font-semibold">
-              <span>Total</span>
+              <span>{priced.taxAtCheckout ? "Total before tax" : "Total"}</span>
               <span className="num">{money(priced.totalCents)}</span>
             </div>
             <p className="muted text-xs">
@@ -139,6 +145,7 @@ export default async function CartPage({ params, searchParams }: { params: Promi
             <p className="muted text-xs">You&apos;ll pay on the next page, which is run by Stripe. {store.name} never sees your card.</p>
             <button className="btn btn-primary" disabled={priced.problems.length > 0}>
               Pay now, {money(priced.totalCents)}
+              {priced.taxAtCheckout ? " plus tax" : ""}
             </button>
           </form>
         </>
