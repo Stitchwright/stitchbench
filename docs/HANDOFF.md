@@ -296,14 +296,39 @@ months away and a letter is read later); the estimate page says the link works u
 the time zone through `shopTimeZone()`. Checked: tsc, eslint, the notices / abandon / worker / estimate-links checks,
 unit tests, `prisma migrate diff` (no drift). The Playwright specs were not rerun for this one (no spec asserts on it).
 
+## 2j. Scheduling package `campaigns` (2 Oct 2026, on `main`)
+
+Design section 11 and package 15.4. Files: `src/lib/messaging/audiences.ts` (the audience kinds, `audienceMembers`,
+`previewCampaign`, `upcomingClassesLine`), `campaign-build.ts` (the stub filled: 500 members per campaign per worker
+run, rows with per-row unsubscribe tokens, `same_address` counted, QUEUING -> SENDING), `campaigns.ts` (the bodies of
+the actions with a user, so the checks can drive them: save / test / queue / cancel / copy / delete / import),
+`src/actions/campaigns.ts`, `src/actions/customer-import.ts`, the pages `/campaigns`, `/campaigns/new`,
+`/campaigns/[id]`, `/customers/import`, the components `campaign-form`, `customer-import`, `two-tap-button`,
+`scripts/checks/audiences.check.ts` (8 groups), `campaigns.check.ts` (8 groups), `tests/campaigns.spec.ts` (4 tests).
+Checked: tsc, eslint, both checks and the other messaging checks, unit tests. The spec: its first test passed on a test
+build; the other three had not been run when the PC ran out of memory (the build was killed), so run the spec before
+trusting the pages: `STITCH_TEST_BUILD=1 npx next build`, the server with PUBLIC_URL on :3501, sink 2526/2581, mock 3402.
+
+Worth knowing:
+- "Came to a class" (`classes`) means enrolled (not waiting, not cancelled) in a class that held a meeting in the window:
+  there is no per-person attendance record (the roster is on paper), so that is the nearest the data can say.
+- A text campaign body is at most 480 characters and `plainText()` keeps it to 160-character parts, so the "more than
+  4 parts" rule can't trigger today; it stays in code for a longer shop name or a future limit.
+- The campaigns check sets `PUBLIC_URL` (the hosted rules: `List-Unsubscribe-Post`); the test server for the spec needs
+  it too. Marketing texts need the shop AND the number's area code inside 9:00-20:00: the spec's company is Eastern,
+  its numbers 212, and the text test skips itself outside 10:00-18:00 Eastern.
+- The channel is fixed after the first save (copy the campaign to send it the other way); the subject and body accept
+  `{first_name} {name} {shop_name} {shop_phone} {machine} {upcoming_classes}` (`checkTemplate`).
+- Next packages: classes, appointments, register-bookings, shifts, partner-runs, then e2e-docs.
+
 ## 3. What to do next, in order
 
 
 
 Steps 1-3 below are done, merged to `main` and deployed (sections 0 and 2b-2d). Step 4.1 (`modules-foundation`) is
 merged (PR #9, section 2f). Step 4.2's `foundation` package is merged (PR #10, section 2g) and its `notices` and
-`estimate-links` packages are on `main` and deployed (section 2h). Next: the other feature packages of the scheduling
-design (campaigns, classes, appointments, register-bookings, shifts, partner-runs, then e2e-docs), then step 4.3.
+`estimate-links` packages are on `main` and deployed (section 2h), `campaigns` is on `main` (section 2j). Next: classes,
+appointments, register-bookings, shifts, partner-runs, then e2e-docs, then step 4.3.
 
 
 1. **Finish round-3 fixes** for the remaining packages. Each file in `docs/round3/fix-packages/<pkg>.json`
