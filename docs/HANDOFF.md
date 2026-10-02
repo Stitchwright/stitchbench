@@ -441,6 +441,19 @@ email isn't allowed), dedupe `bags_due:{machineId}:{dueOn}`, contacted marks onl
 with Marketing on, the call-list copy without it), `src/lib/notices/hooks.ts` now awaits `bagsDueStillWanted`,
 `scripts/checks/bags-due.check.ts` (9 groups, with the sink, incl. the tenant section). No schema change.
 
+## 2t. Vac Shop package `central-vac-installs` (2 Oct 2026, committed, built without a browser run)
+
+Modules design 10.d. `src/lib/vac/installs.ts` (`INSTALL_CHECKLIST`, `createSiteJob` inside the caller's transaction:
+the power unit's Machine or the "Central vac / Power unit to be chosen" placeholder, the SITE ticket with
+`takeTicketNumber`, Booked or Quote sent, the menu's SERVICE line, the TicketSite; `createInstallFor` for the form with
+a picked or new customer and the address defaulting to the customer's; `saveSiteFor` and `setPowerUnitFor` behind the
+ticket "work" gate so a lapsed module still finishes an install booked before it ended; `listInstalls` on upcoming /
+done / all; `siteJobsBetween` for the calendar, empty unless Vac Shop is active or lapsed; `siteOf`),
+`src/actions/vac-installs.ts`, `src/components/vac/site-fields.tsx` (shared form fields), `SitePanel` (maps link,
+window, contact, Change and Set the power unit), `SiteInvoiceBlock`, `/vac/installs` with its tabs and
+`/vac/installs/new`, `scripts/checks/vac-installs.check.ts` (9 groups incl. the tenant section). No schema change;
+`SiteJob` keeps the shape `src/lib/calendar.ts` already consumes, with the customer, unit and contact added.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 Every package from 2j to 2o was written without a browser run (the PC runs out of memory with a Next build, the test
