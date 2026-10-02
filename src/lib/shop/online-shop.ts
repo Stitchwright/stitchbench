@@ -23,7 +23,7 @@ import { partTags } from "@/lib/part-labels";
 import { inEighths, qtyText, saleTotals } from "@/lib/register-math";
 import { completeSaleAs, voidSaleAs, type SaleLineInput } from "@/lib/register-sale";
 import type { CurrentUser } from "@/lib/session";
-import { createCheckoutSession, looksLikeSecretKey, looksLikeWebhookSecret, refundPayment, retrieveSession, verifyWebhook } from "@/lib/shop/stripe";
+import { createCheckoutSession, looksLikeSecretKey, looksLikeWebhookSecret, refundPayment, retrieveSession, TAX_CODE_SHIPPING, verifyWebhook, type StripeSession } from "@/lib/shop/stripe";
 
 type Db = Prisma.TransactionClient | typeof db;
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
@@ -52,6 +52,7 @@ export type ShopSettings = {
   shipCents: number;
   freeOverCents: number | null;
   payVia: "own" | "platform";
+  taxVia: "rate" | "stripe";
   hasStripeKey: boolean;
   hasWebhookSecret: boolean;
   welcome: string | null;
@@ -74,6 +75,7 @@ export async function shopSettings(shopId: string): Promise<ShopSettings> {
         shopShipCents: true,
         shopFreeOverCents: true,
         shopPayVia: true,
+        shopTaxVia: true,
         stripeKeySealed: true,
         stripeWebhookSealed: true,
         shopWelcome: true,
@@ -93,6 +95,7 @@ export async function shopSettings(shopId: string): Promise<ShopSettings> {
     shipCents: s.shopShipCents,
     freeOverCents: s.shopFreeOverCents,
     payVia: s.shopPayVia === "platform" ? "platform" : "own",
+    taxVia: s.shopTaxVia === "stripe" ? "stripe" : "rate",
     hasStripeKey: !!s.stripeKeySealed,
     hasWebhookSecret: !!s.stripeWebhookSealed,
     welcome: s.shopWelcome,
@@ -141,6 +144,9 @@ export async function saveShopSettingsFor(user: CurrentUser, fd: FormData): Prom
   const freeOverCents = cents(str(fd.get("freeOver")), "Free shipping over");
   const payVia = str(fd.get("payVia")) === "platform" ? "platform" : "own";
   if (payVia === "platform" && !platformStripeOn()) throw new UserError("This server has no account of its own to take payments through. Use your own Stripe account.");
+  // Stripe Tax collects under the account's own registrations: only the shop's account, never the hosted service's.
+  const taxVia = str(fd.get("taxVia")) === "stripe" ? "stripe" : "rate";
+  if (taxVia === "stripe" && payVia === "platform") throw new UserError("Stripe Tax works with your own Stripe account only: the tax is collected under that account's registrations.");
   const keyRaw = str(fd.get("stripeKey"));
   const whRaw = str(fd.get("stripeWebhook"));
   if (keyRaw && !looksLikeSecretKey(keyRaw)) throw new UserError("The Stripe secret key starts with sk_live_ or sk_test_ (Developers -> API keys in Stripe).");
@@ -164,6 +170,7 @@ export async function saveShopSettingsFor(user: CurrentUser, fd: FormData): Prom
         shopShipCents: shipCents,
         shopFreeOverCents: freeOverCents,
         shopPayVia: payVia,
+        shopTaxVia: taxVia,
         stripeKeySealed,
         stripeWebhookSealed,
         shopWelcome: welcome,
@@ -241,6 +248,8 @@ export type PublicStore = {
   pickupNote: string | null;
   taxRatePct: number;
   payVia: "own" | "platform";
+  /** "stripe": Stripe Tax works out the tax on shipped orders at checkout; pickup orders (and "rate") use the shop's rate. */
+  taxVia: "rate" | "stripe";
 };
 
 /** The shop a slug names and whether it sells online right now: switched on, a counter, and a way to take payment. */
@@ -265,6 +274,7 @@ export async function publicStore(slug: string): Promise<PublicStore | null> {
       shopPickupNote: true,
       taxRatePct: true,
       shopPayVia: true,
+      shopTaxVia: true,
       stripeKeySealed: true,
       stripeWebhookSealed: true,
     },
@@ -288,6 +298,7 @@ export async function publicStore(slug: string): Promise<PublicStore | null> {
     pickupNote: s.shopPickupNote,
     taxRatePct: s.taxRatePct,
     payVia,
+    taxVia: payVia === "own" && s.shopTaxVia === "stripe" ? "stripe" : "rate",
   };
 }
 
@@ -439,7 +450,16 @@ export function cartWith(cart: Cart, partId: string, qty: number): Cart {
 }
 
 export type CartLine = { partId: string; partNumber: string; title: string; qty: number; unit: string | null; unitPriceCents: number; lineCents: number; available: number; problem: string | null };
-export type PricedCart = { lines: CartLine[]; subtotalCents: number; shipCents: number; taxCents: number; totalCents: number; problems: string[]; shipLine: SaleLineInput | null };
+export type PricedCart = {
+  lines: CartLine[];
+  subtotalCents: number;
+  shipCents: number;
+  taxCents: number;
+  totalCents: number;
+  problems: string[];
+  shipLine: SaleLineInput | null;
+  taxAtCheckout: boolean;
+};
 
 const shipLineFor = (store: PublicStore, fulfil: "pickup" | "ship", subtotal: number): SaleLineInput | null => {
   if (fulfil !== "ship") return null;
@@ -448,7 +468,11 @@ const shipLineFor = (store: PublicStore, fulfil: "pickup" | "ship", subtotal: nu
   return { description: free ? "Shipping (free)" : "Shipping", qty: 1, unitPriceCents: c, taxable: false };
 };
 
-/** The cart priced as the counter would: listed items only, today's prices, stock noted, the shop's one tax rate, shipping untaxed. */
+/**
+ * The cart priced as the counter would: listed items only, today's prices, stock noted, the shop's one tax rate,
+ * shipping untaxed. With Stripe Tax, a shipped order's tax is worked out at checkout from the address: the total here
+ * is before tax (`taxAtCheckout`).
+ */
 export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup" | "ship"): Promise<PricedCart> {
   const ids = [...cart.keys()];
   const parts = ids.length
@@ -482,8 +506,9 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
   const saleLines = lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true }));
   const subtotal = saleLines.reduce((a, l) => a + Math.round(l.qty * l.unitPriceCents), 0);
   const shipLine = shipLineFor(store, fulfil, subtotal);
-  const t = saleTotals([...saleLines, ...(shipLine ? [{ qty: 1, unitPriceCents: shipLine.unitPriceCents, taxable: false }] : [])], 0, store.taxRatePct);
-  return { lines, subtotalCents: subtotal, shipCents: shipLine?.unitPriceCents ?? 0, taxCents: t.tax, totalCents: t.total, problems, shipLine };
+  const taxAtCheckout = store.taxVia === "stripe" && fulfil === "ship";
+  const t = saleTotals([...saleLines, ...(shipLine ? [{ qty: 1, unitPriceCents: shipLine.unitPriceCents, taxable: false }] : [])], 0, taxAtCheckout ? 0 : store.taxRatePct);
+  return { lines, subtotalCents: subtotal, shipCents: shipLine?.unitPriceCents ?? 0, taxCents: t.tax, totalCents: t.total, problems, shipLine, taxAtCheckout };
 }
 
 // ---------------------------------------------------------------- checkout
@@ -558,6 +583,7 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
         taxCents: priced.taxCents,
         totalCents: priced.totalCents,
         payVia: store.payVia,
+        taxVia: priced.taxAtCheckout ? "stripe" : "rate",
         tokenHash: sha256(token),
         note: a.note?.trim().slice(0, 500) || null,
         createdAt: now,
@@ -567,8 +593,8 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
   });
   const lines = [
     ...priced.lines.map((l) => ({ name: `${l.title}${l.qty !== 1 ? ` x ${qtyText(l.qty, l.unit)}` : ""}`, description: l.partNumber, unitCents: l.lineCents, qty: 1 })),
-    ...(priced.taxCents > 0 ? [{ name: "Sales tax", unitCents: priced.taxCents, qty: 1 }] : []),
-    ...(priced.shipCents > 0 ? [{ name: "Shipping", unitCents: priced.shipCents, qty: 1 }] : []),
+    ...(priced.taxCents > 0 && !priced.taxAtCheckout ? [{ name: "Sales tax", unitCents: priced.taxCents, qty: 1 }] : []),
+    ...(priced.shipCents > 0 ? [{ name: "Shipping", unitCents: priced.shipCents, qty: 1, taxCode: TAX_CODE_SHIPPING }] : []),
   ];
   let session;
   try {
@@ -580,6 +606,7 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
       metadata: { shopId: store.id, orderId: order.id, orderNumber: String(order.number), endpoint: store.payVia === "platform" ? "platform" : store.id },
       reference: order.id,
       idempotencyKey: `web-order:${order.id}`,
+      automaticTax: priced.taxAtCheckout,
     });
   } catch (e) {
     await db.webOrder.updateMany({
@@ -641,12 +668,26 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
     }
     const shipLine: SaleLineInput | null = sold.length && order.fulfil === "ship" && order.shipCents > 0 ? { description: "Shipping", qty: 1, unitPriceCents: order.shipCents, taxable: false } : null;
     const lines = [...sold, ...(shipLine ? [shipLine] : [])];
-    const totals = saleTotals(
-      lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
-      0,
-      order.shop.taxRatePct,
-    );
-    const refund = Math.max(0, order.totalCents - totals.total);
+    // Stripe Tax: the tax and the total are what Stripe charged (asked for with the lines, so a short line's share is known).
+    let paidTotal = order.totalCents;
+    let paidTax = order.taxCents;
+    let givenTax: number | null = null;
+    if (order.taxVia === "stripe" && order.stripeSessionId) {
+      const key = stripeKeyFor({ id: order.shopId, shopPayVia: order.shop.shopPayVia, stripeKeySealed: order.shop.stripeKeySealed });
+      const session = await retrieveSession(key, order.stripeSessionId, { lines: true });
+      paidTotal = session.amount_total ?? order.totalCents;
+      paidTax = session.total_details?.amount_tax ?? 0;
+      givenTax = lines.length ? keptTax(session, items, kept, !!shipLine, paidTax) : 0;
+    }
+    const totals =
+      givenTax != null
+        ? withGivenTax(lines, givenTax)
+        : saleTotals(
+            lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
+            0,
+            order.shop.taxRatePct,
+          );
+    const refund = Math.max(0, paidTotal - totals.total);
     let saleId: string | null = null;
     if (lines.length) {
       const user = await booksUserFor(order.shopId);
@@ -654,8 +695,9 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
         customerId: order.customerId,
         lines,
         tenders: [{ method: "ONLINE", amountCents: totals.total, note: `Online order ${fmtNo(order.number)}` }],
-        note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}`,
+        note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${givenTax != null ? ", tax by Stripe Tax" : ""}`,
         clientKey: `web-${order.id}`,
+        taxCents: givenTax,
       });
       saleId = r.saleId;
     }
@@ -671,6 +713,8 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
       data: {
         items: kept as unknown as Prisma.InputJsonValue,
         saleId,
+        taxCents: paidTax,
+        totalCents: paidTotal,
         refundedCents: refunded,
         status: cancelled ? "CANCELLED" : "PAID",
         cancelledAt: cancelled ? now : null,
@@ -691,6 +735,32 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
     console.error("online shop payment:", e instanceof Error ? e.message : e);
     return { applied: true, status: "PAID" };
   }
+}
+
+/** Totals with the tax Stripe worked out (the lines' own sums; nothing discounted). */
+function withGivenTax(lines: SaleLineInput[], taxCents: number) {
+  const subtotal = lines.reduce((a, l) => a + Math.round(l.qty * l.unitPriceCents), 0);
+  return { subtotal, tax: taxCents, total: subtotal + taxCents };
+}
+
+/**
+ * The tax on what is actually sold, from Stripe's lines (one per item in the order's order, then shipping): a line
+ * short of stock keeps its share by quantity. Without the lines, the order's tax in proportion to what is kept.
+ */
+function keptTax(session: StripeSession, items: OrderItem[], kept: OrderItem[], shipping: boolean, totalTax: number): number {
+  const lines = session.line_items?.data ?? [];
+  if (lines.length === items.length + (shipping ? 1 : 0)) {
+    let tax = 0;
+    kept.forEach((k, i) => {
+      const have = k.qty - (k.short ?? 0);
+      if (have > 0) tax += Math.round(((lines[i]?.amount_tax ?? 0) * have) / k.qty);
+    });
+    if (shipping) tax += lines[items.length]?.amount_tax ?? 0;
+    return Math.min(totalTax, tax);
+  }
+  const all = items.reduce((a, i) => a + Math.round(i.qty * i.unitPriceCents), 0);
+  const have = kept.reduce((a, k) => a + Math.round((k.qty - (k.short ?? 0)) * k.unitPriceCents), 0);
+  return all > 0 ? Math.round((totalTax * have) / all) : 0;
 }
 
 /** The return page: a PENDING order whose session Stripe reports paid is applied (the webhook may be slow or missing). */
@@ -817,6 +887,7 @@ export type OrderView = {
   taxCents: number;
   totalCents: number;
   refundedCents: number;
+  taxVia: "rate" | "stripe";
   tracking: string | null;
   note: string | null;
   createdAt: Date;
@@ -843,6 +914,7 @@ export async function orderByToken(token: string): Promise<OrderView | null> {
     taxCents: o.taxCents,
     totalCents: o.totalCents,
     refundedCents: o.refundedCents,
+    taxVia: o.taxVia === "stripe" ? "stripe" : "rate",
     tracking: o.tracking,
     note: o.note,
     createdAt: o.createdAt,

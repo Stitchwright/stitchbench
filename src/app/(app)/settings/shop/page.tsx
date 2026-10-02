@@ -119,7 +119,23 @@ export default async function ShopSettingsPage() {
                   <input id="sh-free" name="freeOver" defaultValue={s.freeOverCents != null ? (s.freeOverCents / 100).toFixed(2) : ""} inputMode="decimal" className="input num" />
                 </div>
               </div>
-              <p className="muted text-xs">Items are taxed at your rate ({s.taxRatePct}%, from Settings); shipping isn&apos;t taxed.</p>
+            </div>
+          </Section>
+          <Section title="Sales tax on online orders">
+            <div className="space-y-2 text-sm">
+              <label className="flex items-start gap-2">
+                <input type="radio" name="taxVia" value="rate" defaultChecked={s.taxVia === "rate"} className="check mt-1" />
+                <span>
+                  <span className="font-semibold">My rate</span> ({s.taxRatePct}%, from Settings), as at the counter: items taxed, shipping not, pickup and shipped orders alike.
+                </span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input type="radio" name="taxVia" value="stripe" defaultChecked={s.taxVia === "stripe"} className="check mt-1" />
+                <span>
+                  <span className="font-semibold">Stripe Tax.</span> Shipped orders are taxed by the delivery address at checkout, shipping included where that state taxes it; pickup orders stay at my
+                  rate. Needs Stripe Tax switched on in your Stripe dashboard, and your own Stripe account (not StitchShop&apos;s). The sale in the books records the tax Stripe charged.
+                </span>
+              </label>
             </div>
           </Section>
           <Section title="Payments">

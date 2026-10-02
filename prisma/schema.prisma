@@ -74,6 +74,9 @@ model Shop {
   shopShipCents       Int      @default(0)
   shopFreeOverCents   Int?
   shopPayVia          String   @default("own")
+  // Sales tax on online orders: "rate" (the shop's one rate, as at the counter) or "stripe" (Stripe Tax works out the
+  // tax on shipped orders from the delivery address; pickup orders stay at the rate). Own-account shops only.
+  shopTaxVia          String   @default("rate")
   shopWelcome         String?
   shopPickupNote      String?
   stripeKeySealed     String?
@@ -1335,6 +1338,7 @@ model WebOrder {
   totalCents      Int
   refundedCents   Int       @default(0)
   payVia          String    @default("own") // own | platform
+  taxVia          String    @default("rate") // rate | stripe (the tax known only when Stripe reports it)
   stripeSessionId String?   @unique
   stripeIntent    String?
   tokenHash       String    @unique

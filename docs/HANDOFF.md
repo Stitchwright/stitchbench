@@ -615,9 +615,16 @@ buttons stay `TENDER_METHODS`. The worker's daily cap counts `order_notice` rows
 tenant section) passes; `tests/online-shop.spec.ts` (3 tests) passes on the test build with the mock. Hosted first:
 the hosted services need `STRIPE_API_BASE` unset (api.stripe.com) and, for the "through StitchShop's account"
 option, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` with a webhook at `/api/shop/stripe/platform`; a shop using
-its own account pastes its keys and adds the webhook Settings shows. Not in this version: Stripe Tax, customer
-accounts, variants, gift cards, discount codes. One rule to know: a customer who asked for no messages ("none")
-gets no order mail either, like booking.
+its own account pastes its keys and adds the webhook Settings shows. Not in this version: customer accounts,
+variants, gift cards, discount codes. One rule to know: a customer who asked for no messages ("none") gets no order
+mail either, like booking.
+**Stripe Tax (same day, the owner's ask):** Settings → Online shop → "Sales tax on online orders": "My rate" or
+"Stripe Tax" (`Shop.shopTaxVia`, migration `20261003100000_online_shop_tax` with `WebOrder.taxVia`). Stripe Tax
+applies to shipped orders only (pickup is a sale at the shop, at the rate) and only with the shop's own Stripe
+account. The session asks for automatic tax with exclusive prices and the shipping tax code; the order takes
+Stripe's total and tax at payment; `completeSaleAs` takes `taxCents` and records it with the effective rate; a
+short line keeps its share of the tax from the session's lines. The check's group 12 covers it (12 groups now);
+the mock charges 8 % per line under automatic tax. The shop must switch Stripe Tax on in its Stripe dashboard.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 

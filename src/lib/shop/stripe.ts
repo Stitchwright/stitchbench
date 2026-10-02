@@ -21,7 +21,19 @@ export function formBody(obj: Record<string, unknown>): string {
   return out.toString();
 }
 
-export type StripeSession = { id: string; url: string | null; payment_status: string; payment_intent: string | null; status: string | null; amount_total: number | null };
+export type SessionLine = { amount_subtotal: number; amount_tax: number; amount_total: number };
+export type StripeSession = {
+  id: string;
+  url: string | null;
+  payment_status: string;
+  payment_intent: string | null;
+  status: string | null;
+  amount_total: number | null;
+  /** With automatic tax: what Stripe worked out. */
+  total_details?: { amount_tax?: number | null } | null;
+  /** Only when asked for (retrieveSession with lines): each line's own tax, in the order the session was made with. */
+  line_items?: { data: SessionLine[] } | null;
+};
 
 async function call<T>(key: string, method: "GET" | "POST", path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
   const headers: Record<string, string> = { authorization: `Bearer ${key}`, "stripe-version": "2024-06-20" };
@@ -50,12 +62,26 @@ async function call<T>(key: string, method: "GET" | "POST", path: string, body?:
   return json as T;
 }
 
-export type CheckoutLine = { name: string; description?: string | null; unitCents: number; qty: number };
+export type CheckoutLine = { name: string; description?: string | null; unitCents: number; qty: number; taxCode?: string | null };
+
+/** Stripe's tax code for shipping (taxed where the state taxes delivery). */
+export const TAX_CODE_SHIPPING = "txcd_92010001";
 
 /** A Checkout Session (Stripe's hosted payment page). Returns the session id and the page to send the customer to. */
 export async function createCheckoutSession(
   key: string,
-  a: { lines: CheckoutLine[]; successUrl: string; cancelUrl: string; email: string | null; metadata: Record<string, string>; reference: string; expiresInMinutes?: number; idempotencyKey: string },
+  a: {
+    lines: CheckoutLine[];
+    successUrl: string;
+    cancelUrl: string;
+    email: string | null;
+    metadata: Record<string, string>;
+    reference: string;
+    expiresInMinutes?: number;
+    idempotencyKey: string;
+    /** Stripe Tax works out the tax from the address it collects (prices exclusive of tax); the shipping address is asked for. */
+    automaticTax?: boolean;
+  },
 ): Promise<StripeSession> {
   const now = Math.floor(Date.now() / 1000);
   return call<StripeSession>(
@@ -72,17 +98,23 @@ export async function createCheckoutSession(
       payment_intent_data: { metadata: a.metadata },
       // Stripe's minimum is 30 minutes; the order's PENDING row goes stale with it.
       expires_at: now + 60 * Math.max(30, Math.min(a.expiresInMinutes ?? 60, 24 * 60)),
+      ...(a.automaticTax ? { automatic_tax: { enabled: true }, shipping_address_collection: { allowed_countries: ["US"] } } : {}),
       line_items: a.lines.map((l) => ({
         quantity: l.qty,
-        price_data: { currency: "usd", unit_amount: l.unitCents, product_data: { name: l.name.slice(0, 250), ...(l.description ? { description: l.description.slice(0, 250) } : {}) } },
+        price_data: {
+          currency: "usd",
+          unit_amount: l.unitCents,
+          ...(a.automaticTax ? { tax_behavior: "exclusive" } : {}),
+          product_data: { name: l.name.slice(0, 250), ...(l.description ? { description: l.description.slice(0, 250) } : {}), ...(a.automaticTax && l.taxCode ? { tax_code: l.taxCode } : {}) },
+        },
       })),
     },
     a.idempotencyKey,
   );
 }
 
-export async function retrieveSession(key: string, id: string): Promise<StripeSession> {
-  return call<StripeSession>(key, "GET", `/v1/checkout/sessions/${encodeURIComponent(id)}`);
+export async function retrieveSession(key: string, id: string, o: { lines?: boolean } = {}): Promise<StripeSession> {
+  return call<StripeSession>(key, "GET", `/v1/checkout/sessions/${encodeURIComponent(id)}${o.lines ? "?expand[]=line_items" : ""}`);
 }
 
 export type StripeRefund = { id: string; amount: number; status: string };

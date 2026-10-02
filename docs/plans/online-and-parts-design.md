@@ -232,7 +232,18 @@ the hosted version where it integrates easily.
   (bytes in the database like MachinePhoto, served by `/api/shop/photo/{id}` only while listed and the shop is on).
   In stock / out of stock, never the count; search by number, words, brand, fit; kinds as categories.
 - **Pricing**: exactly as the counter (`saleTotals` with the shop's one rate); shipping a misc untaxed line; free
-  over the threshold. Stripe Tax is not in this version.
+  over the threshold.
+- **Sales tax, a setting** (`Shop.shopTaxVia`, "rate" | "stripe", added the same day at the owner's ask). "rate" is
+  the above. "stripe" hands a **shipped** order's tax to Stripe Tax at checkout (`automatic_tax`, prices
+  `tax_behavior: exclusive`, the shipping line with Stripe's shipping tax code, the shipping address collected), so
+  the destination's rate applies and shipping is taxed where that state taxes it; the cart shows "Total before tax"
+  and "Pay now, $X plus tax". Pickup orders stay at the shop's rate (the sale happens at the shop). Own-account
+  shops only: under the hosted service's account the tax would be collected under its registrations, so the setting
+  refuses that pairing. At payment the order takes Stripe's `amount_total` and `total_details.amount_tax`; the sale
+  is made with `SaleInput.taxCents` (new, owner's calls only), `completeSaleAs` recording that amount and the
+  effective rate so a return mirrors it; a line short of stock keeps its share of the tax from the session's
+  `line_items` (one per item, then shipping) and the rest is refunded. `WebOrder.taxVia` says which rule the order
+  was priced under. The mock charges a flat 8 % per line when a session asks for automatic tax.
 - **Checkout**: the customer matched or made as booking does (`customerForOnline`, source "online shop"); a
   `WebOrder` PENDING with its number, items as sold and a hashed token (the order link sealed into the row for the
   mail); a Stripe Checkout Session (plain fetch, `src/lib/shop/stripe.ts`, `STRIPE_API_BASE` for the mock) whose
@@ -253,7 +264,7 @@ the hosted version where it integrates easily.
   instructions, shipping with the rate and free-over, who takes the money with the keys, the webhook address to
   paste into Stripe, the mail-cap flag, the link and the iframe snippet. Hosted first: without `PUBLIC_URL` the page
   says so (the Windows program would need the tunnel and a reachable webhook).
-- **Not in this version**: Stripe Tax, customer accounts, variants, gift cards, discount codes, shipping taxed.
+- **Not in this version**: customer accounts, variants, gift cards, discount codes; Stripe Tax on pickup orders.
 
 ---
 

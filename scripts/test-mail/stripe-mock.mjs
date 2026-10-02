@@ -15,6 +15,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const KEY = /^(sk|rk)_(test|live)_[A-Za-z0-9]{8,}$/;
+/** What the mock's "Stripe Tax" charges on every line when a session asks for automatic tax. */
+export const MOCK_TAX_RATE = 0.08;
 const hex = (n) => crypto.randomBytes(n).toString("hex");
 
 function readBody(req) {
@@ -114,7 +116,7 @@ export async function startStripeMock(o = {}) {
           res.writeHead(303, { location: s.success_url });
           return res.end();
         }
-        const items = (s.line_items ?? [])
+        const items = (s.line_items?.data ?? [])
           .map((l) => `<li>${escapeHtml(l.price_data?.product_data?.name ?? "item")} × ${escapeHtml(l.quantity)} — $${(Number(l.price_data?.unit_amount ?? 0) / 100).toFixed(2)}</li>`)
           .join("");
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -146,7 +148,16 @@ export async function startStripeMock(o = {}) {
         const lines = Array.isArray(f.line_items) ? f.line_items : [];
         if (!lines.length) return stripeError(res, 400, "Missing required param: line_items.");
         if (!f.success_url || !f.cancel_url) return stripeError(res, 400, "Missing required param: success_url / cancel_url.");
-        const amount = lines.reduce((a, l) => a + Number(l.price_data?.unit_amount ?? 0) * Number(l.quantity ?? 1), 0);
+        // Automatic tax: a flat 8 % on every line (shipping too), each line rounded, like a state that taxes delivery.
+        const autoTax = f.automatic_tax?.enabled === "true";
+        const lineRows = lines.map((l) => {
+          const sub = Number(l.price_data?.unit_amount ?? 0) * Number(l.quantity ?? 1);
+          const tax = autoTax ? Math.round(sub * MOCK_TAX_RATE) : 0;
+          return { quantity: Number(l.quantity ?? 1), price_data: l.price_data, amount_subtotal: sub, amount_tax: tax, amount_total: sub + tax };
+        });
+        const subtotal = lineRows.reduce((a, l) => a + l.amount_subtotal, 0);
+        const taxTotal = lineRows.reduce((a, l) => a + l.amount_tax, 0);
+        const amount = subtotal + taxTotal;
         if (amount < 50) return stripeError(res, 400, "The Checkout Session's total amount must be at least $0.50.");
         const idem = req.headers["idempotency-key"];
         const prior = idem ? [...sessions.values()].find((s) => s.idempotency_key === idem) : null;
@@ -160,7 +171,10 @@ export async function startStripeMock(o = {}) {
           status: "open",
           payment_status: "unpaid",
           payment_intent: null,
+          amount_subtotal: subtotal,
           amount_total: amount,
+          total_details: { amount_tax: taxTotal, amount_shipping: 0, amount_discount: 0 },
+          automatic_tax: { enabled: autoTax, status: autoTax ? "complete" : null },
           currency: "usd",
           customer_email: f.customer_email ?? null,
           client_reference_id: f.client_reference_id ?? null,
@@ -168,7 +182,7 @@ export async function startStripeMock(o = {}) {
           success_url: f.success_url,
           cancel_url: f.cancel_url,
           expires_at: Number(f.expires_at ?? 0) || Math.floor(Date.now() / 1000) + 3600,
-          line_items: lines.map((l) => ({ quantity: Number(l.quantity ?? 1), price_data: l.price_data })),
+          line_items: { object: "list", data: lineRows },
           idempotency_key: idem ?? null,
         };
         sessions.set(id, s);

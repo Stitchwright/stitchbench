@@ -49,10 +49,25 @@ export type SaleInput = {
   note?: string | null;
   /** The register's own name for this sale, the same on every try: a sale sent again isn't made twice. */
   clientKey?: string | null;
+  /** The online shop with Stripe Tax: the tax as the processor worked it out, recorded in place of the shop's rate (owner's calls only). */
+  taxCents?: number | null;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
 const MAX_MONEY = 10_000_000;
+
+/** The rate (to a hundredth of a percent) that gives `taxCents` on the taxable lines; 0 when nothing is taxable. */
+function effectiveRate(lines: { qty: number; unitPriceCents: number; discountCents?: number; taxable: boolean }[], taxCents: number): number {
+  const taxable = lines.filter((l) => l.taxable).reduce((a, l) => a + lineNet(l), 0);
+  return taxable > 0 ? Math.round((taxCents / taxable) * 10_000) / 100 : 0;
+}
+
+/** Totals with the tax replaced by a given amount. */
+function withTax(t: ReturnType<typeof saleTotals>, taxCents: number): ReturnType<typeof saleTotals> {
+  const total = t.subtotal - t.orderDiscount + taxCents;
+  const change = total >= 0 ? Math.max(0, t.paid - total) : 0;
+  return { ...t, tax: taxCents, total, change, due: Math.max(0, total - t.paid) };
+}
 
 /** The sale already made under this key, if any. */
 function saleByKey(shopId: string, clientKey: string | null) {
@@ -77,9 +92,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
     const parts = new Map((await db.part.findMany({ where: { shopId, id: { in: partIds } } })).map((p) => [p.id, p]));
     if (parts.size !== partIds.length) throw new UserError("An item on this sale isn't in your inventory any more. Remove it and scan it again.");
     const jobIds = [...new Set(input.lines.map((l) => l.repairJobId).filter(Boolean) as string[])];
-    const jobs = new Map(
-      (await db.repairJob.findMany({ where: { shopId, side: "retail", id: { in: jobIds } } })).map((j) => [j.id, j]),
-    );
+    const jobs = new Map((await db.repairJob.findMany({ where: { shopId, side: "retail", id: { in: jobIds } } })).map((j) => [j.id, j]));
     for (const id of jobIds) {
       const j = jobs.get(id);
       if (!j) throw new UserError("That repair isn't one of this shop's.");
@@ -99,7 +112,13 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
       shopId,
       role: user.role,
       customerId: input.customerId ?? null,
-      lines: input.lines.map((l) => ({ stockUnitId: l.stockUnitId ?? null, tradeIn: l.tradeIn ?? null, qty: Number(l.qty), unitPriceCents: Math.round(Number(l.unitPriceCents)), taxable: Boolean(l.taxable) })),
+      lines: input.lines.map((l) => ({
+        stockUnitId: l.stockUnitId ?? null,
+        tradeIn: l.tradeIn ?? null,
+        qty: Number(l.qty),
+        unitPriceCents: Math.round(Number(l.unitPriceCents)),
+        taxable: Boolean(l.taxable),
+      })),
     });
 
     const lines = input.lines.map((l, i) => {
@@ -207,7 +226,11 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
     if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
     const orderDiscountCents = Math.max(0, Math.round(Number(input.orderDiscountCents) || 0));
     if (user.role === "TECH" && orderDiscountCents) throw new UserError("Only an owner or admin can give a discount.");
-    const totals = saleTotals(lines, orderDiscountCents, shop.taxRatePct, tenders);
+    // A tax amount the processor worked out (Stripe Tax) stands in for the rate; the rate recorded is the effective one,
+    // so a return mirrors the sale's tax as closely as a rate can.
+    const givenTax = input.taxCents != null && user.role !== "TECH" ? Math.max(0, Math.round(Number(input.taxCents))) : null;
+    const taxRatePct = givenTax != null ? effectiveRate(lines, givenTax) : shop.taxRatePct;
+    const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
     if (problem) throw new UserError(problem);
@@ -226,111 +249,116 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
 
     const customerId = input.customerId || firstBookingCustomer(lines, bookings);
     const at = new Date();
-    const sale = await db.$transaction(async (tx) => {
-      const sh = await tx.shop.update({ where: { id: shopId }, data: { nextSaleNumber: { increment: 1 } }, select: { nextSaleNumber: true } });
-      const number = sh.nextSaleNumber - 1;
-      const sale = await tx.sale.create({
-        data: {
-          shopId,
-          number,
-          customerId,
-          userId: user.id,
-          subtotalCents: totals.subtotal,
-          discountCents: totals.orderDiscount,
-          taxCents: totals.tax,
-          totalCents: totals.total,
-          taxRatePct: shop.taxRatePct,
-          tenders: tenders as Prisma.InputJsonValue,
-          changeCents: totals.change,
-          note: input.note?.slice(0, 500) || null,
-          clientKey,
-          createdAt: at,
-        },
-      });
-      for (const [i, l] of lines.entries()) {
-        // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
-        const { pickedUp, discountable, tradeIn, ...row } = l;
-        void discountable;
-        const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
-        if (l.stockUnitId || tradeIn) {
-          await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
-        }
-        if (l.enrollmentId || l.appointmentId) await settleBooking(tx, shopId, l, line.id, at);
-        if (l.partId) {
-          await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
-          await tx.stockMove.create({
-            data: { shopId, partId: l.partId, qty: -l.qty, reason: "SOLD", userId: user.id, note: `Sale #${number}`, createdAt: at },
-          });
-        }
-        if (l.consignLinkId && l.consignItemKey) {
-          // Consigned stock: the owner hears about every sale; the net price after the line discount and the line's part
-          // of any whole-sale discount is what counts.
-          const net = Math.round((lineNet(l) - orderShares[i]) / l.qty);
-          const gross = Math.round(l.qty * net);
-          await tx.consignSale.create({
-            data: {
-              id: line.id,
-              shopId,
-              linkId: l.consignLinkId,
-              itemKey: l.consignItemKey,
-              qty: l.qty,
-              priceCents: net,
-              saleNumber: number,
-              soldAt: at,
-              shopKeepsCents: Math.round((gross * (consignShares.get(l.consignLinkId) ?? 0)) / 100),
-            },
-          });
-          // A sale sells only what is still on the shelf and a return takes back only what was sold (the repair shop
-          // applies the same rules, so both books agree). Quantities are floats: a millionth of slack.
-          const key = { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey };
-          if (l.qty > 0) {
-            const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: key } });
-            const onShelf = item ? item.placed - item.sold - item.returned : 0;
-            if (!item || l.qty > onShelf + 1e-6) {
-              throw new UserError(`${l.description}: ${onShelf > 1e-6 ? `only ${qtyText(onShelf, l.unit)}` : "none"} left on the shelf on consignment.`);
-            }
-            // Only if nobody sold it meanwhile (another register).
-            const took = await tx.consignItem.updateMany({ where: { id: item.id, sold: item.sold }, data: { sold: { increment: l.qty } } });
-            if (!took.count) throw new UserError(`${l.description} was just sold at another register. Ring it up again.`);
-          } else {
-            const took = await tx.consignItem.updateMany({ where: { ...key, sold: { gte: -l.qty - 1e-6 } }, data: { sold: { increment: l.qty } } });
-            if (!took.count) throw new UserError(`More of ${l.description} is being returned than was sold on consignment.`);
+    const sale = await db
+      .$transaction(async (tx) => {
+        const sh = await tx.shop.update({ where: { id: shopId }, data: { nextSaleNumber: { increment: 1 } }, select: { nextSaleNumber: true } });
+        const number = sh.nextSaleNumber - 1;
+        const sale = await tx.sale.create({
+          data: {
+            shopId,
+            number,
+            customerId,
+            userId: user.id,
+            subtotalCents: totals.subtotal,
+            discountCents: totals.orderDiscount,
+            taxCents: totals.tax,
+            totalCents: totals.total,
+            taxRatePct,
+            tenders: tenders as Prisma.InputJsonValue,
+            changeCents: totals.change,
+            note: input.note?.slice(0, 500) || null,
+            clientKey,
+            createdAt: at,
+          },
+        });
+        for (const [i, l] of lines.entries()) {
+          // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
+          const { pickedUp, discountable, tradeIn, ...row } = l;
+          void discountable;
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
+          if (l.stockUnitId || tradeIn) {
+            await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
           }
-          await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx, false);
+          if (l.enrollmentId || l.appointmentId) await settleBooking(tx, shopId, l, line.id, at);
+          if (l.partId) {
+            await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
+            await tx.stockMove.create({
+              data: { shopId, partId: l.partId, qty: -l.qty, reason: "SOLD", userId: user.id, note: `Sale #${number}`, createdAt: at },
+            });
+          }
+          if (l.consignLinkId && l.consignItemKey) {
+            // Consigned stock: the owner hears about every sale; the net price after the line discount and the line's part
+            // of any whole-sale discount is what counts.
+            const net = Math.round((lineNet(l) - orderShares[i]) / l.qty);
+            const gross = Math.round(l.qty * net);
+            await tx.consignSale.create({
+              data: {
+                id: line.id,
+                shopId,
+                linkId: l.consignLinkId,
+                itemKey: l.consignItemKey,
+                qty: l.qty,
+                priceCents: net,
+                saleNumber: number,
+                soldAt: at,
+                shopKeepsCents: Math.round((gross * (consignShares.get(l.consignLinkId) ?? 0)) / 100),
+              },
+            });
+            // A sale sells only what is still on the shelf and a return takes back only what was sold (the repair shop
+            // applies the same rules, so both books agree). Quantities are floats: a millionth of slack.
+            const key = { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey };
+            if (l.qty > 0) {
+              const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: key } });
+              const onShelf = item ? item.placed - item.sold - item.returned : 0;
+              if (!item || l.qty > onShelf + 1e-6) {
+                throw new UserError(`${l.description}: ${onShelf > 1e-6 ? `only ${qtyText(onShelf, l.unit)}` : "none"} left on the shelf on consignment.`);
+              }
+              // Only if nobody sold it meanwhile (another register).
+              const took = await tx.consignItem.updateMany({ where: { id: item.id, sold: item.sold }, data: { sold: { increment: l.qty } } });
+              if (!took.count) throw new UserError(`${l.description} was just sold at another register. Ring it up again.`);
+            } else {
+              const took = await tx.consignItem.updateMany({ where: { ...key, sold: { gte: -l.qty - 1e-6 } }, data: { sold: { increment: l.qty } } });
+              if (!took.count) throw new UserError(`More of ${l.description} is being returned than was sold on consignment.`);
+            }
+            await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id: line.id, itemKey: l.consignItemKey, qty: l.qty, priceCents: net, saleNumber: number, at: at.toISOString() }, tx, false);
+          }
+          if (l.repairJobId) {
+            const job = jobs.get(l.repairJobId)!;
+            const amount = lineNet(l);
+            // Adds to anything paid here before (the rest of a bill that went up after it was paid).
+            const paidHere = (job.paidCents ?? 0) + amount;
+            // A machine already handed over isn't handed over again.
+            const handOver = pickedUp && !job.pickedUpAt;
+            const events = [
+              ...((job.events as { at: string; note?: string; status?: string }[]) ?? []),
+              { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` },
+            ].slice(-200);
+            // Only if nobody paid it and the bill didn't change meanwhile (another register, a second click, an update).
+            const paid = await tx.repairJob.updateMany({
+              where: { shopId, id: job.id, paidCents: job.paidCents, repairPaidCents: job.repairPaidCents, totalCents: job.totalCents, ...(handOver ? { status: job.status } : {}) },
+              data: {
+                paidCents: paidHere,
+                paidAt: job.paidAt ?? at,
+                paidWhere: job.repairPaidCents ? "split" : "shop",
+                // A machine sent back unrepaired stays that way in the record (as on the repair shop's side).
+                ...(handOver ? { pickedUpAt: at, status: job.status === "RETURNED_UNREPAIRED" ? job.status : "COLLECTED" } : {}),
+                events: (handOver ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
+              },
+            });
+            if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid, or its bill or status changed. Take it off this sale and add it again.`);
+            // amountCents is this payment; paidCents is everything paid here so far (a repeat of a message adds nothing).
+            await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, paidCents: paidHere, saleNumber: number, at: at.toISOString() }, tx, false);
+            if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx, false);
+          }
         }
-        if (l.repairJobId) {
-          const job = jobs.get(l.repairJobId)!;
-          const amount = lineNet(l);
-          // Adds to anything paid here before (the rest of a bill that went up after it was paid).
-          const paidHere = (job.paidCents ?? 0) + amount;
-          // A machine already handed over isn't handed over again.
-          const handOver = pickedUp && !job.pickedUpAt;
-          const events = [...((job.events as { at: string; note?: string; status?: string }[]) ?? []), { at: at.toISOString(), note: `Paid $${(amount / 100).toFixed(2)} at the counter, sale #${number}` }].slice(-200);
-          // Only if nobody paid it and the bill didn't change meanwhile (another register, a second click, an update).
-          const paid = await tx.repairJob.updateMany({
-            where: { shopId, id: job.id, paidCents: job.paidCents, repairPaidCents: job.repairPaidCents, totalCents: job.totalCents, ...(handOver ? { status: job.status } : {}) },
-            data: {
-              paidCents: paidHere,
-              paidAt: job.paidAt ?? at,
-              paidWhere: job.repairPaidCents ? "split" : "shop",
-              // A machine sent back unrepaired stays that way in the record (as on the repair shop's side).
-              ...(handOver ? { pickedUpAt: at, status: job.status === "RETURNED_UNREPAIRED" ? job.status : "COLLECTED" } : {}),
-              events: (handOver ? [...events, { at: at.toISOString(), status: "COLLECTED" }] : events) as Prisma.InputJsonValue,
-            },
-          });
-          if (!paid.count) throw new UserError(`Repair tag ${job.tag} was just paid, or its bill or status changed. Take it off this sale and add it again.`);
-          // amountCents is this payment; paidCents is everything paid here so far (a repeat of a message adds nothing).
-          await sendToPartner(shopId, job.linkId, "job.paid", { id: job.id, amountCents: amount, paidCents: paidHere, saleNumber: number, at: at.toISOString() }, tx, false);
-          if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx, false);
-        }
-      }
-      return sale;
-    }).catch(async (e: unknown) => {
-      // The same sale sent twice at once: the other try made it.
-      const made = (e as { code?: string })?.code === "P2002" ? await saleByKey(shopId, clientKey) : null;
-      if (made) return made;
-      throw e;
-    });
+        return sale;
+      })
+      .catch(async (e: unknown) => {
+        // The same sale sent twice at once: the other try made it.
+        const made = (e as { code?: string })?.code === "P2002" ? await saleByKey(shopId, clientKey) : null;
+        if (made) return made;
+        throw e;
+      });
     return { saleId: sale.id, number: sale.number, changeCents: sale.changeCents };
   }
 }
@@ -369,7 +397,17 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
         // Undone at the price it was paid out at (after any whole-sale discount).
         const net = original?.priceCents ?? Math.round(lineNet(l) / l.qty);
         await tx.consignSale.create({
-          data: { id, shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, soldAt: at, shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null },
+          data: {
+            id,
+            shopId,
+            linkId: l.consignLinkId,
+            itemKey: l.consignItemKey,
+            qty: -l.qty,
+            priceCents: net,
+            saleNumber: sale.number,
+            soldAt: at,
+            shopKeepsCents: original?.shopKeepsCents != null ? -original.shopKeepsCents : null,
+          },
         });
         const undone = await tx.consignItem.updateMany({
           where: { shopId, linkId: l.consignLinkId, itemKey: l.consignItemKey, ...(l.qty > 0 ? { sold: { gte: l.qty - 1e-6 } } : {}) },
@@ -483,7 +521,13 @@ function firstBookingCustomer(lines: { enrollmentId: string | null; appointmentI
 }
 
 /** Inside the sale's transaction: the guarded payment (qty 1) or refund (qty -1) written on the booking. */
-async function settleBooking(tx: Tx, shopId: string, l: { enrollmentId: string | null; appointmentId: string | null; qty: number; unitPriceCents: number; discountCents: number; taxable: boolean; description: string }, lineId: string, at: Date) {
+async function settleBooking(
+  tx: Tx,
+  shopId: string,
+  l: { enrollmentId: string | null; appointmentId: string | null; qty: number; unitPriceCents: number; discountCents: number; taxable: boolean; description: string },
+  lineId: string,
+  at: Date,
+) {
   const net = lineNet(l);
   const pay = l.qty > 0;
   const table = l.enrollmentId ? tx.enrollment : tx.appointment;
@@ -512,12 +556,38 @@ export async function bookingsDueFor(shopId: string, tz: string, customerId: str
   const paid = refunds ? { paidAt: { not: null }, refundedAt: null } : { paidAt: null, feeCents: { gt: 0 } };
   const cust = customerId ? { customerId } : {};
   const [enrollments, appointments] = await Promise.all([
-    db.enrollment.findMany({ where: { shopId, ...cust, ...paid, ...(refunds ? {} : { status: "ENROLLED", shopClass: { status: { not: "CANCELLED" } } }) }, include: { shopClass: true, customer: { select: { name: true } } }, take: 100 }),
-    db.appointment.findMany({ where: { shopId, ...cust, ...paid, blocked: false, ...(refunds ? {} : { status: { in: ["BOOKED", "DONE", "NO_SHOW"] } }) }, include: { customer: { select: { name: true } } }, take: 100 }),
+    db.enrollment.findMany({
+      where: { shopId, ...cust, ...paid, ...(refunds ? {} : { status: "ENROLLED", shopClass: { status: { not: "CANCELLED" } } }) },
+      include: { shopClass: true, customer: { select: { name: true } } },
+      take: 100,
+    }),
+    db.appointment.findMany({
+      where: { shopId, ...cust, ...paid, blocked: false, ...(refunds ? {} : { status: { in: ["BOOKED", "DONE", "NO_SHOW"] } }) },
+      include: { customer: { select: { name: true } } },
+      take: 100,
+    }),
   ]);
   const out: BookingDue[] = [
-    ...enrollments.map((e) => ({ kind: "enrollment" as const, id: e.id, description: `${classLine(e.shopClass, tz)}${e.attendee ? ` for ${e.attendee}` : ""}`, dueCents: refunds ? (e.paidCents ?? e.feeCents) : e.feeCents, taxable: e.taxable, customerId: e.customerId, customerName: e.customer?.name ?? e.name, startsAt: e.shopClass.firstAt ?? e.createdAt })),
-    ...appointments.map((a) => ({ kind: "appointment" as const, id: a.id, description: `${a.title}, ${fmtWhen(a.startsAt, tz)}`, dueCents: refunds ? (a.paidCents ?? a.feeCents) : a.feeCents, taxable: a.taxable, customerId: a.customerId, customerName: a.customer?.name ?? a.name, startsAt: a.startsAt })),
+    ...enrollments.map((e) => ({
+      kind: "enrollment" as const,
+      id: e.id,
+      description: `${classLine(e.shopClass, tz)}${e.attendee ? ` for ${e.attendee}` : ""}`,
+      dueCents: refunds ? (e.paidCents ?? e.feeCents) : e.feeCents,
+      taxable: e.taxable,
+      customerId: e.customerId,
+      customerName: e.customer?.name ?? e.name,
+      startsAt: e.shopClass.firstAt ?? e.createdAt,
+    })),
+    ...appointments.map((a) => ({
+      kind: "appointment" as const,
+      id: a.id,
+      description: `${a.title}, ${fmtWhen(a.startsAt, tz)}`,
+      dueCents: refunds ? (a.paidCents ?? a.feeCents) : a.feeCents,
+      taxable: a.taxable,
+      customerId: a.customerId,
+      customerName: a.customer?.name ?? a.name,
+      startsAt: a.startsAt,
+    })),
   ];
   return out.sort((x, y) => x.startsAt.getTime() - y.startsAt.getTime()).slice(0, 100);
 }

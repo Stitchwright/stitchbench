@@ -84,8 +84,14 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         )}
         {o.taxCents > 0 && (
           <div className="flex justify-between">
-            <span>Sales tax</span>
+            <span>Sales tax{o.taxVia === "stripe" ? " (by delivery address)" : ""}</span>
             <span className="num">{money(o.taxCents)}</span>
+          </div>
+        )}
+        {o.taxVia === "stripe" && o.status === "PENDING" && (
+          <div className="flex justify-between">
+            <span>Sales tax</span>
+            <span className="muted">added at checkout</span>
           </div>
         )}
         <div className="flex justify-between text-base font-semibold">
