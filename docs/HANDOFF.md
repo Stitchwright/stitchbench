@@ -504,7 +504,7 @@ Expect label and selector slips on the first run: these specs belong to the test
 Every spec ran on a test build at :3501 with the sink (:2526 / :2581), the Twilio mock (:3402), a second server at
 :3500 for two-servers and the local test hub at :3200 for partner-runs. Final results, one spec at a time:
 smoke 1, modules-basics 4, notices 4, estimate-links 2 (+1 expected skip: the no-PUBLIC_URL variant), campaigns 3
-(+1 skipped: the text campaign runs only 10:00-18:00 Eastern; rerun it in the daytime), classes 4, calendar 4,
+(the text campaign ran in the afternoon window and passed too: 4 of 4), classes 4, calendar 4,
 register-bookings 3, shifts 3, appliances 5, vac-shop 6, modules-lapse 3, scheduling-messaging 5, two-servers 1,
 partner-runs 1. All passing.
 
