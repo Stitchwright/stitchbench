@@ -74,6 +74,15 @@ h3 {
   text-wrap: balance;
 }
 
+/* A grid item's automatic minimum width is its content's (a long word, a wide table), so below a breakpoint's
+   grid-cols-N the single implicit column grew past the screen. Zero lets an item shrink to its column; the utilities
+   (min-w-*) still override it. */
+@layer base {
+  :where(.grid) > * {
+    min-width: 0;
+  }
+}
+
 @layer components {
   .card {
     @apply rounded-md border border-line bg-surface;
