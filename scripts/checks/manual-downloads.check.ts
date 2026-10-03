@@ -1,4 +1,4 @@
-// Manual downloads into the library (HANDOFF item 12, package manual-downloads): the library's naming; a model's
+﻿// Manual downloads into the library (HANDOFF item 12, package manual-downloads): the library's naming; a model's
 // coverage by kind of manual; "download all" for a model queues its working links and skips dead ones; the worker
 // files a link with category, brand, model and kind straight to Category\Brand\Brand_Model_DocType.pdf with a
 // LibraryDoc row and a sidecar, one without to _inbox; a web page, a 404 and a redirect off the web fail with plain
@@ -119,6 +119,19 @@ async function main() {
     assert.equal(linkStem(link(7)), "Babylock_BLQ2-CHK+BLQ3-CHK_PartsList");
     assert.equal(linkStem(link(2)), "Janome_MC-CHK_PartsList", "the hub's file name wins when it says one");
     assert.equal(linkStem({ ...link(1), fileName: null, docType: null, models: "A/1" }), "Babylock_A_1_Manual");
+    // File names the hub sends (round-3 I7): separators, drive letters and wildcards never survive into a stem.
+    const named = (fileName: string) => linkStem({ ...link(1), fileName });
+    assert.equal(named("../x.pdf"), ".._x");
+    assert.equal(named("..\\..\\x.pdf"), ".._.._x", "backslashes");
+    assert.equal(named("C:\\Windows\\win.ini"), "C_Windows_win.ini");
+    assert.equal(named("a:b*c?.pdf"), "a_b_c_");
+    assert.equal(named("x\u0000y.pdf"), "x_y", "a null byte");
+    assert.equal(named(".pdf"), "Babylock_BLQ2-CHK_ServiceManual", "an empty stem falls back to the built name");
+    for (const hostile of ["../x.pdf", "..\\..\\x.pdf", "C:\\x", "a/b\\c", "con.pdf"]) assert.ok(!/[\\/:*?"<>|\0]/.test(named(hostile)), `no path character in the stem for ${JSON.stringify(hostile)}`);
+    assert.ok(named("x".repeat(400)).length <= 150, "cut to 150");
+    // Windows treats CON.pdf, NUL.pdf and the like as devices. The stem keeps the name as the hub sent it: a known gap, pinned here
+    // so a fix (prefixing such names) shows up as this line failing.
+    assert.equal(named("CON"), "CON", "reserved device names pass through today");
     assert.ok(canFile(link(1)) && canFile(link(7)));
     assert.ok(!canFile(link(2)), "no category: can't be filed by model");
     assert.ok(!canFile({ ...link(1), modelKeys: [] }) && !canFile({ ...link(1), docType: null }));

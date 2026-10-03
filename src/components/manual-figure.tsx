@@ -105,6 +105,33 @@ function saveOnline(canvas: HTMLCanvasElement, sourcePath: string, page: number,
   );
 }
 
+/** Whether this person may replace a stored figure (the server decides: whoever runs the install). Asked once. */
+let canReplacePromise: Promise<boolean> | null = null;
+function askCanReplace() {
+  canReplacePromise ??= fetch("/api/figures")
+    .then((r) => (r.ok ? r.json() : { canReplace: false }))
+    .then((j) => j.canReplace === true)
+    .catch(() => false);
+  return canReplacePromise;
+}
+
+/** Send the canvas as a replacement for the stored figure. Resolves with whether the server replaced it. */
+async function replaceOnline(canvas: HTMLCanvasElement, sourcePath: string, page: number, box: number[]): Promise<boolean> {
+  if (looksBlank(canvas)) throw new Error("That page drew blank, so the saved figure was left as it is.");
+  const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/jpeg", 0.7));
+  if (!blob) throw new Error("Could not make a picture of the figure.");
+  const fd = new FormData();
+  fd.set("sourcePath", sourcePath);
+  fd.set("page", String(page));
+  fd.set("box", JSON.stringify(box));
+  fd.set("width", String(canvas.width));
+  fd.set("height", String(canvas.height));
+  fd.set("file", blob, "figure.jpg");
+  const res = await fetch("/api/figures", { method: "POST", body: fd });
+  if (!res.ok) throw new Error((await res.text()) || "Could not save the figure.");
+  return (await res.json()).replaced === true;
+}
+
 export function ManualFigure({
   file,
   sourcePath,
@@ -128,6 +155,9 @@ export function ManualFigure({
   const [state, setState] = useState<"closed" | "drawing" | "open" | "error">("closed");
   const [whole, setWhole] = useState(false);
   const [showStored, setShowStored] = useState(false);
+  const [canReplace, setCanReplace] = useState(false);
+  const [redrawing, setRedrawing] = useState(false);
+  const [version, setVersion] = useState(0); // bumped after a replacement so the stored picture is fetched again
 
   useEffect(() => {
     indexPromise ??= loadIndex();
@@ -139,7 +169,28 @@ export function ManualFigure({
       });
   }, [file, sourcePath]);
 
+  useEffect(() => {
+    if (stored && path && exact) askCanReplace().then(setCanReplace);
+  }, [stored, path, exact]);
+
   if (!page) return null;
+
+  /** Draw the figure's box again from this PC's copy of the manual and save it over the stored one. */
+  function redraw() {
+    if (!path || !sourcePath) return;
+    setRedrawing(true);
+    draw(canvas.current!, path, page!, box, width)
+      .then(() => replaceOnline(canvas.current!, sourcePath, page!, box))
+      .then((replaced) => {
+        if (replaced) {
+          setVersion((v) => v + 1);
+          setShowStored(true);
+          toast.success("Figure redrawn from your manual and saved.");
+        } else toast.error("Only the person who runs this StitchBench can replace a saved figure.");
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Could not redraw the figure."))
+      .finally(() => setRedrawing(false));
+  }
 
   function show(fullPage: boolean) {
     if (!path) return;
@@ -178,11 +229,21 @@ export function ManualFigure({
               {state === "open" ? "Close page" : "Whole page"}
             </button>
           )}
+          {canReplace && (
+            <button type="button" className="btn btn-sm" disabled={redrawing} onClick={redraw}>
+              {redrawing ? "Redrawing..." : "Redraw from manual"}
+            </button>
+          )}
           {openPage}
         </div>
         {showStored && (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated image route
-          <img src={`/api/figures/${figureId}`} alt={`Figure from ${file}, page ${page}`} className="max-w-full rounded border border-line bg-white" style={{ width }} />
+          <img
+            src={`/api/figures/${figureId}${version ? `?v=${version}` : ""}`}
+            alt={`Figure from ${file}, page ${page}`}
+            className="max-w-full rounded border border-line bg-white"
+            style={{ width }}
+          />
         )}
         <canvas ref={canvas} className={`max-w-full rounded border border-line bg-white ${state === "open" || state === "drawing" ? "" : "hidden"}`} aria-label={`Page ${page} of ${file}`} />
       </div>
@@ -219,11 +280,7 @@ export function ManualFigure({
         {openPage}
       </div>
       {state === "drawing" && <p className="muted text-xs">Drawing page {page} from your manual...</p>}
-      <canvas
-        ref={canvas}
-        className={`max-w-full rounded border border-line bg-white ${state === "open" || state === "drawing" ? "" : "hidden"}`}
-        aria-label={`Figure from ${file}, page ${page}`}
-      />
+      <canvas ref={canvas} className={`max-w-full rounded border border-line bg-white ${state === "open" || state === "drawing" ? "" : "hidden"}`} aria-label={`Figure from ${file}, page ${page}`} />
     </div>
   );
 }
