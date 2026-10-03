@@ -55,9 +55,10 @@ async function call<T>(key: string, method: "GET" | "POST", path: string, body?:
   if (!res.ok) {
     const err = (json as { error?: { message?: string; type?: string; code?: string } } | null)?.error;
     const msg = err?.message ?? `Stripe answered ${res.status}`;
-    // The shop's own key problems are for the shop; everything else is "try again" to a customer.
+    // Stripe's words go to the log (they can name the shop's set-up); the person sees a plain line with the code.
+    console.error(`stripe ${method} ${path}: ${res.status} ${err?.type ?? ""} ${err?.code ?? ""} ${msg.slice(0, 300)}`);
     if (res.status === 401) throw new UserError("The shop's card processing isn't set up right (the key was refused). Please call the shop.");
-    throw new UserError(`The card processor refused the request: ${msg.slice(0, 200)}`);
+    throw new UserError(`The card processor refused the request${err?.code ? ` (${err.code})` : ""}. Please try again in a minute, or call the shop.`);
   }
   return json as T;
 }
@@ -147,7 +148,11 @@ export function verifyWebhook(rawBody: string, signature: string | null, secret:
   if (!Number.isFinite(t) || !v1s.length) return null;
   if (Math.abs(now.getTime() / 1000 - t) > 300) return null;
   const expected = crypto.createHmac("sha256", secret).update(`${t}.${rawBody}`).digest("hex");
-  const ok = v1s.some((v) => v.length === expected.length && crypto.timingSafeEqual(Buffer.from(v, "hex"), Buffer.from(expected, "hex")));
+  const want = Buffer.from(expected, "hex");
+  const ok = v1s.some((v) => {
+    const got = Buffer.from(v, "hex");
+    return got.length === want.length && crypto.timingSafeEqual(got, want);
+  });
   if (!ok) return null;
   try {
     const ev = JSON.parse(rawBody) as WebhookEvent;

@@ -49,7 +49,6 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   return matches[0] ? view(matches[0]) : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code" }))[0] ?? null);
 }
 
-
 /** Items whose number or description matches, for the search box. */
 export async function findItems(q: string): Promise<RegisterItem[]> {
   const user = await requireUser();
@@ -59,11 +58,7 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
   const parts = await db.part.findMany({
     where: {
       shopId: user.shopId,
-      OR: [
-        { partNumber: { contains: t, mode: "insensitive" } },
-        { numberKeys: { has: numberKey(t) } },
-        { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) },
-      ],
+      OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
     },
     orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
     take: 25,
@@ -85,7 +80,19 @@ export type PickupJob = {
   customerId: string | null;
 };
 
-function toPickupJob(j: { id: string; tag: string; customerName: string; brand: string; model: string; paidCents: number | null; pickedUpAt: Date | null; status: string; customerId: string | null; totalCents: number | null; repairPaidCents: number | null }): PickupJob {
+function toPickupJob(j: {
+  id: string;
+  tag: string;
+  customerName: string;
+  brand: string;
+  model: string;
+  paidCents: number | null;
+  pickedUpAt: Date | null;
+  status: string;
+  customerId: string | null;
+  totalCents: number | null;
+  repairPaidCents: number | null;
+}): PickupJob {
   return {
     id: j.id,
     tag: j.tag,
@@ -227,7 +234,11 @@ export async function quickAddCustomer(fd: FormData): Promise<CustomerHit | { er
 export async function completeSale(input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number } | { error: string }> {
   try {
     const user = await requireUser();
-    const r = await completeSaleAs(user, input);
+    // A given tax amount and the ONLINE tender belong to the online shop's payment path, never to the counter.
+    const { taxCents: _given, ...counter } = input;
+    void _given;
+    if (Array.isArray(counter.tenders) && counter.tenders.some((t) => t?.method === "ONLINE")) return { error: '"Paid online" is written by the online shop only. Pick how the customer paid.' };
+    const r = await completeSaleAs(user, counter);
     revalidatePath("/register", "layout");
     revalidatePath("/repairs", "layout");
     revalidatePath("/parts", "layout");
@@ -244,7 +255,13 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
 /** Undo a sale that was rung up by mistake: stock goes back, consigned sales are reversed with the owner. */
 export const voidSale = safe(async function voidSale(saleId: string, formData: FormData) {
   const user = await requireAdmin();
-  await voidSaleAs(user, saleId, String(formData.get("reason") ?? "").trim().slice(0, 200));
+  await voidSaleAs(
+    user,
+    saleId,
+    String(formData.get("reason") ?? "")
+      .trim()
+      .slice(0, 200),
+  );
   revalidatePath("/register", "layout");
   revalidatePath("/parts", "layout");
   revalidatePath("/vac", "layout");

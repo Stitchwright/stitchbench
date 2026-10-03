@@ -126,13 +126,14 @@ const flag = (fd: FormData, name: string) => {
 export async function saveShopSettingsFor(user: CurrentUser, fd: FormData): Promise<void> {
   if (user.role === "TECH") throw new UserError("Only an owner or admin can change this.");
   const shopId = user.shopId;
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { sellsRetail: true, stripeKeySealed: true, stripeWebhookSealed: true } });
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { sellsRetail: true, bookingOn: true, stripeKeySealed: true, stripeWebhookSealed: true } });
   if (!shop.sellsRetail) throw new UserError('The online shop sells over the counter\'s inventory: turn on "Sells over the counter" in Settings first.');
   const slugRaw = str(fd.get("slug"));
   const slug = slugRaw ? slugOf(slugRaw) : null;
   if (slug && !SLUG_RE.test(slug)) throw new UserError("The address is 3 to 40 lower-case letters, digits and dashes.");
   const on = flag(fd, "on");
   if (on && !slug) throw new UserError("Give the shop page an address first, like your-shop-name.");
+  if (!slug && shop.bookingOn) throw new UserError("Online booking uses this address too. Keep it, or switch booking off first.");
   if (slug) {
     const taken = await db.shop.findFirst({ where: { bookingSlug: slug, id: { not: shopId } }, select: { id: true } });
     if (taken) throw new UserError(`The address "${slug}" is taken. Pick another.`);
@@ -642,14 +643,51 @@ const ORDER_INCLUDE = { shop: { select: { name: true, phone: true, timeZone: tru
  * actually on the shelf (a line short of stock is sold short and the difference refunded; nothing on the shelf at all
  * means a full refund and a cancelled order); the customer hears.
  */
+/** Payments are applied one at a time per shop in this process, so two orders for the last unit don't both sell it. */
+const applying = new Map<string, Promise<unknown>>();
+async function oneAtATime<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = applying.get(key) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  applying.set(
+    key,
+    run.catch(() => undefined),
+  );
+  try {
+    return await run;
+  } finally {
+    if (applying.get(key) === run.catch(() => undefined)) applying.delete(key);
+  }
+}
+
 export async function applyPayment(orderId: string, a: { sessionId: string | null; intent: string | null }, now = new Date()): Promise<{ applied: boolean; status: string }> {
+  const first = await db.webOrder.findUnique({ where: { id: orderId }, select: { shopId: true } });
+  if (!first) return { applied: false, status: "missing" };
+  return oneAtATime(`pay:${first.shopId}`, () => applyPaymentNow(orderId, a, now));
+}
+
+async function applyPaymentNow(orderId: string, a: { sessionId: string | null; intent: string | null }, now: Date): Promise<{ applied: boolean; status: string }> {
   const claimed = await db.webOrder.updateMany({
     where: { id: orderId, status: "PENDING", ...(a.sessionId ? { stripeSessionId: a.sessionId } : {}) },
     data: { status: "PAID", paidAt: now, stripeIntent: a.intent },
   });
   const order = await db.webOrder.findUnique({ where: { id: orderId }, include: ORDER_INCLUDE });
   if (!order) return { applied: false, status: "missing" };
-  if (!claimed.count) return { applied: false, status: order.status };
+  if (!claimed.count) {
+    // Paid after the order was cancelled (a stale order, or Stripe's expiry came first): the money goes straight back.
+    if (order.status === "CANCELLED" && a.intent && order.refundedCents === 0 && !order.saleId) {
+      try {
+        const key = stripeKeyFor({ id: order.shopId, shopPayVia: order.shop.shopPayVia, stripeKeySealed: order.shop.stripeKeySealed });
+        const r = await refundPayment(key, a.intent, null, `web-order-late:${order.id}`, "paid after cancellation");
+        await db.webOrder.update({ where: { id: order.id }, data: { stripeIntent: a.intent, refundedCents: r.amount, staffNote: `Paid after it was cancelled: ${money(r.amount)} refunded.` } });
+      } catch (e) {
+        await db.webOrder.update({
+          where: { id: order.id },
+          data: { stripeIntent: a.intent, staffNote: `Paid after it was cancelled: refund it in Stripe (${e instanceof Error ? e.message.slice(0, 200) : "error"}).` },
+        });
+      }
+    }
+    return { applied: false, status: order.status };
+  }
   try {
     const items = order.items as unknown as OrderItem[];
     const ids = items.map((i) => i.partId).filter(Boolean) as string[];
@@ -678,6 +716,22 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
       paidTotal = session.amount_total ?? order.totalCents;
       paidTax = session.total_details?.amount_tax ?? 0;
       givenTax = lines.length ? keptTax(session, items, kept, !!shipLine, paidTax) : 0;
+    }
+    if (givenTax == null && lines.length) {
+      // The rate as it stood at checkout. If today's rate no longer gives the tax the customer paid on the whole order
+      // (the shop changed its rate meanwhile), the order's own tax is used, in proportion to what is sold.
+      const wholeByRate = saleTotals(
+        [
+          ...items.map((i) => ({ qty: i.qty, unitPriceCents: i.unitPriceCents, taxable: true })),
+          ...(order.fulfil === "ship" && order.shipCents > 0 ? [{ qty: 1, unitPriceCents: order.shipCents, taxable: false }] : []),
+        ],
+        0,
+        order.shop.taxRatePct,
+      ).tax;
+      if (wholeByRate !== order.taxCents) {
+        const soldNet = sold.reduce((s2, l) => s2 + Math.round(l.qty * l.unitPriceCents), 0);
+        givenTax = order.subtotalCents > 0 ? Math.round((order.taxCents * soldNet) / order.subtotalCents) : 0;
+      }
     }
     const totals =
       givenTax != null
@@ -708,6 +762,8 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
       refunded = refund;
     }
     const cancelled = !lines.length;
+    const negative = saleId ? await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids }, qtyOnHand: { lt: 0 } }, select: { partNumber: true } }) : [];
+    const stockNote = negative.length ? ` Check stock: ${negative.map((p) => p.partNumber).join(", ")} went below zero (sold at the counter at the same time?).` : "";
     await db.webOrder.update({
       where: { id: order.id },
       data: {
@@ -719,11 +775,11 @@ export async function applyPayment(orderId: string, a: { sessionId: string | nul
         status: cancelled ? "CANCELLED" : "PAID",
         cancelledAt: cancelled ? now : null,
         staffNote:
-          refund > 0 && !order.stripeIntent
+          (refund > 0 && !order.stripeIntent
             ? `${money(refund)} short of stock: refund it in Stripe (no payment id was given).`
             : kept.some((k) => k.short)
               ? `${money(refund)} refunded for items short of stock.`
-              : null,
+              : "") + stockNote || null,
       },
     });
     const fresh = (await db.webOrder.findUnique({ where: { id: order.id }, include: ORDER_INCLUDE }))!;
@@ -981,7 +1037,9 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
   if (rest > 0) {
     if (!o.stripeIntent) throw new UserError("Stripe gave no payment id for this order: refund it in the Stripe dashboard, then cancel it here.");
     const key = stripeKeyFor({ id: o.shopId, shopPayVia: o.shop.shopPayVia, stripeKeySealed: o.shop.stripeKeySealed });
-    await refundPayment(key, o.stripeIntent, rest, `web-order-cancel:${o.id}`, reason.slice(0, 100));
+    // The same key on every try, with the same body: a retry after a failure further down gets the same refund back.
+    const r = await refundPayment(key, o.stripeIntent, rest, `web-order-cancel:${o.id}`);
+    await db.webOrder.update({ where: { id }, data: { refundedCents: o.refundedCents + r.amount, staffNote: `Refund of ${money(r.amount)} made; cancelling.` } });
   }
   if (o.saleId) {
     const sale = await db.sale.findFirst({ where: { id: o.saleId, shopId: o.shopId }, select: { status: true } });
