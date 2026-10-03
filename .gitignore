@@ -61,3 +61,6 @@ desktop/dist-stitchshop/
 
 # local scratch runs (scripts/local-test, sanity scripts)
 /.run/
+
+# the demo seed's guest (a real person the demo is shown to): local only
+scripts/demo/*.local.json
