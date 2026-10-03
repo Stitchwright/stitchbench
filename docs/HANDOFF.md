@@ -902,7 +902,7 @@ accounts and billing: design first).
    loaners, per-ticket time clock, warranty claims, drop-off signature. Needs owner decisions first: card
    reader (Square or Stripe), Shopify sync, two-way texting inbox (online sign-up and booking pages are built:
    section 2z).
-7. **Split StitchBench and StitchShop into separate repositories** **Planned 2 Oct 2026** (section 2ab): `docs/plans/repo-split-design.md`; the move itself is not started. (owner request, 27 Sep 2026). Today StitchShop
+7. **Split StitchBench and StitchShop into separate repositories** **Decided 3 Oct 2026: not now, keep one codebase.** The plan (`docs/plans/repo-split-design.md`, dry run `scripts/repo-split/plan.mjs`) found the two programs share every source file (the flavour is APP_NAME and DEFAULT_SHOP_KIND); a split would cost about three days plus a day of deploys and stall every in-flight package for little gain, while one codebase keeps fixes landing in both. Instead, if wanted: a version number per program in the installer setup (half a day). Revisit if StitchShop needs many pages StitchBench shouldn't have, someone must work on only one program, or one program's code is licensed separately. (owner request, 27 Sep 2026). Today StitchShop
    is a build flavor of this one codebase (desktop/package.json `flavor`, APP_NAME/DEFAULT_SHOP_KIND), so the
    register, inventory, partners and hub client are shared code. Decide the shape first, then do it:
    (a) two repos with a shared core package (register, partners, hub client, Prisma schema) published or
