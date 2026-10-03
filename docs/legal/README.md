@@ -80,7 +80,8 @@ account is asked to accept it at its next sign-in on the hub, and before its nex
 
 ## 3. Decisions for the owner
 
-Already decided and written into the drafts (don't re-ask): $25 a month or $250 a year per shop, all three ways of
+Already decided and written into the drafts (don't re-ask): Solo $25 a month or $250 a year (up to two people
+signed in) and Shop $45 or $450 (everyone), founding shops at $15 / $30 (decided 3 Oct 2026), all three ways of
 running; free while partnered as the retail side; 30-day trial per shop; 14 days of grace; lapsed = read-only, never
 data loss; refunds: 14 days full refund on a first charge, otherwise none, yearly pro rata at the owner's discretion;
 no sales tax on the subscription for now; account email = owner login; account deletion by the owner on request; the
@@ -97,8 +98,8 @@ Still to decide (each is an `[OWNER]` note in the drafts):
    undone automatically if you win (Terms 8). Keep or change.
 4. **Never-connected Windows installs**: do the Terms still require a subscription after the trial, although the
    program keeps working (Terms 7)? Recommended: yes.
-5. **Hosted service**: is it included in the $25 (HANDOFF says "hosted copies at cost", which reads as a dedicated
-   copy); how often database backups run and how long they're kept; Railway region; how long a closed account's data
+5. **Hosted service**: decided 3 Oct 2026: the shared hosted service costs the same as Windows, and a dedicated copy is
+   at cost (about $10 a month on top); how often database backups run and how long they're kept; Railway region; how long a closed account's data
    is kept before deletion (`[90]` days suggested); notice if the hosted service ever closes (`[90]` days).
 6. **Self-hosting licence**: this repository has no LICENSE file. Decide the terms self-hosting shops get the code
    under (Terms 4).
