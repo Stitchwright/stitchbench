@@ -99,7 +99,7 @@ export function Nav({
     .filter((i) => (i.href === "/" ? path === "/" : path === i.href || path.startsWith(i.href + "/")))
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
   return (
-    <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-visible md:pb-0" aria-label="Main">
+    <nav className="flex flex-col gap-1 px-2 pb-2 md:pb-0" aria-label="Main">
       {chatUrl && (
         // The community's Discord (from the community hub); opens in the Discord app or the browser.
         <a
