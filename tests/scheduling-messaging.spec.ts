@@ -19,7 +19,11 @@ const SINK_SMTP = process.env.SMTP_SINK_PORT ?? "2525";
 const PUBLIC = (process.env.PUBLIC_URL ?? "").replace(/\/$/, "");
 const company = `Sched ${RUN}`;
 const owner = { email: `sched-${RUN.toLowerCase()}@stitchbench.test`, password: PASSWORD };
-const tomorrow = new Date(Date.now() + DAY).toISOString().slice(0, 10);
+// Tomorrow in the shop's zone (the UTC date is already tomorrow after 8 pm Eastern, which would put the class two days out and queue no reminder).
+const tomorrow = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() + DAY));
+// A reminder is queued only for something made at least a day before it starts, so the class and the appointment sit late
+// tomorrow evening and the test skips itself after 10 pm Eastern.
+const nyHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false }).format(new Date()));
 const student = { name: `Sue Student ${RUN}`, email: `sue-${RUN.toLowerCase()}@customer.test` };
 let shopId: string;
 let admin: Page;
@@ -66,7 +70,7 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
+  if (!process.env.E2E_KEEP) for (const id of made) await sql(`DELETE FROM "Shop" WHERE id = $1`, [id]);
   await disconnect();
   await admin.context().close();
 });
@@ -91,6 +95,7 @@ test("email is set up and the time zone confirmed", async ({ browser }) => {
 });
 
 test("a class tomorrow with a sign-up: the confirmation reaches the sink; an appointment tomorrow; reminders queue", async ({ browser }) => {
+  test.skip(nyHour >= 22, "a reminder needs the class a day away: run this before 10 pm Eastern");
   const page = await login(browser, owner);
   await insert("Customer", { shopId, name: student.name, email: student.email, notifyBy: "email" });
   await page.goto("/classes/new");
@@ -99,8 +104,8 @@ test("a class tomorrow with a sign-up: the confirmation reaches the sink; an app
   await page.getByLabel("Fee").fill("30.00");
   await page.getByLabel("Seats").fill("4");
   await page.getByLabel("Date").fill(tomorrow);
-  await page.getByLabel("Starts").fill("18:00");
-  await page.getByLabel("Ends").fill("20:00");
+  await page.getByLabel("Starts").fill("22:00");
+  await page.getByLabel("Ends").fill("23:30");
   await page.getByLabel("How often").selectOption("once");
   await page.getByRole("button", { name: "Create the class" }).click();
   await expect(page).toHaveURL(/\/classes\/(?!new$)[a-z0-9]+$/, { timeout: 20_000 });
@@ -124,7 +129,7 @@ test("a class tomorrow with a sign-up: the confirmation reaches the sink; an app
   await page.getByLabel("What are they booking?").selectOption(typeId);
   await expect(page).toHaveURL(/type=/);
   await page.getByLabel("Date").fill(tomorrow);
-  await page.getByLabel("Starts").fill("10:00");
+  await page.getByLabel("Starts").fill("23:00");
   await page.getByPlaceholder("Search name or phone, or leave blank for a new customer").fill(student.name.slice(0, 11));
   await page.getByRole("button", { name: new RegExp(`^${student.name}`) }).first().click();
   await page.getByRole("button", { name: "Book it" }).click();
