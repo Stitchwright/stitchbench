@@ -1036,9 +1036,10 @@ accounts and billing: design first).
    Marketing $10, Vac Shop $10, Small Appliance Repair $5, the Assistant $15 when it ships; yearly is ten times the
    monthly price; an "everything" bundle of the four modules at $30/month; the partnership waiver covers the base program
    only, add-ons are paid as normal; until the hub sells modules (a later billing package) they are sold as license keys
-   the owner issues. Still open for the site: the domain (recommended stitchbench.app plus stitchshop.app redirecting;
-   stitchbench.com was registered 3 Jul 2026 through Cloudflare with no site: ask whether it is the owner's) and the
-   contact email.
+   the owner issues. **Domains decided 3 Oct 2026: stitchbench.app (the site) and stitchshop.app (to the StitchShop page)**, bought by
+   the owner at Namecheap with nameservers moved to Cloudflare's free plan (Pages for the site, R2 for downloads,
+   backups and the manual repository); planned hub.stitchbench.app for the hub and downloads.stitchbench.app for the
+   installers. Still open: the contact email.
 
 15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026). **Data extracted 3 Oct**: `prisma/seed-data/service_modes.json`, 136 procedures from 124 service manuals (82 high, 53 medium, 1 low confidence; Brother 46, Janome 34, Elna 9, Baby Lock 8, Viking 7, Bernina 6, Pfaff 6, Juki 5 and more; Tajima's manuals have none); 249 of the 250 factory settings that mention test mode now have an entry procedure, and 167 of 168 numbered references match a test. No passwords recorded (a row stops at the prompt). The owner's sheet to check and correct: `C:\Manuals\_business-notes\Service_Modes.xlsx`, with `SERVICE_MODES_NOTES_2026-10-03.md` (eight things to try on a machine; the PC6500 factory row's "test mode 10" is probably wrong); `scripts/library/service_modes_from_xlsx.py` turns the corrected sheet back into the seed. Still to build: the ServiceMode table, the seed and Windows reference loaders, the card on the machine and ticket pages (match on modelKeys alone: rows carry twin models of other brands). **Owner, 3 Oct: the manual's pictures may be kept and shown**: each procedure gets the figure page and box (as FactorySetting has `figurePage` / `figureBox`), cropped from the local PDF and shared through the hub's figure path like the factory-setting figures, so the card shows the button diagram beside the steps; first for the rows whose entry keys are only drawn (Brother E100, Singer 9910-9940, EverSewn Sparrow QE, Elna 9006, Melco EP1B, Happy HCD2/HCD3), then the rest. Original plan: The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
