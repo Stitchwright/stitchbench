@@ -750,7 +750,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                     <input
                       type="number"
                       aria-label={`Qty for ${l.description}`}
-                      className="input num"
+                      className="input num min-w-[4.5rem]"
                       step={l.unit === "yd" ? 0.125 : 1}
                       // A repair is paid as one line; a vacuum from stock or a trade-in is one machine; a class seat or appointment is one each.
                       disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.enrollmentId || l.appointmentId)}
@@ -770,7 +770,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                     <input
                       aria-label={`Price for ${l.description}`}
                       inputMode="decimal"
-                      className="input num"
+                      className="input num min-w-[4.5rem]"
                       // A tech can type the price of an item that has none, not change one that has. A booking is priced by
                       // the server; an owner or admin may lower a refund (a cancellation fee).
                       disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
@@ -789,7 +789,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                     <input
                       type="number"
                       aria-label={`Discount for ${l.description}`}
-                      className="input num"
+                      className="input num min-w-14"
                       min={0}
                       max={100}
                       disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId)}
