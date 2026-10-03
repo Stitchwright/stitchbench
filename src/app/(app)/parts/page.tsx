@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { money } from "@/lib/format";
+import { fineCost, money } from "@/lib/format";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
@@ -69,12 +69,10 @@ export default async function Parts({
   // The count and the shelf value cover every matching item, not only the ones listed.
   const [parts, all] = await Promise.all([
     db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN }),
-    db.part.findMany({ where, select: { costCents: true, qtyOnHand: true } }),
+    db.part.findMany({ where, select: { costCents: true, costTenThou: true, qtyOnHand: true } }),
   ]);
-  const value = all.reduce(
-    (s, p) => s + (p.costCents ?? 0) * Math.max(0, p.qtyOnHand),
-    0,
-  );
+  // At the fine cost (ten-thousandths), rounded once for the whole shelf, not per unit.
+  const value = Math.round(all.reduce((s, p) => s + (fineCost(p.costCents, p.costTenThou) ?? 0) * Math.max(0, p.qtyOnHand), 0) / 100);
 
   return (
     <div className="space-y-6">

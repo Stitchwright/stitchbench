@@ -27,6 +27,16 @@ export function shownOnce(text: string): ShownOnce {
   return { [SHOWN]: text };
 }
 
+const NOTED = Symbol.for("stitchbench.noted");
+type Noted = { [NOTED]: string };
+
+/** What a safe() action returns to give the person a plain note instead of the form's fixed success words (not an error). */
+export function noted(text: string): Noted {
+  return { [NOTED]: text };
+}
+
+const isNoted = (v: unknown): v is Noted => typeof v === "object" && v !== null && typeof (v as Record<symbol, unknown>)[NOTED] === "string";
+
 const isShownOnce = (v: unknown): v is ShownOnce => typeof v === "object" && v !== null && typeof (v as Record<symbol, unknown>)[SHOWN] === "string";
 
 /**
@@ -42,7 +52,7 @@ export function safe<A extends unknown[]>(fn: (...args: A) => Promise<unknown>, 
       const user = await actingUser();
       if (!opts.whileLapsed) await lapseGuard(user);
       const out = await asCompany(user?.shopId, () => fn(...args));
-      return isShownOnce(out) ? { ok: true, shown: out[SHOWN] } : { ok: true };
+      return isShownOnce(out) ? { ok: true, shown: out[SHOWN] } : isNoted(out) ? { ok: true, note: out[NOTED] } : { ok: true };
     } catch (e) {
       if (isUserError(e)) return { error: e.message };
       throw e;

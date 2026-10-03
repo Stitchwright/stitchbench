@@ -169,7 +169,7 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
   const part = stock?.existing ?? (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
   if (part) {
     await db.$transaction([
-      db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: o.qty }, ...(unitCost ? { costCents: unitCost } : {}) } }),
+      db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: o.qty }, ...(unitCost ? { costCents: unitCost, costTenThou: null } : {}) } }),
       db.stockMove.create({ data: { shopId, partId: part.id, qty: o.qty, reason: "RECEIVED", userId, note } }),
     ]);
   } else {

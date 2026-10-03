@@ -7,10 +7,10 @@ import "dotenv/config";
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
-import { modelKey, moneyCost, costText } from "@/lib/format";
+import { fineCost, lineCostCents, modelKey, moneyCost, costText } from "@/lib/format";
 import { costField } from "@/lib/parts";
 import { runImport } from "@/lib/inventory-import";
-import { answerConsignReturn, holdConsignReturn } from "@/lib/partners";
+import { answerConsignReturn, answerConsignReturnDetailed, holdConsignReturn } from "@/lib/partners";
 import { removePaymentFor } from "@/lib/payments";
 import { paymentsBetween } from "@/lib/sales";
 import { ticketTotals } from "@/lib/ticket-math";
@@ -135,6 +135,31 @@ async function main() {
     assert.equal(r2.returned, 0);
     assert.equal((await db.part.findUniqueOrThrow({ where: { id: part2.id } })).qtyOnHand, 0);
     ok("Not received drops the claim and restocks nothing");
+
+    // Confirming when the shelf is already empty: the claim is cleared in the same transaction, nothing restocked, no error.
+    const part3 = await db.part.create({ data: { shopId: repair.shopId, partNumber: "CS-3", description: "Pin", numberKeys: ["CS3"], qtyOnHand: 0 } });
+    const it3 = await db.consignItem.create({ data: { shopId: repair.shopId, linkId, side: "owner", itemKey: part3.id, partId: part3.id, partNumber: "CS-3", description: "Pin", priceCents: 100, placed: 5 } });
+    await db.$transaction((tx) => holdConsignReturn(repair.shopId, linkId, part3.id, 3, new Date(), tx));
+    await db.consignItem.update({ where: { id: it3.id }, data: { returned: 5 } }); // all taken back some other way meanwhile
+    const empty = await answerConsignReturnDetailed(repair.shopId, repairLink, part3.id, true, new Date());
+    assert.deepEqual(empty, { claimed: true, qty: 0 });
+    const r3 = await db.consignItem.findUniqueOrThrow({ where: { id: it3.id } });
+    assert.equal(r3.pendingReturn, 0);
+    assert.equal(r3.returned, 5);
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: part3.id } })).qtyOnHand, 0);
+    assert.deepEqual(await answerConsignReturnDetailed(repair.shopId, repairLink, part3.id, true, new Date()), { claimed: false, qty: 0 }, "no claim left");
+    ok("confirming against an empty shelf clears the claim (claimed, nothing back) and a second try finds no claim");
+
+    // The fine cost: 1000 buttons at $0.004 cost $4, rounded once for the line.
+    assert.equal(fineCost(0, 40), 40);
+    assert.equal(fineCost(1250, null), 125000);
+    assert.equal(fineCost(13, 1250), 1250);
+    assert.equal(fineCost(15, 1250), 1500, "a finer figure that no longer agrees with the cents is ignored");
+    assert.equal(fineCost(null, null), null);
+    assert.equal(lineCostCents(1000, 0, 40), 400);
+    assert.equal(lineCostCents(1000, 0, null), 0);
+    assert.equal(lineCostCents(2.5, 800, null), 2000);
+    ok("stock value and cost of goods use the fine cost, rounded once for the line");
 
     // ---------- L79 ----------
     assert.deepEqual(costField("0.125", "Cost"), { costCents: 13, costTenThou: 1250 });

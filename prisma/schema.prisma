@@ -1110,7 +1110,10 @@ model SaleLine {
   unitPriceCents Int
   discountCents  Int     @default(0) // off this line in total
   taxable        Boolean @default(true)
-  costCents      Int? // unit cost when sold, for margins
+  costCents      Int? // unit cost when sold, for margins (rounded to cents; qty x this is not the line's cost for a sub-cent part)
+  // The same unit cost in ten-thousandths of a dollar (Part.costTenThou's scale), written with it by sales from now on;
+  // empty on older lines and non-stock lines, where costCents is exact. Line cost = round(qty x this / 100) cents.
+  costTenThou    Int?
   // Sold for a partner repair shop (consignment): the partnership and the owner's id for the item
   consignLinkId  String?
   consignItemKey String?
