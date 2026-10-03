@@ -1,12 +1,14 @@
 // Round-3 L6 (batch E): how many marketplace listings and orders on a hosted database belong to no company.
-// Read-only. The owner runs it through Railway so the database address never leaves the shell:
-//   railway run -p <project id> -e production -s Postgres -- node scripts/hosted/count-unassigned-market.mjs
+// Read-only. The hosted databases have no public address, so it runs inside each app's container (after a deploy
+// that carries this file), where the app's own DATABASE_URL reaches the database; nothing leaves Railway but counts:
+//   railway ssh -p <project id> -e production -s <app service> -- node scripts/hosted/count-unassigned-market.mjs
+// (On a database with a public address, `railway run ... -s Postgres -- node ...` works too.)
 // It prints counts only. If both are 0 on both hosted databases, L6 is closed as moot.
 import pg from "pg";
 
-const url = process.env.DATABASE_PUBLIC_URL;
+const url = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
 if (!url) {
-  console.log("No DATABASE_PUBLIC_URL: run this through `railway run ... -s Postgres`.");
+  console.log("No database address: run this inside the app's container with `railway ssh` (see the top of this file).");
   process.exit(1);
 }
 const c = new pg.Client({ connectionString: url, connectionTimeoutMillis: 15000, statement_timeout: 15000 });
