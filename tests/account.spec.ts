@@ -81,7 +81,7 @@ test.afterAll(async () => {
 test("door 1: the owner creates the account, sets the password from the hub's email, and the page shows verified and the trial", async ({ browser }) => {
   const page = await login(browser, ownerA);
   await page.goto("/settings/account");
-  await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await expect(page.getByText("Create your StitchHub account")).toBeVisible();
   await expect(page.getByTestId("company-id")).toHaveText(made[0]);
   // Not connected to any account yet: the program works without one.
@@ -105,8 +105,9 @@ test("door 1: the owner creates the account, sets the password from the hub's em
   const link = await eventually(async () => setPasswordLink(ownerA.email, logFrom));
   const hp = await hub.newPage();
   await hp.goto(link);
-  await hp.getByLabel("New password (8 characters or more)").fill(HUB_PASSWORD);
-  await hp.getByLabel("The same password again").fill(HUB_PASSWORD);
+  // The hub's one page holds every form (sign-up, settings) with the same labels: the set-password form's own fields.
+  await hp.locator("#spPassword").fill(HUB_PASSWORD);
+  await hp.locator("#spPassword2").fill(HUB_PASSWORD);
   await hp.getByRole("button", { name: "Save password and sign in" }).click();
   await expect(hp.getByText("Your password is saved")).toBeVisible();
   await expect(hp).toHaveURL(/\/account\/shops$/);
