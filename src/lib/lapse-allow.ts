@@ -41,6 +41,10 @@ export const WHILE_LAPSED = [
   "leaveCommunityHub",
   "syncPartnersNow",
   "refreshOrders",
+  // Moving the company to another install (company-move-design.md section 7): a lapsed company may leave, and Cancel
+  // is what lifts the move's own freeze
+  "startCompanyMove",
+  "cancelCompanyMove",
 ] as const;
 
 export type WhileLapsed = (typeof WHILE_LAPSED)[number];
@@ -104,4 +108,4 @@ export const HAND_ALLOWED = [
  * What stops: /api/photos (403), public online booking and the online shop (paused), the message worker (the company is
  * skipped, as modules-design.md 6.4 does for Scheduling and Marketing).
  */
-export const ALSO_ALLOWED = ["/api/export/*", "/api/sales", "hub sync", "partner sync", "backups", "sign in / out"] as const;
+export const ALSO_ALLOWED = ["/api/export/*", "/api/sales", "/api/move/download/*", "hub sync", "partner sync", "backups", "sign in / out"] as const;

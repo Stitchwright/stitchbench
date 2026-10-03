@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEFAULT_TIME_ZONE } from "@/lib/time-zone";
 import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
@@ -11,7 +11,7 @@ import { getModules } from "@/lib/modules";
 import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
-import { GraceBanner, LapsedBar, ModulePills, type GraceItem, type RenewPill } from "@/components/module-banner";
+import { GraceBanner, LapsedBar, ModulePills, MovingBar, type GraceItem, type RenewPill } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -119,7 +119,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
       <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">
-        {lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />}
+        {modules.moving ? (
+          <MovingBar to={modules.moving.to} since={fmtDate(modules.moving.at, shop?.timeZone ?? DEFAULT_TIME_ZONE)} admin={admin} />
+        ) : (
+          lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />
+        )}
         <GraceBanner items={grace} admin={admin} />
         {children}
       </main>

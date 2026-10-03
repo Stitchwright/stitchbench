@@ -9,24 +9,14 @@ import { shopKinds } from "@/lib/equipment/shop";
 import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
-import {
-  addStarterServices,
-  addUser,
-  changePassword,
-  resetUserPassword,
-  saveChecklist,
-  savePriceListNote,
-  saveServiceItem,
-  saveShop,
-  setUserActive,
-  setUserRole,
-} from "@/actions/settings";
+import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
+import { MoveSection } from "./move-section";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -108,13 +98,13 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
       ) : admin ? (
         <ActionForm action={joinCommunityHub} success="Joined the community hub" className="space-y-3">
           <p className="muted text-sm">
-            The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers,
-            tickets and prices never leave this StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
+            The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers, tickets and prices never leave this
+            StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
           </p>
           {s?.formerUrl && (
             <p className="muted text-sm">
-              This StitchBench left <span className="mono">{s.formerUrl}</span>. Joining that hub again (with its current invite) keeps this shop&apos;s
-              listings, orders and shared notes there as its own.
+              This StitchBench left <span className="mono">{s.formerUrl}</span>. Joining that hub again (with its current invite) keeps this shop&apos;s listings, orders and shared notes there as its
+              own.
             </p>
           )}
           <InviteInput />
@@ -138,10 +128,7 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
           <Submit>Join</Submit>
         </ActionForm>
       ) : (
-        <p className="muted text-sm">
-          Not connected to a community hub. The shop owner or an admin can join one here (when several companies share this StitchBench, its
-          administrator does).
-        </p>
+        <p className="muted text-sm">Not connected to a community hub. The shop owner or an admin can join one here (when several companies share this StitchBench, its administrator does).</p>
       )}
     </Section>
   );
@@ -206,12 +193,11 @@ export default async function SettingsPage() {
           <Section title="What this company does">
             <ActionForm action={saveCompanyMode} success="Saved" className="space-y-3">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="doesRepair" defaultChecked={shop.doesRepair} className="check" /> Repairs machines (the StitchBench bench:
-                tickets, specs, manuals)
+                <input type="checkbox" name="doesRepair" defaultChecked={shop.doesRepair} className="check" /> Repairs machines (the StitchBench bench: tickets, specs, manuals)
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="sellsRetail" defaultChecked={shop.sellsRetail} className="check" /> Sells over the counter (the StitchShop
-                register: notions, fabric by the yard, accessories, repair pickups)
+                <input type="checkbox" name="sellsRetail" defaultChecked={shop.sellsRetail} className="check" /> Sells over the counter (the StitchShop register: notions, fabric by the yard,
+                accessories, repair pickups)
               </label>
               <div className="field">
                 <label htmlFor="receiptNote" className="label">
@@ -222,6 +208,9 @@ export default async function SettingsPage() {
               <Submit>Save</Submit>
             </ActionForm>
           </Section>
+          <div className="mt-6">
+            <MoveSection user={user} timeZone={shop.timeZone} />
+          </div>
         </div>
       )}
 
@@ -423,13 +412,7 @@ export default async function SettingsPage() {
                     <label className="sr-only" htmlFor={`sd-${s.id}`}>
                       Description
                     </label>
-                    <input
-                      id={`sd-${s.id}`}
-                      name="description"
-                      defaultValue={s.description ?? ""}
-                      className="input text-sm sm:col-span-6"
-                      placeholder="Description on the price list (optional)"
-                    />
+                    <input id={`sd-${s.id}`} name="description" defaultValue={s.description ?? ""} className="input text-sm sm:col-span-6" placeholder="Description on the price list (optional)" />
                   </ActionForm>
                 </li>
               ))}

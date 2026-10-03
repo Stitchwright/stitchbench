@@ -48,7 +48,14 @@ export type Modules = {
   testBuild: boolean;
   /** Module names on verified keys that this version doesn't know ("needs a newer version of StitchBench"). */
   unknownModules: string[];
+  /**
+   * The company is being moved to another install (company-move-design.md section 7): Shop.movingAt is set, and this copy
+   * is read-only through the same gate as a lapsed program key, whatever the key says. Null when not moving.
+   */
+  moving: Moving | null;
 };
+
+export type Moving = { at: Date; to: string | null };
 
 /**
  * Which program this is, by the same variables src/lib/shops.ts appName() reads (this file stays pure, so it reads them
