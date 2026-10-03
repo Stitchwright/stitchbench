@@ -2,7 +2,7 @@ import "server-only";
 import type { ServiceMode } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { brandKey, modelKey } from "@/lib/format";
-import { brandMatches, withFigures } from "@/lib/model-info";
+import { brandMatches, lookupModel, withFigures } from "@/lib/model-info";
 
 // Test / service / diagnostic modes (handoff item 15): how to put a machine into the mode, how to leave it, and what
 // the numbered tests do, from prisma/seed-data/service_modes.json. Matched to a machine by its model's key alone, since
@@ -58,11 +58,18 @@ export function rankModes<T extends { id: string; brand: string; models: string;
 }
 
 /** Every mode for one brand + model (test mode, touch panel calibration, service program ...), with its picture. */
+export async function modesLookup(brand: string, model: string) {
+  const { rows, from } = await lookupModel(
+    model,
+    async (f) => (await db.serviceMode.findMany({ where: { modelKeys: f } })).map(toRow),
+    // A base model's row counts only when it is the machine's brand or lists that brand's twin.
+    (r, fallback) => rankModes(fallback ? r.filter((x) => brandScore(x, brand) > 0) : r, brand),
+  );
+  return { rows: await withFigures(rows), from };
+}
+
 export async function modesFor(brand: string, model: string) {
-  const key = modelKey(model);
-  if (!key) return [];
-  const rows = await db.serviceMode.findMany({ where: { modelKeys: { has: key } } });
-  return withFigures(rankModes(rows.map(toRow), brand));
+  return (await modesLookup(brand, model)).rows;
 }
 
 export type ModeCard = Awaited<ReturnType<typeof modesFor>>[number];
