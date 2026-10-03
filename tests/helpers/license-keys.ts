@@ -20,7 +20,8 @@ function devSigner() {
 /** A key signed with the development key (= devLicenseKey in scripts/license/dev.ts). */
 export function devKey(o: DevKeyOpts): string {
   const dev = devSigner();
-  const from = o.from ?? new Date().toISOString().slice(0, 10);
+  // Default: yesterday (UTC), so a key made late in the evening is already valid today in every US zone.
+  const from = o.from ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   const plan = o.plan ?? "y";
   const until = o.until ?? planLastDay(from, plan === "m" || plan === "t" ? plan : "y");
   const payload: LicensePayload = {
