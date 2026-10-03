@@ -857,6 +857,32 @@ part 6 ends at 5482e9e^ (about 7,420, of which 2,840 are model keys in factory_s
 (docs and research, plus anything later). Branches are made when needed (`git branch review-part3 ada57e9^` etc.).
 Meanwhile Claude ran a focused local review of the riskiest code (billing, money, sign-in): see the next commit.
 
+## 2af. 3 Oct 2026 evening: fixes, a focused review, a full test run (committed, not pushed)
+
+- **Built:** round-3 batch A (8b01d97: removed payments leave a reversal, consignment returns pending until "Confirm it
+  arrived", part cost to 4 decimals; migration 20261003210000_money_records); the model-name fallback (2c3acad) and
+  model keys for 660 reference rows that had none (145031c; `scripts/library/fill_model_keys.py`, in AGENTS.md); hub
+  billing edge cases (stitchhub 0132f93 trial at Checkout, refund in trial, won chargeback; 32b1d9f card-company
+  inquiries flag instead of lock).
+- **Focused review instead of ultra review** (the owner had none left): three read-only reviewers on billing, money and
+  sign-in; every confirmed finding fixed. Program c71da9c (a paid online order is always booked, "Needs attention" +
+  "Try again" on the online orders page; fine cost for stock value and new `SaleLine.costTenThou`, migration
+  20261003220000_sale_line_fine_cost; empty-shelf consignment confirm; no register void of an online sale) and
+  91a7cac (move import refuses reserved admin emails; a move file's hub is adopted only if it's the default hub; a
+  reset request voids only older reset links; the known-device cookie carries sessionVersion, so existing ones stop
+  counting once after the deploy). Hub 4116a5f (an old subscription's late events can't overwrite the current one; a
+  full refund or lost chargeback cancels the Stripe subscription, and a new Checkout cancels an older one; upgrades
+  Solo to Shop charged at once with `always_invoice`, the Shop key signed when paid; late invoice.paid and dispute
+  events can't undo a refund or chargeback; several inquiries tracked; migration 021_dispute_lists.sql).
+- **Full spec run on a fresh test build (756588e): all 27 pass**, including the company move's partner half (third
+  server on :3502 with DB `stitchbench_third`, left in the dev Postgres). Eleven specs updated for today's intended
+  changes. inventory failed once at "Use on ticket" and passed twice on rerun: watch it.
+- **Deploy notes:** program migrations ...210000 and ...220000; hub migrations 019 to 021; ten Stripe webhook events;
+  Customer Portal proration (LAUNCH_CHECKLIST, Stripe day).
+- **Still queued:** wave 2 (W1 email unique per company, W2 signed partner invites: short designs first); the Windows
+  install update after a backup; the review split (2ae); Fabric Smarts after the test month (item 21). Stopped here on
+  purpose: the owner's weekly Claude limit was two thirds used (memory `use-fewer-tokens`).
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
