@@ -786,6 +786,25 @@ with `openssl rand -hex 32` on the owner's PC). Everything below is on `scheduli
   20261003150000_company_move; the packaged server is 176 MB again (807 MB before the fix), the whole installed
   program 633 MB with its own Electron and Postgres. Not yet tried on the PC by hand: the Tailscale tray item, a manual
   download, "Restore a company…".
+- **Company move, package 3 `move-hub`** (program 15d756f, stitchhub `hub-accounts` a4aeae2): a frozen move gets a
+  one-use hub token (sealed on the move row, written into the file); after an import commits, the new install
+  re-points the company on the hub (joining with the returned key if it had none) and pulls the moved partner links'
+  messages from the file's cursor; with the hub down the import stands and "Re-point the hub" retries; the old copy
+  learns from the hub's 410 that the company moved, stops partner sends, usage and note uploads, and can be deleted 30
+  days later (Companies, or the tray's "Remove the moved company…"; PartnerSeen, PartnerFailure, Listing and
+  MarketOrder rows removed explicitly, none has a foreign key to Shop). Hub migration 015_shop_moves, program
+  migration 20261003170000_company_move_hub, `scripts/checks/move-hub.check.ts` (11 groups), hub `test/move.mjs`,
+  INSTALL.md "Moving a company". The company move is now complete (three packages). Untested: the move spec's
+  partner half (it needs a third server on its own database, `E2E_THIRD_URL`).
+- **Windows app size, for good** (8f85b00): the 36ae0f1 fix covered routes, not the server's start-up hook, and the
+  move's temp-folder paths (`os.tmpdir()` joined with `${id}.json`) traced every .json file in the repository again,
+  the previous build nested inside included (232 MB). Paths built from folders the bundler can't evaluate now go
+  through `src/lib/opaque-path.ts` (`under()`), and `desktop/prepare-app.mjs` drops src, desktop, docs, scripts, tests
+  and the Railway files whatever the tracer does. Packaged server 144 MB; installed program 603 MB with Electron and
+  Postgres; the Windows install has every migration through 20261003170000.
+- **Final spec pass on the 3 Oct test build** (after every package): smoke, modules-lapse, online-shop, parts-in,
+  two-servers, account (both doors) and move (export/import half) pass against the test hub on the latest hub
+  branch. The test servers and the test hub were stopped afterwards; `.next` holds the test build.
 - **Railway Infrastructure as Code**: `railway config plan` (read-only) run against both projects after the new
   variables: each "0 to add, 1 to change, 0 to destroy", only the four deploy settings. To apply, per project
   (stitchshop as linked; for stitchbench link it first and link back after), from Bash:
