@@ -62,7 +62,7 @@ export async function ListingCard({
                 {photos.map((p) => (
                   <li key={p.id} className="space-y-1">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/api/shop/photo/${p.id}?v=${p.id}`} alt="" className="h-20 w-20 rounded border border-line object-cover" />
+                    <img src={`/api/parts/photo/${p.id}`} alt="" className="h-20 w-20 rounded border border-line object-cover" />
                     <ActionForm action={removePhoto.bind(null, part.id, p.id)} success="Photo removed">
                       <Submit className="btn btn-sm">Remove</Submit>
                     </ActionForm>

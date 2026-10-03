@@ -453,6 +453,14 @@ async function main() {
       data: { object: mock.sessions.get((await db.webOrder.findUniqueOrThrow({ where: { id: r5.orderId } })).stripeSessionId!) },
     });
     assert.equal((await handleWebhook(a.shopId, expiredBody, signWebhook(expiredBody, WHSEC), now)).status, 200);
+    // Paid after the cancellation anyway: the money goes straight back and staff see why.
+    const sess5 = mock.sessions.get((await db.webOrder.findUniqueOrThrow({ where: { id: r5.orderId } })).stripeSessionId!)!;
+    await mock.pay(sess5.id);
+    const lateBody = JSON.stringify({ id: "evt_4", type: "checkout.session.completed", data: { object: sess5 } });
+    assert.equal((await handleWebhook(a.shopId, lateBody, signWebhook(lateBody, WHSEC), now)).status, 200);
+    const late = await db.webOrder.findUniqueOrThrow({ where: { id: r5.orderId } });
+    assert.ok(late.status === "CANCELLED" && late.refundedCents === late.totalCents && !late.saleId && /Paid after it was cancelled/.test(late.staffNote ?? ""), late.staffNote ?? "");
+    assert.equal(mock.refunds.find((r) => r.payment_intent === sess5.payment_intent)?.amount, late.totalCents);
     ok("stale orders: a PENDING order two hours old is cancelled; Stripe's expiry event is taken");
 
     // 11. Tenant: another company's rows are not found.

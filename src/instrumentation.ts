@@ -19,7 +19,12 @@ export async function register() {
     const { clearStaleOwnLeases } = await import("@/lib/lease");
     await clearStaleOwnLeases().catch(() => {});
     const { runMessages } = await import("@/lib/messaging/worker");
-    const messages = () => runMessages().catch((e) => console.error("messages:", e instanceof Error ? e.message : e));
+    const { expireStaleOrders } = await import("@/lib/shop/online-shop");
+    const messages = () =>
+      runMessages()
+        .catch((e) => console.error("messages:", e instanceof Error ? e.message : e))
+        .then(() => expireStaleOrders())
+        .catch((e) => console.error("online shop:", e instanceof Error ? e.message : e));
     setTimeout(messages, 15_000);
     const secs = Number(process.env.MESSAGE_WORKER_SECONDS);
     g.messageTimer = setInterval(messages, (Number.isFinite(secs) && secs >= 2 ? secs : 30) * 1000);

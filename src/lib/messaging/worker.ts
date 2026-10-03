@@ -126,7 +126,10 @@ async function readReplies(now: Date, shopIds?: string[]) {
   });
   for (const s of rows) {
     try {
-      const campaign = await db.campaign.findFirst({ where: { shopId: s.shopId, channel: "sms", OR: [{ status: "SENDING" }, { finishedAt: { gte: new Date(now.getTime() - DAY) } }] }, select: { id: true } });
+      const campaign = await db.campaign.findFirst({
+        where: { shopId: s.shopId, channel: "sms", OR: [{ status: "SENDING" }, { finishedAt: { gte: new Date(now.getTime() - DAY) } }] },
+        select: { id: true },
+      });
       const every = campaign ? MIN : 5 * MIN;
       if (s.inboundAt && now.getTime() - s.inboundAt.getTime() < every) continue;
       const cfg = await sendConfig(s.shopId);
@@ -146,7 +149,13 @@ async function readReplies(now: Date, shopIds?: string[]) {
 /** 5. A paused channel with no end date is tried again every hour. */
 async function checkPaused(now: Date, live: string[]) {
   const rows = await db.messagingSettings.findMany({
-    where: { shopId: { in: live }, OR: [{ emailPausedAt: { not: null }, emailPausedUntil: null, emailCheckAt: { lte: now } }, { smsPausedAt: { not: null }, smsPausedUntil: null, smsCheckAt: { lte: now } }] },
+    where: {
+      shopId: { in: live },
+      OR: [
+        { emailPausedAt: { not: null }, emailPausedUntil: null, emailCheckAt: { lte: now } },
+        { smsPausedAt: { not: null }, smsPausedUntil: null, smsCheckAt: { lte: now } },
+      ],
+    },
     select: { shopId: true, emailPausedAt: true, emailPausedUntil: true, emailCheckAt: true, smsPausedAt: true, smsPausedUntil: true, smsCheckAt: true },
   });
   const later = new Date(now.getTime() + HOUR);
@@ -243,7 +252,11 @@ async function dueRows(t: Turn, channel: Channel, batch: number): Promise<OutMes
   const room = batch - notices.length;
   if (room <= 0 || v.marketingHoldAt || (channel === "sms" && v.textHoldAt)) return notices;
   // Marketing older than 48 h waits for a person ("Send them" / "Cancel them").
-  const marketing = await db.outMessage.findMany({ where: { ...base, purpose: "marketing", sendAfter: { lte: t.now, gte: new Date(t.now.getTime() - 48 * HOUR) } }, orderBy: { sendAfter: "asc" }, take: room });
+  const marketing = await db.outMessage.findMany({
+    where: { ...base, purpose: "marketing", sendAfter: { lte: t.now, gte: new Date(t.now.getTime() - 48 * HOUR) } },
+    orderBy: { sendAfter: "asc" },
+    take: room,
+  });
   return [...notices, ...marketing];
 }
 
@@ -302,14 +315,34 @@ async function sendRow(t: Turn, row: OutMessage) {
     if (unread) return finish(t, row, "QUEUED", skipped("unread_reply"));
     const dayAgo = new Date(now.getTime() - DAY);
     const recent = await db.outMessage.findFirst({
-      where: { shopId, channel: "sms", purpose: "marketing", address: row.address, id: { not: row.id }, OR: [{ status: "SENT", sentAt: { gte: dayAgo } }, { status: "SENDING", claimedAt: { gte: dayAgo } }] },
+      where: {
+        shopId,
+        channel: "sms",
+        purpose: "marketing",
+        address: row.address,
+        id: { not: row.id },
+        OR: [
+          { status: "SENT", sentAt: { gte: dayAgo } },
+          { status: "SENDING", claimedAt: { gte: dayAgo } },
+        ],
+      },
       orderBy: { sentAt: "desc" },
       select: { sentAt: true, claimedAt: true },
     });
     if (recent) return defer(row, new Date((recent.sentAt ?? recent.claimedAt ?? now).getTime() + DAY));
     const monthAgo = new Date(now.getTime() - 30 * DAY);
     const n = await db.outMessage.count({
-      where: { shopId, channel: "sms", purpose: "marketing", address: row.address, id: { not: row.id }, OR: [{ status: "SENT", sentAt: { gte: monthAgo } }, { status: "SENDING", claimedAt: { gte: monthAgo } }] },
+      where: {
+        shopId,
+        channel: "sms",
+        purpose: "marketing",
+        address: row.address,
+        id: { not: row.id },
+        OR: [
+          { status: "SENT", sentAt: { gte: monthAgo } },
+          { status: "SENDING", claimedAt: { gte: monthAgo } },
+        ],
+      },
     });
     if (n >= 4) return finish(t, row, "QUEUED", skipped("too_often"));
   }
@@ -326,10 +359,25 @@ async function sendRow(t: Turn, row: OutMessage) {
   if (marketing || (v.ordersInCap && kind === "order_notice")) {
     const dayStart = zonedTime(ymdOf(now, t.tz), 0, t.tz);
     const cap = channel === "email" ? v.emailDailyCap : v.smsDailyCap;
-    const n = await db.outMessage.count({ where: { shopId, channel, AND: [capped, { OR: [{ status: "SENT", sentAt: { gte: dayStart } }, { status: "SENDING", claimedAt: { gte: dayStart } }] }] } });
+    const n = await db.outMessage.count({
+      where: {
+        shopId,
+        channel,
+        AND: [
+          capped,
+          {
+            OR: [
+              { status: "SENT", sentAt: { gte: dayStart } },
+              { status: "SENDING", claimedAt: { gte: dayStart } },
+            ],
+          },
+        ],
+      },
+    });
     if (n >= cap) {
       const next = zonedTime(addDays(ymdOf(now, t.tz), 1), v.quietStart, t.tz);
-      await db.outMessage.updateMany({ where: { shopId, channel, ...capped, ...dueWhere(now) }, data: { sendAfter: next } });
+      // AND, not a spread: dueWhere has an OR of its own and would otherwise replace the capped filter and defer every due row.
+      await db.outMessage.updateMany({ where: { shopId, channel, AND: [capped, dueWhere(now)] }, data: { sendAfter: next } });
       t.stop[channel] = true;
       return;
     }
@@ -411,10 +459,19 @@ async function onSendError(t: Turn, row: OutMessage, channel: Channel, marketing
       await db.outMessage.updateMany({ where: sending, data: { status: "FAILED", claimedAt: null, error: message } });
       t.counts.failed += 1;
       if (channel === "sms" && err.code === "21610") {
-        await suppress(db, { shopId, channel: "sms", address: row.address, scope: "all", source: "carrier", customerId: row.customerId, detail: "Twilio 21610: the number has opted out of texts from this number" });
+        await suppress(db, {
+          shopId,
+          channel: "sms",
+          address: row.address,
+          scope: "all",
+          source: "carrier",
+          customerId: row.customerId,
+          detail: "Twilio 21610: the number has opted out of texts from this number",
+        });
       }
       t.recipientFails[channel] += 1;
-      if (t.recipientFails[channel] >= 3) await pauseChannel(t, channel, `${channel === "email" ? "The mail server" : "Twilio"} is refusing messages: ${message}`, new Date(now.getTime() + HOUR), null);
+      if (t.recipientFails[channel] >= 3)
+        await pauseChannel(t, channel, `${channel === "email" ? "The mail server" : "Twilio"} is refusing messages: ${message}`, new Date(now.getTime() + HOUR), null);
       return;
     }
     case "settings": {
@@ -438,7 +495,10 @@ async function onSendError(t: Turn, row: OutMessage, channel: Channel, marketing
         await db.outMessage.updateMany({ where: sending, data: { status: "FAILED", claimedAt: null, error: "May have gone out; not sent again" } });
         t.counts.failed += 1;
       } else {
-        await db.outMessage.updateMany({ where: sending, data: { status: "QUEUED", claimedAt: null, retryTries: row.retryTries + 1, nextTryAt: new Date(now.getTime() + 30_000), error: "May have gone out; sending once more" } });
+        await db.outMessage.updateMany({
+          where: sending,
+          data: { status: "QUEUED", claimedAt: null, retryTries: row.retryTries + 1, nextTryAt: new Date(now.getTime() + 30_000), error: "May have gone out; sending once more" },
+        });
       }
       return;
     }
@@ -457,7 +517,10 @@ async function channelOffline(t: Turn, channel: Channel) {
   const target = channel === "email" ? (v.smtpHost ?? "the mail server") : "Twilio";
   const hosted = !isDesktop();
   if (hosted && checkAt && checkAt.getTime() <= now.getTime()) {
-    const why = channel === "email" ? `Can't reach ${target} for a day. Check the server name and port; some hosts block outgoing mail (see INSTALL.md).` : "Can't reach Twilio for a day. Check this server's internet connection.";
+    const why =
+      channel === "email"
+        ? `Can't reach ${target} for a day. Check the server name and port; some hosts block outgoing mail (see INSTALL.md).`
+        : "Can't reach Twilio for a day. Check this server's internet connection.";
     await pauseChannel(t, channel, why, new Date(now.getTime() + HOUR), null);
     return;
   }
@@ -471,7 +534,9 @@ async function channelOffline(t: Turn, channel: Channel) {
 /** Pauses a channel: with `until` it resumes by itself (a quota), else the hourly check at `checkAt` decides. */
 async function pauseChannel(t: Turn, channel: Channel, message: string, checkAt: Date | null, until: Date | null) {
   const data: Prisma.MessagingSettingsUpdateManyMutationInput =
-    channel === "email" ? { emailPausedAt: t.now, emailPausedUntil: until, emailCheckAt: checkAt, emailError: message } : { smsPausedAt: t.now, smsPausedUntil: until, smsCheckAt: checkAt, smsError: message };
+    channel === "email"
+      ? { emailPausedAt: t.now, emailPausedUntil: until, emailCheckAt: checkAt, emailError: message }
+      : { smsPausedAt: t.now, smsPausedUntil: until, smsCheckAt: checkAt, smsError: message };
   await db.messagingSettings.updateMany({ where: { shopId: t.shopId }, data });
   t.ok[channel] = false;
   t.stop[channel] = true;
