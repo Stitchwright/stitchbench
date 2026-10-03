@@ -1072,6 +1072,19 @@ accounts and billing: design first).
   is waived once it connects to a repair shop; $250/year alongside). StitchShop is free when a repair shop sets it up
   for its quilt shops; hosted copies at cost; the hub free to everyone. Recurring (subscription) revenue preferred.
   Not charging until: signed installer, a month of real use in one or two shops, terms/privacy page and Stripe billing.
+- **Price list decided 3 Oct 2026** (the owner took `docs/plans/pricing-recommendation.md` sections 12 and 13 as
+  recommended; it replaces the single $25 above): **Solo** $25/month or $250/year, up to 2 active logins; **Shop**
+  $45/month or $450/year, every login; the same for StitchBench and StitchShop, Windows and hosted, every feature on
+  both; per location, no per-seat fees. Yearly is ten times monthly, shown as "two months free". **Founding shops**:
+  the first 25 at $15 / $30 a month ($150 / $300 a year), locked while the subscription runs without a gap over 60
+  days (two feedback calls and bug reports in return); the test-month shops get 12 months free first. Partnered retail
+  shops get Shop free. Add-ons unchanged; the Assistant $15 with 300 calls plus a $10 top-up of 300. Optional setup
+  and import help $99 once. A dedicated hosted copy at cost (about $10 on top). No fee on online orders, including
+  under Stripe Connect. Price rises: new shops first, existing shops keep their price 12 months with 60 days' notice,
+  founding shops stay locked, at most one rise a year. **Income goals**: $5,000 and $8,000 a month after costs; the
+  calculator (private artifact https://claude.ai/artifact/USAwCv16eLsGAxVj3nRU7w) puts it at about 148 and 225 paying
+  shops for a 60/40 Solo/Shop mix, 30% yearly, $10 of add-ons a shop, 25 founding and 10 partnered, with about $383 a
+  month of fixed costs (Railway, account email, domains, code signing, R2, insurance, bookkeeping, a Claude plan).
   Prerequisites to build first: code signing, a per-shop license key checked against the hub. Idea kept for later: a
   "software fee" line on the partner statement, waived on activity. Community first: keep the hub free.
 - Hosting: one shared instance for all companies (per-company identity on the hub to follow); sharing to the hub is
