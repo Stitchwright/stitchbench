@@ -715,6 +715,57 @@ and Stripe Tax, not these).
   updated before it): back up, `prepare-app`, `update_installed.ps1`, then try the Tailscale tray item and a
   manual download on the real PC.
 
+## 2ac. Overnight 2-3 Oct: the second wave (agents, each reviewed and checked before its commit)
+
+Merged and deployed before this wave: GitHub main at deceaeb (everything through the ultra review fixes), both
+hosted services redeployed, `PUBLIC_URL` and `SETTINGS_KEY` set on both (names only ever shown; the keys were made
+with `openssl rand -hex 32` on the owner's PC). Everything below is on `scheduling-features` (or the stitchhub branch
+`hub-accounts`) and NOT on main or deployed.
+
+- **Standalone build size** (36ae0f1): the Windows app had grown to 807 MB because Turbopack read a dynamic
+  `path.join(root, category, brand)` with a literal fallback in `src/lib/manual-downloads.ts` as a file pattern and
+  traced the whole repository (installer output included) into `.next/standalone`. The library joins now go through a
+  spread the bundler can't follow, `next.config.ts` excludes desktop/, docs/, tests/, scripts/ and .railway/ from
+  output tracing, and tsconfig leaves the build copies out. The installed program was updated once before the fix (it
+  runs, with migrations 20261003110000 and 20261003130000 applied, but carries the large copy); the next
+  `prepare-app` + `update_installed.ps1` brings it back to about 150 MB. Rule: never pass a literal-fallback string
+  into `path.join` with a dynamic root in server code.
+- **Per-company identity, program side** (6c862f5, item 8 done end to end): `safe()` runs every action as the
+  signed-in company (`src/lib/acting-company.ts`, AsyncLocalStorage), so every hub call inside an action carries
+  `X-Shop-Ref`; background syncs speak as the install; order steps also carry `shopRef` in the body; the hub's 403 for
+  another company's row is a plain UserError; the marketplace shop page shows the company's current name.
+  `tests/account.spec.ts` (Settings → Account, doors 1 and 2) is written, not yet run: it needs the :3200 test hub on
+  the hub-accounts branch, started by `start_hub.bat` (now with `MAIL_DEV_LOG=true`, so the set-password link lands in
+  `scripts/local-test/.run/hub.log`).
+- **Sharing chosen per item** (92da4a1, item 9 done): "Offer a hint about this model" from a machine or ticket starts
+  with only brand and model (a serial or the customer's name in the text is refused); one "Offer this part" on the
+  part page (partner shops at the partner price, the marketplace, or both; status shown; each withdrawable); the
+  checkbox on the item form is gone. The audit found nothing else sends without a choice; the most-used report is off
+  by default. `scripts/checks/sharing.check.ts` (8 groups).
+- **Company move, package 1 `move-export`** (8d3b495): Settings → Company → "Move this company" freezes the company
+  (read-only through the same rule as a lapsed key: `base-gate.readOnlyReason` returns lapsed or moving; workers skip
+  it; no hub writes; a banner; Cancel lifts it) and streams one gzipped NDJSON file from a read-only repeatable-read
+  snapshot (meta header, 50 tables parents first, ids kept, Bytes as base64, trailer counts checked); sealed secrets
+  left out and named. Migration 20261003150000_company_move (CompanyMove; Shop movingAt / movedOutAt / movedTo /
+  movedInAt / movedFrom). `scripts/move/export.ts`; `scripts/checks/move-export.check.ts` (9 groups).
+- **Billing package 3 `hub-billing`** (stitchhub `hub-accounts` c7745a1): Stripe Billing on the hub ($25/month,
+  $250/year, Checkout + Portal, webhook `/v1/stripe`), standing trial / active / past_due (14 days' grace) / waived /
+  comped / lapsed, and the claim answer now carries a signed SB1 `base` key the program already accepts (package 2).
+  Nothing goes read-only while billing is closed (any Stripe variable unset), so merging is safe before the Stripe
+  set-up. `test/billing.mjs` (13 sections). **Before the hub signs or charges**, in this order: (1) `npm run
+  license:keygen -- --kid hub1 --hub` here, paste the printed `hub1` line into `src/lib/license-keys.ts`, release both
+  programs; (2) hub variables `HUB_LICENSE_KID=hub1`, `HUB_LICENSE_KEY`; check the `x` the hub logs matches; (3) comp
+  every current shop on the hub's /admin; (4) Stripe: one product, two prices (`STRIPE_PRICE_MONTHLY`,
+  `STRIPE_PRICE_YEARLY`), `STRIPE_SECRET_KEY`, the webhook with its eight events (`STRIPE_WEBHOOK_SECRET`), the
+  Customer Portal settings; (5) mail for accounts: `SMTP_URL`, `MAIL_FROM`, `HUB_URL`. Note: the hub's
+  `test/companies.mjs` needs an empty database each run (it failed on a reused one; passes on a fresh one).
+- **Railway Infrastructure as Code**: `railway config plan` (read-only) run against both projects after the new
+  variables: each "0 to add, 1 to change, 0 to destroy", only the four deploy settings. To apply, per project
+  (stitchshop as linked; for stitchbench link it first and link back after), from Bash:
+  `powershell -NoProfile -Command '$env:_ = "$env:APPDATA/npm/node_modules/@railway/cli/bin/railway.exe"; railway
+  config apply --yes; railway config migrate --apply'` (the wrapper gets past the SDK's Windows version check);
+  afterwards delete `railway.json` and commit.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
