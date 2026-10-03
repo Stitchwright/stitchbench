@@ -997,6 +997,21 @@ accounts and billing: design first).
    (never set it). Queued: "Connect with Stripe" (Connect Standard or Express onboarding, payments straight to the
    shop's account, an optional platform fee per order) as the easier door than pasting keys; a day or two.
 
+17. **Follow-ups found while drafting the terms and privacy text** (3 Oct 2026; drafts in `docs/legal/`, for a lawyer):
+   - **Owner decision: manual figures go to the hub automatically.** `src/app/api/figures/route.ts` calls `shareFigure`
+     whenever the program draws a factory-setting figure on a joined install (since the hub client's first version).
+     That predates and conflicts with item 9 ("chosen per item"), and figure crops from OEM manuals are a lawyer
+     question. Options: keep (the draft discloses it), an install setting off by default, or stop sharing figures.
+   - **Hub billing**: subscribing during the 30-day trial charges the same day (pass the trial end to Checkout so the
+     first charge falls when the trial ends); a refund inside the trial makes the shop read-only at once (should go
+     back to its trial); a won chargeback isn't undone (handle `charge.dispute.closed` with status won).
+   - **Customers can't be deleted or merged** (L126 decided, not built): needed to honour a customer's deletion request.
+   - **No LICENSE file** in this repository, so self-hosting shops have no stated licence for the code (the hub is
+     AGPL). Owner and lawyer decision.
+   - The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
+   - Before the pages go live: the hub's `/terms` and `/privacy` routes, Checkout recording the accepted version, and
+     `TERMS_VERSION` in `src/lib/hub-account.ts` (still "2026-10-02-draft"): billing package 5.
+
 15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026; not started). The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
    mode 36") but none says how to enter it. Plan: a reference set like TensionSpec / FactorySetting (per model family:
