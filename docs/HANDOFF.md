@@ -626,6 +626,56 @@ Stripe's total and tax at payment; `completeSaleAs` takes `taxCents` and records
 short line keeps its share of the tax from the session's lines. The check's group 12 covers it (12 groups now);
 the mock charges 8 % per line under automatic tax. The shop must switch Stripe Tax on in its Stripe dashboard.
 
+## 2ab. The 2 Oct evening batch, built by parallel agents and reviewed before each commit
+
+Each item below was built by one agent, reviewed, type-checked, linted and (where there is code) checked, then
+committed on its own. None is deployed; the Windows install was last updated before this batch (it has the shop
+and Stripe Tax, not these).
+
+- **Online-shop review fixes** (83f8675): a preliminary review found ten things; all fixed, the online-shop check
+  gained a late-payment group (12 groups). The serious one: with "count order messages toward the daily cap" on and
+  the cap reached, a `...dueWhere` spread let its `OR` replace the capped filter, so every due notice of the channel
+  would have been pushed to tomorrow; now `AND: [capped, dueWhere]`. Also: stale PENDING orders expired by the
+  message timer; a payment arriving after cancellation refunded at once; the register's own sales can't carry
+  `taxCents` or the ONLINE tender; a cancel writes the refund down as soon as Stripe makes it (same idempotency key,
+  same body, so a retry gets it back); payments applied one shop at a time with negative stock flagged; a non-hex
+  webhook signature is a 400 not a 500; staff photos through `/api/parts/photo/{id}` (session) so the part page
+  shows them before listing; a rate change between checkout and payment keeps the tax the customer paid; the shared
+  address can't be blanked while booking is on; Stripe's error text goes to the log, the customer sees the code.
+- **Online orders on the customer page and the "Online orders" CSV** (`/api/export/web-orders`) (9c9a48e).
+- **Railway Infrastructure as Code** (bcc0372): `.railway/railway.ts`, not yet applied; section 3 item 14. The agent
+  found both hosted services have neither `PUBLIC_URL` nor `SETTINGS_KEY` set: without them the hosted booking page
+  and shop have no address and sealing Stripe keys or a mail password is refused. Set both (the names are in the
+  preserve list already) before the owner's Stripe test-mode run.
+- **StitchHub accounts and billing design** (7ca2dad, decisions 8bffafd): `docs/plans/hub-accounts-billing-design.md`;
+  the owner took every recommended answer. **Package 1 `hub-accounts` is built** in the stitchhub repo on branch
+  `hub-accounts` (commit 1350499, not merged, not deployed): migration 012_accounts, sign-up / sign-in / reset, the
+  three doors, `/v1/shops/claim` real with standing, the /account pages, admin sections, a small SMTP client
+  (`SMTP_URL`, `MAIL_FROM`, `HUB_URL` needed on the real hub; `MAIL_DEV_LOG` for the test hub), test/accounts.mjs.
+  Package 2 `base-license` was started in this repo right after (see the next handoff entry or git log).
+- **AI scope** (252a83a): `docs/plans/ai-assistant-scope.md`; build write-ups and the bench assistant first as one
+  `assistant` package, every call through the hub, $15/month module proposed.
+- **Repo split plan** (0519011): `docs/plans/repo-split-design.md` and the dry run `scripts/repo-split/plan.mjs`.
+  Finding: the two programs share every source file (the flavour is two env vars), so the split is a restructure
+  into packages/core plus thin apps; three working days plus a day of deploys; decide whether it is still wanted.
+- **HTTPS on the shop network** (8a18914, item 11): the tray's "Secure address for tablets (Tailscale)" runs
+  `tailscale serve` for the program's port, remembers and re-applies it, lists the https address first; the server
+  learns it through `SECURE_URL`; the camera scanner and copy buttons explain on a plain-http page what to open
+  instead; INSTALL.md section with the Tailscale steps and the Caddy certificate fallback (documented, not built).
+  **Untested on the real PC** (Electron can't run here): the agent's seven-step list is in its commit message's
+  spirit; try it after the next `update_installed.ps1`, with Tailscale present and absent.
+- **Manual downloads** (eb30cbd, item 12): "Download all" for a model, brand or every link not in the library, a
+  queue (`ManualDownload`) worked by its own timer on the shop PC only (`LIBRARY_DIR` present; `MANUAL_DOWNLOADS=off`
+  stops it), one file at a time with `MANUAL_DOWNLOAD_PAUSE_SECONDS` between, dead links skipped, progress, Stop,
+  resume; filing straight to Category/Brand/Brand_Model_DocType.pdf with a sidecar and a LibraryDoc row
+  (`linkId`, `sourceUrl`, `downloadedAt`) when the link carries the data, else `_inbox`; PDFs checked by their
+  first bytes (a web page is refused, not saved); dedupe by link, hub file name, earlier download or a file placed
+  by hand; the model page shows doc-type coverage and groups links by type. Migration 20261003110000;
+  `scripts/checks/manual-downloads.check.ts` (12 groups). Caveat: `SEED_LIBRARY=true` re-seeding drops LibraryDoc
+  rows made by downloads until the Python index is rebuilt (dedupe still holds by path).
+- **Not done tonight**: the test build was not rebuilt with items 11 and 12 and the specs not rerun against them
+  (smoke, hub with the test hub, links pages); do that first thing, then the Windows update, then the ultra review.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
@@ -715,7 +765,7 @@ accounts and billing: design first).
    QuickBooks export, audit log; then layaway/special orders, block-of-the-month clubs, kits, purchase orders,
    loaners, per-ticket time clock, warranty claims, drop-off signature. Needs owner decisions first: card
    reader (Square or Stripe), Shopify sync, online sign-up/booking pages, two-way texting inbox.
-7. **Split StitchBench and StitchShop into separate repositories** (owner request, 27 Sep 2026). Today StitchShop
+7. **Split StitchBench and StitchShop into separate repositories** **Planned 2 Oct 2026** (section 2ab): `docs/plans/repo-split-design.md`; the move itself is not started. (owner request, 27 Sep 2026). Today StitchShop
    is a build flavor of this one codebase (desktop/package.json `flavor`, APP_NAME/DEFAULT_SHOP_KIND), so the
    register, inventory, partners and hub client are shared code. Decide the shape first, then do it:
    (a) two repos with a shared core package (register, partners, hub client, Prisma schema) published or
@@ -747,12 +797,12 @@ accounts and billing: design first).
    three; same hub, same partner links). Missing piece: a per-company export/import so one company can leave the
    shared instance for a PC or its own server, or join it from one, keeping its ids (partner records are keyed by
    them) and its hub/partner state. The Windows backup covers a whole install, not one company.
-11. **HTTPS for the Windows program on the shop network** so tablets and phones can use the camera barcode scanner
+11. **HTTPS for the Windows program on the shop network** **Built 2 Oct 2026** (section 2ab), untested on the real PC. so tablets and phones can use the camera barcode scanner
    and copy buttons (browsers allow those only on secure pages; plain http://<pc>:3100 can't). Preferred: Tailscale
    (`tailscale serve` / a Tailscale certificate gives the shop PC an https://...ts.net address on every device on the
    tailnet); document it in INSTALL.md and have the tray list that address first. A locally installed certificate
    is the fallback for shops without Tailscale. Until then the app shows a clear message on non-secure pages.
-12. **Manual links: download all, file on download, what's missing** (owner request, 27 Sep 2026). The hub is the
+12. **Manual links: download all, file on download, what's missing** **Built 2 Oct 2026** (section 2ab), parts a, b and c. (owner request, 27 Sep 2026). The hub is the
    community's catalog of links (the hub never hosts OEM manuals; each shop downloads into its own library).
    (a) "Download everything" for a model, a brand, or every link not yet in this library: a queued job, one file
    at a time with a pause between, skipping links the checker marks dead, with progress and resume.
@@ -762,7 +812,7 @@ accounts and billing: design first).
    the link id with the file (index + a sidecar or the LibraryDoc row) so re-downloads and dedupe work.
    (c) Per model, show which doc types exist (service, parts, operator, error codes, wiring) and which are missing,
    so members know what to look for. Links already carry the doc type; the model page groups by it.
-13. **Look into what AI to add** (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
+13. **Look into what AI to add** **Scoped 2 Oct 2026** (section 2ab): `docs/plans/ai-assistant-scope.md`. (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
    with the best return. Candidates that fit what the program already holds:
    - Bench assistant on a ticket: from the model and the problem reported, suggest likely causes and the checks to
      make, drawing on this shop's own tickets and notes, the community's gotchas, and the factory specs already in
