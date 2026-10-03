@@ -46,6 +46,25 @@ harbor's financial-benefit condition (17 U.S.C. 512(c)(1)(B), lawyer question L3
 - **Effort**: about a day more in package 2 (`repo-hub`: the web page, the per-account limits, a test section).
 - The owner may revisit this after the lawyer answers L3; the rest of the design doesn't depend on it.
 
+## 0.2 Distribution markings: flagged on every upload (owner, 3 Oct 2026)
+
+Every upload is checked for distribution markings with the same rules as `scripts/library/scan_markings.py`
+(strong: confidential, dealer only, internal use only, not for distribution, restricted, proprietary and confidential;
+medium: for service personnel / technicians only, not to be given to end users), on the first three pages and the last.
+A hit is a flag in the owner's review queue with the page and the words around it, never an automatic refusal: whether
+a strong marking means "refuse" is lawyer question L1. A brand whose maker has sent a takedown is flagged on every
+later upload of that brand.
+
+The owner's own library was scanned on 3 Oct 2026 (`C:\Manuals\_business-notes\Manual_Markings_2026-10-03.xlsx`):
+13,161 PDFs, 75 with a strong marking, 65 with a medium one only, 5 that wouldn't open. The flags cluster: Innova (50 of
+55 files, "proprietary and confidential" throughout: treat the brand as not for the repository), HandiQuilter (10), the
+laundry appliance manuals (6 strong, 50 "service personnel only"), Brother (3 of 905), Bernina (2).
+
+**The gap:** 5,668 of the 13,161 (43%) are image-only scans with no text layer, so their markings can't be read this
+way. Uploads will be the same. Before the check can be trusted on scanned uploads it needs OCR on those pages (for
+example Tesseract on the hub for the first three pages and the last, or the PDF's own text where it has one); until
+then an image-only upload is flagged "not checked for markings: scan" for the owner to look at the cover himself.
+
 ## 1. The legal frame, in plain terms [LAWYER: all of this section]
 
 **What the safe harbor gives.** Under 17 U.S.C. 512(c), a service that stores material "at the direction of a user"
