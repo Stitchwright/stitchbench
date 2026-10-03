@@ -1084,6 +1084,13 @@ accounts and billing: design first).
    order. The register's sale table scrolls inside its card on a phone (the line total sits off to the right): a
    stacked line layout for phones is the bigger fix if testers find it awkward.
 
+21. **Fabric Smarts** (owner's idea, 3 Oct 2026; researched, designed, not built): a Fabric page for StitchShop with bolt
+   ends (cut into fat quarters, half yards, remnants in one tap), slow fabric (markdown or convert, with the numbers),
+   what sells, reorder suggestions and purchase orders, kits; fast entry by bolt-label photo and "add a collection";
+   pictures everywhere; wholesaler partners later (Notions Marketing first). Design `docs/plans/fabric-smarts-design.md`
+   (packages F1-F6, after the test month; owner decisions in its section 10), research in `docs/research/`, the
+   owner's report https://claude.ai/artifact/4DWQgNFGMYWve7E5k5Ytgy. Outreach emails are DRAFTS: the owner sends them.
+
 15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026). **Data extracted 3 Oct**: `prisma/seed-data/service_modes.json`, 136 procedures from 124 service manuals (82 high, 53 medium, 1 low confidence; Brother 46, Janome 34, Elna 9, Baby Lock 8, Viking 7, Bernina 6, Pfaff 6, Juki 5 and more; Tajima's manuals have none); 249 of the 250 factory settings that mention test mode now have an entry procedure, and 167 of 168 numbered references match a test. No passwords recorded (a row stops at the prompt). The owner's sheet to check and correct: `C:\Manuals\_business-notes\Service_Modes.xlsx`, with `SERVICE_MODES_NOTES_2026-10-03.md` (eight things to try on a machine; the PC6500 factory row's "test mode 10" is probably wrong); `scripts/library/service_modes_from_xlsx.py` turns the corrected sheet back into the seed. Still to build: the ServiceMode table, the seed and Windows reference loaders, the card on the machine and ticket pages (match on modelKeys alone: rows carry twin models of other brands). **Owner, 3 Oct: the manual's pictures may be kept and shown**: each procedure gets the figure page and box (as FactorySetting has `figurePage` / `figureBox`), cropped from the local PDF and shared through the hub's figure path like the factory-setting figures, so the card shows the button diagram beside the steps; first for the rows whose entry keys are only drawn (Brother E100, Singer 9910-9940, EverSewn Sparrow QE, Elna 9006, Melco EP1B, Happy HCD2/HCD3), then the rest. Original plan: The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
    mode 36") but none says how to enter it. Plan: a reference set like TensionSpec / FactorySetting (per model family:
