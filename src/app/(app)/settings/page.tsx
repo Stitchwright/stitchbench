@@ -5,6 +5,7 @@ import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { getModules } from "@/lib/modules";
+import { loginNotice } from "@/lib/plan";
 import { shopKinds } from "@/lib/equipment/shop";
 import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
@@ -170,6 +171,8 @@ export default async function SettingsPage() {
   // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins while Marketing isn't hidden.
   const messagesGate = admin ? await gateFor(user.shopId, "marketing") : "hidden";
   const messaging = messagesGate !== "hidden" ? await messagingView(user.shopId) : null;
+  // The Solo plan's two logins (src/lib/plan.ts): a notice for the people who manage People, never a lock.
+  const logins = admin ? await loginNotice(user.shopId) : null;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -469,6 +472,25 @@ export default async function SettingsPage() {
       {admin && (
         <Section title="People">
           <p className="muted mb-3 text-sm">Everyone signs in with their own email and password. Techs can run tickets; admins can also change prices and people.</p>
+          {logins?.over && (
+            <p className="pill tone-wait mb-3 inline-block whitespace-normal" data-testid="solo-over">
+              This company is on the Solo plan, which includes two people signed in, and {logins.active} people have access. Everyone keeps working and nothing is locked or lost.
+              To add someone or restore access, switch to the Shop plan on your StitchHub account (
+              <Link href={SETTINGS_ACCOUNT_HREF} className="underline">
+                Settings → Account
+              </Link>
+              ), or remove someone&apos;s access first.
+            </p>
+          )}
+          {logins?.full && (
+            <p className="muted mb-3 text-sm" data-testid="solo-full">
+              The Solo plan includes two people signed in, and both are in use. To add someone, switch to the Shop plan on your StitchHub account (
+              <Link href={SETTINGS_ACCOUNT_HREF} className="link">
+                Settings → Account
+              </Link>
+              ).
+            </p>
+          )}
           <ul className="mb-4 divide-y divide-line text-sm">
             {users.map((u) => (
               <li key={u.id} className="py-2">

@@ -10,8 +10,19 @@ export type Retired = { lastDay: string; allow?: string[] };
 export type PublicKeys = Record<string, { x: string; scope: KeyScope; retired?: Retired }>;
 /** m monthly, y yearly, a administrator switch, t trial, c comped by the hub admin, w waived while partnered; any other short word is a plan a newer version knows. */
 export type Plan = string;
-export type LicensePayload = { v: 1; k: string; id: string; s: string; n: string; m: string[]; p: Plan; f: string; u: string; g: number; t: string };
+/**
+ * `l` and `fs` are optional and only StitchHub signs them (hub keys from the two-plan price list, 3 Oct 2026): `l` the
+ * login plan ("solo": up to two people signed in; "shop": everyone) and `fs` true for a founding shop's price. A key
+ * without `l` limits nothing.
+ */
+export type LicensePayload = { v: 1; k: string; id: string; s: string; n: string; m: string[]; p: Plan; f: string; u: string; g: number; t: string; l?: string; fs?: boolean };
 export type Verified = { ok: true; payload: LicensePayload; scope: KeyScope; kid: string } | { ok: false; reason: string };
+
+export type LoginPlan = "solo" | "shop";
+/** The login plan a key names, or null for a key that names none (an older hub's, an emailed one, the administrator's switch). */
+export function loginPlanOf(p: Pick<LicensePayload, "l">): LoginPlan | null {
+  return p.l === "solo" || p.l === "shop" ? p.l : null;
+}
 
 export const NO_END = "2099-12-31";
 export const TRIAL_DAYS = 14;

@@ -6,18 +6,11 @@ import { db } from "@/lib/db";
 import { safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, ticketNo, toCents } from "@/lib/format";
-import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
-import { isPlatformAdmin } from "@/lib/shops";
-import type { Role } from "@/generated/prisma/enums";
 import { assertId } from "@/lib/input";
 import { shopKinds } from "@/lib/equipment/shop";
 import { requireModule } from "@/lib/modules";
-
-// The platform-admin logins control paid access (Companies): only their holder changes them.
-const ADMIN_LOGIN = "That login belongs to the StitchBench administrator. Only they can change it.";
-function protectAdminLogin(target: { id: string; email: string }, admin: { id: string }) {
-  if (isPlatformAdmin(target.email) && target.id !== admin.id) throw new UserError(ADMIN_LOGIN);
-}
+// Adding a person and switching access live in src/lib/people.ts (the Solo plan's two logins, src/lib/plan.ts).
+import { addPersonAs, protectAdminLogin, setPersonActiveAs } from "@/lib/people";
 
 /** The "For" select: "" (every kind) -> null, else a kind key this company has. */
 async function equipmentKindOf(shopId: string, v: FormDataEntryValue | null) {
@@ -173,24 +166,9 @@ export const resetUserPassword = safe.whileLapsed("resetUserPassword")(async fun
   await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } });
 });
 
+// On the Solo plan a third active login is refused (src/lib/people.ts, src/lib/plan.ts).
 export const addUser = safe(async function addUser(formData: FormData) {
-  const admin = await requireAdmin();
-  const email = normalizeEmail(formData.get("email"));
-  const name = str(formData.get("name"));
-  // Kept exactly as typed: sign-in compares it untrimmed.
-  const password = String(formData.get("password") ?? "");
-  if (!email || !name || password.length < 8) throw new UserError("Enter a name, email and a temporary password of 8+ characters.");
-  if (!isValidEmail(email)) throw new UserError(EMAIL_HELP);
-  const existing = await db.user.findUnique({ where: { email } });
-  if (existing?.shopId === admin.shopId && !existing.active) throw new UserError(`${existing.name} is already in People with access removed: use Restore access.`);
-  if (existing) throw new UserError("That email already has an account.");
-  // The StitchBench administrator's address carries install-wide rights: nobody else may take it for a login.
-  if (isPlatformAdmin(email) && !isPlatformAdmin(admin.email)) throw new UserError("That email is reserved on this StitchBench.");
-  const role = (str(formData.get("role")) ?? "TECH") as Role;
-  if (role !== "ADMIN" && role !== "TECH") throw new UserError("Pick admin or tech.");
-  await db.user.create({
-    data: { shopId: admin.shopId, email, name, role, passwordHash: await bcrypt.hash(password, 10) },
-  });
+  await addPersonAs(await requireAdmin(), formData);
   revalidatePath("/settings");
 });
 
@@ -209,14 +187,9 @@ export const setUserRole = safe(async function setUserRole(userId: string, formD
   revalidatePath("/settings");
 });
 
+// Restoring access counts as adding a login on the Solo plan.
 export const setUserActive = safe(async function setUserActive(userId: string, active: boolean) {
-  const admin = await requireAdmin();
-  const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
-  if (!u) throw new UserError("User not found.");
-  protectAdminLogin(u, admin);
-  if (u.role === "OWNER") throw new UserError("The owner account can't be switched off.");
-  // Switching someone off also signs them out everywhere, at once.
-  await db.user.update({ where: { id: userId }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });
+  await setPersonActiveAs(await requireAdmin(), userId, active === true);
   revalidatePath("/settings");
 });
 
