@@ -498,8 +498,9 @@ const hash = (v: unknown) => crypto.createHash("sha1").update(JSON.stringify(v))
 /** Queue a job.update for every partner job whose ticket changed since the sewing shop last heard. */
 async function pushJobUpdates() {
   const since = new Date(Date.now() - 60 * 86400_000);
+  const leaving = await leavingShops();
   const jobs = await db.repairJob.findMany({
-    where: { side: "repair", ticketId: { not: null }, OR: [{ status: { notIn: FINAL } }, { updatedAt: { gte: since } }] },
+    where: { side: "repair", ticketId: { not: null }, shopId: { notIn: leaving }, OR: [{ status: { notIn: FINAL } }, { updatedAt: { gte: since } }] },
   });
   for (const job of jobs) {
     try {
@@ -565,7 +566,7 @@ export async function catalogFor(shopId: string): Promise<CatalogItem[]> {
 }
 
 async function pushCatalogs() {
-  const links = await db.partnerLink.findMany({ where: { side: "repair", status: "ACTIVE" } });
+  const links = await db.partnerLink.findMany({ where: { side: "repair", status: "ACTIVE", shopId: { notIn: await leavingShops() } } });
   const byShop = new Map<string, { items: CatalogItem[]; h: string }>();
   for (const l of links) {
     try {
@@ -594,6 +595,56 @@ async function pushCatalogs() {
   }
 }
 
+/**
+ * Companies being moved to another install, or already moved (company-move-design.md section 7): nothing is sent to
+ * their partners from this copy, and nothing is queued for them (it would be written into a company that is read-only
+ * here). What waits to go out is in the move file and goes from the new install.
+ */
+async function leavingShops(): Promise<string[]> {
+  return (await db.shop.findMany({ where: { movingAt: { not: null } }, select: { id: true } })).map((s) => s.id);
+}
+
+/**
+ * A company that just moved here catches up on its partners' messages once (company-move-design.md section 5.4): the
+ * hub's partner feed is one sequence for every install, so the old install's place in it (partnerCursor in the move
+ * file) is a valid place here too. Only this company's messages (the feed's shopRef filter), applied through the same
+ * path as the sync's, so one the company had already applied (its PartnerSeen rows came in the file) is skipped and
+ * none is applied twice. This install's own place in the feed doesn't move. A message that can't be applied is set
+ * aside at once and listed on the Partners page (the sync's own place is past it, so it wouldn't come again by itself).
+ * Answers how many were applied.
+ */
+export async function catchUpPartnerMessages(shopId: string, since: string): Promise<number> {
+  let cursor = /^\d+$/.test(since) ? since : "0";
+  let received = 0;
+  for (let page = 0; page < 200; page++) {
+    const r = (await (
+      await hubFetch(`/v1/partners/messages?since=${cursor}&limit=${PAGE}&shopRef=${encodeURIComponent(shopId)}`, { signal: AbortSignal.timeout(120_000), shopRef: shopId })
+    ).json()) as {
+      messages: HubMessage[];
+      next: string;
+      more: boolean;
+    };
+    for (const m of r.messages) {
+      // An older hub ignores the filter: the other companies' messages are theirs for the sync to apply.
+      if (m.toShopRef !== shopId) continue;
+      const key = `${m.linkId}:${m.fromSide}:${m.id}:${m.toSide}`.slice(0, 300);
+      if (await db.partnerSeen.findUnique({ where: { shopId_key: { shopId, key } } })) continue;
+      try {
+        await linkFor(shopId, m);
+        if (await applyOnce(shopId, key, m)) received++;
+        await db.partnerFailure.deleteMany({ where: { shopId, key } }).catch(() => {});
+      } catch (e) {
+        await noteFailure(shopId, key, m, e, true);
+      }
+    }
+    const next = /^\d+$/.test(String(r.next)) ? String(r.next) : cursor;
+    if (!r.more || next === cursor) break;
+    cursor = next;
+  }
+  // What these caused (a job's first update back) goes out with the next partner sync, as for any message.
+  return received;
+}
+
 // ---------- sync ----------
 
 const OUTBOX_KEPT_DAYS = 30; // as long as a message the partner refused stays listed on the Partners page
@@ -617,7 +668,7 @@ async function pushOutbox() {
   const now = Date.now();
   // The waiting list without the messages themselves (a job can carry photos); each is loaded when it's sent.
   const waiting = await db.partnerOutbox.findMany({
-    where: { sentAt: null, deadAt: null },
+    where: { sentAt: null, deadAt: null, shopId: { notIn: await leavingShops() } },
     orderBy: { createdAt: "asc" },
     select: { id: true, shopId: true, linkId: true, nextTryAt: true },
     take: 5000,
@@ -1971,7 +2022,7 @@ export async function runEffects(tx: Prisma.TransactionClient, shopId: string, l
 export async function pushFeatures() {
   const features = ["pickup"]; // this version takes runs, whatever the modules
   const h = hash(features);
-  const links = await db.partnerLink.findMany({ where: { status: "ACTIVE" }, select: { shopId: true, id: true, featuresHash: true } });
+  const links = await db.partnerLink.findMany({ where: { status: "ACTIVE", shopId: { notIn: await leavingShops() } }, select: { shopId: true, id: true, featuresHash: true } });
   for (const l of links) {
     if (l.featuresHash === h) continue;
     try {

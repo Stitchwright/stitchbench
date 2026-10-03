@@ -14,6 +14,7 @@ import { appName, isPlatformAdmin, programVersion, shopKindOf } from "@/lib/shop
 import { loadModules } from "@/lib/modules";
 import { PAID_MODULE_IDS } from "@/lib/module-info";
 import { encodeRow, LEFT_OUT, MOVE_FORMAT, MOVE_TABLES, MOVE_VERSION, moveFileName, PAGE, shopFilterSql, type MoveEnd, type MoveMeta, type MoveTable } from "./format";
+import { dropMoveToken, hubMoveView, hubPart, hubWarning, moveTokenFor, type HubMoveView } from "./hub-step";
 
 /** Who is moving: the signed-in user, or the CLI's operator (scripts/move/export.ts). */
 export type Mover = { id: string; shopId: string; role: "OWNER" | "ADMIN" | "TECH"; email: string; name: string };
@@ -55,6 +56,9 @@ export async function startMove(user: Mover, shopId: string, opts: { to?: unknow
     db.companyMove.create({ data: { shopId, direction: "export", status: "ready", byUserId: user.id, startedAt: now }, select: { id: true } }),
     db.shop.update({ where: { id: shopId }, data: { movingAt: now, movedTo: destinationText(opts.to) } }),
   ]);
+  // The hub's move token (package move-hub), when this install is on one: in every download of this move. The hub not
+  // answering doesn't stop the move; the download asks again, and the Settings card says so.
+  await moveTokenFor(shopId, move.id).catch((e) => console.error("company move: the move token:", e instanceof Error ? e.message : e));
   return move.id;
 }
 
@@ -67,6 +71,26 @@ export async function cancelMove(user: Mover, shopId: string): Promise<void> {
     db.shop.update({ where: { id: shopId }, data: { movingAt: null, movedTo: null } }),
     db.companyMove.updateMany({ where: { shopId, direction: "export", status: { not: "cancelled" } }, data: { status: "cancelled", finishedAt: new Date() } }),
   ]);
+  // No move file made before works on the hub any more (DELETE /v1/shops/{ref}/move-token; best effort).
+  await dropMoveToken(shopId).catch((e) => console.error("company move: dropping the move token:", e instanceof Error ? e.message : e));
+}
+
+/**
+ * "The move is done" (design section 7): for a company whose hub can't say so (this install is on no hub, or the
+ * token was never redeemed), the owner confirms the import on the new side worked. This copy then shows the moved
+ * notice and may be deleted after 30 days, as when the hub says it.
+ */
+export async function confirmMovedOut(user: Mover, shopId: string): Promise<void> {
+  const shop = await moveShop(user, shopId);
+  if (shop.movedOutAt) throw new UserError("This company has already moved; this copy says so.");
+  if (!shop.movingAt) throw new UserError("This company isn't being moved. Prepare the move file first.");
+  const done = await db.companyMove.count({ where: { shopId, direction: "export", status: "done" } });
+  if (!done) throw new UserError("The move file hasn't been downloaded yet. Download it and import it on the new install first.");
+  await db.$transaction([
+    db.shop.update({ where: { id: shopId }, data: { movedOutAt: new Date() } }),
+    db.companyMove.updateMany({ where: { shopId, direction: "export", hubTokenSealed: { not: null } }, data: { hubTokenSealed: null } }),
+  ]);
+  console.info(`[move] ${JSON.stringify({ company: shopId, movedOut: "confirmed by hand", by: user.email || user.id })}`);
 }
 
 export type MoveView = {
@@ -87,20 +111,41 @@ export type MoveView = {
   /** Paid modules switched on by the hosted administrator: they need a key on the new side (design section 2, notes). */
   needKeys: string[];
   fileName: string;
+  /** The move's StitchHub token (package move-hub): whether this install is on a hub, whether the file carries a token, and why not. */
+  hub: { onHub: boolean; hasToken: boolean; error: string | null };
+  /** The company came here from a move file: how its hub step stands (Re-point the hub). */
+  movedIn: HubMoveView;
 };
 
 /** Settings → Company's "Move this company" card. Another company's owner: "Company not found." */
 export async function moveView(user: Mover, shopId: string): Promise<MoveView> {
   const shop = await moveShop(user, shopId);
-  const [row, needKeys] = await Promise.all([
+  const [row, needKeys, hs, movedIn] = await Promise.all([
     shop.movingAt ? db.companyMove.findFirst({ where: { shopId, direction: "export", status: { not: "cancelled" } }, orderBy: { startedAt: "desc" } }) : null,
     adminModules(shopId),
+    db.hubState.findUnique({ where: { id: 1 }, select: { url: true, installKey: true } }),
+    hubMoveView(shopId),
   ]);
   return {
     shop: { id: shop.id, name: shop.name, movingAt: shop.movingAt, movedTo: shop.movedTo, movedOutAt: shop.movedOutAt },
-    move: row ? { ...row, bytes: Number(row.bytes) } : null,
+    move: row
+      ? {
+          id: row.id,
+          status: row.status,
+          table: row.table,
+          rowsDone: row.rowsDone,
+          rowsTotal: row.rowsTotal,
+          bytes: Number(row.bytes),
+          error: row.error,
+          startedAt: row.startedAt,
+          finishedAt: row.finishedAt,
+          downloadedAt: row.downloadedAt,
+        }
+      : null,
     needKeys,
     fileName: moveFileName(shop.name),
+    hub: { onHub: !!(hs?.url && hs.installKey), hasToken: !!row?.hubTokenSealed, error: row?.hubError ?? null },
+    movedIn,
   };
 }
 
@@ -244,6 +289,10 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
     moveId = (await db.companyMove.findFirst({ where: { shopId, direction: "export", status: { not: "cancelled" } }, orderBy: { startedAt: "desc" }, select: { id: true } }))?.id ?? null;
   }
   const needKeys = await adminModules(shopId);
+  // A move (frozen, with its record) carries the hub's move token; a copy made without the freeze doesn't (it isn't a
+  // move: a token in it would let any copy take the company on the hub).
+  const isMove = !!moveId && !!shop.movingAt && !shop.movedOutAt;
+  const tok = isMove ? await moveTokenFor(shopId, moveId!) : { token: null, error: null };
   const lines = new Lines();
   let sent = 0;
   const counter = new Transform({
@@ -272,6 +321,9 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
         // Prisma can't ask for READ ONLY; set before the first query of the transaction, as Postgres allows.
         await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
         const mig = await tx.$queryRawUnsafe<{ m: string | null }[]>(`SELECT max(migration_name) AS m FROM "_prisma_migrations"`);
+        // The install's places in the hub's feeds, from the same snapshot as the company's PartnerSeen rows.
+        const hub = hubPart(await tx.hubState.findUnique({ where: { id: 1 } }), tok.token);
+        const hubNote = hub && !hub.moveToken ? hubWarning(true, isMove, tok.error) : null;
         const counts: Record<string, number> = {};
         for (const t of MOVE_TABLES) counts[t.t] = await countRows(tx, t, shop.id);
         progress.rowsTotal = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -284,10 +336,9 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
           lastMigration: mig[0]?.m ?? null,
           exportedAt: new Date().toISOString(),
           shop: { id: shop.id, name: shop.name, kind: shopKindOf(shop) },
-          // Package move-hub mints the move token here (POST /v1/shops/{ref}/move-token); until then the hub step is by hand.
-          hub: null,
+          hub,
           leftOut: [...LEFT_OUT],
-          warnings: await warningsFor(tx, shop, needKeys),
+          warnings: [...(await warningsFor(tx, shop, needKeys)), ...(hubNote ? [hubNote] : [])],
         };
         await lines.push(JSON.stringify(meta) + "\n");
         const tables: Record<string, number> = {};

@@ -152,8 +152,10 @@ export type MoveMeta = {
   exportedAt: string;
   shop: { id: string; name: string; kind: string };
   /**
-   * The hub's part (design section 5): the install the company left and the move token the new install redeems. Null
-   * until package move-hub: this export never mints a token, and an import does the hub step by hand.
+   * The hub's part (design section 5, package move-hub): the hub this install is on, its id there, the move token the
+   * new install redeems (null when the hub couldn't give one, or the file is a copy rather than a move), and the
+   * install's places in the hub's feeds (the new install catches up on partner messages from partnerCursor). Null for
+   * an install on no hub. src/lib/move/hub-step.ts.
    */
   hub: { url: string; installId: string; moveToken: string | null; cursor: unknown; orderCursor: unknown; partnerCursor: unknown } | null;
   leftOut: string[];
@@ -222,6 +224,25 @@ export function checkMeta(m: MoveLine): m is MoveMeta {
   if (m.t !== "meta") return false;
   const meta = m as MoveMeta;
   return meta.format === MOVE_FORMAT && Number.isInteger(meta.version) && meta.version >= 1 && meta.version <= MOVE_VERSION && !!meta.shop?.id;
+}
+
+/**
+ * A cancelled move whose token the hub couldn't be told to forget (it was out of reach): kept in CompanyMove.hubError,
+ * and the next hub sync tells it (hub.ts claimShops), so a move file made before the cancel can't take the company.
+ */
+export const MOVE_CANCEL_PENDING = "cancel-not-sent";
+
+/** Days the old copy of a moved company is kept before it may be deleted (design section 7: by hand, never by itself). */
+export const KEEP_MOVED_DAYS = 30;
+
+/** The first day the old copy may be deleted: KEEP_MOVED_DAYS after the hub said the company moved. */
+export function deleteFrom(movedOutAt: Date): Date {
+  return new Date(movedOutAt.getTime() + KEEP_MOVED_DAYS * 86_400_000);
+}
+
+/** The read-only message on the old copy once the company has moved (design section 7): where, when, and when it may go. */
+export function movedOutMessage(to: string | null, on: string, deleteOn: string): string {
+  return `This company moved${to ? ` to ${to}` : ""} on ${on}. This copy is read-only; delete it after ${deleteOn}.`;
 }
 
 /**

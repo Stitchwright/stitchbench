@@ -55,7 +55,8 @@ export type Modules = {
   moving: Moving | null;
 };
 
-export type Moving = { at: Date; to: string | null };
+/** at: the owner confirmed the move (Shop.movingAt); to: where it is going, then where it went; outAt: the hub (or the owner) said it moved. */
+export type Moving = { at: Date; to: string | null; outAt: Date | null };
 
 /**
  * Which program this is, by the same variables src/lib/shops.ts appName() reads (this file stays pure, so it reads them
