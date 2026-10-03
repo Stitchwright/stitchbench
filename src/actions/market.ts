@@ -227,6 +227,8 @@ export const orderAction = safe.whileLapsed("orderAction")(async function orderA
   await ownOrder(user.shopId, orderId);
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId } });
   let body: Record<string, unknown> = {};
+  // Instructions typed on a first accept become the shop's saved ones, but only once the hub has taken the step.
+  let keepPay: string | null = null;
   switch (action) {
     case "accept": {
       // Where the buyer's money goes is the owner's call (Settings → Shop, owner or admin only): a tech accepting an
@@ -236,7 +238,7 @@ export const orderAction = safe.whileLapsed("orderAction")(async function orderA
       }
       const pay = user.role === "TECH" ? shop.payInstructions : (str(formData.get("payInstructions")) ?? shop.payInstructions);
       if (!pay) throw new UserError("Say how the buyer should pay you (PayPal, Zelle, check to...). You can save it in Settings → Shop.");
-      if (!shop.payInstructions) await db.shop.update({ where: { id: shop.id }, data: { payInstructions: pay } });
+      if (!shop.payInstructions) keepPay = pay;
       body = {
         shippingCents: formData.has("shipping") ? strictCents(formData.get("shipping"), "Shipping") : undefined,
         payInstructions: pay,
@@ -276,6 +278,8 @@ export const orderAction = safe.whileLapsed("orderAction")(async function orderA
   // several companies the hub refuses it when the order is another company's, and shows the company's name on it.
   const o = (await (await hubFetch(`/v1/orders/${hubId(orderId)}/${action}`, { method: "POST", json: { ...body, shopRef: shop.id } })).json()) as HubOrder;
   await saveOrder(o);
+  // A refused step (hubFetch threw) leaves the shop's settings as they were.
+  if (keepPay) await db.shop.updateMany({ where: { id: shop.id, payInstructions: null }, data: { payInstructions: keepPay } });
   // The hub has the step now and can't be asked to undo it, so a stock change that fails is told apart from it: the
   // order page offers the stock change again (orderStock).
   let stockFailed = false;
