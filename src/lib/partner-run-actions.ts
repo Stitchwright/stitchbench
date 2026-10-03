@@ -4,7 +4,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { PartnerRun, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { assertId } from "@/lib/input";
 import { str } from "@/lib/format";
 import type { CurrentUser } from "@/lib/session";

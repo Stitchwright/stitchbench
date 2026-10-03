@@ -2,7 +2,7 @@ import "server-only";
 // A ticket's readings and intake answers for its kind (bodies of the saveReadings / saveIntake actions).
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { kickPartnerSync } from "@/lib/partners";
 import { requireEquipment } from "./gate";

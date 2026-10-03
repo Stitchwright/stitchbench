@@ -2,7 +2,7 @@ import "server-only";
 // The StitchBench administrator's switch on Companies (modules-design.md section 8). Wrappers: src/actions/companies.ts.
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { adminPosition, NO_END, planLastDay, validYmd, verifyLicense } from "@/lib/license";
 import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";

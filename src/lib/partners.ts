@@ -16,7 +16,7 @@ import "server-only";
 // aside (PartnerFailure, shown on the Partners page) instead of stopping every message after it.
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
-import { isUserError, UserError } from "@/lib/action";
+import { isUserError, UserError } from "@/lib/user-error";
 import { checkHubUrl, formerInstall, hubDefaultUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { inEighths } from "@/lib/register-math";

@@ -3,7 +3,7 @@
 // Classes at the register (scheduling-messaging-design.md 12.1 / 12.3): the open classes with seats, and signing a
 // customer up from the register. The work is in src/lib/class-actions.ts.
 import { revalidatePath } from "next/cache";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { assertId } from "@/lib/input";
 import { requireUser } from "@/lib/session";

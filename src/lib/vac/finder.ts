@@ -5,7 +5,7 @@ import "server-only";
 // category is one of VAC_SUPPLY_CATEGORIES.
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { VAC_SUPPLY_CATEGORIES } from "@/lib/constants";
 import { brandKey, modelKey } from "@/lib/format";
 import { brandMatches } from "@/lib/model-info";

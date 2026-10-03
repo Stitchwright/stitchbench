@@ -6,7 +6,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { AppointmentType, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { freeWeek, hoursOf, hoursText, overlapCount, poolKey, withinHours } from "@/lib/appointments";
 import { nextMeetings, seatCounts, enrollIn } from "@/lib/classes";
 import { money, str } from "@/lib/format";

@@ -3,7 +3,7 @@ import "server-only";
 // webhook signature. Plain fetch against STRIPE_API_BASE (api.stripe.com; the test mock in scripts/test-mail), form
 // bodies as Stripe takes them, so there is no SDK to keep up with. Amounts are integer cents.
 import crypto from "node:crypto";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 
 const BASE = () => (process.env.STRIPE_API_BASE?.trim() || "https://api.stripe.com").replace(/\/$/, "");
 const TIMEOUT_MS = 20_000;

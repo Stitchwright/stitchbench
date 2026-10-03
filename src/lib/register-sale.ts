@@ -3,7 +3,7 @@ import "server-only";
 // src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, the Vac Shop's units
 // and trade-ins, and (scheduling-messaging-design.md 12.3) class seats and appointments paid or refunded here.
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
 import type { CurrentUser } from "@/lib/session";
 import { withDisclosure } from "@/lib/part-labels";

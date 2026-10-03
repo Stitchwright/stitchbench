@@ -3,7 +3,7 @@ import "server-only";
 // shared by every type naming the same resource), free start times, and the lock key for a booking.
 import type { AppointmentType, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { addDays, dayStart, hmOf, parseHm, wall, ymdOf, zonedTime } from "@/lib/zoned";
 
 type Db = Prisma.TransactionClient | typeof db;

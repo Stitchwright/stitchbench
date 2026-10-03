@@ -2,7 +2,7 @@ import "server-only";
 // Pasting a license key in Settings -> Modules (modules-design.md section 7). The action wrapper is src/actions/licenses.ts.
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { extractKey, windows } from "@/lib/license";
 import { fmtYmd } from "@/lib/module-info";

@@ -2,7 +2,7 @@
 
 // Filling inventory fast: look a store barcode up online, and load a supplier's line sheet or a spreadsheet.
 import { revalidatePath } from "next/cache";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { lookupBarcode, type BarcodeInfo } from "@/lib/barcode-lookup";
 import { runImport, type ImportOptions as Options, type ImportRow as Row } from "@/lib/inventory-import";

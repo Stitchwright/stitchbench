@@ -1,7 +1,7 @@
 import "server-only";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } from "@/lib/service-menu";
 import { serverTimeZone } from "@/lib/time-zone";

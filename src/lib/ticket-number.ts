@@ -1,7 +1,7 @@
 import "server-only";
 // The next ticket number for a shop, inside the check-in's transaction (createTicket and central vac installs).
 import type { Prisma } from "@/generated/prisma/client";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 
 /**
  * The number a new ticket gets: the typed paper number when given (refused if taken), else the counter, taken

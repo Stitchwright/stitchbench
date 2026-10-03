@@ -1,6 +1,6 @@
 // The customer manages their own booking from the link in the confirmation (online-and-parts-design.md section 2):
 // cancel it, or move an appointment to another offered time. The token is the only power the request carries.
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { cancelByToken, moveByToken } from "@/lib/online-booking";
 import { allowPublic } from "@/lib/rate-limit";
 import { formUpTo } from "@/lib/read-body";

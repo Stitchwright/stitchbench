@@ -1,7 +1,7 @@
 import "server-only";
 // Parts, their numbers, and the community cross-reference (synced XPart rows).
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { modelKey, str, toCents } from "@/lib/format";
 import { sameText } from "@/lib/input";
 import { brandMatches } from "@/lib/model-info";

@@ -10,7 +10,7 @@ import crypto from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { money, str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { seal, unseal } from "@/lib/messaging/secrets";

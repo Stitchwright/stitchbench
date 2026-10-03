@@ -6,7 +6,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { CLOSING_STATUSES } from "@/lib/constants";
 import { requireEquipment } from "@/lib/equipment/gate";
 import { VACUUM_KIND } from "@/lib/equipment/vacuum";

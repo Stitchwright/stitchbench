@@ -2,7 +2,7 @@
 // shared with the partner-job slot (job-estimate.tsx).
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { fmtDateTime } from "@/lib/format";
 import { JOB_STATUS_LABEL, SITE_STATUS_LABEL, STATUS_LABEL } from "@/lib/constants";
 import { estimateChannels, estimateContent, estimateSubject, repliesSince, type EstimateSubject } from "@/lib/estimate-links";

@@ -3,7 +3,7 @@ import "server-only";
 // used to set, plus pickupReadyAt, written with a guard against a change made meanwhile, and the notices hook.
 import type { Prisma } from "@/generated/prisma/client";
 import type { TicketStatus } from "@/generated/prisma/enums";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { OPEN_STATUSES } from "@/lib/constants";
 import type { HookCtx } from "@/lib/notices/context";
 import { onTicketStatus } from "@/lib/notices/hooks";

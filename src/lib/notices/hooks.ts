@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { SKIP_REASON_LABEL } from "@/lib/constants";
 import { addDays, fmtDay, fmtTime, parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
 import { fmtPhone, toE164, validEmail } from "@/lib/phone";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { allow } from "@/lib/rate-limit";
 import type { CurrentUser } from "@/lib/session";
 import type { JobEvent } from "@/lib/partners";

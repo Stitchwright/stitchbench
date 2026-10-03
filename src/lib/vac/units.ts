@@ -5,7 +5,7 @@ import "server-only";
 // drive them. The sale, return and trade-in hooks are in ./sale-units.ts.
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { UNIT_CONDITION_LABEL } from "@/lib/constants";
 import { readAnswers } from "@/lib/equipment/form";

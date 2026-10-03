@@ -2,7 +2,7 @@ import "server-only";
 // The customer named on a check-in or take-in form, and the "how should we tell them" rule (design 4.1, 8.3).
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { str } from "@/lib/format";
 import { moduleOn } from "@/lib/module-gate";
 import { recordConsent } from "@/lib/messaging/consent";

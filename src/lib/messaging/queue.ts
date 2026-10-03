@@ -3,7 +3,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { isDesktop } from "@/lib/modules";
 import { allowed, consentState, type SupMap } from "./consent";
 import { kickMessages } from "./kick";

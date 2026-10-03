@@ -5,7 +5,7 @@ import "server-only";
 // transaction and voidUnitLines inside the void's; every write is a guarded updateMany with shopId.
 import type { Prisma, SaleLine } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { VACUUM_KIND } from "@/lib/equipment/vacuum";
 import { modelKey, money } from "@/lib/format";
 import { blockedMessage, type ModuleState } from "@/lib/module-info";

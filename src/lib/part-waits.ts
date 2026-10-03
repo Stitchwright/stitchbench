@@ -5,7 +5,7 @@ import "server-only";
 // script can drive them; src/actions/part-waits.ts wraps them.
 import type { OutMessage, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { CLOSING_STATUSES } from "@/lib/constants";
 import { requireEquipment } from "@/lib/equipment/gate";
 import { str } from "@/lib/format";

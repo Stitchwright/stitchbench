@@ -2,7 +2,7 @@
 // in the address, so every answer is a 303 back to a page with the new one), and checkout, which makes the order and
 // sends the customer to Stripe's payment page. No session: the slug names the shop. Rate-limited per address and per
 // shop; a filled honeypot or a checkout sent within five seconds of opening the page is dropped quietly.
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import type { OnlineCustomer } from "@/lib/online-booking";
 import { allow, allowPublic } from "@/lib/rate-limit";
 import { formUpTo } from "@/lib/read-body";
