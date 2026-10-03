@@ -1,6 +1,7 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
+import { under } from "@/lib/opaque-path";
 
 // When StitchBench runs as the Windows program on the shop PC, its server reads the manual library
 // straight from disk (LIBRARY_DIR, e.g. C:\Manuals), so every device on the shop network can open manuals.
@@ -24,7 +25,7 @@ export async function writeUnusedPdf(dir: string, stem: string, bytes: Uint8Arra
   for (let i = 1; i < 1000; i++) {
     const name = i === 1 ? `${stem}.pdf` : `${stem} (${i}).pdf`;
     try {
-      await fs.promises.writeFile(path.join(dir, name), bytes, { flag: "wx" });
+      await fs.promises.writeFile(under(dir, name), bytes, { flag: "wx" });
       return name;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
