@@ -61,7 +61,7 @@ export async function startHubAccountFor(user: CurrentUser, fd: FormData): Promi
   const s = await hubState();
   let answer: StartAnswer;
   if (s?.url && s.installKey) {
-    answer = await (async () => (await (await hubFetch("/v1/accounts/start", { method: "POST", json: start })).json()) as StartAnswer)().catch(explain);
+    answer = await (async () => (await (await hubFetch("/v1/accounts/start", { method: "POST", json: start, shopRef: shop.id })).json()) as StartAnswer)().catch(explain);
   } else {
     // Joining a hub changes the whole install: the one company's owner, or the StitchBench administrator (the same rule
     // as requireInstallAdmin in session.ts, which this file doesn't import: the check scripts run outside Next).
@@ -72,10 +72,10 @@ export async function startHubAccountFor(user: CurrentUser, fd: FormData): Promi
     const oldKey = s?.formerUrl === base ? s.formerInstallKey : null;
     const former = oldKey ? await formerInstall(base, oldKey) : null;
     if (former && oldKey) {
-      answer = await hubRequest<StartAnswer>(base, "/v1/accounts/start", { json: start, key: oldKey }).catch(explain);
+      answer = await hubRequest<StartAnswer>(base, "/v1/accounts/start", { json: start, key: oldKey, shopRef: shop.id }).catch(explain);
       await adoptInstall({ url: base, hubName: former.hubName, installId: former.installId, installKey: oldKey, scope: former.scope });
     } else {
-      answer = await hubRequest<StartAnswer>(base, "/v1/accounts/start", { json: { ...start, contact: email } }).catch(explain);
+      answer = await hubRequest<StartAnswer>(base, "/v1/accounts/start", { json: { ...start, contact: email }, shopRef: shop.id }).catch(explain);
       if (!answer.installId || !answer.installKey)
         throw new UserError("The hub started the account but gave this program no install key. Join the hub with an invite (Settings → Community hub), then try again.");
       await adoptInstall({ url: base, hubName: answer.hubName ?? null, installId: answer.installId, installKey: answer.installKey, scope: "pending" });
@@ -109,7 +109,7 @@ export async function linkCodeFor(user: CurrentUser): Promise<{ code: string; ex
   }
   const { body } = await companyBody(user.shopId);
   try {
-    const r = (await (await hubFetch("/v1/accounts/link-code", { method: "POST", json: body })).json()) as { code?: string; expiresAt?: string };
+    const r = (await (await hubFetch("/v1/accounts/link-code", { method: "POST", json: body, shopRef: user.shopId })).json()) as { code?: string; expiresAt?: string };
     if (typeof r.code !== "string" || !r.code) throw new UserError("The hub answered without a code. Try again.");
     return { code: r.code, expiresAt: typeof r.expiresAt === "string" ? r.expiresAt : new Date(Date.now() + 15 * 60_000).toISOString(), hubUrl: s.url };
   } catch (e) {
