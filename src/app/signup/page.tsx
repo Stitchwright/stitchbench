@@ -9,6 +9,7 @@ import { hubJoined } from "@/lib/hub";
 import { redeemPartnerCode } from "@/lib/partners";
 import { isUserError } from "@/lib/user-error";
 import { TimeZoneField } from "@/components/time-zone-field";
+import { HubLegalLinks } from "@/components/hub-legal-links";
 
 /**
  * The Windows program's first run passes SETUP_TOKEN: sign-up then only works from the program's own window (it opens
@@ -138,6 +139,8 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
             </a>
           </p>
         )}
+        {/* StitchHub's Terms of Service and Privacy Policy, when this install is on a hub (the Windows first run isn't yet). */}
+        <HubLegalLinks />
       </form>
     </div>
   );

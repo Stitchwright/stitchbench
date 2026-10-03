@@ -4,7 +4,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime } from "@/lib/format";
-import { accountView, linkCodeShown, NAG_AFTER_DAYS, TERMS_VERSION } from "@/lib/hub-account";
+import { accountView, linkCodeShown, NAG_AFTER_DAYS } from "@/lib/hub-account";
+import { isDraftTerms } from "@/lib/terms-version";
 import { fmtYmd, MODULE_SALES, planLabel, programName, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
@@ -160,6 +161,26 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               </a>
               .
             </p>
+            <p data-testid="terms-accepted">
+              {shop.termsVersion ? <>Terms accepted: version {shop.termsVersion}</> : <>No terms version recorded here yet (StitchHub keeps the record)</>} (
+              <a href={`${v.hubUrl}/terms`} target="_blank" rel="noreferrer" className="link">
+                terms
+              </a>
+              ,{" "}
+              <a href={`${v.hubUrl}/privacy`} target="_blank" rel="noreferrer" className="link">
+                privacy policy
+              </a>
+              ).
+            </p>
+            {v.terms.behind && (
+              <p className="pill tone-wait inline-block whitespace-normal">
+                StitchHub has updated its terms to version {v.terms.current}. Read them and accept them on{" "}
+                <a href={`${v.hubUrl}/account`} target="_blank" rel="noreferrer" className="underline">
+                  your account page
+                </a>
+                ; subscribing a shop needs it.
+              </p>
+            )}
           </div>
         ) : !v.mayManage ? (
           <p className="muted text-sm">This company has no StitchHub account yet. The shop owner creates it here.</p>
@@ -179,6 +200,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               </div>
               <label className="flex items-start gap-2">
                 <input type="checkbox" name="terms" className="check mt-0.5" required />
+                <input type="hidden" name="termsVersion" value={v.terms.current} />
                 <span>
                   I accept the{" "}
                   <a href={`${v.hubUrl}/terms`} target="_blank" rel="noreferrer" className="link">
@@ -188,7 +210,10 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                   <a href={`${v.hubUrl}/privacy`} target="_blank" rel="noreferrer" className="link">
                     privacy policy
                   </a>{" "}
-                  <span className="muted">(version {TERMS_VERSION})</span>
+                  <span className="muted">
+                    (version {v.terms.current}
+                    {isDraftTerms(v.terms.current) && ", a draft, not yet in force"})
+                  </span>
                 </span>
               </label>
               <Submit>Create account</Submit>

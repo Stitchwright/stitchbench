@@ -1,7 +1,8 @@
 # Terms and privacy: drafts, publishing, and what's left to decide
 
-**Status (3 Oct 2026): drafts for review by a lawyer; not legal advice; not yet in force.** Nothing here is published
-and nothing in the code points at these files.
+**Status (3 Oct 2026): drafts for review by a lawyer; not legal advice; not yet in force.** The hub shows them as
+version `2026-10-03-draft` (copies in the hub repo's `legal/`) under a "DRAFT, not yet in force" banner until the owner
+publishes a version (package `terms-launch`, section 1).
 
 | File | What it is |
 |---|---|
@@ -22,42 +23,48 @@ section 3, `docs/plans/company-move-design.md`, `INSTALL.md`, `prisma/schema.pri
 `src/lib/hub.ts`, `src/lib/offer.ts`, the hub's `README.md`, `src/accounts.mjs`, `src/billing.mjs`, `src/partners.mjs`,
 and Anthropic's and Stripe's published terms as read on 3 Oct 2026 (links in the drafts).
 
-## 1. How versions will be published
+## 1. How versions are published
 
 **One version string for both documents**, in the form **`YYYY-MM-DD`**: the date that version comes into force
 (for example `2026-11-15`). If only one document changes, both get the new date; the hub records one version per
-account, so one string keeps that simple. A same-day second version is `YYYY-MM-DD.2` (avoid it).
+account, so one string keeps that simple. A same-day second version is `YYYY-MM-DD.2` (avoid it). While a version is a
+draft its string ends in **`-draft`** (today `2026-10-03-draft`), and the hub's pages carry a "DRAFT, not yet in force"
+banner over it.
 
-**Where they live** (package `terms-launch`, hub-accounts-billing-design.md section 7 item 5):
+**Where they live** (package `terms-launch`, built 3 Oct 2026; the hub's `src/terms.mjs` and README "Terms of Service
+and Privacy Policy"):
 
-- On the hub: `public/terms.html` and `public/privacy.html`, served at **`/terms`** and **`/privacy`**. The version
-  date is in the first line of each page. *Not built yet: the hub has no `/terms` or `/privacy` route today.*
-- Old versions stay readable at **`/terms/YYYY-MM-DD`** and **`/privacy/YYYY-MM-DD`** (proposal; one more route and a
-  `public/legal/<version>/` folder). Keep the markdown source of each published version in this folder too, as
-  `docs/legal/published/YYYY-MM-DD/terms.md` and `privacy.md`, and never edit a published one.
-- The current version is in the hub's `settings` table as `terms_version` (`src/accounts.mjs` reads it and falls back
-  to `"draft"` when it is unset).
-- The programs carry the version they show the owner in `TERMS_VERSION` in `src/lib/hub-account.ts` (today
-  `"2026-10-02-draft"`), sent as `termsVersion` with `POST /v1/accounts/start` and kept in `Shop.termsVersion`.
-  Better: have the hub send its `terms_version` in the claim answer and drop the constant, so a new version never
-  needs a program release. Until then, update the constant with every version.
+- On the hub, as markdown: `legal/terms-<version>.md` and `legal/privacy-<version>.md` in the hub repo (shipped in its
+  Docker image), rendered to HTML when asked (headings, paragraphs, lists, quotes, tables, links, bold, italic and
+  code; everything else escaped; no script on the page). Never edit a published pair: add a new one.
+- **`/terms`** and **`/privacy`** show the version in force, with the version in the page's first line; old versions
+  stay readable at **`/terms/<version>`** and **`/privacy/<version>`**, saying they are earlier and linking the current
+  one.
+- The version in force is the hub's **`TERMS_VERSION`** variable (Railway), or when it is unset the newest pair on file
+  (drafts don't count once a published version exists). `GET /v1/terms/current` names it (no key needed).
+- The programs follow the hub: Settings → Account asks the hub for the version in force (kept 10 minutes) and shows it
+  next to the tick; `TERMS_VERSION` in `src/lib/hub-account.ts` (`"2026-10-03-draft"`) is only the fallback when the
+  hub doesn't answer. A new version needs no program release.
 
-**How acceptance is recorded:**
+**How acceptance is recorded** (the hub keeps the latest on the account, `accounts.terms_version` and `terms_at`, and
+every acceptance in `terms_acceptances`: version, how, and for a Checkout the shop and the Checkout Session):
 
-| When | Where | Built? |
-|---|---|---|
-| Account started from the program (Settings → Account, the tick) | hub `accounts.terms_version`, `terms_at` (from the program's `termsVersion`) | Yes |
-| Account made on the hub (`/account` → Create an account, the tick) | hub `accounts.terms_version`, `terms_at` (from `settings.terms_version`) | Yes |
-| Each Stripe Checkout (Subscribe) | the same columns, updated | **No**: `billing.mjs` checkout doesn't record it yet; the design (4.2) says it should, and the Terms (section 23) say it does |
-| A newer version is out | "We updated our terms" line at the next hub sign-in and on Settings → Account, with a tick to accept | **No** |
+| When | How it's recorded |
+|---|---|
+| Account started from the program (Settings → Account, the tick) | the version the page showed, sent as `termsVersion` (via `program`) |
+| Account made on the hub (`/account` → Create an account, the tick) | the version in force (via `signup`) |
+| Each Stripe Checkout (Subscribe) | the version in force, every time (via `checkout`), and in the subscription's Stripe metadata (`hub_terms_version`). An account behind the version in force must tick the box first |
+| A newer version is out | `/account` shows "We updated our terms" with a tick at the next sign-in (via `account`); Settings → Account shows the version accepted and, when the hub has a newer one, a line pointing to the account page. The claim answer carries `terms: { version, accepted }`, so the program learns what the account accepted on the hub |
 
-**Links to the pages** (design 4.2): Settings → Account (built), the hosted `/signup`, the Windows first-run sign-up,
-the login page footer, and Settings → Assistant (for the Assistant section of the Privacy Policy).
+**Links to the pages** (design 4.2): Settings → Account, the hosted `/signup` and the login page footer (both only
+when the install is on a hub; the Windows first-run sign-up shows nothing, since the install joins a hub later), the
+hub's `/account` (sign-up tick, footer) and front page. Not yet: Settings → Assistant (the Assistant isn't built).
 
 **Turning a draft into a published version:** fill every placeholder; settle every `[OWNER]` and `[LAWYER]` note and
-delete it; delete the DRAFT banner; set the version line; convert to HTML in the hub's plain page style (like
-`public/account.html`); publish both pages; set `settings.terms_version`; update `TERMS_VERSION`; archive the source
-under `docs/legal/published/<version>/`.
+delete it; delete the draft's own banner; set the version line; add the pair to the hub repo's `legal/` as
+`terms-<version>.md` and `privacy-<version>.md` (the version without `-draft`); deploy the hub and set
+`TERMS_VERSION=<version>` on Railway on the day it comes into force; update this folder's drafts to match. Every
+account is asked to accept it at its next sign-in on the hub, and before its next Checkout.
 
 ## 2. Placeholders to fill in
 
@@ -114,10 +121,10 @@ Still to decide (each is an `[OWNER]` note in the drafts):
   program draws a factory-setting figure from a local manual and the install is on a hub. Every other kind of sharing
   is an explicit "offer" (`src/lib/offer.ts`), as the 27 Sep decision requires. The figure is a crop of a
   manufacturer's manual page with nothing about the shop in it, but it is not chosen per item.
-- **The hub has no `/terms` or `/privacy` route**, and Checkout doesn't record the terms version (section 1 above).
-- **The hub's README still says** members get the join key "after a one-time contribution toward server costs",
-  against the 26 Sep decision that the hub is free (also noted in hub-accounts-billing-design.md section 8). Fix
-  before the Terms say the hub is free.
+- ~~The hub has no `/terms` or `/privacy` route, and Checkout doesn't record the terms version.~~ Built 3 Oct 2026
+  (section 1).
+- ~~The hub's README says members get the join key "after a one-time contribution toward server costs".~~ Fixed
+  3 Oct 2026: it says membership is free.
 - **Partner messages are readable by the hub's operator** (plain JSON, a year after delivery, three years at most).
   The Privacy Policy says so plainly; HANDOFF 4 item 6 (L134/I27, end-to-end signing) would let it say less.
 - **The Assistant isn't built.** Privacy 5.7 and Terms 14 describe the design (ai-assistant-scope.md); check them
@@ -156,16 +163,16 @@ Still to decide (each is an `[OWNER]` note in the drafts):
 
 - [ ] Owner fills in every placeholder (section 2) and settles every `[OWNER]` note (section 3).
 - [ ] Code changes the drafts rely on, or the drafts changed to match the code: figure sharing (an offer, or disclosed);
-      customer delete/merge (L126) or a stated process; terms recorded at Checkout; "We updated our terms" line;
-      `/terms` and `/privacy` routes with archived versions; the hub README's "one-time contribution" line.
+      customer delete/merge (L126) or a stated process. (Built 3 Oct 2026: terms recorded at Checkout; "We updated our
+      terms" line; `/terms` and `/privacy` routes with archived versions; the hub README's "one-time contribution" line.)
 - [ ] Lawyer reviews both drafts; every `[LAWYER]` note answered and removed.
 - [ ] Anthropic and Stripe terms re-read on the publication date; quotes and dates in Privacy 5.7 updated.
 - [ ] The Assistant sections match what shipped (or are left out until it ships).
-- [ ] Version string chosen; DRAFT banner removed; both pages converted to HTML and published on the hub.
-- [ ] `settings.terms_version` set on the production hub; `TERMS_VERSION` updated in the program (or fetched from the
-      hub) and released.
-- [ ] Links checked from Settings → Account, hosted `/signup`, the Windows first-run sign-up, the login footer and
-      Settings → Assistant.
-- [ ] Source archived in `docs/legal/published/<version>/`.
+- [ ] Version string chosen; the drafts' own banner removed; the pair added to the hub's `legal/` as
+      `terms-<version>.md` and `privacy-<version>.md` and deployed.
+- [ ] `TERMS_VERSION=<version>` set on the production hub on the day it comes into force (the programs follow the hub;
+      `TERMS_VERSION` in `src/lib/hub-account.ts` is only the fallback, updated at the next release).
+- [ ] Links checked from Settings → Account, hosted `/signup`, the login footer and the hub's `/account` (and
+      Settings → Assistant once it exists).
 - [ ] Existing account holders emailed about the first published version, and asked to accept at their next sign-in.
 - [ ] HANDOFF.md updated: one of the owner's four conditions for charging ("terms/privacy page") is met.

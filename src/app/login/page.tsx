@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import Link from "next/link";
 import { signIn } from "@/auth";
+import { rememberThisDevice } from "@/lib/known-device";
 import { appName } from "@/lib/shops";
 import { isDesktop } from "@/lib/modules";
 import { HubResetPrompt } from "@/components/hub-reset-prompt";
+import { HubLegalLinks } from "@/components/hub-legal-links";
 
 /**
  * Where to go after signing in: the page the person was sent from (the proxy adds ?callbackUrl=<that page's address>), as
@@ -36,12 +38,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         email: formData.get("email"),
         password: formData.get("password"),
         redirectTo: to,
+        redirect: false,
       });
     } catch (e) {
       // Back to the form with the same destination, so a second try still ends up on the page that was asked for.
       if (e instanceof AuthError) redirect(`/login?error=1${to === "/" ? "" : `&callbackUrl=${encodeURIComponent(to)}`}`);
       throw e;
     }
+    // Signed in: this browser is known for that login from now on, so a flood of wrong passwords sent at the account
+    // from elsewhere can't queue it out (src/lib/known-device.ts).
+    await rememberThisDevice(formData.get("email"));
+    redirect(to);
   }
 
   return (
@@ -99,6 +106,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </Link>
           </p>
         )}
+        {/* StitchHub's Terms of Service and Privacy Policy, when this install is on a hub. */}
+        <HubLegalLinks />
       </form>
       {/* The Windows program's own window only: a reset the owner asked for on their StitchHub account. */}
       <HubResetPrompt pull />

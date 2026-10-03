@@ -7,18 +7,56 @@ import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { str } from "@/lib/format";
-import { adoptInstall, claimShopNow, formerInstall, hubDefaultUrl, hubFetch, hubReachable, hubRequest, hubState, hubStatus, syncHub } from "@/lib/hub";
+import { adoptInstall, checkHubUrl, claimShopNow, formerInstall, hubDefaultUrl, hubFetch, hubReachable, hubRequest, hubState, hubStatus, syncHub } from "@/lib/hub";
 import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
 import type { ModuleState } from "@/lib/module-info";
 import { getModules, isDesktop } from "@/lib/modules";
 import type { CurrentUser } from "@/lib/session";
 import { appName, isPlatformAdmin, programVersion, shopKindOf } from "@/lib/shops";
+import { compareTermsVersions, validTermsVersion } from "@/lib/terms-version";
 
 /**
- * The version of the hub's terms and privacy page this program names when it starts an account. The hub keeps its own
- * (settings.terms_version) and shows "we updated our terms" when a newer one is published (package terms-launch).
+ * The version of the hub's Terms of Service and Privacy Policy this program falls back on when the hub doesn't say (an
+ * older hub, or out of reach). The version shown and sent is the hub's own, from GET /v1/terms/current (hubTermsVersion),
+ * so a new version needs no program release (package terms-launch).
  */
-export const TERMS_VERSION = "2026-10-02-draft";
+export const TERMS_VERSION = "2026-10-03-draft";
+
+const TERMS_FRESH_MS = 10 * 60_000; // the hub's answer is good for 10 minutes
+const TERMS_RETRY_MS = 60_000; // no answer: asked again after a minute, the last answer (or TERMS_VERSION) meanwhile
+const termsCache = ((globalThis as unknown as { __hubTerms?: Map<string, { version: string; until: number }> }).__hubTerms ??= new Map());
+
+/**
+ * The terms version in force on the hub at `base` (the tick in Settings → Account names it, and the account start sends
+ * it): GET /v1/terms/current, kept for 10 minutes; TERMS_VERSION when the hub doesn't answer with one.
+ */
+export async function hubTermsVersion(base: string): Promise<string> {
+  let url: string;
+  try {
+    url = checkHubUrl(base);
+  } catch {
+    return TERMS_VERSION;
+  }
+  const had = termsCache.get(url);
+  if (had && had.until > Date.now()) return had.version;
+  let version: string | null = null;
+  try {
+    const r = await fetch(`${url}/v1/terms/current`, { redirect: "manual", signal: AbortSignal.timeout(2500) });
+    if (!r.ok) await r.body?.cancel().catch(() => undefined);
+    const v = r.ok ? ((await r.json()) as { version?: unknown } | null)?.version : undefined;
+    if (validTermsVersion(v)) version = v;
+  } catch {
+    version = null;
+  }
+  const answer = version ?? had?.version ?? TERMS_VERSION;
+  termsCache.set(url, { version: answer, until: Date.now() + (version ? TERMS_FRESH_MS : TERMS_RETRY_MS) });
+  return answer;
+}
+
+/** The account accepted an older version than the hub's (or one that isn't a version): the hub asks it to accept again. */
+export function termsBehind(accepted: string | null | undefined, current: string): boolean {
+  return Boolean(accepted) && compareTermsVersions(accepted, current) < 0;
+}
 
 /** Days after a company was made before Settings → Account nags a shop that never connected (decision 2). */
 export const NAG_AFTER_DAYS = 60;
@@ -57,8 +95,11 @@ export async function startHubAccountFor(user: CurrentUser, fd: FormData): Promi
   if (!email || !isValidEmail(email)) throw new UserError(EMAIL_HELP);
   if (str(fd.get("terms")) !== "on") throw new UserError("Tick the box to accept the terms and the privacy policy.");
   const { shop, body } = await companyBody(user.shopId);
-  const start = { ...body, email, termsVersion: TERMS_VERSION };
   const s = await hubState();
+  // The version the page showed next to the tick; else the one in force on the hub the account starts on.
+  const shown = str(fd.get("termsVersion"));
+  const termsVersion = validTermsVersion(shown) ? shown : await hubTermsVersion(s?.url && s.installKey ? s.url : hubDefaultUrl());
+  const start = { ...body, email, termsVersion };
   let answer: StartAnswer;
   if (s?.url && s.installKey) {
     answer = await (async () => (await (await hubFetch("/v1/accounts/start", { method: "POST", json: start, shopRef: shop.id })).json()) as StartAnswer)().catch(explain);
@@ -81,7 +122,7 @@ export async function startHubAccountFor(user: CurrentUser, fd: FormData): Promi
       await adoptInstall({ url: base, hubName: answer.hubName ?? null, installId: answer.installId, installKey: answer.installKey, scope: "pending" });
     }
   }
-  await db.shop.update({ where: { id: shop.id }, data: { termsVersion: TERMS_VERSION } });
+  await db.shop.update({ where: { id: shop.id }, data: { termsVersion } });
   const st = answer.shop ?? {};
   await applyStanding(shop.id, {
     account: answer.account ?? { email, verified: false },
@@ -187,6 +228,8 @@ export type AccountView = {
   ownerEmail: string;
   mayManage: boolean;
   desktop: boolean;
+  /** The hub's terms version in force (for the tick), and whether the account accepted an older one. */
+  terms: { current: string; behind: boolean };
 };
 
 /** Everything Settings → Account shows for the signed-in user's company. */
@@ -221,10 +264,12 @@ export async function accountView(user: CurrentUser): Promise<AccountView> {
   } catch {
     mayManage = false;
   }
+  const hubUrl = (connected && s?.url) || hubDefaultUrl();
+  const current = await hubTermsVersion(hubUrl);
   return {
     shop,
     base: modules.states.base,
-    hubUrl: (connected && s?.url) || hubDefaultUrl(),
+    hubUrl,
     hubName: s?.hubName ?? null,
     connected,
     scope: connected ? (s?.scope === "partner" || s?.scope === "pending" ? s.scope : "member") : null,
@@ -233,5 +278,6 @@ export async function accountView(user: CurrentUser): Promise<AccountView> {
     ownerEmail: owner?.email ?? user.email,
     mayManage,
     desktop: isDesktop(),
+    terms: { current, behind: Boolean(shop.hubAccountEmail) && termsBehind(shop.termsVersion, current) },
   };
 }
