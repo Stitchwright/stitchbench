@@ -1013,7 +1013,7 @@ accounts and billing: design first).
    - Before the pages go live: the hub's `/terms` and `/privacy` routes, Checkout recording the accepted version, and
      `TERMS_VERSION` in `src/lib/hub-account.ts` (still "2026-10-02-draft"): billing package 5.
 
-18. **A manual repository on StitchHub** (owner decision, 3 Oct 2026; design first, then build). The owner chose to
+18. **A manual repository on StitchHub** (owner decision, 3 Oct 2026, confirmed: seed with what makers publish freely, techs upload the rest; design first, then build). The owner chose to
    host manuals on the hub, including manuals repair techs upload, and to handle takedown notices himself. This
    replaces the old "manuals are local-only" rule (AGENTS.md updated to point here). Points for the design: the
    US safe harbor for user uploads (17 U.S.C. 512(c)) needs a registered DMCA agent, a takedown and counter-notice
@@ -1024,7 +1024,7 @@ accounts and billing: design first).
    the terms gain the uploader's licence and warranties. A lawyer reviews the takedown process before launch.
    Design: `docs/plans/manual-repository-design.md`.
 
-15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026; not started). The factory settings refer to test
+15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026). **Data extracted 3 Oct**: `prisma/seed-data/service_modes.json`, 136 procedures from 124 service manuals (82 high, 53 medium, 1 low confidence; Brother 46, Janome 34, Elna 9, Baby Lock 8, Viking 7, Bernina 6, Pfaff 6, Juki 5 and more; Tajima's manuals have none); 249 of the 250 factory settings that mention test mode now have an entry procedure, and 167 of 168 numbered references match a test. No passwords recorded (a row stops at the prompt). The owner's sheet to check and correct: `C:\Manuals\_business-notes\Service_Modes.xlsx`, with `SERVICE_MODES_NOTES_2026-10-03.md` (eight things to try on a machine; the PC6500 factory row's "test mode 10" is probably wrong); `scripts/library/service_modes_from_xlsx.py` turns the corrected sheet back into the seed. Still to build: the ServiceMode table, the seed and Windows reference loaders, the card on the machine and ticket pages (match on modelKeys alone: rows carry twin models of other brands). Original plan: The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
    mode 36") but none says how to enter it. Plan: a reference set like TensionSpec / FactorySetting (per model family:
    how to enter, how to exit, what the numbered tests do, a warning for modes that clear settings, source file and
