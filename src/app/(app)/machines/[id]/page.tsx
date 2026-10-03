@@ -23,6 +23,8 @@ import { UnitBadge } from "@/components/vac/unit-badge";
 import { SuppliesThatFit } from "@/components/vac/supplies-that-fit";
 import { ActionForm, Submit } from "@/components/action-form";
 import { convertMachineKind, updateMachine } from "@/actions/records";
+import { MachineMergePanel, type MergeParams } from "@/components/merge-panel";
+import { firstValues } from "@/lib/search-params";
 
 type Done = Record<string, { done: boolean; by?: string; at?: string }>;
 type Readings = Record<string, { found?: string | number; left?: string | number } | undefined>;
@@ -38,10 +40,11 @@ function reading(def: ReadingDef, v: string | number | undefined) {
   return def.unit ? `${v} ${def.unit}` : String(v);
 }
 
-export default async function MachinePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MachinePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
   const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
+  const sp = firstValues(await searchParams);
   const m = await db.machine.findFirst({
     where: { id, shopId: user.shopId },
     include: {
@@ -356,6 +359,8 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
               </details>
             )}
           </Section>
+
+          <MachineMergePanel user={user} machine={{ id: m.id, brand: m.brand, model: m.model }} noun={kind.noun} sp={sp} />
 
           <ModelMachines shopId={user.shopId} brand={m.brand} model={m.model} excludeMachineId={m.id} title={`Other ${m.brand} ${m.model}s we've worked on`} hideWhenEmpty />
         </div>
