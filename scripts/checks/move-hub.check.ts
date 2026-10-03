@@ -406,7 +406,18 @@ async function main() {
     const fileD = await download(d, dMove);
     await dropCompany(d.shopId);
     await setHub(mock, "none");
+    // A file's hub is adopted only when it is this install's own default hub: a hostile file can't point the install elsewhere.
+    process.env.DEFAULT_HUB_URL = "http://127.0.0.1:9";
+    const callsD = mock.calls.length;
+    const sumD0 = await importCompany(fileD.file, { by: "operator" });
+    assert.equal(sumD0.hub.status, "other-hub", sumD0.hub.message);
+    assert.match(sumD0.hub.message, /join the hub from Settings/);
+    assert.ok(!(await hubState())?.url, "no hub adopted");
+    assert.equal(mock.calls.length, callsD, "the file's hub was never asked");
+    await dropCompany(d.shopId);
+    process.env.DEFAULT_HUB_URL = mock.url;
     const sumD = await importCompany(fileD.file, { by: "operator" });
+    delete process.env.DEFAULT_HUB_URL;
     assert.equal(sumD.hub.status, "done", sumD.hub.message);
     assert.match(sumD.hub.message, /this install joined it/);
     const keyless = mock.calls.filter((x) => x.path === "/v1/shops/move").at(-1)!;

@@ -109,7 +109,9 @@ export async function checkSignIn(credentials: unknown, request: Request | undef
   if (ip && count(`i:${ip}`) >= PER_ADDRESS) return null;
 
   // A browser this login signed in on before: its own count, not the account's queue.
-  const device = knownDeviceFor(knownDeviceCookie(request), email);
+  const cookie = knownDeviceCookie(request);
+  const sv = cookie ? ((await db.user.findUnique({ where: { email }, select: { sessionVersion: true } }))?.sessionVersion ?? 0) : 0;
+  const device = knownDeviceFor(cookie, email, Date.now(), sv);
   if (device && count(`d:${device}`) < PER_DEVICE) {
     const keys = ip ? [`d:${device}`, `i:${ip}`] : [`d:${device}`];
     for (const k of keys) begin(k);

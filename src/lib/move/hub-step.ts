@@ -17,7 +17,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { isUserError, UserError } from "@/lib/user-error";
 import { seal, unseal } from "@/lib/messaging/secrets";
-import { adoptInstall, checkHubUrl, hubFetch, hubId, hubRequest, hubScope, hubState, hubStatus } from "@/lib/hub";
+import { adoptInstall, checkHubUrl, hubDefaultUrl, hubFetch, hubId, hubRequest, hubScope, hubState, hubStatus } from "@/lib/hub";
 import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
 import { catchUpPartnerMessages } from "@/lib/partners";
 import { appName, isPlatformAdmin, programVersion, shopKindOf } from "@/lib/shops";
@@ -173,6 +173,16 @@ async function repoint(shopId: string, moveId: string, url: string, token: strin
       moveId,
       "other-hub",
       `StitchHub: this install is on another hub (${here}) than the one the company was on (${url}), so that hub can't be told the company is here. Its partner links, marketplace listings and shared notes stay with the old install there. Ask that hub's admin to move it by hand (Moves → Move this shop), or join that hub here and press "Re-point the hub".`,
+    );
+  }
+  // On no hub yet, a hub named by a move file is adopted only when it is this install's own default hub: a hostile file
+  // must not point the install at some other hub. Anything else: skipped, and the administrator joins from Settings.
+  if (!here && url !== hubAddress(hubDefaultUrl())) {
+    return failed(
+      moveId,
+      "other-hub",
+      `StitchHub: the move file names a hub (${url}) that isn't this install's hub, and this install is on no hub yet, so it wasn't joined. The company is in; join the hub from Settings → Account (the StitchBench administrator can do it), and ask that hub's admin to move the company by hand (Moves → Move this shop) if its partner links should follow.`,
+      false,
     );
   }
   const body = { shopRef: shopId, token, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion() };

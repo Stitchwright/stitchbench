@@ -373,6 +373,11 @@ async function checkFile(file: string, now: Date, onProgress?: (p: ImportProgres
   if (unknown.size) {
     throw new UserError(`The move file has ${unknown.size === 1 ? "a column" : "columns"} this version doesn't know: ${[...unknown].slice(0, 10).join(", ")}. Update this program first, then import.`);
   }
+  // A login with a reserved (StitchBench administrator) address would make a platform administrator: refused, as sign-up is.
+  const reserved = [...new Set(emails.filter((e) => isPlatformAdmin(e)).map((e) => e.toLowerCase()))];
+  if (reserved.length) {
+    throw new UserError(`The move file has a login whose email address is reserved on this StitchBench (${reserved.join(", ")}). Change it on the other install (Settings → People), make the move file again, then import.`);
+  }
   // Refusal 4: login emails are unique on an install (HANDOFF 2c L7/L31 not built).
   if (emails.length) {
     const taken = await db.$queryRawUnsafe<{ email: string }[]>(`SELECT email FROM "User" WHERE lower(email) = ANY($1::text[]) ORDER BY email`, [...new Set(emails.map((e) => e.toLowerCase()))]);
