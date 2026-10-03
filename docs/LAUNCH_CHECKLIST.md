@@ -54,6 +54,9 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
       in HANDOFF 2ad), the webhook to the hub with its **ten** events (the hub README lists them; `charge.dispute.closed`
       and `charge.dispute.updated` are new), the Customer Portal settings for switching plans (hub README). Test a subscription with a test card,
       including one during the trial (no charge until the trial ends). Then switch to live keys.
+- [ ] Customer Portal: set plan switching to invoice immediately (or turn plan switching off there, so every switch
+      goes through the hub's own Switch button, which charges an upgrade at once). Good to know: a full refund now
+      cancels the shop's subscription; for a goodwill refund where the shop stays, refund part of the payment.
 - [ ] In Stripe's Billing settings, turn on the reminder email before a free trial ends, so no shop is surprised by
       its first charge (a lawyer question too: some states require that notice for automatic renewals).
 
