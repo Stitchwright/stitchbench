@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   // A test build (STITCH_TEST_BUILD=1 npm run build) accepts development license keys against a local database. The
   // value is fixed here at build time, so a normal build can't be put into test mode at run time (modules-design.md 3.3).
   env: { STITCH_TEST_BUILD: process.env.STITCH_TEST_BUILD === "1" ? "1" : "" },
+  // The standalone build copies what the server code is traced to need. A dynamic file path read as a pattern once
+  // dragged the whole repository in (the Windows wrapper's installer output included); these never belong in it.
+  outputFileTracingExcludes: { "*": ["./desktop/**", "./docs/**", "./tests/**", "./scripts/**", "./.railway/**", "./node_modules/railway/**"] },
 };
 
 export default nextConfig;

@@ -10,6 +10,13 @@ import "server-only";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
+/**
+ * Joins library paths without the bundler seeing a pattern. Turbopack traces `path.join(root, a, b)` with a literal
+ * fallback ("Unsorted") as a file glob and packed the whole repository into the standalone build (807 MB instead of
+ * 147). Going through a spread the bundler can't follow keeps the trace to the code itself.
+ */
+const under = (...parts: string[]): string => path.join(...parts.map(String));
 import type { ManualLink } from "@/generated/prisma/client";
 import { UserError } from "@/lib/user-error";
 import { db } from "@/lib/db";
@@ -90,7 +97,7 @@ export function libraryDocId(relPath: string): string {
 }
 
 const toRel = (...parts: string[]) => parts.join("\\");
-const toFull = (root: string, rel: string) => path.join(root, ...rel.split("\\"));
+const toFull = (root: string, rel: string) => under(root, ...rel.split("\\"));
 
 // ---------- is it here already? ----------
 
@@ -161,17 +168,17 @@ export async function fileDownload(l: LinkLike, root: string, data: Buffer): Pro
   const stem = linkStem(l);
   const sidecar = { linkId: l.id, url: l.url, title: l.title, brand: l.brand, models: l.models, docType: l.docType, downloadedAt: new Date().toISOString() };
   if (!canFile(l)) {
-    const inbox = path.join(root, "_inbox");
+    const inbox = under(root, "_inbox");
     await fs.promises.mkdir(inbox, { recursive: true });
     const name = await writeUnusedPdf(inbox, stem, data);
-    await fs.promises.writeFile(path.join(inbox, `${name}.json`), JSON.stringify(sidecar, null, 2));
+    await fs.promises.writeFile(under(inbox, `${name}.json`), JSON.stringify(sidecar, null, 2));
     return { path: toRel("_inbox", name), filed: false };
   }
   const f = await filingFolders(l);
-  const dir = path.join(root, f.category, f.brand);
+  const dir = under(root, f.category, f.brand);
   await fs.promises.mkdir(dir, { recursive: true });
   const name = await writeUnusedPdf(dir, stem, data);
-  await fs.promises.writeFile(path.join(dir, `${name}.json`), JSON.stringify(sidecar, null, 2));
+  await fs.promises.writeFile(under(dir, `${name}.json`), JSON.stringify(sidecar, null, 2));
   const rel = toRel(f.category, f.brand, name);
   const row = {
     path: rel,
