@@ -47,7 +47,7 @@ test("signing in goes back to the page that was asked for, and never to another 
   const p2 = await other.newPage();
   await p2.goto(`/login?callbackUrl=${encodeURIComponent("https://evil.example/")}`);
   await signIn(p2, owner);
-  await expect(p2.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(p2.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
   expect(new URL(p2.url()).origin).toBe(new URL(baseURL!).origin);
   await other.close();
 });
@@ -55,7 +55,7 @@ test("signing in goes back to the page that was asked for, and never to another 
 test("opening /api/session-end from a link doesn't sign anyone out", async ({ page }) => {
   await page.goto("/login");
   await signIn(page, owner);
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
   await page.goto("/api/session-end"); // what a link on another site would do
   await expect(page).not.toHaveURL(/\/login/);
   await page.goto("/parts");
@@ -79,7 +79,7 @@ test("a tech has no People; a role change and removed access end the session whe
   const t = await device.newPage();
   await t.goto("/login");
   await signIn(t, tech);
-  await expect(t.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(t.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
   await t.goto("/settings");
   await expect(t.getByRole("button", { name: "Add person" })).toHaveCount(0);
 
@@ -136,7 +136,7 @@ test("repeated wrong passwords slow that account down, and the right password st
     // The right password, after its 4 s wait, gets in.
     const right = await attempt(who.password);
     expect(right, "8th try waits 4 s").toBeGreaterThanOrEqual(4000);
-    await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
   } finally {
     await remove("User", id);
   }
@@ -214,7 +214,7 @@ test("a browser that signed in before gets in while the account is flooded with 
     await heldOut(await stranger.newPage(), who);
     const t0 = Date.now();
     await fillIn(page, who);
-    await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible({ timeout: 10_000 });
     expect(Date.now() - t0, "no wait in the queue").toBeLessThan(10_000);
   } finally {
     await guesser.dispose();
@@ -242,7 +242,7 @@ test("the browser a reset link is used in gets in while the account is flooded",
     await expect(page).toHaveURL(/\/login\?reset=1/);
     await heldOut(await stranger.newPage(), fresh);
     await fillIn(page, fresh);
-    await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible({ timeout: 10_000 });
   } finally {
     await guesser.dispose();
     await stranger.close();

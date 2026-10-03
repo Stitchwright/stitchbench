@@ -16,7 +16,7 @@ test("draws a timing figure from the tech's own manual", async ({ page }) => {
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL!);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD!);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   // Picked files live in memory for the visit, so move around with in-app links from here on.
   await page.getByRole("link", { name: "My manuals" }).click();
