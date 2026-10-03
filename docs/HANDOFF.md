@@ -701,6 +701,13 @@ and Stripe Tax, not these).
   yesterday (a key made after 8 pm Eastern started tomorrow in the shop's zone and showed as not yet on), and the
   scheduling-messaging spec's "tomorrow" is the shop zone's, not UTC's (after 8 pm Eastern its class was two days
   out and no reminder queued). Neither was a product bug.
+- **Ultra review (2 Oct, two passes, main..8a18914 and 8a18914..HEAD)**: four findings, all fixed the same night.
+  Hand-rolled actions that skipped the lapse gate (moveStock, the two imports, the campaign test send, the bag
+  reminders) now call `requireBaseWritable`, and `lapse-allow.ts` gained `HAND_ALLOWED` (hand-rolled reads and
+  finishing steps) so the base-license check fails on any hand-rolled action it doesn't account for. The shared
+  public-POST budget is per pool (`forms` 300, `shop` 3000, `webhook` 1200 a minute), so cart clicks can't 429 a
+  payment webhook. An order-mail cap trip no longer stops the channel's other notices. The per-shop payment queue
+  forgets a shop when its work is done (the cleanup compared two different promises).
 - **Rebuilt and rerun tonight** on the final build: smoke, modules-basics, modules-lapse, notices, campaigns (text
   test skipped by the clock), classes, calendar, parts-in, online-booking, online-shop, register-bookings, vac-shop,
   appliances, scheduling-messaging. Not run: two-servers, partner-runs, and hub (it skips without HUB_JOIN_KEY and

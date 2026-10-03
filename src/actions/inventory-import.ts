@@ -2,6 +2,7 @@
 
 // Filling inventory fast: look a store barcode up online, and load a supplier's line sheet or a spreadsheet.
 import { revalidatePath } from "next/cache";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { isUserError } from "@/lib/user-error";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { lookupBarcode, type BarcodeInfo } from "@/lib/barcode-lookup";
@@ -26,6 +27,7 @@ export type ImportOptions = Options;
 export async function importItems(rows: ImportRow[], opts: ImportOptions): Promise<{ added: number; updated: number; skipped: number; unmatched?: string[] } | { error: string }> {
   try {
     const user = await requireAdmin();
+    await requireBaseWritable(user);
     const result = await runImport(user.shopId, user.id, rows, opts);
     revalidatePath("/parts", "layout");
     return result;

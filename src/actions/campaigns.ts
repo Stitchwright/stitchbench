@@ -4,6 +4,7 @@
 // "marketing") except cancelCampaign (an admin may always stop what is going out). The work is in
 // src/lib/messaging/campaigns.ts.
 import { redirect } from "next/navigation";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { revalidatePath } from "next/cache";
 import { isUserError, safe, type ActionResult } from "@/lib/action";
 import { assertId } from "@/lib/input";
@@ -35,6 +36,7 @@ export const saveCampaign = safe(async function saveCampaign(id: string | null, 
 export async function sendCampaignTest(id: string, fd: FormData): Promise<ActionResult> {
   try {
     const user = await marketingAdmin();
+    await requireBaseWritable(user);
     const detail = await sendCampaignTestAs(user, assertId(id), fd);
     return { ok: true, note: detail };
   } catch (e) {

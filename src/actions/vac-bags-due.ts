@@ -3,6 +3,7 @@
 // "Bags due" (modules-design.md 10.c′): the call list's marks, the days-between-bags setting and the one-off send.
 // Bodies in src/lib/vac/bags-due.ts.
 import { revalidatePath } from "next/cache";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { isUserError, safe, type ActionResult } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { bagsSendWords, markCalledFor, saveBagDaysFor, sendBagRemindersFor, snoozeBagsFor, stopBagsFor } from "@/lib/vac/bags-due";
@@ -40,6 +41,7 @@ export const saveBagDays = safe(async function saveBagDays(formData: FormData) {
 export async function sendBagReminders(): Promise<ActionResult> {
   try {
     const user = await requireAdmin();
+    await requireBaseWritable(user);
     const r = await sendBagRemindersFor(user);
     refresh();
     return { ok: true, ...(r.skipped ? { warn: bagsSendWords(r) } : { note: bagsSendWords(r) }) };

@@ -650,14 +650,12 @@ const applying = new Map<string, Promise<unknown>>();
 async function oneAtATime<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = applying.get(key) ?? Promise.resolve();
   const run = prev.then(fn, fn);
-  applying.set(
-    key,
-    run.catch(() => undefined),
-  );
+  const tail = run.catch(() => undefined);
+  applying.set(key, tail);
   try {
     return await run;
   } finally {
-    if (applying.get(key) === run.catch(() => undefined)) applying.delete(key);
+    if (applying.get(key) === tail) applying.delete(key);
   }
 }
 

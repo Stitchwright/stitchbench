@@ -50,7 +50,53 @@ export type WhileLapsed = (typeof WHILE_LAPSED)[number];
  * line falls: setStatus allows a closing status, completeSale a return (every line a refund), the rest refuse while
  * lapsed. Named here so the check script can see each one exists and the list is in one place.
  */
-export const BY_HAND = ["setStatus", "completeSale", "quickAddCustomer", "takeInMachine", "scanCode", "saveCounts", "enrollAtRegister", "makePartnerCode", "placePartnerOrder"] as const;
+export const BY_HAND = [
+  "setStatus",
+  "completeSale",
+  "quickAddCustomer",
+  "takeInMachine",
+  "scanCode",
+  "saveCounts",
+  "enrollAtRegister",
+  "makePartnerCode",
+  "placePartnerOrder",
+  // Stock received or recounted, imports, and marketing sends by hand are new work: refused while lapsed
+  "moveStock",
+  "importCustomers",
+  "importItems",
+  "sendCampaignTest",
+  "sendBagReminders",
+] as const;
+
+/**
+ * Hand-rolled actions that need no gate: they only read (searches, lookups, histories, lists for the register), or
+ * they finish work already in (a part that came in for an open ticket, a ticket told ready or back at the counter, a
+ * settings test message). The check script asserts that every exported action not wrapped with safe() is in BY_HAND
+ * or here, so a new hand-rolled write can't slip past the rule unnoticed.
+ */
+export const HAND_ALLOWED = [
+  "itemByCode",
+  "findItems",
+  "pickupJobs",
+  "pickupJobByTag",
+  "saleForReturn",
+  "findCustomers",
+  "bookingsDue",
+  "findStockedParts",
+  "openClassSeats",
+  "barcodeDetails",
+  "manualLinkHistory",
+  "crossRefHistory",
+  "vacSupplies",
+  "customerVacuums",
+  "unitsForSale",
+  "unitsToReturn",
+  "receiveWaits",
+  "tellThenSendReady",
+  "markBackAtCounter",
+  "markManyBack",
+  "sendTestMessage",
+] as const;
 
 /**
  * What else keeps working, outside actions: CSV exports (/api/export/*, /api/sales), printing, every page (read-only),
