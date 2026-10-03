@@ -487,7 +487,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Printed as cN(gf) - recorded as g.",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "dd15bffc8d6ee89ff232"
 },
 {
@@ -512,7 +514,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "supplement: new spec not on p10/p20. Retention force of the bobbin thread holder, not bobbin-case tension; recorded in other_specs only",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "91609bdeb3b22848fb3d"
 },
 {
@@ -789,7 +793,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Critical Measurements table + Bobbin Tension procedure. Field check: case should not drop when released; bounced it drops about 1-2 inches. Older-generation Melco manuals (Bravo, EMT16, EMT16PLUS, Bernina E16) print 22-25 g (220-250 mN) instead.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVOX"
+],
 "id": "6d49a0d55440c9a5cc14"
 },
 {
@@ -1371,7 +1377,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same manual also at: Embroidery\\SWF\\SWF_E-Series-Multihead_OperatorManual_MME-060809_2006.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "0100117fa3906a2a14f7"
 },
 {
@@ -1396,7 +1404,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "c34ea97aa4006f7c5037"
 },
 {
@@ -1421,7 +1431,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "6645e56c06ed64838b35"
 },
 {
@@ -1476,7 +1488,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"UKSERIES"
+],
 "id": "365f88414b22b247ef7a"
 },
 {
@@ -1528,7 +1542,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SBSERIES"
+],
 "id": "bbe52a39c2c29fdf25c0"
 },
 {
@@ -1553,7 +1569,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Lame (metallic film) used as the upper 'thread'. Under thread: set 'a little higher than for rayon yarn' (no number).",
-"modelKeys": [],
+"modelKeys": [
+"LAMEATTACHMENT"
+],
 "id": "7c0ecd3db9db1c007c45"
 },
 {
@@ -1578,7 +1596,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Chenille/lockstitch combination machine.",
-"modelKeys": [],
+"modelKeys": [
+"TCMX"
+],
 "id": "1bc5c7341eb739d2b27f"
 },
 {
@@ -1603,7 +1623,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Threading chapter.",
-"modelKeys": [],
+"modelKeys": [
+"TEJTIIC"
+],
 "id": "5f325dac2f8430f0adda"
 },
 {
@@ -1628,7 +1650,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Standard value table 'Thread (d/2) / Tension value (g)'.",
-"modelKeys": [],
+"modelKeys": [
+"TEJTIIC"
+],
 "id": "b94e4c62a07790e2f49e"
 },
 {
@@ -1653,7 +1677,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Standard value table 'Thread (d/2) / Tension value (g)'.",
-"modelKeys": [],
+"modelKeys": [
+"TEJTIIC"
+],
 "id": "2b520ce9f5bff54847a8"
 },
 {
@@ -1678,7 +1704,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Troubleshooting table; differs slightly from the threading-chapter values (100-130 g / 20-35 g).",
-"modelKeys": [],
+"modelKeys": [
+"TEJTIIC"
+],
 "id": "e7b27240cc42868bb07d"
 },
 {
@@ -1703,7 +1731,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TFGNII"
+],
 "id": "d00034fc2ed4243e961d"
 },
 {
@@ -1728,7 +1758,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "TFMS uses a shuttle hook (vs rotary hook on TFMX/TEMX-C).",
-"modelKeys": [],
+"modelKeys": [
+"TFMS"
+],
 "id": "96f240eecd665a308ff9"
 },
 {
@@ -1753,7 +1785,10 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMX",
+"TEMXC"
+],
 "id": "f0ef532581561dfc074a"
 },
 {
@@ -1778,7 +1813,12 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMXII",
+"TFMX",
+"TWMXC",
+"TUMXC"
+],
 "id": "1f4ea127d240649dc858"
 },
 {
@@ -1859,7 +1899,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TLMX"
+],
 "id": "7c9aeb62e9396dbee11a"
 },
 {
@@ -1884,7 +1926,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TLMX"
+],
 "id": "4859955bf0e8a421d431"
 },
 {
@@ -1909,7 +1953,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TMARK"
+],
 "id": "e0d36812734a45b57cd4"
 },
 {
@@ -1990,7 +2036,10 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMBPSC",
+"TMBRSC"
+],
 "id": "29e4ef192c322724cae8"
 },
 {
@@ -2044,7 +2093,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TMCPVF"
+],
 "id": "5b81d22d28864882b191"
 },
 {
@@ -2069,7 +2120,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "cf5e178c8663f7fab27c"
 },
 {
@@ -2094,7 +2147,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "33ef98c95a492cc13b1e"
 },
 {
@@ -2119,7 +2174,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TMEZKC"
+],
 "id": "dc227f95841729f822dd"
 },
 {
@@ -2144,7 +2201,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Same values repeated in the troubleshooting table.",
-"modelKeys": [],
+"modelKeys": [
+"TMEZSC"
+],
 "id": "0442b8570945b5e46604"
 },
 {
@@ -2544,7 +2603,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Adjustment chapter only. Upper differs from the 2011 BLG/BLG2/BLG3 manual (39-49 g). Says 'Check the inner rotary hook for embroidery' but gives no embroidery bobbin value.",
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "353741c38f530696f1b7"
 },
 {
@@ -2627,7 +2689,12 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Repair procedures checklist. Bobbin statement names 'BLG - BLCC' bobbin cases.",
-"modelKeys": [],
+"modelKeys": [
+"BLG",
+"BLL",
+"BLN",
+"BLSR"
+],
 "id": "6b1535778a8f5ed2f422"
 },
 {
@@ -2652,7 +2719,12 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Embroidery bobbin case; no separate embroidery upper value.",
-"modelKeys": [],
+"modelKeys": [
+"BLG",
+"BLL",
+"BLN",
+"BLSR"
+],
 "id": "0e057d68b3d03e8c1190"
 },
 {
@@ -2677,7 +2749,12 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Verified on page image. Values are on the \"Sewing/Embroidery Repair Procedures Checklist BLG/BLL/BLN/BLSR\" (printed pp. 67-68) bound into this file, which is named for BLR/BLSO; the file's own bulletin page covers only PC board replacement.",
-"modelKeys": [],
+"modelKeys": [
+"BLG",
+"BLL",
+"BLN",
+"BLSR"
+],
 "id": "c6a060f0a3f488ce91a3"
 },
 {
@@ -2702,7 +2779,12 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Verified on page image. Values are on the \"Sewing/Embroidery Repair Procedures Checklist BLG/BLL/BLN/BLSR\" (printed pp. 67-68) bound into this file, which is named for BLR/BLSO; the file's own bulletin page covers only PC board replacement.",
-"modelKeys": [],
+"modelKeys": [
+"BLG",
+"BLL",
+"BLN",
+"BLSR"
+],
 "id": "26be6d71ec098b907927"
 },
 {
@@ -2727,7 +2809,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLAGEO",
+"BLL"
+],
 "id": "d9ea519eab7636aea303"
 },
 {
@@ -2752,7 +2837,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Embroidery bobbin case; no separate embroidery upper value.",
-"modelKeys": [],
+"modelKeys": [
+"ELLAGEO",
+"BLL"
+],
 "id": "ff0802fb1f9fe1458659"
 },
 {
@@ -2777,7 +2865,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Section '16. Bobbin Tension'. No upper tension value in this manual.",
-"modelKeys": [],
+"modelKeys": [
+"SASHIKO",
+"BLQK"
+],
 "id": "31e6e0b945bf25dfecc8"
 },
 {
@@ -2830,7 +2921,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "OEM service manual (7.2005) filed in _General as SMBLR.pdf. Cover reads 'BLR ELLURE'; brand name not printed, Baby Lock inferred from model. Sewing/embroidery combo.",
-"modelKeys": [],
+"modelKeys": [
+"BLRELLURE"
+],
 "id": "b1250cdc0c850b0c91d5"
 },
 {
@@ -2855,7 +2948,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "INTERNAL CONFLICT: 'Adjustment standard' says 34-42 g but the adjustment procedure step 6 and figure say 39-49 g (see next row); same conflict for fine tension (4-5 g standard vs 8-11 g procedure). Model only from filename.",
-"modelKeys": [],
+"modelKeys": [
+"BLSO"
+],
 "id": "db5ce5c62388c1ddcb80"
 },
 {
@@ -2880,7 +2975,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Procedure/figure value conflicts with the page's own 'Adjustment standard' (34-42 g, previous row). Bobbin spec is in the previous row.",
-"modelKeys": [],
+"modelKeys": [
+"BLSO"
+],
 "id": "bffa45379b338420d6f3"
 },
 {
@@ -2905,7 +3002,10 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Verified on page image. The manual prints two different ranges for the same upper check: \"Adjustment standard\" 0.33-0.41 N (34-42 g) vs adjustment procedure 0.38-0.48 N (39-49 g); likewise fine tension 0.04-0.05 N (4-5 g) vs 0.08-0.11 N (8-11 g). Both recorded as printed. Printed pages 77-78 (4-10, 4-11).",
-"modelKeys": [],
+"modelKeys": [
+"BLSO",
+"BLSOG"
+],
 "id": "15b0d318f3ebbd5be1a7"
 },
 {
@@ -2930,7 +3030,10 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Verified on page image. The manual prints two different ranges for the same upper check: \"Adjustment standard\" 0.33-0.41 N (34-42 g) vs adjustment procedure 0.38-0.48 N (39-49 g); likewise fine tension 0.04-0.05 N (4-5 g) vs 0.08-0.11 N (8-11 g). Both recorded as printed. Printed pages 77-78 (4-10, 4-11).",
-"modelKeys": [],
+"modelKeys": [
+"BLSO",
+"BLSOG"
+],
 "id": "aef6db43c7885c8a27e2"
 },
 {
@@ -2955,7 +3058,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Standard and procedure agree (unlike the older SMBLSO manual). No separate embroidery bobbin value.",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "dc32027b859f9c464156"
 },
 {
@@ -3009,7 +3115,10 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Repair procedure checklist. Same values as the 2003 ESG tension-calibration update.",
-"modelKeys": [],
+"modelKeys": [
+"ELLAGEO",
+"ESG"
+],
 "id": "eda630849926a0622ae7"
 },
 {
@@ -3062,7 +3171,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also: 'The difference between this and the tension for silk thread (#80) should be 2-3g' (no absolute silk value printed). Automatic thread tension machine; no upper gauge value. p20 match is motor belt (200 g) only.  Same manual also at: Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESP"
+],
 "id": "e2925edfd1cd72f63cd8"
 },
 {
@@ -3087,7 +3198,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Upper value is 'approximately' and given as a starting point. Provisional manual (8-08). No thread type named.",
-"modelKeys": [],
+"modelKeys": [
+"JEWEL"
+],
 "id": "98a0d0aaa74315226cc3"
 },
 {
@@ -6317,7 +6430,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Domestic cover-stitch machine (no bobbin); needle values in upper_*, looper in other_specs.",
-"modelKeys": [],
+"modelKeys": [
+"EASYCOVER"
+],
 "id": "63a8e551f949330abec3"
 },
 {
@@ -6342,7 +6457,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Domestic cover-stitch machine.  Same manual also at: Sewing\\Janome\\ServiceManuals\\Janome_CoverPro2000CPX_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"EASYCOVER"
+],
 "id": "dade68aac9644cdffbaa"
 },
 {
@@ -6367,7 +6484,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Domestic cover-stitch machine.  Same manual also at: Sewing\\Janome\\ServiceManuals\\Janome_CoverPro2000CPX_ServiceManual.pdf; Sewing\\Janome\\ServiceManuals\\Janome_CoverPro900CPX_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"EASYCOVER"
+],
 "id": "f63a14c16118e48ccf28"
 },
 {
@@ -6704,7 +6823,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "a9c29e6ed6f20e4fae9d"
 },
 {
@@ -6845,7 +6966,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Filed as a parts list but contains the service manual. Belt tension 200 g / 500 gf ignored.",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "97621edff99e20c32b16"
 },
 {
@@ -6932,7 +7055,6 @@
 "confidence": "high",
 "notes": "Machines made before autumn 1985 were set at 20-24 g (0.70-0.85 ozs); manual says set both old and new machines to 18-22 g. Printed ounce figures for 18-22 g are inconsistent (18-22 g = 0.63-0.78 oz). Test weights: p10 lists 412 00 84-01 = 24 g and 412 00 83-01 = 22 g, but p26 calls both part numbers the 22 g weight. No upper tension value.",
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945",
 "960",
@@ -6991,7 +7113,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Normal Hi Tension (straight/zigzag) and Lo Tension (satin/embroidery) are set by stitch appearance only, no gram value. Bobbin adjustment text says to use needle plate #412 78 96-01 as a setting gauge. Sewing/embroidery machine.",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "20f604fbbf8d5dea0e53"
 },
 {
@@ -7016,7 +7140,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Normal Hi Tension (straight/zigzag) and Lo Tension (satin/embroidery) are set by stitch appearance only, no gram value. Bobbin adjustment text says to use needle plate #412 78 96-01 as a setting gauge. Sewing/embroidery machine.",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "6d74f1d0087d8061103c"
 },
 {
@@ -7097,7 +7223,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "80 g appears only in the main-PCB-replacement checklist (p76-77); the adjustment page sets Sew High by stitch appearance (straight/zigzag, Sewing Advisor woven medium) - measuring method/thread not stated. Bobbin value conflicts within manual: 18-20 g (p33), 17-19 g (p77), 12-20 g (p8 quick ref) - see other rows. Sewing/embroidery machine.",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "1192fceda26f07fb970b"
 },
 {
@@ -7122,7 +7250,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Value only in main-PCB-replacement checklist; measuring method/thread not stated.",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "5e5cbaf9e0ec162c9011"
 },
 {
@@ -7147,7 +7277,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Earlier Designer Diamond manual used 170 g for the same check.",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "37b6aba16101807b9f63"
 },
 {
@@ -7172,7 +7304,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Conflicts with 18-20 g on p33 and 12-20 g on p8 of the same manual.",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "462ffdac0faa8f619932"
 },
 {
@@ -7197,7 +7331,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Quick-reference value, likely carried over from Designer Diamond; conflicts with 18-20 g (p33) and 17-19 g (p77).",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "998b9a9c80e6946fec92"
 },
 {
