@@ -78,7 +78,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           logo={
           <Link href="/" className="block">
             <div className="text-lg font-bold leading-tight tracking-tight">
-              Stitch<span className="text-thread">{appName() === "StitchShop" ? "Shop" : "Bench"}</span>
+              Stitch<span className="text-thread">{appName() === "StitchShop" || !doesRepair ? "Shop" : "Bench"}</span>
             </div>
             <div className="muted truncate text-xs">{shop?.name}</div>
           </Link>
