@@ -900,7 +900,8 @@ accounts and billing: design first).
 6. Later rounds (owner approved): off-site backup, gift cards/store credit, reports + sales-tax report +
    QuickBooks export, audit log; then layaway/special orders, block-of-the-month clubs, kits, purchase orders,
    loaners, per-ticket time clock, warranty claims, drop-off signature. Needs owner decisions first: card
-   reader (Square or Stripe), Shopify sync, online sign-up/booking pages, two-way texting inbox.
+   reader (Square or Stripe), Shopify sync, two-way texting inbox (online sign-up and booking pages are built:
+   section 2z).
 7. **Split StitchBench and StitchShop into separate repositories** **Planned 2 Oct 2026** (section 2ab): `docs/plans/repo-split-design.md`; the move itself is not started. (owner request, 27 Sep 2026). Today StitchShop
    is a build flavor of this one codebase (desktop/package.json `flavor`, APP_NAME/DEFAULT_SHOP_KIND), so the
    register, inventory, partners and hub client are shared code. Decide the shape first, then do it:
@@ -916,19 +917,19 @@ accounts and billing: design first).
    `stitch-protocol` package can come later if wanted). Four repos (a core shared by all three plus one per
    program) only if access or licensing must differ between StitchBench and StitchShop.
 
-8. **Hosted = one shared instance for every shop** (owner decision, 27 Sep 2026): partner quilt shops and hosted
+8. **Hosted = one shared instance for every shop** **Done 3 Oct 2026** (sections 2ab and 2ac: every company acts on the hub under its own name, both sides; still open: the one-command template for a dedicated instance) (owner decision, 27 Sep 2026): partner quilt shops and hosted
    bench customers are companies on the one StitchShop/StitchBench instance, not one instance each. That makes the
    per-company hub identity (round-2/3 finding: every company posts, lists and is rated under the install's one
    name) the first hub job: send `shopRef` + `shopName` on marketplace, note and usage calls, and store/show them
    per company on the hub, as the partner channel already does. A dedicated instance stays an option for a shop
    that asks for it (template it: one command per shop).
-9. **Sharing is chosen per item, never automatic** (owner decision, 27 Sep 2026; wording is "offer"). From a
+9. **Sharing is chosen per item, never automatic** **Done 3 Oct 2026** (section 2ac) (owner decision, 27 Sep 2026; wording is "offer"). From a
    machine or ticket: "Offer a hint about this model" sends that hint only, with nothing private from the ticket
    pre-filled (fixes the "Share with other techs" pre-fill finding). From a part: one "Offer this part" action
    where the shop picks where it goes: to its partner shops (partner price; today's "Offer to partner shops"
    checkbox), on the marketplace, or both. Nothing reaches the hub unless chosen. The monthly most-used-parts
    report is the one automatic share today: make it a per-company setting, off unless turned on.
-10. **A shop chooses where it runs, and can change its mind** (owner decision, 27 Sep 2026): on the owner's shared
+10. **A shop chooses where it runs, and can change its mind** **Done 3 Oct 2026** (section 2ac: the company move, three packages; the move spec's partner half not yet run) (owner decision, 27 Sep 2026): on the owner's shared
    hosted instance, as the Windows program on its own PC, or self-hosted on its own Railway (INSTALL.md covers all
    three; same hub, same partner links). Missing piece: a per-company export/import so one company can leave the
    shared instance for a PC or its own server, or join it from one, keeping its ids (partner records are keyed by
