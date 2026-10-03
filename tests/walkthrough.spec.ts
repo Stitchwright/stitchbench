@@ -34,7 +34,7 @@ async function signIn(page: Page, who: { email: string; password: string }) {
   await page.getByLabel("Email", { exact: true }).fill(who.email);
   await page.getByLabel("Password", { exact: true }).fill(who.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 }
 
 test("walkthrough", async ({ page }) => {

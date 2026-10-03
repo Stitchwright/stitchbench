@@ -182,6 +182,7 @@ test("a partner sewing shop moves to another install: the hub re-points it, part
     await syncPartners(s);
     await r.goto(`/partners/${linkId}`);
     await r.locator("tr", { hasText: "MC6700P" }).getByRole("link", { name: /^#/ }).click();
+    await r.waitForURL(/\/tickets\/[^/]+$/);
     const ticketPath = new URL(r.url()).pathname;
 
     // The sewing shop's owner moves it: the file carries the hub's move token.
