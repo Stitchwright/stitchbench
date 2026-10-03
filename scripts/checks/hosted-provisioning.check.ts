@@ -237,6 +237,20 @@ async function main() {
     assert.ok((await checkResetLink(t3)).ok, "a refused try doesn't use the link");
     ok("expired, used, replaced and wrong links refused; 8 to 200 characters, typed twice");
 
+    // A reset the person asks for replaces only their own older reset links: an administrator's link and a 24-hour setup link stay.
+    for (const kind of ["admin", "setup"] as const) {
+      const other = await issueResetLink(a.user.id, kind, 24);
+      const to = new URL(other.link).searchParams.get("t")!;
+      const r1 = await issueResetLink(a.user.id, "reset", 1);
+      const r2 = await issueResetLink(a.user.id, "reset", 1);
+      const kept = await checkResetLink(to);
+      assert.ok(kept.ok && kept.kind === kind, `a reset request leaves the ${kind} link working`);
+      const old = await checkResetLink(new URL(r1.link).searchParams.get("t")!);
+      assert.ok(!old.ok && /newer one replaced it/.test(old.reason), "the older reset link is replaced");
+      assert.ok((await checkResetLink(new URL(r2.link).searchParams.get("t")!)).ok);
+    }
+    ok("a reset request voids only older reset links, not an administrator's link or a setup link");
+
     // ---------- 5. Windows, no mail, the administrator's link ----------
     process.env.STITCH_DESKTOP = "1";
     assert.equal(resetByEmailProblem(), TRAY_WORDS);

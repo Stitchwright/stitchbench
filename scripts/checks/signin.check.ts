@@ -220,6 +220,9 @@ async function main() {
       for (let i = 0; i < FREE_TRIES; i++) assert.equal(await signIn(ownerB, `wrong-${i}`), null);
       const floodB = await Promise.all(flood(ownerB, QUEUE_CAP + 2).map((p) => within(p, 300)));
       assert.equal(floodB.filter((s) => s === "pending").length, QUEUE_CAP);
+      // A browser that signed in as B before the reset (at the old sessionVersion).
+      const oldBrowser = withKnownDevice(null, ownerB, Date.now(), svB);
+      assert.ok(knownDeviceFor(oldBrowser, ownerB, Date.now(), svB));
       const { link } = await issueResetLink(b.user.id, "reset", 1);
       const token = new URL(link).searchParams.get("t")!;
       const fresh = "a-new-password-5678";
@@ -227,12 +230,15 @@ async function main() {
       assert.equal(resetEmail, ownerB);
       assert.equal((await db.user.findUniqueOrThrow({ where: { id: b.user.id } })).sessionVersion, svB + 1, "the reset ends every session");
       // What finishPasswordReset sets in the browser that used the link (rememberThisDevice(email)).
-      const resetBrowser = withKnownDevice(null, resetEmail);
+      const resetBrowser = withKnownDevice(null, resetEmail, Date.now(), svB + 1);
+      assert.equal(knownDeviceFor(oldBrowser, ownerB, Date.now(), svB + 1), null, "a password change ends the standing of devices known before it");
+      assert.ok(knownDeviceFor(resetBrowser, ownerB, Date.now(), svB + 1));
       const after = await timed(signIn(ownerB, fresh, { device: resetBrowser }));
       assert.ok(after.value && after.value.id === b.user.id && after.value.sv === svB + 1, "in, with the new sessionVersion");
       assert.ok(after.ms < 2000, `not queued (${after.ms} ms)`);
       assert.equal(await signIn(ownerB, PASSWORD, { device: resetBrowser }), null, "the old password no longer works");
       await heldOut("a browser that never signed in still waits out the flood", signIn(ownerB, fresh));
+      await heldOut("a browser known before the reset waits out the flood too", signIn(ownerB, fresh, { device: oldBrowser }));
       ok("M44 + reset: during a flood, the browser the reset link was used in signs in with the new password (sessionVersion + 1)");
 
       // 6. Signing out (L42): every session of that login ends, nobody else's.

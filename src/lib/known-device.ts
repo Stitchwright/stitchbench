@@ -9,10 +9,12 @@ import "server-only";
 // several): "<issued, base 36>.<mac>" joined by "~", where mac = the first 16 bytes of HMAC-SHA256 over the email and the
 // issue time, keyed from AUTH_SECRET. No email is in it, and it opens nothing by itself: it never signs anyone in, only
 // lets this browser's own tries at the password through while a flood is queued. An entry lasts 180 days from the last
-// sign-in. A password change or reset doesn't cancel it (the browser the reset link was used in gets one, so the owner
-// can get back in during a flood); changing AUTH_SECRET cancels them all. Without AUTH_SECRET it is simply off.
+// sign-in. The login's sessionVersion is in the mac, so a password change or reset (which bumps it) ends every device's
+// standing at once; the browser the reset link was used in gets a fresh entry at the new version, so the owner can get
+// back in during a flood. Changing AUTH_SECRET cancels them all. Without AUTH_SECRET it is simply off.
 import crypto from "node:crypto";
 import { cookies, headers } from "next/headers";
+import { db } from "@/lib/db";
 import { normalizeEmail } from "@/lib/email";
 
 export const KNOWN_DEVICE_DAYS = 180;
@@ -29,11 +31,11 @@ export function knownDeviceCookieName(): string {
 function key(): Buffer | null {
   const secret = process.env.AUTH_SECRET?.trim();
   if (!secret) return null;
-  return crypto.createHmac("sha256", secret).update("stitchbench known-device v1").digest();
+  return crypto.createHmac("sha256", secret).update("stitchbench known-device v2").digest();
 }
 
-function mac(k: Buffer, email: string, t: number): string {
-  return crypto.createHmac("sha256", k).update(`${email}\n${t}`).digest().subarray(0, 16).toString("base64url");
+function mac(k: Buffer, email: string, t: number, sv: number): string {
+  return crypto.createHmac("sha256", k).update(`${email}\n${sv}\n${t}`).digest().subarray(0, 16).toString("base64url");
 }
 
 type Entry = { t: number; mac: string };
@@ -52,14 +54,14 @@ const live = (e: Entry, now: number) => now - e.t <= LIFE && e.t <= now + SKEW;
 
 /**
  * The entry of this cookie value that proves this browser signed in as `email` (normalized) in the last 180 days, as its
- * mac (which names the browser's own failure count), or null.
+ * mac (which names the browser's own failure count), or null. `sv` is the login's sessionVersion.
  */
-export function knownDeviceFor(value: string | null | undefined, email: string, now = Date.now()): string | null {
+export function knownDeviceFor(value: string | null | undefined, email: string, now = Date.now(), sv = 0): string | null {
   const k = key();
   if (!k || !email) return null;
   for (const e of entries(value)) {
     if (!live(e, now)) continue;
-    const want = Buffer.from(mac(k, email, e.t));
+    const want = Buffer.from(mac(k, email, e.t, sv));
     const got = Buffer.from(e.mac);
     if (want.length === got.length && crypto.timingSafeEqual(want, got)) return e.mac;
   }
@@ -67,12 +69,12 @@ export function knownDeviceFor(value: string | null | undefined, email: string, 
 }
 
 /** The cookie value with a fresh entry for `email` first: its older entry and expired ones dropped, 10 at most. Null without AUTH_SECRET. */
-export function withKnownDevice(value: string | null | undefined, email: string, now = Date.now()): string | null {
+export function withKnownDevice(value: string | null | undefined, email: string, now = Date.now(), sv = 0): string | null {
   const k = key();
   if (!k || !email) return null;
-  const mine = knownDeviceFor(value, email, now);
+  const mine = knownDeviceFor(value, email, now, sv);
   const keep = entries(value).filter((e) => e.mac !== mine && live(e, now));
-  return [{ t: now, mac: mac(k, email, now) }, ...keep]
+  return [{ t: now, mac: mac(k, email, now, sv) }, ...keep]
     .slice(0, MAX_ENTRIES)
     .map((e) => `${e.t.toString(36)}.${e.mac}`)
     .join("~");
@@ -104,7 +106,9 @@ export async function rememberThisDevice(emailRaw: unknown): Promise<void> {
   const email = normalizeEmail(emailRaw);
   const jar = await cookies();
   const name = knownDeviceCookieName();
-  const value = withKnownDevice(jar.get(name)?.value, email);
+  // The login's current sessionVersion (after a reset it is the new one), so a password change ends older entries.
+  const sv = (await db.user.findUnique({ where: { email }, select: { sessionVersion: true } }))?.sessionVersion ?? 0;
+  const value = withKnownDevice(jar.get(name)?.value, email, Date.now(), sv);
   if (!value) return;
   const proto = (await headers()).get("x-forwarded-proto")?.split(",")[0]?.trim();
   jar.set(name, value, { httpOnly: true, sameSite: "lax", path: "/", secure: proto === "https", maxAge: KNOWN_DEVICE_DAYS * 86_400 });

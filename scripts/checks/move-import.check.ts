@@ -430,6 +430,14 @@ async function main() {
       /email address is already used on this install: .*Change it on the other install \(Settings → People\), make the move file again/,
     );
     assert.ok(emailMsg.includes(b.user.email), "the email is named");
+    // A login with a reserved (platform administrator) address would make an administrator on import: refused.
+    const adminAddr = `move-admin-${RUN}@stitchbench.test`;
+    process.env.PLATFORM_ADMIN_EMAILS = adminAddr;
+    try {
+      await refuse("a reserved administrator address", edit((l) => change(l, "User", (r) => (r.email = adminAddr))), /reserved on this StitchBench/);
+    } finally {
+      delete process.env.PLATFORM_ADMIN_EMAILS;
+    }
     await refuse(
       "a row of another company",
       edit((l) => change(l, "Customer", (r) => (r.shopId = b.shopId))),

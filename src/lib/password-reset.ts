@@ -63,14 +63,17 @@ export function resetByEmailProblem(): string | null {
   return null;
 }
 
-/** A new link for the login: every older link it had stops working. */
+/**
+ * A new link for the login: the older links it had stop working, except that a reset the person asked for themselves only
+ * replaces their own older reset links (it must not kill an administrator's link or a 24-hour setup link).
+ */
 export async function issueResetLink(userId: string, kind: "reset" | "setup" | "admin", hours: number): Promise<{ link: string; expiresAt: Date }> {
   const base = appBaseUrl();
   if (!base) throw new UserError("This server doesn't know its own address for the link: set APP_URL (https://your-site).");
   const token = crypto.randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + hours * HOUR);
   await db.$transaction([
-    db.passwordReset.updateMany({ where: { userId, kind: { in: LINK_KINDS }, usedAt: null }, data: { usedAt: new Date() } }),
+    db.passwordReset.updateMany({ where: { userId, kind: kind === "reset" ? "reset" : { in: LINK_KINDS }, usedAt: null }, data: { usedAt: new Date() } }),
     db.passwordReset.create({ data: { userId, tokenHash: tokenHash(token), kind, expiresAt } }),
   ]);
   return { link: `${base}/reset?t=${token}`, expiresAt };
