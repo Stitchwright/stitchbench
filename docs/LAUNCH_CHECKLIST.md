@@ -25,6 +25,8 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 
 **Day 2: domains** (you, 30 min)
 - [ ] Buy **stitchbench.app** and **stitchshop.app** at Namecheap; auto-renew on.
+- [ ] Also buy **timingandtension.com** for the repair business (spelled timing-and-tension; it's on the business card
+      and Denise's tour pitch will show it once it's yours). Same Cloudflare move.
 - [ ] Make a free **Cloudflare** account and move both domains' nameservers to it (one setting each at Namecheap).
 
 **Day 3: the website live** (together, 1 hour)
