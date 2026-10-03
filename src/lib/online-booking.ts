@@ -16,6 +16,7 @@ import { recordConsent } from "@/lib/messaging/consent";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
 import { plainText, renderKind } from "@/lib/messaging/templates";
+import { baseWritable } from "@/lib/base-gate";
 import { moduleOn, requireOn } from "@/lib/module-gate";
 import { toE164, validEmail } from "@/lib/phone";
 import type { CurrentUser } from "@/lib/session";
@@ -43,12 +44,15 @@ export function slugOf(name: string): string {
 
 export type PublicShop = { id: string; name: string; phone: string | null; address: string | null; timeZone: string; slug: string; welcome: string | null; leadHours: number; daysAhead: number; open: boolean };
 
-/** The shop a slug names, and whether it takes bookings right now (switched on and Scheduling active). */
+/**
+ * The shop a slug names, and whether it takes bookings right now: switched on, Scheduling active, and the program itself
+ * not read-only (a lapsed shop's public booking is paused, hub-accounts-billing-design.md 3.5).
+ */
 export async function publicShop(slug: string): Promise<PublicShop | null> {
   if (!SLUG_RE.test(slug)) return null;
   const s = await db.shop.findUnique({ where: { bookingSlug: slug }, select: { id: true, name: true, phone: true, address: true, timeZone: true, bookingSlug: true, bookingOn: true, bookingLeadHours: true, bookingDaysAhead: true, bookingWelcome: true } });
   if (!s) return null;
-  const open = s.bookingOn && (await moduleOn(s.id, "scheduling"));
+  const open = s.bookingOn && (await moduleOn(s.id, "scheduling")) && (await baseWritable(s.id));
   return { id: s.id, name: s.name, phone: s.phone, address: s.address, timeZone: s.timeZone, slug: s.bookingSlug!, welcome: s.bookingWelcome, leadHours: s.bookingLeadHours, daysAhead: s.bookingDaysAhead, open };
 }
 

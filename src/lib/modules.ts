@@ -3,7 +3,7 @@ import "server-only";
 // and every stored key is verified from its text each time: nothing in the database can switch a module on by itself.
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import {
   acceptScope,
   adminPosition,
@@ -18,7 +18,7 @@ import {
   type Window,
 } from "@/lib/license";
 import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";
-import { blockedMessage, canWrite, isModuleId, MODULE_IDS, MODULES, toNavGates, type KeyView, type ModuleId, type Modules, type ModuleState, type NavGate } from "@/lib/module-info";
+import { baseWritable, blockedMessage, canWrite, isModuleId, MODULE_IDS, MODULES, toNavGates, type KeyView, type ModuleId, type Modules, type ModuleState, type NavGate } from "@/lib/module-info";
 // license-signing imports isDesktop / devKeysAllowed from here; each file uses the other only inside functions, so the cycle is harmless.
 import { hostedSigner } from "@/lib/license-signing";
 
@@ -86,16 +86,16 @@ export function verifyFor(text: string, use: "pasted" | "grant"): Verified {
   return v;
 }
 
-type LicenseRow = { id: string; shopId: string; keyId: string; key: string; addedBy: string | null; createdAt: Date };
+type LicenseRow = { id: string; shopId: string; keyId: string; key: string; addedBy: string | null; source: string; createdAt: Date };
 
 function keyView(row: LicenseRow, v: Verified, shopId: string, now: Date, tz: string): { view: KeyView; payload: LicensePayload | null } {
   if (!v.ok) {
-    return { view: { rowId: row.id, keyId: row.keyId, modules: [], plan: null, from: null, lastDay: null, graceLastDay: null, issuedTo: null, addedBy: row.addedBy, addedAt: row.createdAt, state: "not-valid", reason: v.reason }, payload: null };
+    return { view: { rowId: row.id, keyId: row.keyId, modules: [], plan: null, from: null, lastDay: null, graceLastDay: null, issuedTo: null, addedBy: row.addedBy, addedAt: row.createdAt, source: row.source, state: "not-valid", reason: v.reason }, payload: null };
   }
   const p = v.payload;
   const ws = windows(p, tz, "key");
   const w = ws[0];
-  const base = { rowId: row.id, keyId: p.id, modules: p.m, plan: p.p, from: p.f, lastDay: p.u, graceLastDay: w?.graceLastDay ?? null, issuedTo: p.n, addedBy: row.addedBy, addedAt: row.createdAt, reason: null as string | null };
+  const base = { rowId: row.id, keyId: p.id, modules: p.m, plan: p.p, from: p.f, lastDay: p.u, graceLastDay: w?.graceLastDay ?? null, issuedTo: p.n, addedBy: row.addedBy, addedAt: row.createdAt, source: row.source, reason: null as string | null };
   if (p.s !== shopId) return { view: { ...base, state: "other-company", reason: `For Company ID ${p.s}` }, payload: null };
   const state: KeyView["state"] = w && w.from > now ? "future" : w && now >= w.graceUntil ? "ended" : "current";
   return { view: { ...base, state }, payload: p };
@@ -135,7 +135,7 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
   const desktop = isDesktop();
   const [shops, licenses, grants] = await Promise.all([
     db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true } }),
-    db.license.findMany({ where: { shopId: { in: ids } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, shopId: true, keyId: true, key: true, addedBy: true, createdAt: true } }),
+    db.license.findMany({ where: { shopId: { in: ids } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, shopId: true, keyId: true, key: true, addedBy: true, source: true, createdAt: true } }),
     desktop ? Promise.resolve([] as { id: string; shopId: string; module: string; mode: string; key: string | null; createdAt: Date }[]) : db.moduleGrant.findMany({ where: { shopId: { in: ids } }, select: { id: true, shopId: true, module: true, mode: true, key: true, createdAt: true } }),
   ]);
   const real = new Date();
@@ -215,13 +215,19 @@ export async function moduleResponse(shopId: string, id: ModuleId, admin = true)
   return s.active ? null : new Response(blockedMessage(s, admin), { status: 403 });
 }
 
-/** Workers: the shops (all on the install, or the given ones) where the module is active now. */
+/**
+ * Workers: the shops (all on the install, or the given ones) where the module is active now. A company whose program
+ * key has lapsed (base read-only, hub-accounts-billing-design.md 3.5) is skipped for every module, as it is for new work.
+ */
 export async function shopsWithModule(id: ModuleId, shopIds?: string[]): Promise<string[]> {
   const ids = shopIds ?? (await db.shop.findMany({ select: { id: true } })).map((s) => s.id);
   const out: string[] = [];
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = await loadModulesMany(ids.slice(i, i + 500));
-    for (const id2 of ids.slice(i, i + 500)) if (chunk.get(id2)?.states[id].active) out.push(id2);
+    for (const id2 of ids.slice(i, i + 500)) {
+      const m = chunk.get(id2);
+      if (m?.states[id].active && (id === "base" || baseWritable(m.states.base.status))) out.push(id2);
+    }
   }
   return out;
 }

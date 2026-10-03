@@ -1,0 +1,25 @@
+import "server-only";
+// The rule safe() applies before every server action (hub-accounts-billing-design.md 3.5): while the signed-in
+// company's program key has lapsed, a write is refused with the read-only message unless the action is on the
+// allow-list (src/lib/lapse-allow.ts). With nobody signed in (a public page's action) there is no company to judge;
+// the action's own checks decide, and the public routes pause themselves (online-booking.ts, online-shop.ts).
+import { requireBaseWritable } from "@/lib/base-gate";
+
+type LapseUser = { shopId: string; role: "OWNER" | "ADMIN" | "TECH" } | null;
+let resolveUser: (() => Promise<LapseUser>) | null = null;
+
+/**
+ * Check scripts only: there is no request to read a session from, so they say who is acting. Never called by the app.
+ */
+export function lapseUserFrom(fn: () => Promise<LapseUser>) {
+  resolveUser = fn;
+}
+
+export async function lapseGuard(): Promise<void> {
+  // The session module (next-auth, next/navigation) is loaded only when an action really runs: action.ts is imported by
+  // every lib and check script, and the check scripts run outside Next.
+  const resolve = resolveUser ?? (await import("@/lib/session")).sessionUser;
+  const user = await resolve();
+  if (!user) return;
+  await requireBaseWritable(user);
+}

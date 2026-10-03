@@ -19,7 +19,7 @@ export const sendEstimate = safe(async function sendEstimate(target: "ticket" | 
 });
 
 /** "They approved" / "They declined" from a text reply or a phone call. */
-export const recordEstimateAnswer = safe(async function recordEstimateAnswer(target: "ticket" | "job", id: string, formData: FormData) {
+export const recordEstimateAnswer = safe.whileLapsed("recordEstimateAnswer")(async function recordEstimateAnswer(target: "ticket" | "job", id: string, formData: FormData) {
   const user = await requireUser();
   await recordEstimateAnswerAs(user, targetOf(target), String(id), { answer: String(formData.get("answer") ?? ""), via: String(formData.get("via") ?? ""), note: str(formData.get("note")) });
 });

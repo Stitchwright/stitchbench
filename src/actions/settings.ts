@@ -158,7 +158,7 @@ export const savePriceListNote = safe(async function savePriceListNote(formData:
   revalidatePath("/price-list");
 });
 
-export const resetUserPassword = safe(async function resetUserPassword(userId: string, formData: FormData) {
+export const resetUserPassword = safe.whileLapsed("resetUserPassword")(async function resetUserPassword(userId: string, formData: FormData) {
   const admin = await requireAdmin();
   const password = String(formData.get("password") ?? "");
   if (password.length < 8) throw new UserError("Use at least 8 characters.");
@@ -220,7 +220,7 @@ export const setUserActive = safe(async function setUserActive(userId: string, a
   revalidatePath("/settings");
 });
 
-export const changePassword = safe(async function changePassword(formData: FormData) {
+export const changePassword = safe.whileLapsed("changePassword")(async function changePassword(formData: FormData) {
   const user = await requireUser();
   const current = String(formData.get("current") ?? "");
   const next = String(formData.get("next") ?? "");

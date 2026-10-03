@@ -52,7 +52,7 @@ export const createCompany = safe(async function createCompany(formData: FormDat
 });
 
 /** The administrator's module switch for one company (modules-design.md section 8). Body: src/lib/modules-admin.ts. */
-export const setCompanyModule = safe(async (fd: FormData) => setCompanyModuleFor(await requirePlatformAdmin(), fd));
+export const setCompanyModule = safe.whileLapsed("setCompanyModule")(async (fd: FormData) => setCompanyModuleFor(await requirePlatformAdmin(), fd));
 
 /** Switch a company's writes to the community hub off (or back on). */
-export const setHubWrites = safe(async (shopId: string, off: boolean) => setHubWritesFor(await requirePlatformAdmin(), assertId(shopId), off));
+export const setHubWrites = safe.whileLapsed("setHubWrites")(async (shopId: string, off: boolean) => setHubWritesFor(await requirePlatformAdmin(), assertId(shopId), off));

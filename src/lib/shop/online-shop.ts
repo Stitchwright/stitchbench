@@ -16,6 +16,7 @@ import { queueToCustomer } from "@/lib/messaging/queue";
 import { seal, unseal } from "@/lib/messaging/secrets";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
 import { plainText, renderKind } from "@/lib/messaging/templates";
+import { baseWritable } from "@/lib/base-gate";
 import { moduleOn } from "@/lib/module-gate";
 import { customerForOnline, SLUG_RE, slugOf, type OnlineCustomer } from "@/lib/online-booking";
 import { KIND_LABEL, numberKey } from "@/lib/parts";
@@ -290,7 +291,8 @@ export async function publicStore(slug: string): Promise<PublicStore | null> {
     address: s.address,
     timeZone: s.timeZone,
     slug: s.bookingSlug!,
-    open: s.shopOn && s.sellsRetail && canPay && (s.shopPickup || s.shopShipping),
+    // Paused while the program itself is read-only (hub-accounts-billing-design.md 3.5): no new orders.
+    open: s.shopOn && s.sellsRetail && canPay && (s.shopPickup || s.shopShipping) && (await baseWritable(s.id)),
     welcome: s.shopWelcome,
     pickup: s.shopPickup,
     shipping: s.shopShipping,

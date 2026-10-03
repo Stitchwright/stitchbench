@@ -17,7 +17,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { isUserError, UserError } from "@/lib/action";
-import { checkHubUrl, formerInstall, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
+import { checkHubUrl, formerInstall, hubDefaultUrl, hubFetch, hubId, hubState, hubStatus, inBackground } from "@/lib/hub";
 import { lineTotal } from "@/lib/ticket-math";
 import { inEighths } from "@/lib/register-math";
 import { modelKey } from "@/lib/format";
@@ -31,7 +31,8 @@ import { onJobsBack, onJobStatus } from "@/lib/notices/hooks";
 import { changeTicketStatus } from "@/lib/ticket-status";
 import { planOutcome, receivedList, type RunPlan, type Side as RunSide } from "@/lib/partner-runs";
 
-export const DEFAULT_HUB_URL = (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
+/** The community's hub, for a partner code that names no address (the same default an account start uses: src/lib/hub.ts). */
+export const DEFAULT_HUB_URL = hubDefaultUrl();
 const FINAL = ["COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];
 const READY = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
 const STATUSES = ["AT_SHOP_AWAITING_PICKUP", "IN_TRUCK", "ON_BENCH", "WAITING_CUSTOMER_OK", "WAITING_PARTS", "READY_IN_TRUCK", "READY_FOR_PICKUP", "COLLECTED", "ABANDONED", "RETURNED_UNREPAIRED"];

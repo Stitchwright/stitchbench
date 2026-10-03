@@ -3,6 +3,8 @@
 // The barcode scanner station: look a part up, receive it, put it on a ticket, or count the shelf.
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { isUserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";
 import { canWorkOn, equipmentState } from "@/lib/equipment/gate";
@@ -22,9 +24,7 @@ export type ScannedPart = {
   unit: string | null;
   consigned?: boolean;
 };
-export type ScanResult =
-  | { ok: true; part: ScannedPart; message: string }
-  | { ok: false; code: string; message: string; xpart?: { id: string; name: string } | null };
+export type ScanResult = { ok: true; part: ScannedPart; message: string } | { ok: false; code: string; message: string; xpart?: { id: string; name: string } | null };
 
 /** The item a code means: the exact number first, and the shop's own stock before a partner's consigned stock. */
 async function findPart(shopId: string, code: string) {
@@ -66,6 +66,15 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
   if (part.consignLinkId && mode !== "lookup") {
     return { ok: false, code: c, message: `${part.partNumber} is a partner's consigned stock: sell it at the register (it isn't received or used here).` };
   }
+  // Receiving stock or putting a part on a ticket is new work: refused while the program is read-only (looking up is fine).
+  if (mode !== "lookup") {
+    try {
+      await requireBaseWritable(user);
+    } catch (e) {
+      if (isUserError(e)) return { ok: false, code: c, message: e.message };
+      throw e;
+    }
+  }
   if (mode === "receive") {
     const [p] = await db.$transaction([
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: n } } }),
@@ -105,6 +114,12 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
 export async function saveCounts(counts: { partId: string; qty: number }[]): Promise<{ saved: number } | { error: string }> {
   const user = await requireUser();
   if (!Array.isArray(counts)) return { error: "Nothing to save." };
+  try {
+    await requireBaseWritable(user); // stock counts change the books: refused while the program is read-only
+  } catch (e) {
+    if (isUserError(e)) return { error: e.message };
+    throw e;
+  }
   const list = counts.slice(0, 2000);
   // The counts come from the browser, and a call made by hand can send NaN or a negative: that would be written as stock.
   if (list.some((c) => typeof c?.qty !== "number" || !Number.isFinite(c.qty) || c.qty < 0 || c.qty > MAX_STOCK)) {

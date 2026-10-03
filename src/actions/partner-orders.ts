@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { numberKey, partKeys, partNumberClash, stockFor } from "@/lib/parts";
@@ -28,6 +29,7 @@ function refresh(linkId: string) {
 export async function placePartnerOrder(linkId: string, wanted: { itemKey: string; qty: number }[], note: string | null): Promise<{ id: string } | { error: string }> {
   try {
     const user = await requireUser();
+    await requireBaseWritable(user); // a new order: refused while the program is read-only
     const link = await partnerLink(user.shopId, linkId);
     if (link.side !== "retail") throw new UserError("Orders go from the sewing shop to its repair shop.");
     if (link.status !== "ACTIVE") throw new UserError("That partnership has ended.");
@@ -74,7 +76,7 @@ export async function placePartnerOrder(linkId: string, wanted: { itemKey: strin
 
 type OrderAction = "accept" | "deliver" | "cancel" | "receive";
 
-export const partnerOrderAction = safe(async function partnerOrderAction(orderId: string, action: OrderAction, formData: FormData) {
+export const partnerOrderAction = safe.whileLapsed("partnerOrderAction")(async function partnerOrderAction(orderId: string, action: OrderAction, formData: FormData) {
   const user = await requireUser();
   const shopId = user.shopId;
   const o = await db.partnerOrder.findUnique({ where: { shopId_id: { shopId, id: orderId } } });

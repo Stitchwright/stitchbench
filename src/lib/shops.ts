@@ -27,6 +27,19 @@ export function shopModes(kind: string | null | undefined) {
   return { doesRepair: kind !== "retail", sellsRetail: kind === "retail" || kind === "both" };
 }
 
+/** The other way round: a company's kind word for the hub (repair | retail | both). */
+export function shopKindOf(s: { doesRepair: boolean; sellsRetail: boolean }): ShopKind {
+  return s.doesRepair && s.sellsRetail ? "both" : s.sellsRetail ? "retail" : "repair";
+}
+
+/**
+ * The program's version as told to the hub: the Windows program's installer version (STITCH_VERSION, set by
+ * desktop/main.mjs), a hosted service's short commit, or nothing.
+ */
+export function programVersion(): string | null {
+  return process.env.STITCH_VERSION?.trim() || process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || null;
+}
+
 /**
  * A new company with its owner login. Repair shops start with the service menu names but no prices; they set their own.
  * A sewing / quilt shop (kind "retail") gets the StitchShop register instead of the repair bench.

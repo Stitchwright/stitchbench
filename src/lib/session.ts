@@ -2,7 +2,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { isPlatformAdmin } from "@/lib/shops";
 
 export type CurrentUser = { id: string; shopId: string; role: "OWNER" | "ADMIN" | "TECH"; name: string; email: string };

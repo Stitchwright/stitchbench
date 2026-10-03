@@ -21,6 +21,7 @@ import { applyNotifyBy, needNotifyBy } from "@/lib/customer-input";
 import { recordConsent } from "@/lib/messaging/consent";
 import { isNotifyBy } from "@/components/notify-by-field";
 import { canWorkOn, requireEquipment } from "@/lib/equipment/gate";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { checklistFor, kindOf, shopKinds } from "@/lib/equipment/shop";
 import { readAnswers } from "@/lib/equipment/form";
 import { saveIntakeFor, saveReadingsFor } from "@/lib/equipment/ticket-data";
@@ -257,8 +258,11 @@ export async function setStatus(ticketId: string, status: TicketStatus): Promise
   try {
     const user = await requireUser();
     if (!STATUS_ORDER.includes(status)) throw new UserError("Unknown status.");
-    // Closing a ticket (collected, returned unrepaired, abandoned) is always allowed; any other status is work.
-    const t = await ownTicket(user.shopId, ticketId, CLOSING_STATUSES.includes(status) ? "close" : "work", user.role);
+    // Closing a ticket (collected, returned unrepaired, abandoned) is always allowed, even while the program itself is
+    // read-only (hub-accounts-billing-design.md 3.5); any other status is work.
+    const closing = CLOSING_STATUSES.includes(status);
+    if (!closing) await requireBaseWritable(user);
+    const t = await ownTicket(user.shopId, ticketId, closing ? "close" : "work", user.role);
     if (t.jobType === "SITE" && !SITE_STATUS_ORDER.includes(status)) throw new UserError("That status isn't used for installs.");
     if (status === "COLLECTED" && t.status !== "COLLECTED") {
       // A partner sewing shop's machine goes back to them, and they mark it collected when their customer pays and picks
@@ -565,7 +569,7 @@ export const removeLine = safe(async function removeLine(lineId: string) {
 
 // ---------- payments ----------
 
-export const addPayment = safe(async function addPayment(ticketId: string, formData: FormData) {
+export const addPayment = safe.whileLapsed("addPayment")(async function addPayment(ticketId: string, formData: FormData) {
   const user = await requireUser();
   // Taking payment closes work out: allowed whatever the module's state.
   await ownTicket(user.shopId, ticketId, "close", user.role);
@@ -588,7 +592,7 @@ export const addPayment = safe(async function addPayment(ticketId: string, formD
   revalidatePath("/sales");
 });
 
-export const removePayment = safe(async function removePayment(paymentId: string) {
+export const removePayment = safe.whileLapsed("removePayment")(async function removePayment(paymentId: string) {
   // Taking a payment off a ticket is for the owner or an admin (like voiding a register sale).
   const user = await requireAdmin();
   const p = await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } } });

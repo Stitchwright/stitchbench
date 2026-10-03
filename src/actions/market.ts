@@ -261,7 +261,7 @@ async function takeFromStock(o: HubOrder, userId: string, shopId: string) {
 const ACTIONS = ["accept", "decline", "buyer-paid", "paid", "ship", "received", "cancel", "message", "rate"] as const;
 type OrderAction = (typeof ACTIONS)[number];
 
-export const orderAction = safe(async function orderAction(orderId: string, action: OrderAction, formData: FormData) {
+export const orderAction = safe.whileLapsed("orderAction")(async function orderAction(orderId: string, action: OrderAction, formData: FormData) {
   const user = await requireUser();
   if (!ACTIONS.includes(action)) throw new UserError("Unknown order step.");
   await ownOrder(user.shopId, orderId);
@@ -350,7 +350,7 @@ export const orderStock = safe(async function orderStock(orderId: string) {
   revalidatePath("/parts", "layout");
 });
 
-export const refreshOrders = safe(async function refreshOrders() {
+export const refreshOrders = safe.whileLapsed("refreshOrders")(async function refreshOrders() {
   await requireUser();
   // A dead line says so in seconds, not after every request of a sync has waited out its time.
   await hubReachable();

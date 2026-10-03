@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { fmtDay } from "@/lib/zoned";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { safe, UserError, isUserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
 import { modelKey, str, toCents } from "@/lib/format";
 import { normalizeTerms } from "@/lib/partner-terms";
@@ -42,6 +43,7 @@ async function retailJob(shopId: string, id: string) {
 export async function takeInMachine(formData: FormData): Promise<{ id: string } | { error: string }> {
   try {
     const user = await requireUser();
+    await requireBaseWritable(user); // new work: refused while the program is read-only
     const shopId = user.shopId;
     const linkId = str(formData.get("linkId"));
     const link = linkId ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: linkId } } }) : null;
@@ -188,7 +190,7 @@ export const answerEstimate = safe(async function answerEstimate(jobId: string, 
 });
 
 /** The customer took the machine home without paying here (paid the repair shop, or nothing was owed). */
-export const markPickedUp = safe(async function markPickedUp(jobId: string) {
+export const markPickedUp = safe.whileLapsed("markPickedUp")(async function markPickedUp(jobId: string) {
   const user = await requireUser();
   const job = await retailJob(user.shopId, jobId);
   if (job.pickedUpAt) return;

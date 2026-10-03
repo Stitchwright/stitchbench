@@ -6,7 +6,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
-import { fmtYmd, MODULE_IDS, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
+import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import {
@@ -75,7 +75,12 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
         <div className="space-y-3 text-sm">
           <p>
             Connected to {s!.hubName ? <strong>{s!.hubName}</strong> : null} <span className="mono">{s!.url}</span>
-            {s!.joinedAt && <> since {fmtDate(s!.joinedAt, timeZone)}</>}. Syncs every 10 minutes.
+            {s!.joinedAt && <> since {fmtDate(s!.joinedAt, timeZone)}</>}.{" "}
+            {s!.scope === "pending"
+              ? "Joined through this company's StitchHub account: the community part opens once the account's email has been opened and a password set (Settings → Account)."
+              : s!.scope === "partner"
+                ? "For partner shops only; the community part needs an invite."
+                : "Syncs every 10 minutes."}
           </p>
           <p className="muted">
             {links} manual links · {notes} shared notes · {figures} figure snapshots · last sync {s!.lastSyncAt ? fmtDateTime(s!.lastSyncAt, timeZone) : "not yet"}
@@ -155,7 +160,19 @@ export default async function SettingsPage() {
   ]);
   const checklist = shop.checklistItems?.length ? shop.checklistItems : DEFAULT_CHECKLIST;
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
-  const moduleLines = MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
+  // The paid modules; the program's own key is Settings → Account's.
+  const moduleLines = PAID_MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
+  const base = modules.states.base;
+  const baseLine =
+    base.status === "lapsed"
+      ? `Read-only since ${endedDay(base)}: new tickets, sales and edits wait for a new key`
+      : base.status === "grace"
+        ? `Licensed through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}, working until ${base.graceLastDay ? fmtYmd(base.graceLastDay) : "-"}`
+        : base.status === "off"
+          ? shop.hubAccountEmail
+            ? `StitchHub account: ${shop.hubAccountEmail}${shop.hubAccountVerified ? "" : " (waiting for the email)"}`
+            : "No StitchHub account yet"
+          : `Licensed through ${base.lastDay ? fmtYmd(base.lastDay) : "no end date"}`;
   // The "For" select offers the kinds new work may use, plus any kind an item already names (so it can be read and changed).
   const usedKinds = new Set(services.map((s) => s.equipmentKind).filter(Boolean));
   const usableKeys = new Set(kinds.usable.map((k) => k.key));
@@ -170,6 +187,15 @@ export default async function SettingsPage() {
   return (
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Settings" />
+
+      <Section title="Account" id="account">
+        <div className="space-y-2 text-sm">
+          <p>{baseLine}.</p>
+          <Link href={SETTINGS_ACCOUNT_HREF} className="link">
+            Your StitchHub account and what {base.label} is licensed for
+          </Link>
+        </div>
+      </Section>
 
       <div id="hub">
         <CommunityHub admin={await isInstallAdmin(user)} timeZone={await shopTimeZone(user.shopId)} />

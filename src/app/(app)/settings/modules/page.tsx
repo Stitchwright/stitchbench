@@ -5,7 +5,7 @@ import { fmtDateTime } from "@/lib/format";
 import { todayIn } from "@/lib/time-zone";
 import { getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
-import { fmtYmd, MODULE_IDS, MODULE_SALES, MODULE_SALES_NOTE, MODULES, planLabel, salesMailto, type KeyView, type ModuleState } from "@/lib/module-info";
+import { fmtYmd, MODULE_SALES, MODULE_SALES_NOTE, MODULES, PAID_MODULE_IDS, planLabel, salesMailto, SETTINGS_ACCOUNT_HREF, type KeyView, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
@@ -159,7 +159,11 @@ export default async function ModulesPage() {
       <Section title="Modules">
         <p className="muted mb-3 text-sm">
           Extra parts of StitchBench you can add, paid monthly or yearly. When one ends, nothing is deleted: you can still look at and export what&apos;s there
-          and finish work already in, but new work in it stops.
+          and finish work already in, but new work in it stops. The program itself is licensed through your{" "}
+          <Link href={SETTINGS_ACCOUNT_HREF} className="link">
+            StitchHub account
+          </Link>
+          .
         </p>
         <div className="scroll-x">
           <table className="table">
@@ -172,7 +176,7 @@ export default async function ModulesPage() {
               </tr>
             </thead>
             <tbody>
-              {MODULE_IDS.map((id) => {
+              {PAID_MODULE_IDS.map((id) => {
                 const s = modules.states[id];
                 return (
                   <tr key={id}>
@@ -293,7 +297,7 @@ export default async function ModulesPage() {
                     <td className="whitespace-nowrap">{k.from && k.lastDay ? `${fmtYmd(k.from)} – ${fmtYmd(k.lastDay)}` : "-"}</td>
                     <td className="whitespace-nowrap">{k.graceLastDay ? fmtYmd(k.graceLastDay) : "-"}</td>
                     <td className="whitespace-nowrap text-xs">
-                      {k.addedBy ?? "-"}
+                      {k.source === "hub" ? "From StitchHub (with the sync)" : (k.addedBy ?? "-")}
                       <div className="muted">{fmtDateTime(k.addedAt, shop.timeZone)}</div>
                     </td>
                     <td>

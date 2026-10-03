@@ -4,6 +4,7 @@
 // customer up from the register. The work is in src/lib/class-actions.ts.
 import { revalidatePath } from "next/cache";
 import { isUserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { assertId } from "@/lib/input";
 import { requireUser } from "@/lib/session";
 import type { BookingDue } from "@/lib/booking-types";
@@ -19,6 +20,7 @@ export async function openClassSeats(): Promise<{ id: string; title: string; fir
 export async function enrollAtRegister(classId: string, fd: FormData): Promise<BookingDue | { error: string }> {
   try {
     const user = await requireUser();
+    await requireBaseWritable(user); // a new seat is new work: refused while the program is read-only
     const id = assertId(classId);
     const due = await enrollAtRegisterAs(user, id, fd);
     revalidatePath(`/classes/${id}`);

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { termsFromForm } from "@/lib/partner-terms";
@@ -40,6 +41,7 @@ export type InviteResult = { code: string; long: string; expiresAt: string } | {
 export async function makePartnerCode(formData: FormData): Promise<InviteResult> {
   try {
     const admin = await requireAdmin();
+    await requireBaseWritable(admin); // a new partnership: refused while the program is read-only
     partnerQuota(admin.shopId, "code", 20, "This company made a lot of partner codes in the last hour. Wait a while and try again.");
     const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
     const side = str(formData.get("side")) === "retail" ? "retail" : "repair";
@@ -87,7 +89,7 @@ export const endPartner = safe(async function endPartner(linkId: string, formDat
   refresh();
 });
 
-export const syncPartnersNow = safe(async function syncPartnersNow() {
+export const syncPartnersNow = safe.whileLapsed("syncPartnersNow")(async function syncPartnersNow() {
   await requireUser();
   const r = await syncPartners();
   if ("skipped" in r) throw new UserError("Nothing to sync yet: make or enter a partner code first.");

@@ -4,6 +4,7 @@ import "server-only";
 // and trade-ins, and (scheduling-messaging-design.md 12.3) class seats and appointments paid or refunded here.
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import type { CurrentUser } from "@/lib/session";
 import { withDisclosure } from "@/lib/part-labels";
 import { sendToPartner } from "@/lib/partners";
@@ -84,6 +85,9 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
     const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
     if (!input.lines.length) throw new UserError("Nothing to sell yet. Scan or search for an item.");
     if (input.lines.length > 300) throw new UserError("That's too many lines for one sale.");
+    // While the program is read-only (hub-accounts-billing-design.md 3.5): a return (every line money back) still goes
+    // through, a sale doesn't.
+    if (!input.lines.every((l) => Number(l.qty) < 0)) await requireBaseWritable(user);
     const rawTenders = Array.isArray(input.tenders) ? input.tenders : [];
     if (rawTenders.length > 20) throw new UserError("That's too many payments for one sale.");
 

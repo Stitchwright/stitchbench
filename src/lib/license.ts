@@ -1,13 +1,14 @@
 // License keys: format, signing, verification and the entitlement maths (pure: no "server-only", no database). See docs/plans/modules-design.md sections 3 and 5; checked by scripts/checks/license.check.ts.
 import crypto from "node:crypto";
 
-export const MODULE_IDS = ["vac", "appliance", "scheduling", "marketing"] as const;
+// "base" is the program itself (hub-accounts-billing-design.md 3.5): off means fully working, lapsed means read-only.
+export const MODULE_IDS = ["base", "vac", "appliance", "scheduling", "marketing"] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
-export type KeyScope = "any" | "hosted" | "dev";
+export type KeyScope = "any" | "hosted" | "dev" | "hub";
 /** A retired signing key: its keys count only up to `lastDay`, and (after a leak) only the genuine ones listed in `allow`. */
 export type Retired = { lastDay: string; allow?: string[] };
 export type PublicKeys = Record<string, { x: string; scope: KeyScope; retired?: Retired }>;
-/** m monthly, y yearly, a administrator switch, t trial; any other short word is a plan a newer version knows. */
+/** m monthly, y yearly, a administrator switch, t trial, c comped by the hub admin, w waived while partnered; any other short word is a plan a newer version knows. */
 export type Plan = string;
 export type LicensePayload = { v: 1; k: string; id: string; s: string; n: string; m: string[]; p: Plan; f: string; u: string; g: number; t: string };
 export type Verified = { ok: true; payload: LicensePayload; scope: KeyScope; kid: string } | { ok: false; reason: string };
@@ -83,9 +84,11 @@ export function verifyLicense(text: string, keys: PublicKeys): Verified {
 }
 
 /**
- * Which verified keys count where. Pasted keys: "any" (and "dev" on a development server). Admin switch rows: "hosted",
- * only on a server that holds a genuine hosting key itself (hostedSigner() matched its compiled public half), so a copy
- * of the hosted database on any other server switches nothing on; "dev" on a development server.
+ * Which verified keys count where. Pasted keys: "any" and "hub" (StitchHub's own signing key: its keys arrive with the
+ * sync and are stored like pasted ones; and "dev" on a development server). Admin switch rows: "hosted", only on a
+ * server that holds a genuine hosting key itself (hostedSigner() matched its compiled public half), so a copy of the
+ * hosted database on any other server switches nothing on; "dev" on a development server. A hub key never counts as
+ * the Companies switch.
  */
 export function acceptScope(scope: KeyScope, use: "pasted" | "grant", ctx: { devAllowed: boolean; hostedHeld: boolean }) {
   if (scope === "dev") return ctx.devAllowed;
@@ -130,8 +133,11 @@ export function windows(p: LicensePayload, timeZone: string, source: "key" | "ad
 }
 
 export type ModuleStatus = "off" | "on" | "renew" | "grace" | "lapsed";
-/** Days before the last day that the renewal reminder shows. Monthly payers get their next key by email: 3 days. */
-export const RENEW_NOTICE_DAYS: Record<string, number> = { m: 3, y: 30, a: 14, t: 3 };
+/**
+ * Days before the last day that the renewal reminder shows. Monthly payers get their next key by email: 3 days. A comp
+ * from the hub admin: 30. A key waived while partnered is re-issued at every sync, so it never shows "renew".
+ */
+export const RENEW_NOTICE_DAYS: Record<string, number> = { m: 3, y: 30, a: 14, t: 3, c: 30, w: 0 };
 export const renewNoticeDays = (plan: Plan) => (Object.hasOwn(RENEW_NOTICE_DAYS, plan) ? RENEW_NOTICE_DAYS[plan] : 30);
 
 /**
