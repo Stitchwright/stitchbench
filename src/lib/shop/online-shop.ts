@@ -41,8 +41,14 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = { PENDING: "Not p
 // ---------------------------------------------------------------- settings
 
 /** Payment through the hosted service's own Stripe account is offered when the server has its keys. */
+/**
+ * Payment through the hosted service's own Stripe account is OFF unless the operator says so on purpose
+ * (SHOP_PLATFORM_PAYMENTS=on, plus the keys). The owner decided on 3 Oct 2026 not to offer it: one account taking
+ * payments for other businesses is what Stripe Connect is for, and it would put every shop's refunds, disputes, payouts
+ * and tax reporting on the owner. Shops use their own Stripe account; Stripe Connect is the planned easier door.
+ */
 export function platformStripeOn(): boolean {
-  return !!process.env.STRIPE_SECRET_KEY?.trim() && !!process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  return process.env.SHOP_PLATFORM_PAYMENTS === "on" && !!process.env.STRIPE_SECRET_KEY?.trim() && !!process.env.STRIPE_WEBHOOK_SECRET?.trim();
 }
 
 export type ShopSettings = {

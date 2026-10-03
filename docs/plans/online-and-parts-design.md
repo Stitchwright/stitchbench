@@ -216,7 +216,7 @@ the hosted version where it integrates easily.
 ### The owner's answers (2 Oct 2026): "all yes, but selectable options"
 
 1. Pickup and shipping both, each a setting (`Shop.shopPickup`, `shopShipping`, a flat rate and a free-over amount).
-2. Both ways, a setting (`Shop.shopPayVia`): "own", the shop's own Stripe account (its secret key and webhook signing
+2. **Revised 3 Oct 2026: own account only.** The "platform" way below is switched off (`SHOP_PLATFORM_PAYMENTS`), and Stripe Connect is the planned easier door (HANDOFF item 16). As first built: both ways, a setting (`Shop.shopPayVia`): "own", the shop's own Stripe account (its secret key and webhook signing
    secret pasted into Settings and sealed like the mail password; no Connect onboarding), or "platform", the hosted
    service's account from `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` (offered only where those are set; the
    operator pays the shop out by hand, the order's `payVia` says which orders those were).
