@@ -484,6 +484,7 @@ async function main() {
     ok("tenant: another company's orders, parts and photos are not found; a shop's webhook can't confirm another shop's order");
 
     // 12. Stripe Tax: shipped orders taxed at checkout by Stripe, pickup at the rate; the sale records Stripe's tax; a short line keeps its share.
+    process.env.SHOP_PLATFORM_PAYMENTS = "on";
     process.env.STRIPE_SECRET_KEY = "sk_test_platform1234567";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_platform1234567";
     await expectError(
@@ -491,6 +492,7 @@ async function main() {
       () => saveShopSettingsFor(a.user, base({ slug: slugA, on: "on", shipping: "on", shipRate: "6.00", payVia: "platform", taxVia: "stripe" })),
       /own Stripe account only/,
     );
+    delete process.env.SHOP_PLATFORM_PAYMENTS;
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
     await saveShopSettingsFor(a.user, base({ slug: slugA, on: "on", shipping: "on", shipRate: "6.00", taxVia: "stripe", pickupNote: "Ring the bell." }));

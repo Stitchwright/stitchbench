@@ -991,6 +991,12 @@ accounts and billing: design first).
    service's Settings show the healthcheck and the restart policy, and that the deprecation warning is gone. After
    both projects are done, delete `railway.json` and commit.
 
+16. **Online shop payments: no "through StitchShop's account"; Stripe Connect instead** (owner decision, 3 Oct 2026).
+   One account taking payments for other businesses is what Stripe Connect is for, and it would put every shop's
+   refunds, disputes, payouts and tax reporting on the owner. The option is now off unless `SHOP_PLATFORM_PAYMENTS=on`
+   (never set it). Queued: "Connect with Stripe" (Connect Standard or Express onboarding, payments straight to the
+   shop's account, an optional platform fee per order) as the easier door than pasting keys; a day or two.
+
 15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026; not started). The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
    mode 36") but none says how to enter it. Plan: a reference set like TensionSpec / FactorySetting (per model family:
