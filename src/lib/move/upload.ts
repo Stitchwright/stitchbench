@@ -8,6 +8,7 @@ import "server-only";
 // company is in, kept after a refusal so it can be tried again, and swept after 24 hours either way.
 import fs from "node:fs";
 import path from "node:path";
+import { under } from "@/lib/opaque-path";
 import type { CompanyMove } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
@@ -46,8 +47,8 @@ export type UploadView = {
 
 type Side = { name: string; size: number };
 
-const spoolFile = (id: string) => path.join(spoolDir(), `${id}.upload`);
-const sideFile = (id: string) => path.join(spoolDir(), `${id}.json`);
+const spoolFile = (id: string) => under(spoolDir(), `${id}.upload`);
+const sideFile = (id: string) => under(spoolDir(), `${id}.json`);
 
 function readSide(id: string): Side | null {
   try {
@@ -238,7 +239,7 @@ export async function sweepUploads(now = Date.now()): Promise<void> {
     names = [];
   }
   for (const n of names) {
-    const f = path.join(dir, n);
+    const f = under(dir, n);
     if (f === busy) continue;
     try {
       if (now - fs.statSync(f).mtimeMs > DAY) removeFile(f);

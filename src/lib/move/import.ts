@@ -10,7 +10,7 @@ import "server-only";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import { under } from "@/lib/opaque-path";
 import zlib from "node:zlib";
 import { Readable, Transform, pipeline } from "node:stream";
 import { pipeline as pipelineAsync } from "node:stream/promises";
@@ -84,7 +84,7 @@ const AGAIN = "Download the move file again from the other install.";
 
 /** Where uploads and stream sources are spooled before an import (the OS temp folder; swept after 24 hours). */
 export function spoolDir(): string {
-  return path.join(os.tmpdir(), "stitchbench-move");
+  return under(os.tmpdir(), "stitchbench-move");
 }
 
 /** The install is set up to host several companies (PLATFORM_ADMIN_EMAILS set; design decision 13). */
@@ -566,7 +566,7 @@ export async function importCompany(source: string | Readable | ReadableStream<U
   await pcRule(() => db.shop.count());
   if (typeof source !== "string") {
     fs.mkdirSync(spoolDir(), { recursive: true });
-    const tmp = path.join(spoolDir(), `stream-${crypto.randomBytes(9).toString("hex")}${MOVE_SUFFIX}`);
+    const tmp = under(spoolDir(), `stream-${crypto.randomBytes(9).toString("hex")}${MOVE_SUFFIX}`);
     const node = typeof (source as ReadableStream<Uint8Array>).getReader === "function" ? Readable.fromWeb(source as unknown as WebReadable<Uint8Array>) : (source as Readable);
     try {
       await pipelineAsync(node, fs.createWriteStream(tmp));

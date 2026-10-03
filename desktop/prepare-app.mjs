@@ -26,7 +26,10 @@ for (const f of ["tension_specs.json", "factory_settings.json", "library_docs.js
 
 // Never ship the developer's .env (database password, auth secret); the program passes its own settings.
 for (const f of fs.readdirSync(out)) if (f.startsWith(".env")) fs.rmSync(path.join(out, f));
-fs.rmSync(path.join(out, "src"), { recursive: true, force: true }); // traced source files; not needed to run
+// Traced by a broad file pattern at some point, never needed to run: the source, the Windows wrapper and its installer
+// output (the previous build, nested), the docs, the scripts (the dev license key is read only by test builds, and
+// this is never one), the Railway files. A pattern once made the app 800 MB; this keeps it from shipping again.
+for (const d of ["src", "desktop", "docs", "scripts", ".railway", "railway.json", "tests"]) fs.rmSync(path.join(out, d), { recursive: true, force: true });
 
 // electron-builder leaves every folder named node_modules out of extra resources, so ship them as _node_modules;
 // the program renames them back when it starts (main.mjs, unpackModules).
