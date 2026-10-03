@@ -21,6 +21,9 @@ export const authConfig = {
       const path = nextUrl.pathname;
       // Customers' own pages (unsubscribe, estimate approval): no session, and no redirect for someone signed in.
       if (path.startsWith("/u/") || path.startsWith("/e/") || path.startsWith("/book/") || path.startsWith("/shop/")) return true;
+      // The Windows program's move-file import (src/app/move-in): at first run there is no one to sign in yet, and the
+      // progress page's address is a long random id only the program's window has.
+      if (path === "/move-in" || path.startsWith("/move-in/")) return true;
       if (path.startsWith("/login") || path.startsWith("/signup")) {
         if (isLoggedIn) return Response.redirect(new URL("/", nextUrl));
         return true;

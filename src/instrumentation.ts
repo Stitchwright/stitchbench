@@ -2,7 +2,13 @@
 // with its partner shops, whose repair status and orders people are waiting on; and send the messages that are due.
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const g = globalThis as unknown as { hubTimer?: NodeJS.Timeout; partnerTimer?: NodeJS.Timeout; messageTimer?: NodeJS.Timeout; downloadTimer?: NodeJS.Timeout };
+  const g = globalThis as unknown as {
+    hubTimer?: NodeJS.Timeout;
+    partnerTimer?: NodeJS.Timeout;
+    messageTimer?: NodeJS.Timeout;
+    downloadTimer?: NodeJS.Timeout;
+    moveSweepTimer?: NodeJS.Timeout;
+  };
   if (g.hubTimer) return;
   const { syncHub } = await import("@/lib/hub");
   const { syncPartners } = await import("@/lib/partners");
@@ -39,4 +45,9 @@ export async function register() {
     const dsecs = Number(process.env.MANUAL_DOWNLOAD_SECONDS);
     g.downloadTimer = setInterval(downloads, (Number.isFinite(dsecs) && dsecs >= 5 ? dsecs : 30) * 1000);
   }
+  // Company imports (company-move-design.md section 8): uploaded move files left in the temp folder go after a day.
+  const { sweepUploads } = await import("@/lib/move/upload");
+  const sweep = () => sweepUploads().catch((e) => console.error("move uploads:", e instanceof Error ? e.message : e));
+  setTimeout(sweep, 60_000);
+  g.moveSweepTimer = setInterval(sweep, 3600_000);
 }

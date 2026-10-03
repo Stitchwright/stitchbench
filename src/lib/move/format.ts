@@ -17,6 +17,15 @@ export const PHOTO_PAGE = 20;
 export const MAX_LINE = 64 * 1024 * 1024;
 export const MAX_INFLATED = 8 * 1024 * 1024 * 1024;
 
+/**
+ * The hosted Companies page uploads a move file in parts of this size (design section 8 and decision 8): under the
+ * 16 MB request limit (next.config), each part one request, so a dropped connection costs one part and the upload
+ * carries on from there. The whole file is held to MAX_INFLATED (a packed file is never bigger than what it unpacks to,
+ * give or take gzip's few bytes).
+ */
+export const UPLOAD_CHUNK = 8 * 1024 * 1024;
+export const MAX_UPLOAD = MAX_INFLATED;
+
 export type MoveTable = {
   /** The Prisma model and Postgres table name ("MachinePhoto"). */
   t: string;
