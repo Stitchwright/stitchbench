@@ -84,6 +84,29 @@ reliably carry barcodes: the owner is checking bolt ends on the hop).
 - Pattern rights: using a pattern in kits needs the publisher's permission, and each publisher's terms differ (Moda
   Bake Shop patterns are personal use only). The kit records the pattern and its source; the shop handles permission.
 
+## 4a. Suppliers of kits and pattern cards, and clubs (research: `docs/research/kits-patterns-and-money-makers.md`)
+
+- **Pattern cards:** Villa Rosa Designs (4x6 postcard patterns; a wholesale site with account ordering and cards a shop
+  can brand); small designers with low minimums (2 copies per pattern, or 5 to 8 per design), some with UPCs printed.
+  Big publishers set minimums (It's Sew Emma: 3 per item, 12 items, prepaid). Distributors carry many designers:
+  Checker, Brewer, United Notions/Moda, EE Schenck, Petersen-Arne, QuiltersWarehouse.com. No publisher offers pattern
+  data (fabric requirements, UPC files): a pattern is entered like any item, its cover photo as the picture.
+- **Ready-made kits:** Riley Blake, Andover (the only published kit terms: 50% non-refundable deposit on special-order
+  kits and precuts), Moda, Hoffman, Benartex, Robert Kaufman, Island Batik. A bought kit is a plain stock item; a kit
+  the shop cuts itself uses the kit builder (section 4).
+- **Clubs and programs (package F7):** the steadiest money a shop has, and what the software must do for each:
+  - *Fat quarter and fabric clubs* (about $40 a month): monthly billing with a card on file on the shop's own Stripe,
+    a fixed bill date, pause and cancel, failed payments, a monthly pick list, ship or pick up per member.
+  - *Block of the Month, kit of the month, mystery quilts* ($20 to $45 a month): a roster, the whole program's fabric
+    reserved at sign-up, deposits or monthly billing, each month's handout marked done, a dated clue schedule.
+  - *Retreats* ($150 to $450 a head): the classes' roster with capacity and waiting list, plus deposits, payment plans
+    and refund rules.
+  - *Longarm rental and quilting service* (rental $15 to $44 an hour; service 2 to 10 cents a square inch): machine
+    booking on the calendar, a "certified to rent" flag on the customer, hourly billing, and a quilting work order
+    that reuses the repair ticket (received, on the frame, ready, collected).
+  - *Events* (Row by Row about $100 to join, said to bring about 200 new customers; shop hops said to lift sales 20 to
+    25%): event kit items, and capturing new customers at the register (a quick "join our list").
+
 ## 5. Ordering
 
 - **Now (no partners needed):** purchase orders per supplier from the Reorder tab or by hand: lines in yards or bolts
@@ -145,6 +168,7 @@ the program never knows which wholesaler it talks to.
 | F3 `fabric-orders` | Reorder suggestions, purchase orders, receiving, lead times | 4 days |
 | F4 `kits` | the kit builder, making kits, kit sell-through, Block of the Month series | 3 days |
 | F5 `fabric-ai` (Assistant) | bolt-label photo to new fabric, picture-zip matching, color and theme tags | 2 to 3 days |
+| F7 `clubs` | fabric clubs and Block of the Month with monthly billing on the shop's Stripe, reserved fabric, monthly pick lists; longarm work orders on the ticket system | 5 to 6 days |
 | F6 `connectors` | the connector framework with the file and email connectors (any wholesaler); then one adapter per partner as each agrees (Notions Marketing first) | 3 days, then 1 to 3 per partner |
 
 ## 9. Default numbers (the shop can change every one)
