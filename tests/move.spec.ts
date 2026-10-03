@@ -94,7 +94,7 @@ test("a company exported on one server is imported on the other, same tickets, s
     await target.goto("/companies");
     await target.getByLabel(/Move file/).setInputFiles(file);
     await expect(target.getByText(new RegExp(`${company} is on this install now`)).first()).toBeVisible({ timeout: 120_000 });
-    await expect(target.getByText(/Everyone signs in again here, with the same email and password/)).toBeVisible();
+    await expect(target.getByText(/Everyone signs in again here, with the same email and password/).first()).toBeVisible();
     await expect(target.getByText(/moved in/).first()).toBeVisible();
     await ctx.close();
 
