@@ -24,7 +24,7 @@ import { safe } from "@/lib/action";
 import { isUserError } from "@/lib/user-error";
 import { baseResponse, baseWritable, requireBaseWritable } from "@/lib/base-gate";
 import { lapseUserFrom } from "@/lib/lapse-guard";
-import { BY_HAND, WHILE_LAPSED } from "@/lib/lapse-allow";
+import { BY_HAND, HAND_ALLOWED, WHILE_LAPSED } from "@/lib/lapse-allow";
 import { acceptScope, addDaysYmd, encodeLicense, newKeyId, verifyLicense, type LicensePayload, type PublicKeys } from "@/lib/license";
 import { blockedMessage, MODULES, programName, readOnlyMessage } from "@/lib/module-info";
 import { loadModules, shopsWithModule, verifyFor } from "@/lib/modules";
@@ -307,6 +307,11 @@ async function main() {
       .join("\n");
     for (const name of WHILE_LAPSED) assert.ok(sources.includes(`export const ${name} = safe.whileLapsed("${name}")(`), `${name} is a safe.whileLapsed action naming itself`);
     for (const name of BY_HAND) assert.match(sources, new RegExp(`export async function ${name}\\(`), `${name} is an action`);
+    // Every hand-rolled action (not wrapped with safe()) is accounted for: it gates itself (BY_HAND) or needs no gate (HAND_ALLOWED).
+    const handRolled = [...sources.matchAll(/^export async function ([A-Za-z0-9_]+)\(/gm)].map((m) => m[1]);
+    const accounted = new Set<string>([...BY_HAND, ...HAND_ALLOWED]);
+    const stray = handRolled.filter((n) => !accounted.has(n));
+    assert.deepEqual(stray, [], `hand-rolled actions missing from BY_HAND or HAND_ALLOWED: ${stray.join(", ")}`);
     const tags = [...sources.matchAll(/safe\.whileLapsed\("([A-Za-z]+)"\)/g)].map((x) => x[1]);
     for (const t of tags) assert.ok((WHILE_LAPSED as readonly string[]).includes(t), `${t} is on the allow-list`);
     ok(`the allow-list's ${WHILE_LAPSED.length} names and ${BY_HAND.length} by-hand names all exist, and no action names itself outside the list`);

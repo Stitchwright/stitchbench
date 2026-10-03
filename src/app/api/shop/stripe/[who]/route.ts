@@ -9,7 +9,7 @@ const HEADERS = { "Cache-Control": "no-store" };
 
 export async function POST(req: Request, { params }: { params: Promise<{ who: string }> }) {
   const { who } = await params;
-  if (!allowPublic(req, "stripe-webhook", 600, 60_000)) return new Response("Too many requests.", { status: 429, headers: HEADERS });
+  if (!allowPublic(req, "stripe-webhook", 600, 60_000, "webhook")) return new Response("Too many requests.", { status: 429, headers: HEADERS });
   const raw = await readUpTo(req, 256 * 1024);
   if (!raw) return new Response("Bad body.", { status: 400, headers: HEADERS });
   const r = await handleWebhook(who, Buffer.from(raw).toString("utf8"), req.headers.get("stripe-signature"));

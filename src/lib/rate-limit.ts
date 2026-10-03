@@ -22,10 +22,18 @@ export function allow(key: string, limit: number, windowMs: number): boolean {
   return true;
 }
 
-/** For public routes: the limit per address (or "anon"), and every public POST also counts against one shared cap. */
-export function allowPublic(req: Request | Headers, key: string, limit: number, windowMs: number): boolean {
+/**
+ * How many public POSTs a minute the whole instance takes, per pool: the customer forms (booking, estimates,
+ * unsubscribe) share one budget as before; the shop's cart and checkout have their own, bigger one; Stripe's webhooks
+ * their own again, so one shop's cart clicks can never hold up another shop's payment.
+ */
+const POST_POOLS = { forms: 300, shop: 3000, webhook: 1200 } as const;
+export type PostPool = keyof typeof POST_POOLS;
+
+/** For public routes: the limit per address (or "anon"), and every public POST also counts against its pool's shared cap. */
+export function allowPublic(req: Request | Headers, key: string, limit: number, windowMs: number, pool: PostPool = "forms"): boolean {
   const who = clientAddress(req) ?? "anon";
   const method = req instanceof Request ? req.method : "GET";
-  if (method === "POST" && !allow("public-post", 300, 60_000)) return false;
+  if (method === "POST" && !allow(`public-post:${pool}`, POST_POOLS[pool], 60_000)) return false;
   return allow(`${key}:${who}`, limit, windowMs);
 }

@@ -3,6 +3,7 @@
 // Bringing in a customer list (scheduling-messaging-design.md 11.2): admins, with Marketing on. The counts and the
 // problems come back to the page, so this is a data action, not safe().
 import { revalidatePath } from "next/cache";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { isUserError } from "@/lib/user-error";
 import { requireAdmin } from "@/lib/session";
 import { requireOn } from "@/lib/module-gate";
@@ -13,6 +14,7 @@ export type { ImportResult, ImportRow };
 export async function importCustomers(rows: ImportRow[]): Promise<({ ok: true } & ImportResult) | { error: string }> {
   try {
     const user = await requireAdmin();
+    await requireBaseWritable(user);
     await requireOn(user, "marketing");
     const r = await importCustomersAs(user, rows);
     revalidatePath("/customers");

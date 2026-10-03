@@ -378,7 +378,9 @@ async function sendRow(t: Turn, row: OutMessage) {
       const next = zonedTime(addDays(ymdOf(now, t.tz), 1), v.quietStart, t.tz);
       // AND, not a spread: dueWhere has an OR of its own and would otherwise replace the capped filter and defer every due row.
       await db.outMessage.updateMany({ where: { shopId, channel, AND: [capped, dueWhere(now)] }, data: { sendAfter: next } });
-      t.stop[channel] = true;
+      // Marketing rows sort after every notice, so stopping the channel here loses nothing. An order message sits among
+      // the other notices (it is one), so only it steps aside: the repair-ready and reminder rows behind it still go.
+      if (marketing) t.stop[channel] = true;
       return;
     }
   }

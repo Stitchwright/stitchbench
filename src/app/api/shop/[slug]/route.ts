@@ -16,7 +16,7 @@ const text = (fd: FormData, k: string, max = 500) => (typeof fd.get(k) === "stri
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const home = `/shop/${encodeURIComponent(slug)}`;
-  if (!allowPublic(req, "shop", 120, 10 * 60_000) || !allow(`shop:${slug}`, 600, 60 * 60_000)) {
+  if (!allowPublic(req, "shop", 120, 10 * 60_000, "shop") || !allow(`shop:${slug}`, 600, 60 * 60_000)) {
     return new Response("Too many requests. Please try again in a few minutes, or call the shop.", { status: 429, headers: HEADERS });
   }
   const fd = await formUpTo(req, 16 * 1024);
@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       return see(cartHref(encodeCart(next), action === "add" ? "&added=1" : ""));
     }
     if (action !== "checkout") return see(home);
-    if (!allowPublic(req, "shop-checkout", 10, 10 * 60_000) || !allow(`shop-checkout:${slug}`, 100, 60 * 60_000)) {
+    if (!allowPublic(req, "shop-checkout", 10, 10 * 60_000, "shop") || !allow(`shop-checkout:${slug}`, 100, 60 * 60_000)) {
       return new Response("Too many requests. Please try again in a few minutes, or call the shop.", { status: 429, headers: HEADERS });
     }
     // Bots: the hidden field filled, or the form sent within five seconds of opening.

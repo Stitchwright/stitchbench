@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { isUserError, safe, UserError, type ActionResult } from "@/lib/action";
 import { openWaits } from "@/lib/part-waits";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { MAX_STOCK, centsField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
@@ -126,6 +127,7 @@ export async function moveStock(partId: string, formData: FormData): Promise<Act
   try {
     assertId(partId);
     const user = await requireUser();
+    await requireBaseWritable(user); // a stock move is new work: refused while the program is read-only
     const p = await db.part.findFirst({ where: { id: partId, shopId: user.shopId } });
     if (!p) throw new UserError("Part not found.");
     // A partner's consigned stock is placed, counted and taken back by the partner; receiving the shop's own units into
