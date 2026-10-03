@@ -90,50 +90,51 @@ model Shop {
   hubWritesOff        Boolean  @default(false)
   createdAt           DateTime @default(now())
 
-  users          User[]
-  customers      Customer[]
-  machines       Machine[]
-  tickets        Ticket[]
-  parts          Part[]
-  stockMoves     StockMove[]
-  notes          ModelNote[]
-  serviceItems   ServiceItem[]
-  photos         MachinePhoto[]
-  sharedPosts    SharedPost[]
-  sales          Sale[]
-  partnerLinks   PartnerLink[]
-  repairJobs     RepairJob[]
-  partnerOrders  PartnerOrder[]
-  consignItems   ConsignItem[]
-  consignSales   ConsignSale[]
-  settlements    Settlement[]
-  outbox         PartnerOutbox[]
+  users           User[]
+  customers       Customer[]
+  machines        Machine[]
+  tickets         Ticket[]
+  parts           Part[]
+  stockMoves      StockMove[]
+  notes           ModelNote[]
+  serviceItems    ServiceItem[]
+  photos          MachinePhoto[]
+  sharedPosts     SharedPost[]
+  sales           Sale[]
+  partnerLinks    PartnerLink[]
+  repairJobs      RepairJob[]
+  partnerOrders   PartnerOrder[]
+  consignItems    ConsignItem[]
+  consignSales    ConsignSale[]
+  settlements     Settlement[]
+  outbox          PartnerOutbox[]
   // Paid modules
-  licenses       License[]
-  moduleGrants   ModuleGrant[]
-  equipmentKinds ShopEquipmentKind[]
-  ticketSites    TicketSite[]
-  partWaits      PartWait[]
-  bookingLinks   BookingLink[]
-  webOrders      WebOrder[]
-  partPhotos     PartPhoto[]
-  stockUnits     StockUnit[]
-  vacCares       VacCare[]
+  licenses        License[]
+  moduleGrants    ModuleGrant[]
+  equipmentKinds  ShopEquipmentKind[]
+  ticketSites     TicketSite[]
+  partWaits       PartWait[]
+  bookingLinks    BookingLink[]
+  webOrders       WebOrder[]
+  partPhotos      PartPhoto[]
+  stockUnits      StockUnit[]
+  vacCares        VacCare[]
+  manualDownloads ManualDownload[]
   // Scheduling and messages
-  partnerRuns    PartnerRun[]
-  messaging      MessagingSettings?
-  outMessages    OutMessage[]
-  suppressions   Suppression[]
-  consentEvents  ConsentEvent[]
-  inboundTexts   InboundText[]
-  campaigns      Campaign[]
-  estimateLinks  EstimateLink[]
-  classes        ShopClass[]
-  classMeetings  ClassMeeting[]
-  enrollments    Enrollment[]
-  apptTypes      AppointmentType[]
-  appointments   Appointment[]
-  shifts         Shift[]
+  partnerRuns     PartnerRun[]
+  messaging       MessagingSettings?
+  outMessages     OutMessage[]
+  suppressions    Suppression[]
+  consentEvents   ConsentEvent[]
+  inboundTexts    InboundText[]
+  campaigns       Campaign[]
+  estimateLinks   EstimateLink[]
+  classes         ShopClass[]
+  classMeetings   ClassMeeting[]
+  enrollments     Enrollment[]
+  apptTypes       AppointmentType[]
+  appointments    Appointment[]
+  shifts          Shift[]
 }
 
 model User {
@@ -645,18 +646,49 @@ model MachinePhoto {
 // Every manual in the shop library (C:\Manuals), so a model page can list them
 // with their path. Techs keep the library at the same path on every PC.
 model LibraryDoc {
-  id        String   @id
-  path      String   @unique // relative to the library root, backslashes, e.g. Sewing\Janome\ServiceManuals\X.pdf
-  category  String
-  brand     String
-  file      String
-  docType   String?
-  title     String?
-  pages     Int?
-  sizeBytes Int?
-  modelKeys String[]
+  id           String    @id
+  path         String    @unique // relative to the library root, backslashes, e.g. Sewing\Janome\ServiceManuals\X.pdf
+  category     String
+  brand        String
+  file         String
+  docType      String?
+  title        String?
+  pages        Int?
+  sizeBytes    Int?
+  modelKeys    String[]
+  // When the file was downloaded from a hub link: which link and where from, so the link isn't downloaded twice.
+  // (A sidecar <file>.pdf.json next to the file holds the same, and survives the library index being rebuilt.)
+  linkId       String?
+  sourceUrl    String?
+  downloadedAt DateTime?
 
   @@index([brand])
+  @@index([linkId])
+}
+
+// A hub link queued to be downloaded into this install's library ("Download everything" for a model, a brand, or every
+// link not yet here). The server's timer takes one row at a time with a pause between, so a maker's site is never
+// hammered; rows stay after a restart, so the job carries on where it stopped. The library is one per install, but the
+// row remembers which company asked, and its progress shows to that company.
+model ManualDownload {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  jobId      String // every row queued by one click shares it
+  jobLabel   String // "Janome MC6700P", "Juki", "every link not in the library"
+  linkId     String // the ManualLink's id (the hub's); no relation: links come and go with the hub sync
+  status     String    @default("QUEUED") // QUEUED | DOWNLOADING | DONE | FAILED
+  queuedAt   DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  tries      Int       @default(0)
+  path       String? // where it was saved, relative to the library root (backslashes)
+  filed      Boolean   @default(false) // true: under Category\Brand with a LibraryDoc row; false: _inbox
+  error      String? // why it failed, in the user's words
+
+  @@index([shopId, jobId])
+  @@index([status, queuedAt])
+  @@index([linkId])
 }
 
 // A picture of the machine, cut from its own manual (cover or front pages).

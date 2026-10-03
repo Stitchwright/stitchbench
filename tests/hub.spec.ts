@@ -75,7 +75,7 @@ test("community hub: links and shared notes", async ({ page }) => {
   const item = page.locator("li", { has: page.getByRole("link", { name: title }) });
   await expect(item).toBeVisible();
   await item.getByRole("button", { name: /Download to library/ }).click();
-  await expect(page.getByText("Saved to the manual library's _inbox")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Saved to the manual library")).toBeVisible({ timeout: 60_000 });
   if (process.env.TESTLIB) {
     const inbox = path.join(process.env.TESTLIB, "_inbox");
     expect(fs.readdirSync(inbox).some((f) => f.startsWith("Janome_MC6700P_ServiceManual"))).toBe(true);

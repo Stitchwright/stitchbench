@@ -5,8 +5,13 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { modelKey } from "@/lib/format";
 import { hubJoined } from "@/lib/hub";
 import { libraryDir } from "@/lib/library-dir";
+import { Download } from "lucide-react";
+import { brandKey } from "@/lib/format";
 import { PageHeader, Empty } from "@/components/ui";
+import { ActionButton } from "@/components/action-form";
 import { ManualLinkItem } from "@/components/manual-links";
+import { DownloadProgress } from "@/components/download-progress";
+import { downloadAllManuals, downloadBrandManuals } from "@/actions/manual-downloads";
 
 const FILTERS = [
   { key: "", label: "All" },
@@ -17,7 +22,8 @@ const FILTERS = [
 ] as const;
 
 export default async function LinksPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
-  const tz = await shopTimeZone((await requireUser()).shopId);
+  const user = await requireUser();
+  const tz = await shopTimeZone(user.shopId);
   const sp = await searchParams;
   const term = sp.q?.trim() ?? "";
   const status = FILTERS.some((f) => f.key === sp.status) ? sp.status : "";
@@ -45,6 +51,8 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
   const n = Object.fromEntries(counts.map((c) => [c.status, c._count._all]));
   const canDownload = libraryDir() != null;
   const qs = (s: string) => `/links?${new URLSearchParams({ ...(term ? { q: term } : {}), ...(s ? { status: s } : {}) })}`;
+  // The search is a brand when every link shown carries it (Juki, Baby Lock): offer that brand's "download all".
+  const brand = term && links.length && links.every((l) => brandKey(l.brand) === brandKey(term)) ? links[0].brand : null;
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -54,7 +62,11 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
       />
       {!joined ? (
         <p className="pill tone-wait inline-block">
-          Not connected to the community hub. <Link href="/settings#hub" className="link">Join it in Settings</Link> to get the shared link catalog.
+          Not connected to the community hub.{" "}
+          <Link href="/settings#hub" className="link">
+            Join it in Settings
+          </Link>{" "}
+          to get the shared link catalog.
         </p>
       ) : (
         <>
@@ -74,6 +86,24 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
             <input id="lq" name="q" defaultValue={term} className="input max-w-md" placeholder="Model, brand or site, e.g. PR655, Juki, supsew" />
             <button className="btn">Search</button>
           </form>
+          {canDownload && (
+            <div className="card card-pad space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {brand && (
+                  <ActionButton action={downloadBrandManuals.bind(null, brand)} className="btn btn-sm" success={`Queued: every ${brand} link not yet in the library`}>
+                    <Download size={12} aria-hidden /> Download every {brand} link
+                  </ActionButton>
+                )}
+                <ActionButton action={downloadAllManuals} className="btn btn-sm" confirm="Every link not yet in the library?" success="Queued: every working link not yet in the library">
+                  <Download size={12} aria-hidden /> Download everything not in the library
+                </ActionButton>
+                <span className="muted text-xs">
+                  One file at a time with a pause between, filed by model where the link says enough (else _inbox). Dead links are skipped. It carries on after a restart.
+                </span>
+              </div>
+              <DownloadProgress shopId={user.shopId} timeZone={tz} />
+            </div>
+          )}
           <div className="card card-pad">
             {links.length === 0 ? (
               <Empty>No links match.</Empty>

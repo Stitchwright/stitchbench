@@ -1,21 +1,16 @@
 "use server";
 
 // The community hub: joining, syncing, manual links (add / fix / roll back / download), shared notes.
-import fs from "node:fs";
-import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/shops";
-import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
 import { str } from "@/lib/format";
 import { byWhom, hubFetch, hubId, hubReachable, joinHub, leaveHub, parseInvite, reportUsageNextSync, saveLink, syncHub, usageSettingChanged, type HubLink, type LinkRevision } from "@/lib/hub";
-import { libraryDir, writeUnusedPdf } from "@/lib/library-dir";
+import { libraryDir } from "@/lib/library-dir";
+import { alreadyHave, downloadLink, DownloadFailed, haveIndex, NO_LIBRARY, reportLink } from "@/lib/manual-downloads";
 import { requireHubWrites } from "@/lib/hub-writes";
-
-const UA = "StitchBench (manual download for a repair shop's own library)";
-const MAX_PDF = 300 * 1024 * 1024;
 
 function refresh() {
   revalidatePath("/", "layout");
@@ -120,33 +115,25 @@ export async function manualLinkHistory(linkId: string): Promise<{ revisions: Li
  * other shops through the hub, so only public web servers are fetched (never the shop's own network), and the
  * download stops at the size limit.
  */
+/**
+ * Download one link into the library now: filed under Category\Brand with a LibraryDoc row when the link says enough
+ * (category, brand, model, kind of manual), else into _inbox. A link already here is not fetched again.
+ */
 export const downloadManualLink = safe(async function downloadManualLink(linkId: string) {
   await requireUser();
   const root = libraryDir();
-  if (!root) throw new UserError("Downloading into the manual library works in the StitchBench program on the shop PC.");
+  if (!root) throw new UserError(NO_LIBRARY);
   const l = await db.manualLink.findUnique({ where: { id: linkId } });
   if (!l) throw new UserError("That link is gone. Sync with the hub and try again.");
-  const report = () => hubFetch(`/v1/links/${hubId(linkId)}/report`, { method: "POST", json: { ok: false } }).catch(() => {});
-  let got: Awaited<ReturnType<typeof fetchPublic>>;
+  const have = await alreadyHave(l, root, await haveIndex());
+  if (have) throw new UserError(`It's already in the library: ${have}`);
   try {
-    got = await fetchPublic(l.url, { headers: { "User-Agent": UA, Accept: "application/pdf,*/*" }, timeoutMs: 180_000, maxBytes: MAX_PDF });
+    await downloadLink(l, root);
   } catch (e) {
-    if (e instanceof TooLarge) throw new UserError("That file is too large to download here.");
-    await report();
-    throw new UserError(e instanceof Error && /private network|login in it|Only web/.test(e.message) ? `${e.message} It can't be downloaded here.` : "The site didn't answer. Open the link in a browser instead; if it's dead, fix the link for everyone.");
+    if (e instanceof DownloadFailed && e.report) await reportLink(l.id);
+    throw e;
   }
-  if (!got.response.ok || !got.body) {
-    await report();
-    throw new UserError(`The site answered ${got.response.status}. Try the link in a browser; if it's dead, fix it for everyone.`);
-  }
-  const data = got.body;
-  if (data.subarray(0, 5).toString("latin1") !== "%PDF-") {
-    throw new UserError("That link opens a web page, not the PDF itself. Open it in a browser and save the manual from there.");
-  }
-  const inbox = path.join(root, "_inbox");
-  await fs.promises.mkdir(inbox, { recursive: true });
-  const wanted = l.fileName ?? `${l.brand}_${l.models.replace(/,\s*/g, "+")}_${l.docType ?? "Manual"}`;
-  await writeUnusedPdf(inbox, wanted.replace(/\.pdf$/i, "").replace(/[^\w\-+.() ]+/g, "_").slice(0, 150) || "manual", data);
+  refresh();
 });
 
 // ---------- shared notes ----------
@@ -163,9 +150,7 @@ export const removeHubPost = safe(async function removeHubPost(postId: string) {
   const soleCompany = !own && (await db.shop.count()) === 1;
   const ownCompany = !own && p.shopRef === user.shopId;
   const allowed =
-    isPlatformAdmin(user.email) ||
-    (own != null && own.shopId === user.shopId && (own.authorId === user.id || user.role !== "TECH")) ||
-    ((soleCompany || ownCompany) && user.role !== "TECH");
+    isPlatformAdmin(user.email) || (own != null && own.shopId === user.shopId && (own.authorId === user.id || user.role !== "TECH")) || ((soleCompany || ownCompany) && user.role !== "TECH");
   if (!allowed) throw new UserError("Only whoever shared this note, or their shop's owner or admin, can remove it.");
   await hubFetch(`/v1/posts/${hubId(postId)}`, { method: "DELETE" });
   await db.hubPost.delete({ where: { id: postId } });
