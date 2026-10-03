@@ -6,7 +6,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { actingCompany, asCompany } from "@/lib/acting-company";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
-import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
+import { applyMovedOut, applyStanding, movedAnswer, type StandingAnswer } from "@/lib/hub-standing";
+import { MOVE_CANCEL_PENDING } from "@/lib/move/format";
 import { baseNumber } from "@/lib/parts";
 import { readUpTo } from "@/lib/read-body";
 import { appName, programVersion, shopKindOf } from "@/lib/shops";
@@ -229,6 +230,8 @@ export class HubError extends UserError {
   constructor(
     message: string,
     public status: number,
+    /** The hub's answer as it came (JSON), for the few refusals that carry more than words (410 moved: to, at). */
+    public detail: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = "HubError";
@@ -244,8 +247,10 @@ export function hubStatus(e: unknown): number {
 
 async function failure(r: Response) {
   let msg = `The community hub answered ${r.status}.`;
+  let detail: Record<string, unknown> | null = null;
   try {
     const j = (await r.json()) as { error?: string };
+    if (j && typeof j === "object" && !Array.isArray(j)) detail = j as Record<string, unknown>;
     if (j.error) msg = j.error;
   } catch {
     /* not JSON */
@@ -254,7 +259,7 @@ async function failure(r: Response) {
   // company, X-Shop-Ref): in the person's words, about this program.
   const other = r.status === 403 && /^That (\w[\w ]*?) belongs to another company/.exec(msg);
   if (other) msg = `That ${other[1]} belongs to another company on this ${appName()}.`;
-  return new HubError(msg, r.status);
+  return new HubError(msg, r.status, detail);
 }
 
 /**
@@ -859,7 +864,9 @@ async function pushUsage() {
   const hubMonth = new Date().toISOString().slice(0, 7);
   type Item = { number: string; brand: string; qty: number; tickets: number };
   const offered: { id: string; name: string; months: { month: string; items: Item[] }[] }[] = [];
-  for (const shop of await db.shop.findMany({ select: { id: true, name: true, shareUsage: true, timeZone: true } })) {
+  // A company being moved (or moved) sends nothing from this copy: its counts come from the install it moves to, and an
+  // "off" from here would take back the install's own older reports with it.
+  for (const shop of await db.shop.findMany({ where: { movingAt: null }, select: { id: true, name: true, shareUsage: true, timeZone: true } })) {
     if (!shop.shareUsage) {
       if (usageOff.has(shop.id)) continue;
       // An older hub doesn't know "off" (400): it keeps what this install sent before, as it did.
@@ -948,7 +955,8 @@ export function usageSettingChanged(shopId: string) {
  */
 async function pushPending() {
   const pending = await db.sharedPost.findMany({
-    where: { hubId: null },
+    // Not from a company being moved: its notes go from the install it moves to (they travel in the move file).
+    where: { hubId: null, shop: { movingAt: null } },
     include: { photos: { orderBy: { sortOrder: "asc" } }, author: { select: { name: true } }, shop: { select: { name: true } } },
     take: 50,
   });
@@ -1093,8 +1101,10 @@ function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsR
  */
 async function claimShops(run: SyncRun): Promise<boolean> {
   if (!run.installId || claimUnknown.has(run.installId)) return true;
-  const shops = await db.shop.findMany({ select: { id: true, name: true, doesRepair: true, sellsRetail: true }, orderBy: { createdAt: "asc" } });
+  const shops = await db.shop.findMany({ select: { id: true, name: true, doesRepair: true, sellsRetail: true, movingAt: true, movedOutAt: true }, orderBy: { createdAt: "asc" } });
   for (const shop of shops) {
+    // A company the hub has said moved to another install isn't this install's on the hub any more: not asked again.
+    if (shop.movedOutAt) continue;
     let answer: StandingAnswer;
     try {
       answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, shops.length === 1) })).json()) as StandingAnswer;
@@ -1103,12 +1113,36 @@ async function claimShops(run: SyncRun): Promise<boolean> {
         claimUnknown.add(run.installId);
         return true;
       }
+      // The company moved to another install (company-move-design.md 5.5): this copy learns where and when, stays
+      // read-only and says so; the install's other companies carry on.
+      const moved = movedAnswer(e);
+      if (moved) {
+        if (!(await sameHub(run))) return false;
+        await applyMovedOut(shop.id, moved);
+        continue;
+      }
       throw e;
     }
     if (!(await sameHub(run))) return false;
     await applyStanding(shop.id, answer);
+    if (!shop.movingAt) await forgetCancelledMove(shop.id);
   }
   return true;
+}
+
+/**
+ * A move the owner cancelled while the hub was out of reach: its token is still good there, so the hub is told now
+ * (company-move-design.md section 7). Quietly tried again next sync if it still doesn't answer.
+ */
+async function forgetCancelledMove(shopId: string) {
+  const pending = await db.companyMove.findMany({ where: { shopId, direction: "export", hubError: MOVE_CANCEL_PENDING }, select: { id: true } });
+  if (!pending.length) return;
+  try {
+    await hubFetch(`/v1/shops/${hubId(shopId)}/move-token`, { method: "DELETE", shopRef: shopId });
+  } catch (e) {
+    if (hubStatus(e) !== 404) return;
+  }
+  await db.companyMove.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { hubError: null } });
 }
 
 /** One company's claim and standing now (Settings → Account's "Check again"): the same request the sync makes. */
@@ -1116,7 +1150,14 @@ export async function claimShopNow(shopId: string): Promise<StandingAnswer> {
   const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true } });
   if (!shop) throw new UserError("Company not found.");
   const sole = (await db.shop.count()) === 1;
-  const answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole), shopRef: shop.id })).json()) as StandingAnswer;
+  let answer: StandingAnswer;
+  try {
+    answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole), shopRef: shop.id })).json()) as StandingAnswer;
+  } catch (e) {
+    const moved = movedAnswer(e);
+    if (moved) await applyMovedOut(shop.id, moved);
+    throw e;
+  }
   await applyStanding(shop.id, answer);
   return answer;
 }

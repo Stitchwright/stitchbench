@@ -397,6 +397,72 @@ one and a new password is made and shown once, on the shop PC's own screen. It n
 
 ---
 
+## Moving a company
+
+A company can move from one install to another and keep everything: from the hosted service to a shop PC (or its
+own Railway), from a shop PC to the hosted service, or from one PC to a new one. Everything comes with the same ids,
+so tickets, photos, partner records, license keys and the StitchHub connection carry on as they were.
+
+**On the install the company leaves** (the owner, **Settings → Company → Move this company**):
+1. Read what the file holds (everything: customers, machines, tickets, photos, parts and stock, sales, messages and
+   consent records, classes, appointments, shifts, online orders, partner records, and every login with its password
+   hash), tick the box, and press **Prepare the move file**. From that moment this copy is **read-only**: everyone can
+   still look things up, print, export, finish open work and take payments, but nothing new is written here, so
+   nothing entered after the file was taken can be lost. **Cancel the move** lifts it at any time.
+2. If the install is on StitchHub, it asks the hub for a **move token** and puts it in the file (the Settings card
+   says so). If the hub can't be reached just then, the move goes on and the card says the file has no token:
+   download it again once the hub answers to get one.
+3. **Download the move file** (`<company>-<date>.stitchmove.ndjson.gz`). It downloads only over https or on the
+   program's own PC.
+
+**The file is the whole company.** Treat it as you would a backup (see [Backups and restore](#backups-and-restore)):
+whoever has it has the shop, including every login's password hash (crackable offline) and the move token. Carry it
+on a drive you keep, not by email, and delete it once the company is running on the new install.
+
+**On the install the company goes to:**
+- **A new Windows PC**: install the program; on the first-run page choose **Restore a company from a move file** (or
+  the tray's **Restore a company from a move file...**) and pick the file. The program reads it from disk, checks every
+  line first (nothing is added if anything is wrong, and it says why), then brings it in. A PC that already has its
+  company takes another only when it is set up to host several (`platformAdminEmails` in the settings file).
+- **The hosted service, or your own Railway**: the StitchBench administrator (`PLATFORM_ADMIN_EMAILS`) uses
+  **Companies → Import a company** and chooses the file; it uploads in parts (a dropped connection carries on where it
+  stopped), then imports.
+- **From a terminal** (a server with no browser): `npx tsx scripts/move/import.ts <file> [--into DATABASE_URL]`.
+
+Everyone then signs in on the new install with the same email and password as before. The summary says what to
+**enter again**, because secrets are never put in the file: the mail password (Settings → Messages → Email), the
+Twilio auth token (Settings → Messages → Texts), the Stripe secret key and webhook secret (Settings → Online shop:
+the webhook address is the new install's now), and estimate links still waiting for a customer's answer (send them
+again from the ticket). Email and texts stay off and marketing is on hold until then. Online booking and the online
+shop answer at the new install's address: give customers the new link (if another company there already uses the
+booking address, it is cleared and you choose a new one). Modules the hosted administrator switched on need a license
+key on a Windows PC: ask for one before you move. The manual library is the PC's folder, not in the file: copy
+`C:\Manuals` to the new PC, or connect the folder again on the hosted service.
+
+**StitchHub.** When the company was on a hub, the new install hands the hub the move token right after the import:
+the hub then has the company there, and its partner links, marketplace listings and orders, ratings, shared notes and
+parts-usage counts follow it. A new install that isn't on any hub yet joins the company's hub as part of this, with
+no invite. Partner messages sent while the company was on its way are picked up once. **Partner shops see nothing
+change**: same partnership, same name, same terms; the hub simply delivers to the new install. If the hub couldn't be
+reached at that moment, the import still stands and the summary says so: press **Re-point the hub** (Settings →
+Company on the new install, or Companies for the administrator) once it answers. If the file has no token (made while
+the hub was down), or the new install is on a different hub, the hub admin moves the company by hand (StitchHub admin
+page → **Moves → Move this shop**). A move token works once and for 14 days.
+
+**The old copy.** At its next sync the install the company left hears from the hub that it moved, and every page says
+"This company moved to <the new install> on <date>. This copy is read-only; delete it after <date + 30 days>." (An
+install that isn't on a hub can't hear it: once the company runs on the new install, the owner presses **The move is
+done** in Settings → Company to get the same notice.) Keep the old copy 30 days in case the move has to be undone;
+nothing deletes it by itself. Then:
+- **Hosted**: the StitchBench administrator deletes it under **Companies → Moved away**, typing the company's name.
+- **Windows**: the tray's **Remove the moved company...** (a backup is made first). A PC whose only company moved can
+  also simply be uninstalled.
+
+A company that comes back to an install it left is imported again the same way, after its old copy there has been
+deleted (a move never merges two copies).
+
+---
+
 ## Paid modules
 
 StitchBench's extra modules (Vac Shop, Small Appliance Repair, Scheduling, Marketing) are sold by StitchBench,

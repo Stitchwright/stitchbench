@@ -165,21 +165,31 @@ model Shop {
 // downloading | done | failed | cancelled. The row survives a page reload, so the Settings page shows where the
 // download is. Per install (not in the file): it describes this copy's move, not the company.
 model CompanyMove {
-  id           String    @id @default(cuid())
-  shopId       String
-  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  direction    String // export | import
-  status       String
-  table        String? // the table being written now
-  rowsDone     Int       @default(0)
-  rowsTotal    Int       @default(0)
-  bytes        BigInt    @default(0) // gzipped bytes sent so far (an export; a photo-heavy company's file passes 2 GB)
-  filePath     String? // an import's file on disk (export streams; nothing is spooled)
-  error        String?
-  startedAt    DateTime  @default(now())
-  finishedAt   DateTime?
-  downloadedAt DateTime?
-  byUserId     String?
+  id             String    @id @default(cuid())
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  direction      String // export | import
+  status         String
+  table          String? // the table being written now
+  rowsDone       Int       @default(0)
+  rowsTotal      Int       @default(0)
+  bytes          BigInt    @default(0) // gzipped bytes sent so far (an export; a photo-heavy company's file passes 2 GB)
+  filePath       String? // an import's file on disk (export streams; nothing is spooled)
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  downloadedAt   DateTime?
+  byUserId       String?
+  // The hub's part (company-move-design.md section 5, package move-hub). An export: the hub the move token came from
+  // and the token, sealed under "moveToken:<id>" (every download of this move carries the same one), or hubError when
+  // the hub couldn't be asked. An import: the hub and the token the file named, the old install's places in the hub's
+  // feeds (hubCursors, for the partner catch-up), then hubDoneAt once the hub has the company here, or hubError and the
+  // "Re-point the hub" button. The token is dropped once used or cancelled.
+  hubUrl         String?
+  hubTokenSealed String?
+  hubCursors     Json?
+  hubDoneAt      DateTime?
+  hubError       String?
 
   @@index([shopId, startedAt])
 }

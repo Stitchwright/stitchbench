@@ -2,7 +2,9 @@
 // with no browser upload, and for the checks. The same importCompany as the Companies page and the Windows tray: every
 // refusal before anything is written, then one transaction with every id kept.
 //   npm run check scripts/move/import.ts <file.stitchmove.ndjson.gz> [--into <DATABASE_URL>]
-// Without --into, DATABASE_URL (.env) is the install it goes into. The import never talks to the hub (package move-hub).
+// Without --into, DATABASE_URL (.env) is the install it goes into. Once the company is in, the install's StitchHub is
+// told it is here (package move-hub; the summary's StitchHub line says how that went, and "Re-point the hub" in Settings
+// → Company tries again).
 import "dotenv/config";
 import fs from "node:fs";
 

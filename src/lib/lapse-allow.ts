@@ -45,6 +45,11 @@ export const WHILE_LAPSED = [
   // is what lifts the move's own freeze
   "startCompanyMove",
   "cancelCompanyMove",
+  // The hub's part of a move (package move-hub): the old copy's "The move is done" (it is frozen), "Re-point the hub"
+  // (the connection itself), and the administrator deleting an old copy 30 days on (as setCompanyModule)
+  "confirmCompanyMoved",
+  "repointCompanyHub",
+  "removeMovedCompany",
 ] as const;
 
 export type WhileLapsed = (typeof WHILE_LAPSED)[number];
@@ -109,5 +114,17 @@ export const HAND_ALLOWED = [
  * skipped, as modules-design.md 6.4 does for Scheduling and Marketing).
  */
 // The StitchBench administrator's company import (/api/move/upload/*, the PC's /api/move/local) is outside the rule too:
-// it makes another company, and the administrator's own standing is beside the point (as with setCompanyModule).
-export const ALSO_ALLOWED = ["/api/export/*", "/api/sales", "/api/move/download/*", "/api/move/upload/*", "/api/move/local", "hub sync", "partner sync", "backups", "sign in / out"] as const;
+// it makes another company, and the administrator's own standing is beside the point (as with setCompanyModule). So is
+// the tray's removal of a moved company's old copy (/api/move/remove): it deletes, it writes nothing.
+export const ALSO_ALLOWED = [
+  "/api/export/*",
+  "/api/sales",
+  "/api/move/download/*",
+  "/api/move/upload/*",
+  "/api/move/local",
+  "/api/move/remove",
+  "hub sync",
+  "partner sync",
+  "backups",
+  "sign in / out",
+] as const;

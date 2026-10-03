@@ -35,14 +35,22 @@ function List({ title, items }: { title: string; items: string[] }) {
 
 export function MoveImportSummary({ summary }: { summary: ImportSummary }) {
   const tables = Object.entries(summary.tables).filter(([, n]) => n > 0);
+  // The hub step (package move-hub) is said on its own, marked when something is left to do; not again under "What changed".
+  const hub = summary.hub && summary.hub.status !== "none" ? summary.hub : null;
+  const notes = hub ? summary.notes.filter((n) => n !== hub.message) : summary.notes;
   return (
     <div className="space-y-3 text-sm">
       <p>
         <strong>{summary.shopName}</strong> is on this install now: {summary.rows.toLocaleString()} rows, every id as it was ({summary.from}).
         {summary.owners.length > 0 && <> Sign in as {summary.owners.join(" or ")}, with the same password as before.</>}
       </p>
+      {hub && (
+        <p className={`card card-pad ${hub.status === "done" ? "tone-ready" : "tone-wait"}`} data-testid="move-hub-step">
+          {hub.message}
+        </p>
+      )}
       <List title="Enter again" items={summary.reenter} />
-      <List title="What changed" items={summary.notes} />
+      <List title="What changed" items={notes} />
       <List title="From the old install" items={summary.warnings} />
       <details>
         <summary className="cursor-pointer">Rows per table</summary>

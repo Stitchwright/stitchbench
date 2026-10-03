@@ -13,6 +13,7 @@ import { gates as dataGates } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { GraceBanner, LapsedBar, ModulePills, MovingBar, type GraceItem, type RenewPill } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
+import { deleteFrom } from "@/lib/move/format";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -120,7 +121,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
       <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">
         {modules.moving ? (
-          <MovingBar to={modules.moving.to} since={fmtDate(modules.moving.at, shop?.timeZone ?? DEFAULT_TIME_ZONE)} admin={admin} />
+          <MovingBar
+            to={modules.moving.to}
+            since={fmtDate(modules.moving.at, shop?.timeZone ?? DEFAULT_TIME_ZONE)}
+            movedOn={modules.moving.outAt ? fmtDate(modules.moving.outAt, shop?.timeZone ?? DEFAULT_TIME_ZONE) : null}
+            deleteOn={modules.moving.outAt ? fmtDate(deleteFrom(modules.moving.outAt), shop?.timeZone ?? DEFAULT_TIME_ZONE) : null}
+            admin={admin}
+          />
         ) : (
           lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />
         )}

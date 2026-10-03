@@ -5,7 +5,8 @@ import "server-only";
 // inserts every row in file order (parents first) in one transaction, so a file that is wrong anywhere leaves this
 // install exactly as it was. The doors: the hosted Companies page (src/lib/move/upload.ts, chunked upload to a spool
 // file), the Windows program's tray (src/lib/move/local.ts, the server reads the file from disk) and the CLI
-// (scripts/move/import.ts). The import never talks to the hub (package move-hub).
+// (scripts/move/import.ts). Once the transaction has committed, the hub is told the company is here now (package
+// move-hub, src/lib/move/hub-step.ts); a hub that can't be reached never undoes the import.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -36,6 +37,7 @@ import {
   type MoveRow,
   type MoveTable,
 } from "./format";
+import { hubStepAfterImport, type HubStep } from "./hub-step";
 
 /** Who imports: the StitchBench administrator (hosted, signed in), or whoever runs the PC or the server ("operator"). */
 export type Importer = CurrentUser | "operator";
@@ -70,6 +72,8 @@ export type ImportSummary = {
   warnings: string[];
   /** The public booking / shop address the file had, cleared because another company here has it. */
   bookingSlugCleared: string | null;
+  /** The hub step (package move-hub): StitchHub told the company is here now, or why not and what to do. */
+  hub: HubStep;
 };
 
 export const ONLY_ADMIN = "Only the StitchBench administrator can import a company.";
@@ -428,10 +432,11 @@ function prepare(t: MoveTable, line: MoveRow, plan: Plan, now: Date): Record<str
   return row;
 }
 
-async function insertFile(file: string, plan: Plan, by: Importer, now: Date, onProgress?: (p: ImportProgress) => void): Promise<void> {
+/** Answers the id of the company's own move record (the hub step writes to it). */
+async function insertFile(file: string, plan: Plan, by: Importer, now: Date, onProgress?: (p: ImportProgress) => void): Promise<string> {
   const shopId = plan.meta.shop.id;
   const byName = new Map(MOVE_TABLES.map((t) => [t.t, t]));
-  await db.$transaction(
+  return db.$transaction(
     async (tx) => {
       // A copy of this company deleted here earlier (it is coming back) leaves the rows of the tables without a foreign
       // key to Shop (the partner messages it had applied, the ones that failed): the file's are the company's now.
@@ -474,7 +479,7 @@ async function insertFile(file: string, plan: Plan, by: Importer, now: Date, onP
         data: { status: "CANCELLED", error: "Not sent: the company moved while it was being sent (it may have gone out already)" },
       });
       await tx.outMessage.updateMany({ where: { shopId, status: "SENDING", purpose: "notice" }, data: { status: "QUEUED", claimedAt: null, nextTryAt: null } });
-      await tx.companyMove.create({
+      const row = await tx.companyMove.create({
         data: {
           shopId,
           direction: "import",
@@ -486,10 +491,12 @@ async function insertFile(file: string, plan: Plan, by: Importer, now: Date, onP
           finishedAt: new Date(),
           byUserId: by === "operator" ? null : by.id,
         },
+        select: { id: true },
       });
       // One company at a time, decided under the same lock as sign-up (createShopWithOwner), held only to the commit.
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7710001)`);
       await pcRule(async () => tx.shop.count({ where: { id: { not: shopId } } }));
+      return row.id;
     },
     { maxWait: 20_000, timeout: 24 * 3600_000 },
   );
@@ -497,7 +504,7 @@ async function insertFile(file: string, plan: Plan, by: Importer, now: Date, onP
 
 // ---------- the summary ----------
 
-function summarize(plan: Plan): ImportSummary {
+function summarize(plan: Plan, hub: HubStep): ImportSummary {
   const { meta, shop, messaging: ms } = plan;
   const reenter: string[] = [];
   const notes: string[] = [];
@@ -520,11 +527,9 @@ function summarize(plan: Plan): ImportSummary {
   const slug = typeof shop.bookingSlug === "string" ? shop.bookingSlug : null;
   if (plan.slugTaken && slug) notes.push(`The online booking and shop address "${slug}" is taken by another company here, so it was cleared: choose a new one in Settings → Online booking.`);
   else if (slug) notes.push(`Online booking and the online shop answer at this install's address now (/book/${slug}): give customers the new link.`);
-  if ((plan.tables.PartnerLink ?? 0) > 0 || (plan.tables.SharedPost ?? 0) > 0) {
-    notes.push(
-      "StitchHub: partner links, marketplace listings and shared notes stay with the old install until the hub is told the company moved. Ask the StitchHub administrator to move it; this version doesn't do that step yet.",
-    );
-  }
+  // The hub step's outcome in the owner's words (it always names StitchHub); nothing to say for a company that was on no
+  // hub and has nothing of a hub's.
+  if (hub.status !== "none" || (plan.tables.PartnerLink ?? 0) > 0 || (plan.tables.SharedPost ?? 0) > 0) notes.push(hub.message);
   return {
     shopId: meta.shop.id,
     shopName: typeof shop.name === "string" ? shop.name : meta.shop.name,
@@ -538,6 +543,7 @@ function summarize(plan: Plan): ImportSummary {
     notes,
     warnings: Array.isArray(meta.warnings) ? meta.warnings.filter((w) => typeof w === "string") : [],
     bookingSlugCleared: plan.slugTaken ? slug : null,
+    hub,
   };
 }
 
@@ -581,13 +587,16 @@ async function importFile(file: string, by: Importer, now: Date, onProgress?: (p
   }
   if (!stat.isFile() || stat.size === 0) throw new UserError(NOT_MOVE_FILE);
   const plan = await checkFile(file, now, onProgress);
+  let moveId: string;
   try {
-    await insertFile(file, plan, by, now, onProgress);
+    moveId = await insertFile(file, plan, by, now, onProgress);
   } catch (e) {
     if (isUserError(e)) throw e;
     // The transaction rolled back: nothing of the company is here. The reason goes to the log as it came.
     console.error("company import failed:", e);
     throw new UserError(`The import stopped and nothing was imported: ${e instanceof Error ? e.message.split("\n").filter(Boolean).at(-1) : String(e)}`);
   }
-  return summarize(plan);
+  // The company is in. The hub is told (it never throws: a hub that can't be reached is said, and retried by hand).
+  const hub = await hubStepAfterImport(plan.meta.shop.id, moveId, plan.meta);
+  return summarize(plan, hub);
 }

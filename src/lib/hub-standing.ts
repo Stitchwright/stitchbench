@@ -52,3 +52,34 @@ export async function applyStanding(shopId: string, a: StandingAnswer): Promise<
     db.license.upsert({ where: { shopId_keyId: { shopId, keyId } }, create: { shopId, keyId, key, source: "hub", addedBy: "StitchHub" }, update: { key, source: "hub" } }),
   ]);
 }
+
+/** Where a company went, as the hub says it to the install the company left (410 { moved, to, at }). */
+export type MovedAway = { to: string | null; at: Date };
+
+/**
+ * The hub's "this company moved to another install" (company-move-design.md 5.5) from a refused claim or standing
+ * call, or null for any other refusal. Read off the error's fields (hub.ts HubError keeps the hub's answer), so this
+ * file needn't import hub.ts.
+ */
+export function movedAnswer(e: unknown): MovedAway | null {
+  const x = e as { hubError?: unknown; status?: unknown; detail?: Record<string, unknown> | null } | null;
+  if (!x || typeof x !== "object" || x.hubError !== true || x.status !== 410 || x.detail?.moved !== true) return null;
+  const at = typeof x.detail.at === "string" && !Number.isNaN(Date.parse(x.detail.at)) ? new Date(x.detail.at) : new Date();
+  return { to: text(x.detail.to, 120), at };
+}
+
+/**
+ * The hub says the company moved: this copy is the old one. It stays read-only (movingAt, set now if the move was made
+ * without this copy's "Prepare the move file", as the hub admin's move by hand is), says where it went and when
+ * (movedOutAt, movedTo: the hub's name for the new install), and may be deleted by hand 30 days on. Its move token, if
+ * one is still kept, goes. Once written it isn't changed by a later answer.
+ */
+export async function applyMovedOut(shopId: string, m: MovedAway): Promise<void> {
+  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { movingAt: true, movedOutAt: true } });
+  if (!shop || shop.movedOutAt) return;
+  await db.$transaction([
+    db.shop.update({ where: { id: shopId }, data: { movedOutAt: m.at, movingAt: shop.movingAt ?? m.at, ...(m.to ? { movedTo: m.to } : {}) } }),
+    db.companyMove.updateMany({ where: { shopId, direction: "export", hubTokenSealed: { not: null } }, data: { hubTokenSealed: null } }),
+  ]);
+  console.info(`[move] ${JSON.stringify({ company: shopId, movedOut: m.at.toISOString(), to: m.to })}`);
+}

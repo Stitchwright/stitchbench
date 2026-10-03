@@ -9,7 +9,7 @@ import "server-only";
 import { UserError } from "@/lib/user-error";
 import { baseWritable as writable, readOnlyMessage, type ModuleState, type Moving } from "@/lib/module-info";
 import { getModules, isAdminWho, type Who } from "@/lib/modules";
-import { movingMessage } from "@/lib/move/format";
+import { deleteFrom, movedOutMessage, movingMessage } from "@/lib/move/format";
 import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 
@@ -33,7 +33,10 @@ export async function readOnlyReason(shopId: string): Promise<ReadOnlyReason | n
 /** The refusal's words for a reason. */
 export async function readOnlyWords(shopId: string, r: ReadOnlyReason, admin: boolean): Promise<string> {
   if (r.kind === "lapsed") return readOnlyMessage(r.state, admin);
-  return movingMessage(r.moving, fmtDate(r.moving.at, await shopTimeZone(shopId)), admin);
+  const tz = await shopTimeZone(shopId);
+  // Moved (the hub said so, package move-hub): the old copy, kept read-only until it is deleted by hand.
+  if (r.moving.outAt) return movedOutMessage(r.moving.to, fmtDate(r.moving.outAt, tz), fmtDate(deleteFrom(r.moving.outAt), tz));
+  return movingMessage(r.moving, fmtDate(r.moving.at, tz), admin);
 }
 
 /** True unless the company's program key has lapsed or the company is being moved. */

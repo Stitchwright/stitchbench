@@ -152,7 +152,7 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
   if (!ids.length) return out;
   const desktop = isDesktop();
   const [shops, licenses, grants] = await Promise.all([
-    db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true, movingAt: true, movedTo: true } }),
+    db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true, movingAt: true, movedTo: true, movedOutAt: true } }),
     db.license.findMany({
       where: { shopId: { in: ids } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -210,7 +210,7 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
       keys,
       testBuild: isTest,
       unknownModules: [...unknown].sort(),
-      moving: shop.movingAt ? { at: shop.movingAt, to: shop.movedTo } : null,
+      moving: shop.movingAt ? { at: shop.movingAt, to: shop.movedTo, outAt: shop.movedOutAt } : null,
     });
   }
   return out;

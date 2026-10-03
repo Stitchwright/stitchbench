@@ -186,7 +186,16 @@ async function main() {
     assert.equal(meta.lastMigration, mig[0].m);
     assert.ok(meta.lastMigration && meta.lastMigration >= "20261003150000_company_move");
     assert.deepEqual(meta.shop, { id: a.shopId, name: a.name, kind: "both" });
-    assert.equal(meta.hub, null, "the hub part waits for package move-hub");
+    // The hub's part (package move-hub; its own check is move-hub.check.ts): a copy made without the freeze names this
+    // install's hub and its places in the feeds, and never carries a move token (it isn't a move).
+    const hs = await db.hubState.findUnique({ where: { id: 1 } });
+    if (hs?.url && hs.installKey) {
+      assert.deepEqual(meta.hub, { url: hs.url, installId: hs.installId, moveToken: null, cursor: hs.cursor, orderCursor: hs.orderCursor, partnerCursor: hs.partnerCursor });
+      assert.ok(
+        meta.warnings.some((w) => /a copy, not a move/.test(w)),
+        "the copy says it carries no move token",
+      );
+    } else assert.equal(meta.hub, null, "an install on no hub names none");
     assert.deepEqual(meta.leftOut, LEFT_OUT);
     assert.ok(
       meta.leftOut.includes("MessagingSettings.smtpPassSealed") &&
