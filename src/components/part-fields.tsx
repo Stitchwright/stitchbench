@@ -18,7 +18,6 @@ type P = {
   notes: string | null;
   unit?: string | null;
   wholesaleCents?: number | null;
-  offerToPartners?: boolean;
 };
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
@@ -151,14 +150,10 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
       </div>
       <div className="field">
         <label htmlFor="wholesale" className="label">
-          Partner price ($, to partner sewing shops)
+          Partner price ($, what partner shops pay once it is offered to them)
         </label>
         <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" {...locked} />
       </div>
-      <label className="flex items-center gap-2 self-end pb-2 text-sm">
-        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" {...locked} /> Offer to partner shops
-        (in their catalog)
-      </label>
       <div className="field">
         <label htmlFor="reorderAt" className="label">
           Reorder when at or below

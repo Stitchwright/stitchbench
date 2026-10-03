@@ -11,9 +11,11 @@ import { PartFields } from "@/components/part-fields";
 import { addPartSource, moveStock, preferPartSource, removePartSource, updatePart } from "@/actions/parts";
 import { addPartToCrossRef } from "@/actions/xref";
 import { ActionButton } from "@/components/action-form";
-import { ListingForm } from "@/components/listing-form";
+import { OfferPartForm } from "@/components/offer-part-form";
+import { withdrawOffer } from "@/actions/market";
 import { PartSearchLinks } from "@/components/part-search-links";
 import { hubJoined } from "@/lib/hub";
+import { listingDefaultsFor, offersFor } from "@/lib/offer";
 import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
 import { ExternalLink, Trash2 } from "lucide-react";
@@ -41,11 +43,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
     },
   });
   if (!p) notFound();
-  const [joined, xrefs, myListings] = await Promise.all([
-    hubJoined(),
-    xrefForKeys(p.numberKeys),
-    db.listing.findMany({ where: { mine: true, shopId: user.shopId, numberKey: { in: p.numberKeys } }, orderBy: { createdAt: "desc" } }),
-  ]);
+  const [joined, xrefs, offers] = await Promise.all([hubJoined(), xrefForKeys(p.numberKeys), offersFor(user.shopId, p)]);
   const ticketIds = [...new Set(p.moves.map((m) => m.ticketId).filter(Boolean))] as string[];
   const tickets = await db.ticket.findMany({ where: { id: { in: ticketIds }, shopId: user.shopId }, select: { id: true, number: true } });
   const tno = new Map(tickets.map((t) => [t.id, t.number]));
@@ -89,8 +87,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
       )}
       {consignedBy && (
         <p className="card card-pad text-sm">
-          On consignment from <strong>{consignedBy.partnerName}</strong>: it stays theirs until it sells. Each sale is reported to them and shows on
-          your monthly statement.{" "}
+          On consignment from <strong>{consignedBy.partnerName}</strong>: it stays theirs until it sells. Each sale is reported to them and shows on your monthly statement.{" "}
           <Link href={`/partners/${consignedBy.id}`} className="link">
             Partnership
           </Link>
@@ -200,8 +197,11 @@ export default async function PartPage({ params, searchParams }: { params: Promi
           <Section title="Cross-reference">
             {!joined ? (
               <p className="muted text-sm">
-                Join the community hub (<Link href="/settings#hub" className="link">Settings</Link>) to see every number this part goes by and every
-                machine it fits.
+                Join the community hub (
+                <Link href="/settings#hub" className="link">
+                  Settings
+                </Link>
+                ) to see every number this part goes by and every machine it fits.
               </p>
             ) : xrefs.length === 0 ? (
               <div className="space-y-2 text-sm">
@@ -238,44 +238,55 @@ export default async function PartPage({ params, searchParams }: { params: Promi
             )}
           </Section>
 
-          <Section title="Sell it on the marketplace">
-            {!joined ? (
-              <p className="muted text-sm">The marketplace is on the community hub. Join it in Settings to sell to other shops.</p>
+          {/* Sharing is chosen per item (HANDOFF item 9): where this part is offered now, plainly, and one form to offer it. */}
+          <Section title="Offer this part">
+            {p.consignLinkId ? (
+              <p className="muted text-sm">A partner&apos;s consigned stock is theirs to offer, not yours.</p>
             ) : (
               <>
-                {myListings.length > 0 && (
+                {!offers.partners.on && offers.listings.length === 0 && <p className="muted mb-3 text-sm">Not offered anywhere. Nothing about it leaves the shop until you offer it.</p>}
+                {(offers.partners.on || offers.listings.length > 0) && (
                   <ul className="mb-3 divide-y divide-line text-sm">
-                    {myListings.map((l) => (
-                      <li key={l.id} className="flex justify-between gap-2 py-2">
-                        <Link href={`/market/${l.id}`} className="link">
-                          {l.title}
-                        </Link>
-                        <span className="num">
-                          {l.qty} × {money(l.priceCents)} <span className="pill tone-neutral">{l.status.toLowerCase()}</span>
+                    {offers.partners.on && (
+                      <li className="flex flex-wrap items-center justify-between gap-2 py-2">
+                        <span>
+                          <span className="pill tone-ready mr-2">Offered to partner shops</span>
+                          {offers.partners.wholesaleCents != null ? (
+                            <span className="num">{money(offers.partners.wholesaleCents)} each</span>
+                          ) : (
+                            <span className="muted">no partner price yet, so their catalog leaves it out</span>
+                          )}
                         </span>
+                        {user.role !== "TECH" && (
+                          <ActionButton action={withdrawOffer.bind(null, p.id, "partners", null)} className="btn btn-sm" confirm="Withdraw from partner shops?" success="Withdrawn from partner shops">
+                            Withdraw
+                          </ActionButton>
+                        )}
+                      </li>
+                    )}
+                    {offers.listings.map((l) => (
+                      <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                        <span>
+                          <span className="pill tone-ready mr-2">Listed on the marketplace</span>
+                          <Link href={`/market/${l.id}`} className="link">
+                            {l.title}
+                          </Link>{" "}
+                          <span className="num">
+                            {l.qty} × {money(l.priceCents)}
+                          </span>{" "}
+                          <span className="pill tone-neutral">{l.status.toLowerCase()}</span>
+                        </span>
+                        <ActionButton action={withdrawOffer.bind(null, p.id, "market", l.id)} className="btn btn-sm" confirm="Take it off the marketplace?" success="Taken off the marketplace">
+                          Withdraw
+                        </ActionButton>
                       </li>
                     ))}
                   </ul>
                 )}
                 <details>
-                  <summary className="link cursor-pointer text-sm">List it for sale</summary>
+                  <summary className="link cursor-pointer text-sm">Offer this part</summary>
                   <div className="mt-2">
-                    <ListingForm
-                      defaults={{
-                        title: p.description,
-                        // A shop number isn't the maker's, so a listing of such an item has none; what it fits and its
-                        // photos say what it is. The suffix that tells stock apart ("X (used)") isn't part of the number.
-                        partNumber: p.ownNumber ? null : baseNumber(p.partNumber),
-                        brand: p.brand,
-                        fits: p.fits,
-                        kind: p.kind,
-                        condition: p.condition,
-                        origin: p.origin,
-                        priceCents: p.priceCents,
-                        // Whole units: a listing's quantity is a count (for fabric, whole yards).
-                        qty: Math.max(1, Math.floor(p.qtyOnHand)),
-                      }}
-                    />
+                    <OfferPartForm partId={p.id} listing={listingDefaultsFor(p)} wholesaleCents={p.wholesaleCents} mayOfferToPartners={user.role !== "TECH"} hubJoined={joined} />
                   </div>
                 </details>
               </>

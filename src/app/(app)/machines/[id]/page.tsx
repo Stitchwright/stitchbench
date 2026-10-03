@@ -14,7 +14,7 @@ import { PageHeader, Section, StatusPill, KV, Empty, modelHref } from "@/compone
 import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
 import { ModelMachines, ModelPhotos } from "@/components/model-history";
-import { ShareForm } from "@/components/share-form";
+import { HintForm } from "@/components/hint-form";
 import { SharedPosts } from "@/components/shared-posts";
 import { ManualLinks } from "@/components/manual-links";
 import { PartsThatFit } from "@/components/parts-that-fit";
@@ -113,12 +113,8 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
             <PhotoStrip machineId={m.id} ticketId={current && OPEN_STATUSES.includes(current.status) ? current.id : undefined} photos={m.photos} timeZone={tz} />
           </Section>
 
-          <ShareForm
-            machineId={m.id}
-            model={`${m.brand} ${m.model}`}
-            photos={m.photos}
-            defaultBody={[current?.diagnosis, current?.workDone].filter(Boolean).join("\n\n") || undefined}
-          />
+          {/* Brand, model and the photos to tick: nothing from the visit is put in the hint (HANDOFF item 9). */}
+          <HintForm hint={{ machineId: m.id, brand: m.brand, model: m.model, photos: m.photos }} />
 
           <ModelPhotos shopId={user.shopId} brand={m.brand} model={m.model} excludeMachineId={m.id} title={`Inside & wiring photos from other ${m.model}s`} hideWhenEmpty />
 
@@ -145,11 +141,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
                         const back = current.accessoriesReturned.includes(a);
                         return (
                           <li key={a + i} className="flex items-center gap-2">
-                            {back ? (
-                              <CheckCircle2 size={16} className="text-[var(--ok)]" aria-label="Returned" />
-                            ) : (
-                              <Circle size={16} className="text-ink-2" aria-label="Still with us" />
-                            )}
+                            {back ? <CheckCircle2 size={16} className="text-[var(--ok)]" aria-label="Returned" /> : <Circle size={16} className="text-ink-2" aria-label="Still with us" />}
                             {a}
                             {back && <span className="muted text-xs">returned</span>}
                           </li>
@@ -344,9 +336,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
             {user.role !== "TECH" && otherKinds.length > 0 && (
               <details className="mt-4 text-sm">
                 <summary className="cursor-pointer font-semibold">It isn&apos;t {withArticle(kind.noun)}</summary>
-                <p className="muted mt-2">
-                  Filed as the wrong thing? Its tickets and photos stay with it. Not possible while an open ticket has charges on it, or while it is for sale.
-                </p>
+                <p className="muted mt-2">Filed as the wrong thing? Its tickets and photos stay with it. Not possible while an open ticket has charges on it, or while it is for sale.</p>
                 <ActionForm action={convertMachineKind.bind(null, m.id)} success="Changed" className="mt-2 flex flex-wrap items-end gap-2">
                   <div className="field">
                     <label htmlFor="convert-kind" className="label">

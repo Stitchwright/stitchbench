@@ -20,6 +20,7 @@ import { PartPicker } from "@/components/part-picker";
 import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
 import { ModuleNotice } from "@/components/module-notice";
+import { HintForm } from "@/components/hint-form";
 import { IntakeFields } from "@/components/equipment/intake-fields";
 import { ReadingsPanel } from "@/components/equipment/readings-panel";
 import { DetailsList } from "@/components/equipment/details-list";
@@ -28,18 +29,7 @@ import { TicketEstimateSlot } from "@/components/slots/ticket-estimate";
 import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { UnitBadge } from "@/components/vac/unit-badge";
-import {
-  addLine,
-  addPayment,
-  removeAccessory,
-  removeLine,
-  removePayment,
-  saveAccessories,
-  saveIntake,
-  saveMeasurements,
-  saveTension,
-  saveTicketText,
-} from "@/actions/tickets";
+import { addLine, addPayment, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
 
 function inRange(v: number | null, min: number | null, max: number | null) {
@@ -181,9 +171,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               {jobLink?.partnerName ?? "partner"}
             </Link>
             : their tag <strong className="mono">{job.tag}</strong>, customer {job.customerName}
-            <div className="muted text-xs">
-              They see this ticket&apos;s status and bill. Set &quot;Waiting on customer OK&quot; and they call the customer.
-            </div>
+            <div className="muted text-xs">They see this ticket&apos;s status and bill. Set &quot;Waiting on customer OK&quot; and they call the customer.</div>
             {job.approval && (
               <span className={`pill ml-1 ${job.approval === "APPROVED" ? "tone-done" : "tone-bad"}`}>
                 customer {job.approval === "APPROVED" ? `approved${job.approvedCents != null ? ` up to ${money(job.approvedCents)}` : ""}` : "declined"}
@@ -381,8 +369,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                       <tbody>
                         {measurable.map((x) => {
                           const r = meas[x.id] ?? {};
-                          const ok = (v?: number) =>
-                            v == null ? null : (x.valueMin == null || v >= x.valueMin) && (x.valueMax == null || v <= x.valueMax);
+                          const ok = (v?: number) => (v == null ? null : (x.valueMin == null || v >= x.valueMin) && (x.valueMax == null || v <= x.valueMax));
                           const unit = x.unit === "deg" ? "°" : "mm";
                           return (
                             <tr key={x.id}>
@@ -394,14 +381,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                               {(["found", "left"] as const).map((k) => (
                                 <td key={k}>
                                   <div className="flex items-center gap-1">
-                                    <input
-                                      name={`${k}:${x.id}`}
-                                      aria-label={`${x.label} as ${k}`}
-                                      defaultValue={r[k] ?? ""}
-                                      inputMode="decimal"
-                                      className="input num w-20"
-                                      placeholder={unit}
-                                    />
+                                    <input name={`${k}:${x.id}`} aria-label={`${x.label} as ${k}`} defaultValue={r[k] ?? ""} inputMode="decimal" className="input num w-20" placeholder={unit} />
                                     {ok(r[k]) === true && <span className="pill tone-ready">ok</span>}
                                     {ok(r[k]) === false && <span className="pill tone-bad">out</span>}
                                   </div>
@@ -572,14 +552,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 <label htmlFor="amount" className="label">
                   Amount
                 </label>
-                <input
-                  id="amount"
-                  name="amount"
-                  inputMode="decimal"
-                  className="input num w-32"
-                  defaultValue={tot.balance > 0 ? (tot.balance / 100).toFixed(2) : ""}
-                  required
-                />
+                <input id="amount" name="amount" inputMode="decimal" className="input num w-32" defaultValue={tot.balance > 0 ? (tot.balance / 100).toFixed(2) : ""} required />
               </div>
               <div className="field">
                 <label htmlFor="method" className="label">
@@ -632,6 +605,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </fieldset>
           </Section>
 
+          {/* A hint about the model for every shop on the hub: brand, model and the photos to tick, nothing from this ticket. */}
+          {!isSite && <HintForm hint={{ machineId: m.id, brand: m.brand, model: m.model, photos: m.photos }} />}
+
           {!isSite && (
             <Section title="Accessories">
               {t.accessories.length === 0 ? (
@@ -642,14 +618,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <ul className="space-y-1">
                     {t.accessories.map((a, i) => (
                       <li key={a + i} className="flex items-center gap-2">
-                        <input
-                          id={`acc-${i}`}
-                          type="checkbox"
-                          name="returned"
-                          value={a}
-                          className="check"
-                          defaultChecked={t.accessoriesReturned.includes(a)}
-                        />
+                        <input id={`acc-${i}`} type="checkbox" name="returned" value={a} className="check" defaultChecked={t.accessoriesReturned.includes(a)} />
                         <label htmlFor={`acc-${i}`} className="flex-1 text-sm">
                           {a}
                         </label>

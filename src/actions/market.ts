@@ -9,14 +9,14 @@ import { safe, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { hubFetch, hubId, hubReachable, saveListing, saveOrder, syncHub, syncSoon, type HubListing, type HubOrder } from "@/lib/hub";
+import { listingFromForm, listingPhotos, offerPartAs, postListing, strictCents, withdrawOfferAs } from "@/lib/offer";
 import { numberKey, orderStockNote, partKeys, partNumberClash, stockFor, takeShopNumber } from "@/lib/parts";
 import { CONDITIONS as PART_CONDITIONS, ORIGINS as PART_ORIGINS } from "@/lib/part-labels";
+import { assertId } from "@/lib/input";
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 
 const CONDITIONS: string[] = PART_CONDITIONS;
 const ORIGINS: string[] = PART_ORIGINS;
-const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
-const IMAGE = ["image/jpeg", "image/png", "image/webp"];
 
 function refresh() {
   revalidatePath("/market", "layout");
@@ -28,78 +28,40 @@ function int(v: FormDataEntryValue | null, min: number) {
   return Number.isInteger(n) && n >= min && n <= 1_000_000 ? n : null;
 }
 
-const MAX_CENTS = 100_000_000; // $1,000,000: far more than a part sells for, and well inside the hub's integer columns
-
-/**
- * Dollars typed as cents. Blank is null. More than two decimals (19.999) isn't rounded behind the seller's back, and a
- * word, a minus sign or a price no part has is refused.
- */
-function strictCents(v: FormDataEntryValue | null, what: string): number | null {
-  const s = (str(v) ?? "").replace(/[$,\s]/g, "");
-  if (s === "") return null;
-  if (!/^(\d+\.?\d{0,2}|\.\d{1,2})$/.test(s)) throw new UserError(`${what}: enter dollars and cents, like 12.50.`);
-  const cents = Math.round(Number(s) * 100);
-  if (cents > MAX_CENTS) throw new UserError(`${what} can't be more than $${(MAX_CENTS / 100).toLocaleString("en-US")}.`);
-  return cents;
-}
-
 // ---------- listings ----------
 
+/** A listing from the marketplace's own form (Marketplace → Sell). From a part's page, offerPart below does it. */
 export const createListing = safe(async function createListing(formData: FormData) {
   const user = await requireUser();
-  const title = str(formData.get("title"));
-  const priceCents = strictCents(formData.get("price"), "Price");
-  const qty = int(formData.get("qty"), 1);
-  if (!title) throw new UserError("Give the listing a title, e.g. \"Brother PR bobbin case, new\".");
-  if (priceCents == null || priceCents <= 0) throw new UserError("Enter the price each.");
-  if (qty == null) throw new UserError("Enter how many you have to sell, as a whole number.");
-  // The hub keeps a title to 160 characters and a description to 4,000: say so, instead of cutting the end off.
-  if (title.length > 160) throw new UserError(`Keep the title to 160 characters (it is ${title.length}).`);
-  const description = str(formData.get("description"));
-  if (description && description.length > 4000) throw new UserError(`Keep the description to 4,000 characters (it is ${description.length.toLocaleString("en-US")}).`);
-  const kind = str(formData.get("kind")) ?? "PART";
-  const condition = str(formData.get("condition")) ?? "NEW";
-  const origin = str(formData.get("origin"));
-  const partNumber = str(formData.get("partNumber"));
-  const xpart = partNumber ? await db.xPart.findFirst({ where: { numberKeys: { has: numberKey(partNumber) } }, select: { id: true } }) : null;
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId } });
-  const listing = {
-    title,
-    description,
-    kind: KINDS.includes(kind) ? kind : "PART",
-    condition: CONDITIONS.includes(condition) ? condition : "NEW",
-    // Who made it. An older hub ignores this; a form that doesn't say (opened before it was added) leaves it unstated.
-    origin: origin && ORIGINS.includes(origin) ? origin : null,
-    brand: str(formData.get("brand")),
-    partNumber,
-    xpartId: xpart?.id ?? null,
-    fits: str(formData.get("fits")),
-    priceCents,
-    currency: "USD",
-    qty,
-    shippingCents: strictCents(formData.get("shipping"), "Shipping"),
-    shippingNote: str(formData.get("shippingNote")),
-    // Only what the seller typed: never the shop's street address, which every hub member would see.
-    shipsFrom: str(formData.get("shipsFrom")),
-    // Listed by this company, under its own name (several companies can share one StitchBench).
-    shopRef: shop.id,
-    shopName: shop.name,
-    // The form's own id: sent again after a lost answer, it's the same listing on the hub, not a second one.
-    clientId: str(formData.get("clientId")),
-  };
-  const photos = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 8);
-  for (const f of photos) {
-    if (!IMAGE.includes(f.type)) throw new UserError("Photos must be JPEG, PNG or WebP.");
-    if (f.size > 3 * 1024 * 1024) throw new UserError("Each photo must be under 3 MB.");
-  }
-  const fd = new FormData();
-  fd.set("listing", JSON.stringify(listing));
-  for (const f of photos) fd.append("photo", f, f.name || "photo.jpg");
-  const l = (await (await hubFetch("/v1/listings", { method: "POST", body: fd })).json()) as HubListing;
-  await saveListing(l);
-  await db.listing.update({ where: { id: l.id }, data: { shopId: user.shopId } });
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { id: true, name: true } });
+  const listing = await listingFromForm(formData, shop);
+  const l = await postListing(user.shopId, listing, listingPhotos(formData));
   refresh();
   redirect(`/market/${l.id}`);
+});
+
+// ---------- offering a part (HANDOFF item 9: chosen per item, never automatic) ----------
+
+/**
+ * "Offer this part" from the part's page: the form says where, partner shops (the partner price), the marketplace (a
+ * listing), or both. Nothing goes to the hub unless the marketplace is ticked; the part page then says where it is offered.
+ */
+export const offerPart = safe(async function offerPart(partId: string, formData: FormData) {
+  assertId(partId);
+  const user = await requireUser();
+  const r = await offerPartAs(user, partId, formData);
+  revalidatePath(`/parts/${partId}`);
+  if (r.listingId) refresh();
+  return r;
+});
+
+/** Takes one offer back: from partner shops (the next partner sync carries the catalog without it) or a listing off the marketplace. */
+export const withdrawOffer = safe(async function withdrawOffer(partId: string, where: "partners" | "market", listingId: string | null) {
+  assertId(partId);
+  const user = await requireUser();
+  await withdrawOfferAs(user, partId, where, listingId);
+  revalidatePath(`/parts/${partId}`);
+  if (where === "market") refresh();
 });
 
 /** A listing this company made (other companies on the same install can't change it). */
@@ -204,9 +166,7 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
   // This shop's own stock of it in the same condition (never a partner's consigned item): the exact number,
   // "<number> (own)", "<number> (used)", then any number it's sold under.
   const stock = o.item.partNumber ? await stockFor(db, shopId, o.item.partNumber, condition) : null;
-  const part =
-    stock?.existing ??
-    (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
+  const part = stock?.existing ?? (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
   if (part) {
     await db.$transaction([
       db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: o.qty }, ...(unitCost ? { costCents: unitCost } : {}) } }),
@@ -312,7 +272,9 @@ export const orderAction = safe.whileLapsed("orderAction")(async function orderA
       break;
     }
   }
-  const o = (await (await hubFetch(`/v1/orders/${hubId(orderId)}/${action}`, { method: "POST", json: body })).json()) as HubOrder;
+  // The step is this company's (shopRef in the body, as the hub's README asks for order steps): on an install that holds
+  // several companies the hub refuses it when the order is another company's, and shows the company's name on it.
+  const o = (await (await hubFetch(`/v1/orders/${hubId(orderId)}/${action}`, { method: "POST", json: { ...body, shopRef: shop.id } })).json()) as HubOrder;
   await saveOrder(o);
   // The hub has the step now and can't be asked to undo it, so a stock change that fails is told apart from it: the
   // order page offers the stock change again (orderStock).
