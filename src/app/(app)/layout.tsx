@@ -6,7 +6,7 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEFAULT_TIME_ZONE } from "@/lib/time-zone";
 import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
-import { isPlatformAdmin } from "@/lib/shops";
+import { appName, isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
 import { getModules } from "@/lib/modules";
 import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
@@ -15,6 +15,7 @@ import { messagingView } from "@/lib/messaging/settings";
 import { GraceBanner, LapsedBar, ModulePills, MovingBar, type GraceItem, type RenewPill } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 import { deleteFrom } from "@/lib/move/format";
+import { AppHeader } from "@/components/app-header";
 import { HubResetPrompt } from "@/components/hub-reset-prompt";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -73,20 +74,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen flex-col md:flex-row">
       {secureUrl && <meta name={SECURE_ADDRESS_META} content={secureUrl} />}
       <aside className="no-print border-b border-line bg-surface md:sticky md:top-0 md:h-screen md:overflow-y-auto md:w-60 md:shrink-0 md:border-r md:border-b-0">
-        <div className="flex items-center justify-between gap-2 px-4 py-3 md:block md:py-5">
+        <AppHeader
+          logo={
           <Link href="/" className="block">
-            <div className="text-lg font-bold tracking-tight">
-              Stitch<span className="text-thread">{doesRepair ? "Bench" : "Shop"}</span>
+            <div className="text-lg font-bold leading-tight tracking-tight">
+              Stitch<span className="text-thread">{appName() === "StitchShop" ? "Shop" : "Bench"}</span>
             </div>
             <div className="muted truncate text-xs">{shop?.name}</div>
           </Link>
-        </div>
-        <form action="/search" className="px-4 pb-3">
+        }
+          search={
+        <form action="/search" className="md:px-0 md:pb-3 md:pt-0">
           <label htmlFor="q" className="sr-only">
             Search
           </label>
           <input id="q" name="q" className="input text-sm" placeholder={doesRepair ? "Serial, model, customer, ticket #" : "Customer, item, tag #"} />
         </form>
+          }
+        >
         <Nav
           platformAdmin={isPlatformAdmin(user.email)}
           chatUrl={hub?.installKey && hub.scope === "member" ? hub.discordUrl : null}
@@ -124,6 +129,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <button className="link mt-1 text-xs">Sign out</button>
           </form>
         </div>
+        </AppHeader>
       </aside>
       <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">
         {modules.moving ? (
