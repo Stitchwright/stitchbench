@@ -95,6 +95,28 @@ reliably carry barcodes: the owner is checking bolt ends on the hop).
   outreach drafts are in `fabric-wholesalers-and-patterns.md`, for the owner to send. Order of approach: Notions
   Marketing, Checker, Moda, Brewer, then the Jaftex group (FreeSpirit, Henry Glass, Studio E, Blank: one account).
 
+## 5a. Connectors to wholesalers (research: `docs/research/wholesaler-integration-channels.md`)
+
+One connector framework, one small adapter per wholesaler. Each adapter answers the same five things: catalog,
+prices, stock, place an order, order status; anything it can't do falls back to the next channel down. The rest of
+the program never knows which wholesaler it talks to.
+
+- **Channels, easiest first:** (1) files: read the wholesaler's catalog spreadsheet through a column-mapping step,
+  write orders in its cart-upload layout for the shop to upload on the wholesaler's site; (2) email: a formatted
+  purchase order to the rep; (3) API, where a partner gives one; (4) EDI (850 order, 855 acknowledgement, 856 ship
+  notice, 810 invoice) through a network, last: $20 to $3,000 a month plus per-partner setup, and no quilt wholesaler
+  appeared on the public EDI directories.
+- **Where they run:** files and email in the program. API and EDI on StitchHub, which holds the partner keys like the
+  Assistant's proxy; the shop's account number with the wholesaler lives in the shop's settings. Never a shop's
+  wholesaler password, and never logging in to a wholesaler's website to scrape it (their terms forbid it, and it
+  would cost us the partnerships).
+- **Order of work:** the generic file and email connectors first (they work with any wholesaler, no permission
+  needed); Notions Marketing next (its Virto Commerce B2B site takes CSV import and quick order by SKU; ask for the
+  column layout and for the same automated ordering and receiving Rain has); Checker and Brewer (ask for the catalog
+  feed Like Sew and MicroBiz already receive); Moda; the Jaftex group (four lines, one conversation); written feed
+  requests to Riley Blake, Kaufman, Andover, Benartex, Northcott, Michael Miller and Windham; EDI only if a partner
+  requires it. Faire: skip (no retailer API, and the main quilt fabric makers aren't on it).
+
 ## 6. Data the program needs to add
 
 - On a fabric (`Part`): collection, designer, color tags, bolt size (default 15 yd), in print (yes / no / unknown),
@@ -123,7 +145,7 @@ reliably carry barcodes: the owner is checking bolt ends on the hop).
 | F3 `fabric-orders` | Reorder suggestions, purchase orders, receiving, lead times | 4 days |
 | F4 `kits` | the kit builder, making kits, kit sell-through, Block of the Month series | 3 days |
 | F5 `fabric-ai` (Assistant) | bolt-label photo to new fabric, picture-zip matching, color and theme tags | 2 to 3 days |
-| F6 `catalog-import` | a distributor's catalog and electronic orders, once a partner agrees | depends on the partner |
+| F6 `connectors` | the connector framework with the file and email connectors (any wholesaler); then one adapter per partner as each agrees (Notions Marketing first) | 3 days, then 1 to 3 per partner |
 
 ## 9. Default numbers (the shop can change every one)
 
