@@ -1022,7 +1022,10 @@ accounts and billing: design first).
    uploads (each file chosen by the tech); storage with no download fees (e.g. Cloudflare R2); dedupe by hash and a
    blocklist so a removed file can't come back; the existing download queue (item 12) fills shops' libraries from it;
    the terms gain the uploader's licence and warranties. A lawyer reviews the takedown process before launch.
-   Design: `docs/plans/manual-repository-design.md`.
+   Design: `docs/plans/manual-repository-design.md`. **A free side (owner, 3 Oct 2026):** anyone with a free StitchHub account can
+   browse and download repository manuals on the hub's website without the program (section 0.1); the paid program adds
+   convenience (one-click into the library, filing, coverage), not access; never market manuals as part of the
+   subscription.
 
 19. **Launch first: running, tested for a month, sellable** (owner, 3 Oct 2026). Order from here: finish the work in
    flight; billing package 5 (terms pages); the public website (`C:\Users\bwatt\stitchsite`: features, pricing,
