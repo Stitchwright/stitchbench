@@ -14,11 +14,14 @@ import { CustomerClassesSlot } from "@/components/slots/customer-classes";
 import { CustomerAppointmentsSlot } from "@/components/slots/customer-appointments";
 import { gateFor } from "@/lib/module-gate";
 import { saveCustomer } from "@/actions/records";
+import { CustomerMergePanel, type MergeParams } from "@/components/merge-panel";
+import { firstValues } from "@/lib/search-params";
 
-export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
   const tz = await shopTimeZone(user.shopId);
   const { id } = await params;
+  const sp = firstValues(await searchParams);
   const c = await db.customer.findFirst({
     where: { id, shopId: user.shopId },
     include: {
@@ -141,6 +144,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <CustomerForm action={saveCustomer.bind(null, c.id)} customer={c} submitLabel="Save" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
         </Section>
         <CustomerMessages customerId={c.id} user={user} />
+        <CustomerMergePanel user={user} customer={{ id: c.id, name: c.name }} sp={sp} />
       </div>
     </div>
   );

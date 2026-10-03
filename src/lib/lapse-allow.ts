@@ -40,6 +40,8 @@ export const WHILE_LAPSED = [
   "recordEstimateAnswer",
   // A customer's opt-out always works (the law says so), and so does noting that a reply was dealt with
   "recordOptOut",
+  // A customer's request to be deleted is honoured like an opt-out, whatever the shop's standing
+  "deleteCustomer",
   "withdrawTextConsent",
   "markReplyHandled",
   // Hub sync and the connection itself
