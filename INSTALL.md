@@ -242,6 +242,9 @@ your password in **Settings**, and add your people under **Settings → People**
 | `PUBLIC_URL` | the site's own https address, for customer links (estimate approval, unsubscribe) |
 | `SETTINGS_KEY` | a second long random secret: the mail password and Twilio secret are sealed with it (required before a shop can save them) |
 | `MESSAGES`, `MESSAGE_WORKER_SECONDS`, `MESSAGE_BATCH`, `READY_NOTICE_DELAY_SECONDS`, `SMTP_ALLOW_HOSTS` | optional; see **Messages** below |
+| `PLATFORM_SMTP_URL`, `PLATFORM_MAIL_FROM` | optional: the mailbox the sign-in page's **Forgot your password?** sends its link from (`smtps://user:pass@host:465`, or `smtp://…:587` for STARTTLS), one use, one hour. Without them the page says to ask the administrator, who makes an owner a **Reset link** on the Companies page (staff are reset by their owner in Settings → People) |
+| `APP_URL` | optional: this site's own https address for those links (defaults to `PUBLIC_URL` unless `PUBLIC_LINKS_ONLY`, then Railway's public domain); never taken from a request |
+| `PLATFORM_API_TOKEN` | optional: 32+ random characters, the same variable on StitchHub (with `HOSTED_STITCHSHOP_URL` / `HOSTED_STITCHBENCH_URL` there pointing here). Lets a verified StitchHub account **Start a hosted shop**: the hub calls `POST /api/platform/companies` with it (https only, `TRUST_PROXY=true` on Railway), the company and its owner (the account's email) are made, show "Started from StitchHub" on Companies, and the owner chooses a password through a 24-hour link the hub shows once. Unset: the route doesn't exist |
 
 ### Manuals on the hosted version
 The server can't see your PCs. Each tech connects their manuals folder once in the browser (**My manuals →

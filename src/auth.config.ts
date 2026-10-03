@@ -24,6 +24,9 @@ export const authConfig = {
       // The Windows program's move-file import (src/app/move-in): at first run there is no one to sign in yet, and the
       // progress page's address is a long random id only the program's window has.
       if (path === "/move-in" || path.startsWith("/move-in/")) return true;
+      // A forgotten password (src/app/reset): the request form and the page its emailed link opens, signed in or not.
+      // Hosted only (the page says so on the Windows program); never on the public links address (src/lib/links-host.ts).
+      if (path === "/reset") return true;
       if (path.startsWith("/login") || path.startsWith("/signup")) {
         if (isLoggedIn) return Response.redirect(new URL("/", nextUrl));
         return true;

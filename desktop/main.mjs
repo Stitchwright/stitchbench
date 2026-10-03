@@ -44,6 +44,11 @@ let signupOpen = false;
 let setupToken = "";
 // The server's door for a move file (src/lib/move/local.ts): a secret made at each server start, never sent anywhere else.
 let moveSecret = "";
+// The program's own window (src/lib/hub-reset-grants.ts): every request this program's windows make to its own address
+// carries X-Stitch-Window with this secret, made at each server start and given only to the server. A browser tab or a
+// tablet on the shop's network never has it, so what only the PC's window may see (a reset asked for on the owner's
+// StitchHub account) is shown there and nowhere else.
+let windowSecret = "";
 // Companies on this PC that moved to another install (Shop.movedOutAt): the tray offers to remove their old copy.
 let movedAway = [];
 let stopping = false; // stopServer asked the server to exit
@@ -397,6 +402,7 @@ async function startServer() {
   signupOpen = shops === 0;
   setupToken = signupOpen ? crypto.randomBytes(24).toString("base64url") : "";
   moveSecret = crypto.randomBytes(32).toString("base64url");
+  windowSecret = crypto.randomBytes(32).toString("base64url");
   const child = spawn(process.execPath, [path.join(APP_DIR, "server.js")], {
     cwd: APP_DIR,
     env: {
@@ -420,6 +426,8 @@ async function startServer() {
       SETUP_TOKEN: setupToken,
       // Only this program can ask the server to read a move file from disk (tray: Restore a company from a move file).
       MOVE_LOCAL_SECRET: moveSecret,
+      // Marks this program's own window (see windowSecret).
+      STITCH_WINDOW_SECRET: windowSecret,
       APP_NAME: NAME,
       DEFAULT_SHOP_KIND: FLAVOR === "stitchshop" ? "retail" : "repair",
       // The installer's version, told to StitchHub with each company's claim (src/lib/shops.ts programVersion).
@@ -1133,6 +1141,13 @@ function guardSessions() {
     callback(!SENSITIVE.has(permission) || isApp(details?.requestingUrl || wc?.getURL() || ""));
   });
   session.defaultSession.setPermissionCheckHandler((wc, permission, origin) => !SENSITIVE.has(permission) || isApp(origin || wc?.getURL() || ""));
+  // The program's own window says so on every request to the program's own address, and on nothing else (windowSecret).
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = { ...details.requestHeaders };
+    for (const name of Object.keys(headers)) if (name.toLowerCase() === "x-stitch-window") delete headers[name];
+    if (windowSecret && isApp(details.url)) headers["X-Stitch-Window"] = windowSecret;
+    callback({ requestHeaders: headers });
+  });
   // Every window and page the program shows, including manual windows opened from it: other sites go to the browser.
   app.on("web-contents-created", (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {

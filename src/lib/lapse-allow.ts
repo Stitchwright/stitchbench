@@ -5,9 +5,16 @@
 // Server actions wrapped with safe() are refused by default while lapsed; one named here passes `{ whileLapsed }` to
 // safe() with its own name (TypeScript holds it to this list), so the rule and the list can't drift apart.
 export const WHILE_LAPSED = [
-  // Passwords and logins (signing in and out are next-auth's, never actions)
+  // Passwords and logins (signing in and out are next-auth's, never actions); the resets of package hosted-provisioning:
+  // forgot your password and its link, the administrator's reset link for an owner, and the Windows window's answer to
+  // a reset asked for on the StitchHub account
   "changePassword",
   "resetUserPassword",
+  "requestPasswordReset",
+  "finishPasswordReset",
+  "makeOwnerResetLink",
+  "allowHubReset",
+  "refuseHubReset",
   // Settings → Account: the way back to a working program
   "startHubAccount",
   "makeHubLinkCode",
@@ -115,7 +122,8 @@ export const HAND_ALLOWED = [
  */
 // The StitchBench administrator's company import (/api/move/upload/*, the PC's /api/move/local) is outside the rule too:
 // it makes another company, and the administrator's own standing is beside the point (as with setCompanyModule). So is
-// the tray's removal of a moved company's old copy (/api/move/remove): it deletes, it writes nothing.
+// the tray's removal of a moved company's old copy (/api/move/remove): it deletes, it writes nothing. And StitchHub's
+// "Start a hosted shop" (/api/platform/companies): it makes another company, with the hub's token and no signed-in person.
 export const ALSO_ALLOWED = [
   "/api/export/*",
   "/api/sales",
@@ -123,6 +131,7 @@ export const ALSO_ALLOWED = [
   "/api/move/upload/*",
   "/api/move/local",
   "/api/move/remove",
+  "/api/platform/companies",
   "hub sync",
   "partner sync",
   "backups",

@@ -109,6 +109,9 @@ model Shop {
   movedTo             String?
   movedInAt           DateTime?
   movedFrom           String?
+  // Made by StitchHub's "Start a hosted shop" (POST /api/platform/companies, package hosted-provisioning): the Companies
+  // page says "Started from StitchHub"
+  startedFromHubAt    DateTime?
   createdAt           DateTime  @default(now())
 
   users           User[]
@@ -208,13 +211,32 @@ model User {
   createdAt      DateTime @default(now())
 
   notes         ModelNote[]
-  ticketsOpened Ticket[]      @relation("TicketOpenedBy")
-  ticketsAsTech Ticket[]      @relation("TicketTech")
+  ticketsOpened Ticket[]        @relation("TicketOpenedBy")
+  ticketsAsTech Ticket[]        @relation("TicketTech")
   stockMoves    StockMove[]
   sharedPosts   SharedPost[]
   sales         Sale[]
   shifts        Shift[]
   appointments  Appointment[]
+  resets        PasswordReset[]
+}
+
+// A one-use password link or reset (hub-accounts-billing-design.md 4.3, package hosted-provisioning). Only the sha256 of
+// the token is kept. kind: "reset" (forgot your password, mailed, 1 hour), "setup" (a company started from StitchHub: the
+// owner sets a first password, 24 hours), "admin" (the StitchBench administrator's reset link from Companies, 1 hour),
+// "hub" / "hub-refused" (a StitchHub reset grant the Windows program's window allowed or refused: tokenHash is the
+// grant's nonce hashed, so a grant works once whatever the hub sends again). usedAt: used, or cancelled by a newer one.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  kind      String    @default("reset")
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // ============================================================

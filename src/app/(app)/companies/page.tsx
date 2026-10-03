@@ -20,6 +20,9 @@ import { hubMoveView } from "@/lib/move/hub-step";
 import { deletable } from "@/lib/move/old-copy";
 import { KEEP_MOVED_DAYS } from "@/lib/move/format";
 import { ImportCompany } from "./import-company";
+import { OwnerResetLink } from "./owner-reset-link";
+import { resetByEmailProblem } from "@/lib/password-reset";
+import { platformToken } from "@/lib/platform-api";
 
 const SHORT: Record<ModuleId, string> = { base: "Program", vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing" };
 
@@ -69,6 +72,7 @@ export default async function Companies() {
   });
   const desktop = isDesktop();
   const canSign = !desktop && hostedSigner() != null;
+  const mailProblem = desktop ? null : resetByEmailProblem();
   const [modules, history, imports] = await Promise.all([loadModulesMany(shops.map((s) => s.id)), grantHistory(20), recentImports(user)]);
   // Companies that came in from a move file: how their hub step stands ("Re-point the hub" when StitchHub wasn't told).
   const hubIn = new Map(await Promise.all(shops.filter((s) => s.movedInAt).map(async (s) => [s.id, await hubMoveView(s.id)] as const)));
@@ -108,6 +112,11 @@ export default async function Companies() {
                   <td className="font-semibold">
                     {s.name}
                     {s.id === user.shopId && <span className="pill tone-neutral ml-2">yours</span>}
+                    {s.startedFromHubAt && (
+                      <span className="pill tone-neutral ml-2" title={`Started from StitchHub on ${fmtDate(s.startedFromHubAt, tz)}`} data-testid="started-from-hub">
+                        Started from StitchHub
+                      </span>
+                    )}
                     {s.movedInAt && (
                       <span className="pill tone-neutral ml-2" title={s.movedFrom ?? undefined}>
                         moved in {fmtDate(s.movedInAt, tz)}
@@ -140,6 +149,7 @@ export default async function Companies() {
                   </td>
                   <td>
                     {s.users[0]?.name ?? "-"} <span className="muted text-xs">{s.users[0]?.email}</span>
+                    {!desktop && s.users[0] && <OwnerResetLink shopId={s.id} />}
                   </td>
                   <td className="num text-right">{s._count.users}</td>
                   <td className="num text-right">{s._count.machines}</td>
@@ -180,6 +190,23 @@ export default async function Companies() {
           </tbody>
         </table>
       </div>
+
+      {!desktop && (
+        <Section title="Sign-in help and StitchHub">
+          <ul className="muted list-disc space-y-1 pl-5 text-sm">
+            <li data-testid="reset-mail-status">
+              {mailProblem
+                ? `"Forgot your password?" can't email a link yet (${mailProblem}). Until it can, make an owner a link here with Reset link; staff are reset by their owner in Settings → People.`
+                : `"Forgot your password?" on the sign-in page emails a link (one use, one hour). Reset link here makes one for an owner as well.`}
+            </li>
+            <li>
+              {platformToken()
+                ? 'StitchHub can start companies here (PLATFORM_API_TOKEN is set): they show "Started from StitchHub", and their owner chooses a password through the link the hub shows once.'
+                : "StitchHub can't start companies here: PLATFORM_API_TOKEN (32+ characters, the same on the hub) isn't set."}
+            </li>
+          </ul>
+        </Section>
+      )}
 
       <Section title="Modules for a company">
         {desktop ? (

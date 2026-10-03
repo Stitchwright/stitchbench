@@ -3,6 +3,8 @@ import { AuthError } from "next-auth";
 import Link from "next/link";
 import { signIn } from "@/auth";
 import { appName } from "@/lib/shops";
+import { isDesktop } from "@/lib/modules";
+import { HubResetPrompt } from "@/components/hub-reset-prompt";
 
 /**
  * Where to go after signing in: the page the person was sent from (the proxy adds ?callbackUrl=<that page's address>), as
@@ -17,12 +19,12 @@ function landingPath(value: unknown) {
   } catch {
     return "/";
   }
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\") || /^\/(login|signup|api)(\/|\?|$)/.test(path)) return "/";
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\") || /^\/(login|signup|reset|api)(\/|\?|$)/.test(path)) return "/";
   return path;
 }
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; ended?: string; callbackUrl?: string }> }) {
-  const { error, ended, callbackUrl } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; ended?: string; reset?: string; callbackUrl?: string }> }) {
+  const { error, ended, reset, callbackUrl } = await searchParams;
   const shopApp = appName() === "StitchShop";
   const next = landingPath(callbackUrl);
 
@@ -57,9 +59,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             Email or password is wrong. After several wrong tries, signing in to that account slows down for 15 minutes.
           </p>
         )}
-        {ended && !error && (
+        {ended && !error && !reset && (
           <p className="pill tone-wait" role="status">
             Please sign in again: your password or your access changed.
+          </p>
+        )}
+        {reset && !error && (
+          <p className="pill tone-ready whitespace-normal" role="status">
+            Your password is set. Sign in with it.
           </p>
         )}
         <div className="field">
@@ -75,6 +82,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <input id="password" name="password" type="password" autoComplete="current-password" required className="input" />
         </div>
         <button className="btn btn-primary w-full">Sign in</button>
+        {/* A link by email on the hosted service (src/app/reset); the Windows program resets from its tray icon. */}
+        {!isDesktop() && (
+          <p className="text-center text-sm">
+            <Link href="/reset" className="link">
+              Forgot your password?
+            </Link>
+          </p>
+        )}
         {/* The Windows program's first-run sign-up (SETUP_TOKEN) is only for its own window, which opens it directly. */}
         {process.env.ALLOW_SIGNUP === "true" && !process.env.SETUP_TOKEN && (
           <p className="muted text-center text-sm">
@@ -85,6 +100,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </p>
         )}
       </form>
+      {/* The Windows program's own window only: a reset the owner asked for on their StitchHub account. */}
+      <HubResetPrompt pull />
     </div>
   );
 }
