@@ -812,6 +812,41 @@ with `openssl rand -hex 32` on the owner's PC). Everything below is on `scheduli
   config apply --yes; railway config migrate --apply'` (the wrapper gets past the SDK's Windows version check);
   afterwards delete `railway.json` and commit.
 
+## 2ad. 3 Oct 2026 afternoon: prices, the two plans, the demo (committed, not pushed)
+
+- **Prices decided** (section 4): `docs/plans/pricing-recommendation.md` (0c3995a); the income-goals calculator is a
+  private artifact (https://claude.ai/artifact/USAwCv16eLsGAxVj3nRU7w). Website prices (stitchsite 66f70f0): two plan
+  cards, founding offer with `FOUNDING_SPOTS_LEFT`, $99 setup help, "two months free" on yearly. Draft terms in both
+  repos carry the plans, founding shops and the price-change promise with [LAWYER] flags (c776b81, stitchhub fbe38dc).
+- **Two plans, Solo and Shop** (program 4a8ee49, stitchhub `hub-accounts` 8a245b2): the hub sells Solo / Shop, monthly
+  or yearly, and founding prices for accounts the admin marks (25 places; a gap over 60 days loses the mark); "Switch
+  to Shop / Solo" with proration; the standing and the signed key carry the plan (`l`, `fs`). The program refuses a
+  third active login on Solo (SOLO_FULL), never locks anyone out when already over two, shows the plan on Settings ->
+  Account; no plan known = no limit. Check `scripts/checks/plans.check.ts` (11). **Owner sets on the hub:**
+  `STRIPE_PRICE_SOLO_MONTHLY`, `_SOLO_YEARLY`, `_SHOP_MONTHLY`, `_SHOP_YEARLY` (required) and the four `_FOUNDING`
+  ones; each a comma list, first id sold, later ids older prices of the same plan; the old `STRIPE_PRICE_MONTHLY` /
+  `_YEARLY` count as Shop. Customer Portal steps in the hub README are unverified against Stripe's dashboard. After
+  the deploy every shop gets a freshly signed key at its next sync.
+- **Demo company** (145723d, f1a6178): `npx tsx scripts/demo/seed-demo.ts` (`--remove` deletes it): "Bobbin & Bolt
+  Quilt Co.", repair and retail, every module on a dev key (so a `STITCH_TEST_BUILD=1` build), login
+  demo@stitchshop.test / demo-password-1 locally; refuses a non-local DB unless `DEMO_ALLOW_REMOTE=yes` and
+  `DEMO_PASSWORD`. An optional gitignored `scripts/demo/guest.local.json` adds a real guest (Denise) and her machines;
+  nothing about her is committed. Denise's tour (private artifact https://claude.ai/artifact/NUjTRMmBDQpcrjC3g55fr3)
+  and the shop-hop scouting routine are in memory (`shop-hop-scouting`).
+- **Fixes the demo found** (aa167db, bc5bcf5, b7f6d66, 7263ec5): the phone header is the logo, search and a Menu button
+  (about 55 px, was 450); "taken today" adds register sales (`src/lib/register-day.ts`; online orders aren't in the
+  register's day either, a decision if wanted); the dashboard heading is the company name for retail companies; the
+  logo says StitchShop on a StitchShop install and for a non-repair company on a StitchBench install; Settings ->
+  Modules names the install's program; "Parts on order" starts collapsed unless waiting on parts with nothing ordered.
+- **L6 count** (73053ef, cd24f13): the hosted databases have no public address; the owner runs the count in each app
+  container after the next deploy (LAUNCH_CHECKLIST, day 1-2). Claude Code's auto mode blocks Claude from production
+  reads, so it stays the owner's.
+- **Queued from today:** a model-name fallback for factory settings and test modes (a machine entered as "Designer
+  Diamond deLuxe" finds nothing keyed DESIGNERDIAMOND: every lookup is an exact modelKey match; try the longest known
+  key the machine's key starts with, same brand, labelled "for the Designer Diamond"); the dev DB has no Designer
+  Diamond tension or factory rows although the seed JSON does (`npm run db:seed` on the dev DB); retake the website's
+  screenshots from the release build (the header and dashboard changed).
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
