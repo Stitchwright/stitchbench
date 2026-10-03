@@ -998,7 +998,8 @@ accounts and billing: design first).
    shop's account, an optional platform fee per order) as the easier door than pasting keys; a day or two.
 
 17. **Follow-ups found while drafting the terms and privacy text** (3 Oct 2026; drafts in `docs/legal/`, for a lawyer):
-   - **Owner decision: manual figures go to the hub automatically.** `src/app/api/figures/route.ts` calls `shareFigure`
+   - **DECIDED 3 Oct 2026: keep sharing factory-setting figures automatically** (the owner is fine with it; the legal
+     draft discloses it). Was: **Owner decision: manual figures go to the hub automatically.** `src/app/api/figures/route.ts` calls `shareFigure`
      whenever the program draws a factory-setting figure on a joined install (since the hub client's first version).
      That predates and conflicts with item 9 ("chosen per item"), and figure crops from OEM manuals are a lawyer
      question. Options: keep (the draft discloses it), an install setting off by default, or stop sharing figures.
@@ -1011,6 +1012,17 @@ accounts and billing: design first).
    - The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
    - Before the pages go live: the hub's `/terms` and `/privacy` routes, Checkout recording the accepted version, and
      `TERMS_VERSION` in `src/lib/hub-account.ts` (still "2026-10-02-draft"): billing package 5.
+
+18. **A manual repository on StitchHub** (owner decision, 3 Oct 2026; design first, then build). The owner chose to
+   host manuals on the hub, including manuals repair techs upload, and to handle takedown notices himself. This
+   replaces the old "manuals are local-only" rule (AGENTS.md updated to point here). Points for the design: the
+   US safe harbor for user uploads (17 U.S.C. 512(c)) needs a registered DMCA agent, a takedown and counter-notice
+   process, a repeat-uploader policy and prompt removal, and it covers what users upload, not what the operator
+   uploads himself, so the repository is seeded only with manuals makers publish freely and grows from techs'
+   uploads (each file chosen by the tech); storage with no download fees (e.g. Cloudflare R2); dedupe by hash and a
+   blocklist so a removed file can't come back; the existing download queue (item 12) fills shops' libraries from it;
+   the terms gain the uploader's licence and warranties. A lawyer reviews the takedown process before launch.
+   Design: `docs/plans/manual-repository-design.md`.
 
 15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026; not started). The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
