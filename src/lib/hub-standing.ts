@@ -13,6 +13,14 @@ export type StandingAnswer = {
   standing?: string | null;
   lastDay?: string | null;
   message?: string | null;
+  /**
+   * The login plan (a hub from the two-plan price list on): solo | shop, with the interval and founding for a
+   * subscription. Not stored: the same plan rides in the signed key (payload l and fs), which is what src/lib/plan.ts
+   * reads, offline too; the words above already name it for Settings → Account.
+   */
+  plan?: string | null;
+  interval?: string | null;
+  founding?: boolean | null;
   key?: string | null;
   revokeKeyIds?: string[] | null;
   /** The hub's terms version in force and the one the company's account accepted (a hub from package terms-launch on). */
