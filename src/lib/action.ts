@@ -10,8 +10,24 @@ import { isUserError, UserError } from "@/lib/user-error";
 
 export { UserError, isUserError };
 
-/** `note`: shown instead of the form's fixed success words; `warn`: it worked, but says what staff must still do. */
-export type ActionResult = { ok: true; error?: undefined; note?: string; warn?: string } | { ok?: false; error: string; note?: undefined; warn?: undefined };
+/**
+ * `note`: shown instead of the form's fixed success words; `warn`: it worked, but says what staff must still do; `shown`:
+ * something the person sees once and nowhere else (a new password, a reset link), from an action that returned shownOnce().
+ */
+export type ActionResult = { ok: true; error?: undefined; note?: string; warn?: string; shown?: string } | { ok?: false; error: string; note?: undefined; warn?: undefined; shown?: undefined };
+
+const SHOWN = Symbol.for("stitchbench.shownOnce");
+type ShownOnce = { [SHOWN]: string };
+
+/**
+ * What a safe() action hands back to the page that called it, once: a new password, a reset link. Only a value made here
+ * passes through safe() (anything else an action returns is dropped as before), and it is never logged or kept.
+ */
+export function shownOnce(text: string): ShownOnce {
+  return { [SHOWN]: text };
+}
+
+const isShownOnce = (v: unknown): v is ShownOnce => typeof v === "object" && v !== null && typeof (v as Record<symbol, unknown>)[SHOWN] === "string";
 
 /**
  * Wraps a server action. While the signed-in company's program key has lapsed (hub-accounts-billing-design.md 3.5),
@@ -25,8 +41,8 @@ export function safe<A extends unknown[]>(fn: (...args: A) => Promise<unknown>, 
     try {
       const user = await actingUser();
       if (!opts.whileLapsed) await lapseGuard(user);
-      await asCompany(user?.shopId, () => fn(...args));
-      return { ok: true };
+      const out = await asCompany(user?.shopId, () => fn(...args));
+      return isShownOnce(out) ? { ok: true, shown: out[SHOWN] } : { ok: true };
     } catch (e) {
       if (isUserError(e)) return { error: e.message };
       throw e;

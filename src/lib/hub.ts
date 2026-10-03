@@ -7,6 +7,9 @@ import { actingCompany, asCompany } from "@/lib/acting-company";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { applyMovedOut, applyStanding, movedAnswer, type StandingAnswer } from "@/lib/hub-standing";
+// Used inside functions only (it imports this file back for hubFetch): the cycle is harmless, as modules.ts and license-signing.ts.
+import { pullResetGrants } from "@/lib/hub-reset-grants";
+import { isDesktop } from "@/lib/modules";
 import { MOVE_CANCEL_PENDING } from "@/lib/move/format";
 import { baseNumber } from "@/lib/parts";
 import { readUpTo } from "@/lib/read-body";
@@ -1024,6 +1027,9 @@ async function doSync(): Promise<SyncResult> {
     // Every company says who it is and learns its standing, whatever the install's scope: a partner-only or pending
     // install still has an account and a key to keep (hub-accounts-billing-design.md 2.4).
     if (!(await claimShops(run))) return { skipped: true };
+    // Opted-in companies on the Windows program fetch the password resets their owner asked for on the hub (shown only
+    // in the program's own window). Never stops the sync.
+    await pullResetGrants(run).catch((e) => console.error("community hub: reset grants:", e instanceof Error ? e.message : e));
     // On the hub for partner shops only, or waiting for the account's email: nothing of the community's to sync.
     if (scope !== "member") {
       await writeState(run, { lastSyncAt: new Date(), lastError: null });
@@ -1089,8 +1095,10 @@ const claimUnknown = ((globalThis as unknown as { __hubClaimUnknown?: Set<string
  * which program and version; `sole` on a one-company install, so what the install listed, ordered, was rated for and
  * shared before it named its company becomes that company's (its ratings carry over).
  */
-function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean }, sole: boolean) {
-  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole };
+function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean; hubResetOptIn: boolean }, sole: boolean) {
+  // resetOptIn: the owner allows a password reset from the StitchHub account (Windows only; src/lib/hub-reset-grants.ts).
+  // The hub offers the reset only while this says so; the program checks its own flag again before acting on a grant.
+  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole, resetOptIn: isDesktop() && shop.hubResetOptIn };
 }
 
 /**
@@ -1101,7 +1109,10 @@ function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsR
  */
 async function claimShops(run: SyncRun): Promise<boolean> {
   if (!run.installId || claimUnknown.has(run.installId)) return true;
-  const shops = await db.shop.findMany({ select: { id: true, name: true, doesRepair: true, sellsRetail: true, movingAt: true, movedOutAt: true }, orderBy: { createdAt: "asc" } });
+  const shops = await db.shop.findMany({
+    select: { id: true, name: true, doesRepair: true, sellsRetail: true, hubResetOptIn: true, movingAt: true, movedOutAt: true },
+    orderBy: { createdAt: "asc" },
+  });
   for (const shop of shops) {
     // A company the hub has said moved to another install isn't this install's on the hub any more: not asked again.
     if (shop.movedOutAt) continue;
@@ -1147,7 +1158,7 @@ async function forgetCancelledMove(shopId: string) {
 
 /** One company's claim and standing now (Settings → Account's "Check again"): the same request the sync makes. */
 export async function claimShopNow(shopId: string): Promise<StandingAnswer> {
-  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true } });
+  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, hubResetOptIn: true } });
   if (!shop) throw new UserError("Company not found.");
   const sole = (await db.shop.count()) === 1;
   let answer: StandingAnswer;

@@ -136,11 +136,20 @@ export async function refreshStandingFor(user: CurrentUser): Promise<void> {
   }
 }
 
-/** The owner allows (or stops allowing) a password reset from their StitchHub account. Windows program only; stored here, used by a later package. */
+/**
+ * The owner allows (or stops allowing) a password reset from their StitchHub account. Windows program only. Stored here
+ * (a hub can't switch it on); the hub learns it from the claim, sent now so its account page offers the reset (or stops
+ * offering it) at once (src/lib/hub-reset-grants.ts). The page waits a few seconds for that at most; the sync repeats it.
+ */
 export async function setResetOptInFor(user: CurrentUser, on: boolean): Promise<void> {
   requireAccountOwner(user);
   if (!isDesktop()) throw new UserError("A reset from the StitchHub account is for the Windows program; the hosted version resets by email.");
   await db.shop.update({ where: { id: user.shopId }, data: { hubResetOptIn: on === true } });
+  const s = await hubState();
+  if (!s?.url || !s.installKey) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([claimShopNow(user.shopId).catch(() => undefined), new Promise((r) => (timer = setTimeout(r, 4000)))]);
+  clearTimeout(timer);
 }
 
 /** A link code the page was just sent to (door 2), while it is still good and looks like one; else null. */

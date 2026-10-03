@@ -15,8 +15,9 @@ export const PUBLIC_GET = ["/e/", "/u/", "/book/", "/shop/", "/api/e/", "/api/u/
 export const PUBLIC_POST = ["/api/e/", "/api/u/", "/api/book/", "/api/shop/"];
 export const MAX_POST_BYTES = 16 * 1024;
 
-// Never passed on: a tunnel's address headers, Host (set to the public address), and the hop-by-hop ones.
-const DROP = new Set(["host", "forwarded", "cf-connecting-ip", "x-real-ip", "connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "proxy-authorization", "te", "trailer", "content-length"]);
+// Never passed on: a tunnel's address headers, Host (set to the public address), the hop-by-hop ones, and the program
+// window's mark (src/lib/hub-reset-grants.ts: only the PC's own window sends it, never a visitor through the tunnel).
+const DROP = new Set(["host", "forwarded", "cf-connecting-ip", "x-real-ip", "x-stitch-window", "connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "proxy-authorization", "te", "trailer", "content-length"]);
 const dropped = (name) => DROP.has(name) || name.startsWith("x-forwarded-");
 
 /** "pass" for GET / HEAD of a public prefix and POST of a public API prefix; "404" for everything else. */

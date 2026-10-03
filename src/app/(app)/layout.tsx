@@ -14,6 +14,7 @@ import { messagingView } from "@/lib/messaging/settings";
 import { GraceBanner, LapsedBar, ModulePills, MovingBar, type GraceItem, type RenewPill } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 import { deleteFrom } from "@/lib/move/format";
+import { HubResetPrompt } from "@/components/hub-reset-prompt";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -134,6 +135,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <GraceBanner items={grace} admin={admin} />
         {children}
       </main>
+      {/* The Windows program's own window only: a password reset the owner asked for on their StitchHub account. */}
+      <HubResetPrompt />
     </div>
   );
 }
