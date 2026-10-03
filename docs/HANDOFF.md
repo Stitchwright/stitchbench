@@ -948,7 +948,7 @@ accounts and billing: design first).
    the link id with the file (index + a sidecar or the LibraryDoc row) so re-downloads and dedupe work.
    (c) Per model, show which doc types exist (service, parts, operator, error codes, wiring) and which are missing,
    so members know what to look for. Links already carry the doc type; the model page groups by it.
-13. **Look into what AI to add** **Scoped 2 Oct 2026** (section 2ab): `docs/plans/ai-assistant-scope.md`. (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
+13. **Look into what AI to add** **Scoped 2 Oct 2026** (section 2ab): `docs/plans/ai-assistant-scope.md`. **Decided 3 Oct 2026**: the owner took every recommended answer; the `assistant` package (write-ups + bench assistant + the plumbing through the hub, about 4.5 days) is queued after billing packages 4 and 5 and the test-mode card, because it adds a migration in each repo and edits the hub's server and the ticket page. (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
    with the best return. Candidates that fit what the program already holds:
    - Bench assistant on a ticket: from the model and the problem reported, suggest likely causes and the checks to
      make, drawing on this shop's own tickets and notes, the community's gotchas, and the factory specs already in
