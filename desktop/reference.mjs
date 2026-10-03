@@ -1,5 +1,5 @@
 // Reference data that ships with the program (prisma/seed-data, copied into the server by prepare-app.mjs): tension
-// specs, factory settings and, for a bench with a manual library, the manual list. A new install gets them on its first
+// specs, factory settings, test modes and, for a bench with a manual library, the manual list. A new install gets them on its first
 // start and an update brings in a changed set. What was loaded is recorded as the table's comment (seed:<hash>), so an
 // unchanged set costs one query per start. Same result as `npm run db:seed` in the repo: the shipped rows, nothing else.
 import fs from "node:fs";
@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 const SETS = [
   { table: "TensionSpec", file: "tension_specs.json" },
   { table: "FactorySetting", file: "factory_settings.json" },
+  { table: "ServiceMode", file: "service_modes.json" },
   { table: "LibraryDoc", file: "library_docs.json", needsLibrary: true },
 ];
 

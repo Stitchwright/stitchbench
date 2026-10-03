@@ -1,6 +1,6 @@
 // Backups of the shop's data: customers, machines, tickets, photos, parts, people, prices, shared notes, plus the
-// pictures the program can't reload by itself (figures and machine pictures). The tension specs, factory settings and
-// manual list come with the program (reference.mjs loads them), so they're left out: a restore must not put an older
+// pictures the program can't reload by itself (figures and machine pictures). The tension specs, factory settings, test
+// modes and manual list come with the program (reference.mjs loads them), so they're left out: a restore must not put an older
 // set back. The community hub's cached copies are left out too: they're synced again from the hub after a restore.
 // Each backup is a folder of gzipped COPY files plus manifest.json; restore replaces the shop data with it, except
 // that the license keys the PC holds are merged back (a key pasted after the backup was made comes back), opt-outs
@@ -18,7 +18,7 @@ const { to: copyTo, from: copyFrom } = copyStreams;
 // data (re-synced from the hub). The hub connection itself (HubState), this shop's marketplace orders and its listings
 // are kept: which company on this install owns a listing (shopId) is known here only, not on the hub. JobLease holds
 // which process is running a background job right now (src/lib/lease.ts): never data, cleaned at every start.
-const SKIP = new Set(["_prisma_migrations", "TensionSpec", "FactorySetting", "LibraryDoc", "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "ListingPhoto", "JobLease"]);
+const SKIP = new Set(["_prisma_migrations", "TensionSpec", "FactorySetting", "ServiceMode", "LibraryDoc", "ManualLink", "HubPost", "HubPhoto", "HubFigure", "XPart", "ListingPhoto", "JobLease"]);
 // Backed up, but restored only from a backup that has it, so an older backup leaves what's here alone: the reference
 // pictures, and the listings (backups before 1.4.2 left them out; the ones here keep their owner, the hub refreshes the rest).
 const OPTIONAL = new Set(["FigureImage", "ModelImage", "Listing"]);

@@ -77,8 +77,11 @@ export function LocalManuals({ brand, model }: { brand: string; model: string })
   );
 }
 
-/** "Open p.51" for a tension spec, if this PC has that manual: in the connected folder, or in the shop PC's library. */
-export function OpenSpecSource({ file, sourcePath, pages }: { file: string; sourcePath?: string | null; pages: string | null }) {
+/**
+ * "Open p.51" for a tension spec, if this PC has that manual: in the connected folder, or in the shop PC's library.
+ * With `label` ("Manual page 21") the button says that instead, and nothing shows when the manual isn't here.
+ */
+export function OpenSpecSource({ file, sourcePath, pages, label }: { file: string; sourcePath?: string | null; pages: string | null; label?: string }) {
   const { index, ready } = useIndex();
   const [path, setPath] = useState<string | null | undefined>(undefined);
   useEffect(() => {
@@ -92,14 +95,14 @@ export function OpenSpecSource({ file, sourcePath, pages }: { file: string; sour
   if (!ready || path === undefined) return null;
   const page = firstPage(pages);
   if (!path)
-    return (
+    return label ? null : (
       <span className="muted text-xs" title={file}>
         {pages ? `p. ${pages}` : ""}
       </span>
     );
   return (
     <button type="button" className="link text-xs font-semibold" onClick={() => open(path, page)} title={`Open ${file}`}>
-      Open{page ? ` p. ${page}` : ""}
+      {label ?? `Open${page ? ` p. ${page}` : ""}`}
     </button>
   );
 }
