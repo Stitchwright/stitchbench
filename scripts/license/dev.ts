@@ -18,7 +18,7 @@ const devKey = JSON.parse(fs.readFileSync(path.join(here, "dev-key.json"), "utf8
 export type DevKeyOpts = {
   shopId: string;
   modules: string[];
-  from?: string; // YYYY-MM-DD, default today (UTC)
+  from?: string; // YYYY-MM-DD, default yesterday (UTC)
   until?: string; // YYYY-MM-DD, default planLastDay(from, plan)
   grace?: number; // default 14
   plan?: string; // default "y"
@@ -29,7 +29,8 @@ export type DevKeyOpts = {
 
 /** A key signed with the development key. */
 export function devLicenseKey(o: DevKeyOpts): string {
-  const from = o.from ?? new Date().toISOString().slice(0, 10);
+  // Default: yesterday (UTC), so a key made late in the evening is already valid today in every US zone.
+  const from = o.from ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   const plan = o.plan ?? "y";
   const until = o.until ?? planLastDay(from, plan === "m" || plan === "t" ? plan : "y");
   const payload: LicensePayload = {
