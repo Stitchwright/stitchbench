@@ -36,7 +36,7 @@ export default async function ModelPage({ params, searchParams }: { params: Prom
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
           <ModelPanel shopId={user.shopId} brand={brand} model={model} showLink={false} kind={kind} />
-          <ManualLinks brand={brand} model={model} timeZone={tz} />
+          <ManualLinks shopId={user.shopId} brand={brand} model={model} timeZone={tz} />
         </div>
         <div className="space-y-6 xl:col-span-2">
           <ModelMachines shopId={user.shopId} brand={brand} model={model} title="Serviced here" />

@@ -373,7 +373,7 @@ export default async function MachinePage({ params }: { params: Promise<{ id: st
         <div className="space-y-6 xl:col-span-2">
           <ModelPanel shopId={user.shopId} brand={m.brand} model={m.model} kind={kind} />
           {m.equipment === "VACUUM" && <SuppliesThatFit brand={m.brand} model={m.model} bagType={typeof details.bagType === "string" ? details.bagType : null} user={user} />}
-          <ManualLinks brand={m.brand} model={m.model} timeZone={tz} />
+          <ManualLinks shopId={user.shopId} brand={m.brand} model={m.model} timeZone={tz} />
           <PartsThatFit shopId={user.shopId} brand={m.brand} model={m.model} />
           <SharedPosts user={user} brand={m.brand} model={m.model} title="Shared by techs" />
         </div>

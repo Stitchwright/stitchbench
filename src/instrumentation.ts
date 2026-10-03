@@ -2,7 +2,7 @@
 // with its partner shops, whose repair status and orders people are waiting on; and send the messages that are due.
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const g = globalThis as unknown as { hubTimer?: NodeJS.Timeout; partnerTimer?: NodeJS.Timeout; messageTimer?: NodeJS.Timeout };
+  const g = globalThis as unknown as { hubTimer?: NodeJS.Timeout; partnerTimer?: NodeJS.Timeout; messageTimer?: NodeJS.Timeout; downloadTimer?: NodeJS.Timeout };
   if (g.hubTimer) return;
   const { syncHub } = await import("@/lib/hub");
   const { syncPartners } = await import("@/lib/partners");
@@ -28,5 +28,15 @@ export async function register() {
     setTimeout(messages, 15_000);
     const secs = Number(process.env.MESSAGE_WORKER_SECONDS);
     g.messageTimer = setInterval(messages, (Number.isFinite(secs) && secs >= 2 ? secs : 30) * 1000);
+  }
+  // Manual downloads into the library (HANDOFF item 12), one file at a time. Only where there is a library to download
+  // into (LIBRARY_DIR: the Windows program; hosted installs have none), and MANUAL_DOWNLOADS=off stops it anywhere.
+  const { libraryDir } = await import("@/lib/library-dir");
+  if (process.env.MANUAL_DOWNLOADS !== "off" && libraryDir()) {
+    const { runManualDownloads } = await import("@/lib/manual-downloads");
+    const downloads = () => runManualDownloads().catch((e) => console.error("manual downloads:", e instanceof Error ? e.message : e));
+    setTimeout(downloads, 25_000);
+    const dsecs = Number(process.env.MANUAL_DOWNLOAD_SECONDS);
+    g.downloadTimer = setInterval(downloads, (Number.isFinite(dsecs) && dsecs >= 5 ? dsecs : 30) * 1000);
   }
 }
