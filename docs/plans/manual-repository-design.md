@@ -27,6 +27,25 @@ and `index.csv`; hub `README.md`, `server.mjs`, `checker.mjs`, `accounts.mjs`, `
   the library's naming); coverage pills count them. Free to hub members, members only, never a paid module.
 - **Uploads stay off (`REPO_UPLOADS`)** until the agent is registered and named and a lawyer has reviewed the process.
 
+## 0.1 A free side: the repository on the hub's website (owner decision, 3 Oct 2026)
+
+Every way into the hub today goes through StitchBench or StitchShop, which are paid (apart from the trial and the
+partnership waiver), so without this the manuals would sit behind a paywall. That is the weak spot for the safe
+harbor's financial-benefit condition (17 U.S.C. 512(c)(1)(B), lawyer question L3) and for fair use. So:
+
+- **Anyone with a free StitchHub account can browse and download repository manuals on the hub's website**, with no
+  program and no subscription: a "Manuals" page under /account (search by brand, model and doc type; a download is a
+  short-lived presigned R2 URL, as in section 5). Sign-up is package 1's "hub first" door (email verified).
+- **The paid program adds convenience, not access**: one-click download into the shop's library with the library's
+  naming, the download queue, the coverage pills on the model page, offering a file from the library. The manuals
+  themselves are the same for everyone.
+- **Abuse limits for free accounts**: 25 downloads a day per account and per IP (paid installs keep the queue's own
+  pace), no bulk or folder downloads on the web, and the same takedown blocks apply (a removed file vanishes from both).
+- **Marketing**: the website and the hub say "a community manual library, free with a StitchHub account", never that
+  the subscription buys manuals.
+- **Effort**: about a day more in package 2 (`repo-hub`: the web page, the per-account limits, a test section).
+- The owner may revisit this after the lawyer answers L3; the rest of the design doesn't depend on it.
+
 ## 1. The legal frame, in plain terms [LAWYER: all of this section]
 
 **What the safe harbor gives.** Under 17 U.S.C. 512(c), a service that stores material "at the direction of a user"
