@@ -759,6 +759,33 @@ with `openssl rand -hex 32` on the owner's PC). Everything below is on `scheduli
   `STRIPE_PRICE_YEARLY`), `STRIPE_SECRET_KEY`, the webhook with its eight events (`STRIPE_WEBHOOK_SECRET`), the
   Customer Portal settings; (5) mail for accounts: `SMTP_URL`, `MAIL_FROM`, `HUB_URL`. Note: the hub's
   `test/companies.mjs` needs an empty database each run (it failed on a reused one; passes on a fresh one).
+- **Company move, package 2 `move-import`** (3da81b8): a move file is read twice, the first pass checking everything
+  and writing nothing (format and version, the target's migrations by name, the company or any login email already
+  here, rows outside the company, children before parents by the database's own foreign keys, unknown columns,
+  counts and the end line, a damaged gzip, size caps), the second inserting every row in one transaction with ids
+  kept; afterwards email, texts and the shop are off, marketing held, a clashing booking address cleared, and a
+  summary says what to enter again. Doors: the tray's "Restore a company…" on a PC with no company (or "Import a
+  company…" with platformAdminEmails), a one-use HMAC token per file over a localhost route; the hosted Companies
+  page's resumable upload in 8 MB parts (platform admin, https); `scripts/move/import.ts`. `/move-in` needs no
+  sign-in (first run); it shows only imports started from the PC's own window, each behind a long random id, and
+  the public links host doesn't serve it. `scripts/checks/move-import.check.ts` (8 groups: a full round trip of all
+  50 tables, 18 refusals each writing nothing). PartnerSeen and PartnerFailure have no foreign key to Shop, so a
+  deleted company leaves rows there: the import clears its own, and package 3's delete must too.
+- **Spec helper dates** (d5b472b): `tests/helpers.ts` now sends and reads dates as UTC (`pg.defaults.parseInputDatesAsUTC`
+  and a type parser for `timestamp`), as Prisma stores them. node-postgres had sent local time into columns that drop
+  the offset, so every date a spec inserted landed four hours early; the calendar spec's "appointment in two hours"
+  became yesterday's after midnight Eastern. This was the third clock-dependent fixture of the night (with the dev key
+  start and the scheduling spec's "tomorrow"); none were product bugs.
+- **Spec run on the 3 Oct build** (all one at a time): smoke, modules-basics, modules-lapse, notices, campaigns (text
+  test skipped by the clock), classes, calendar, register-bookings, shifts, appliances, vac-shop,
+  scheduling-messaging, parts-in, online-booking, online-shop, tenant, two-servers (with :3500), move (export on :3501,
+  import on :3500), and **account** (doors 1 and 2 against the :3200 test hub on the hub-accounts branch, after two
+  label fixes): all pass. Not run: hub, market, partners, partner-runs (they need HUB_JOIN_KEY / PDF_URL and a joined
+  second install; scripts/local-test/README.md).
+- **Windows install** updated after the size fix: StitchBench 1.6.1 with migrations through
+  20261003150000_company_move; the packaged server is 176 MB again (807 MB before the fix), the whole installed
+  program 633 MB with its own Electron and Postgres. Not yet tried on the PC by hand: the Tailscale tray item, a manual
+  download, "Restore a company…".
 - **Railway Infrastructure as Code**: `railway config plan` (read-only) run against both projects after the new
   variables: each "0 to add, 1 to change, 0 to destroy", only the four deploy settings. To apply, per project
   (stitchshop as linked; for stitchbench link it first and link back after), from Bash:
@@ -943,6 +970,17 @@ accounts and billing: design first).
    `railway up --service <name> --ci`, then confirm in the dashboard that the deploy waited on `/api/health`, that the
    service's Settings show the healthcheck and the restart policy, and that the deprecation warning is gone. After
    both projects are done, delete `railway.json` and commit.
+
+15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026; not started). The factory settings refer to test
+   mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
+   mode 36") but none says how to enter it. Plan: a reference set like TensionSpec / FactorySetting (per model family:
+   how to enter, how to exit, what the numbered tests do, a warning for modes that clear settings, source file and
+   page, confidence), extracted from the 650 service manuals in C:\Manuals with page numbers for the owner to verify
+   (Brother, Baby Lock, Janome first) and shipped as seed data; a card on the machine page and the ticket next to the
+   factory specs, opening the manual at the page when the PDF is in the library; "test mode 36" in a factory setting
+   becomes a link to it; techs fill gaps through "Offer a hint". Steps in our own words with the page reference,
+   never copied manual pages; the embroidery service-password notes stay private to the owner's shop. About a day for
+   the table and card; the extraction is the larger part.
 
 ## 4. Owner decisions already made (don't re-ask)
 
