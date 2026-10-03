@@ -70,6 +70,32 @@ export function GraceBanner({ items, admin }: { items: GraceItem[]; admin: boole
 }
 
 /**
+ * The company is being moved to another install (company-move-design.md section 7): one bar at the top of every page, for
+ * every role. Shown instead of the lapsed bar: the move is what the owner did last, and Cancel is what undoes it.
+ */
+export function MovingBar({ to, since, admin }: { to: string | null; since: string; admin: boolean }) {
+  return (
+    <div className="no-print card card-pad tone-bad mb-4 text-sm" role="status" data-testid="moving-bar">
+      <strong>
+        This company is moving{to ? ` to ${to}` : ""}; it is read-only here since {since}.
+      </strong>{" "}
+      You can look at and export everything, finish open work and take payments; nothing new is written here, so nothing is lost on the way.{" "}
+      {admin ? (
+        <>
+          Download the move file, or cancel the move to carry on here, in{" "}
+          <Link href="/settings#move" className="underline">
+            Settings → Company
+          </Link>
+          .
+        </>
+      ) : (
+        "Ask the shop owner."
+      )}
+    </div>
+  );
+}
+
+/**
  * The program itself has lapsed (hub-accounts-billing-design.md 3.5): one bar at the top of every page, for every role,
  * saying what still works and where the key comes from. The nav keeps every item: the pages are read-only.
  */

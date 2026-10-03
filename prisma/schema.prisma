@@ -100,6 +100,15 @@ model Shop {
   hubResetOptIn       Boolean   @default(false)
   // Which version of the hub's terms the owner accepted when the account was started from here
   termsVersion        String?
+  // Moving the company to another install (company-move-design.md sections 7 and 8). movingAt: the owner confirmed the
+  // move and this copy is read-only (Cancel clears it); movedTo: where it is going, in the owner's words, then the hub's
+  // name for the new install once it says moved; movedOutAt: the hub said moved (package move-hub). movedInAt /
+  // movedFrom: this copy came in from a move file (package move-import).
+  movingAt            DateTime?
+  movedOutAt          DateTime?
+  movedTo             String?
+  movedInAt           DateTime?
+  movedFrom           String?
   createdAt           DateTime  @default(now())
 
   users           User[]
@@ -147,6 +156,32 @@ model Shop {
   apptTypes       AppointmentType[]
   appointments    Appointment[]
   shifts          Shift[]
+  companyMoves    CompanyMove[]
+}
+
+// One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
+// install's copy going out as a .stitchmove.ndjson.gz file, streamed straight from the database while the owner's
+// browser downloads it) or an import (package move-import). Status, for an export: ready (frozen, no download yet) |
+// downloading | done | failed | cancelled. The row survives a page reload, so the Settings page shows where the
+// download is. Per install (not in the file): it describes this copy's move, not the company.
+model CompanyMove {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  direction    String // export | import
+  status       String
+  table        String? // the table being written now
+  rowsDone     Int       @default(0)
+  rowsTotal    Int       @default(0)
+  bytes        BigInt    @default(0) // gzipped bytes sent so far (an export; a photo-heavy company's file passes 2 GB)
+  filePath     String? // an import's file on disk (export streams; nothing is spooled)
+  error        String?
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  downloadedAt DateTime?
+  byUserId     String?
+
+  @@index([shopId, startedAt])
 }
 
 model User {
