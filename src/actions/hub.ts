@@ -18,7 +18,7 @@ function refresh() {
 
 // The hub connection is shared by every company on this install: with several, only the StitchBench administrator
 // joins or leaves (requireInstallAdmin).
-export const joinCommunityHub = safe(async function joinCommunityHub(formData: FormData) {
+export const joinCommunityHub = safe.whileLapsed("joinCommunityHub")(async function joinCommunityHub(formData: FormData) {
   const admin = await requireInstallAdmin();
   // Either the member invite (code or file contents) or the hub address + join key typed in.
   const invite = str(formData.get("invite"));
@@ -31,7 +31,7 @@ export const joinCommunityHub = safe(async function joinCommunityHub(formData: F
   refresh();
 });
 
-export const syncCommunityHub = safe(async function syncCommunityHub() {
+export const syncCommunityHub = safe.whileLapsed("syncCommunityHub")(async function syncCommunityHub() {
   await requireUser();
   // A dead line says so in seconds, not after every request of a sync has waited out its time.
   await hubReachable();
@@ -49,7 +49,7 @@ export const setUsageSharing = safe(async function setUsageSharing(on: boolean) 
   revalidatePath("/parts/most-used");
 });
 
-export const leaveCommunityHub = safe(async function leaveCommunityHub() {
+export const leaveCommunityHub = safe.whileLapsed("leaveCommunityHub")(async function leaveCommunityHub() {
   await requireInstallAdmin();
   await leaveHub();
   refresh();

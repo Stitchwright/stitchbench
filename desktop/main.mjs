@@ -20,6 +20,7 @@ import { loadReference } from "./reference.mjs";
 import { ensureAppRole, APP_ROLE } from "./app-role.mjs";
 import { startLinksGate } from "./links-gate.mjs";
 import { findTailscale, tailscaleStatus, serveStatus, serveOn, serveOff, linkIn } from "./tailscale.mjs";
+import { describeLogin, listLogins, loadBcrypt, MAX_LISTED, resetLogin } from "./reset-password.mjs";
 
 const HERE = import.meta.dirname;
 const PKG = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
@@ -414,6 +415,8 @@ async function startServer() {
       SETUP_TOKEN: setupToken,
       APP_NAME: NAME,
       DEFAULT_SHOP_KIND: FLAVOR === "stitchshop" ? "retail" : "repair",
+      // The installer's version, told to StitchHub with each company's claim (src/lib/shops.ts programVersion).
+      STITCH_VERSION: app.getVersion(),
       // Customer links: only with a checked public address, and then only the public pages on that host (src/proxy.ts),
       // behind the links gate. Neither variable otherwise. TRUST_PROXY is never set here.
       ...(links() ? { PUBLIC_URL: links().url, PUBLIC_LINKS_ONLY: "true" } : {}),
@@ -818,6 +821,45 @@ async function restoreFromBackup() {
   win?.loadURL(home());
 }
 
+/**
+ * "Reset a password...": the person at the shop PC picks a login and gets a new password, shown once here and nowhere
+ * else (hub-accounts-billing-design.md 4.3.3). Needs the PC and nothing more: no email, no internet, no hub.
+ */
+async function resetPasswordDialog() {
+  if (!pool) return;
+  const logins = await listLogins(pool);
+  if (!logins.length) {
+    dialog.showMessageBox({ title: `${NAME}: reset a password`, message: "There are no logins yet.", detail: `Open ${NAME} and create the company first.` });
+    return;
+  }
+  const several = new Set(logins.map((l) => l.shop)).size > 1;
+  const shown = logins.slice(0, MAX_LISTED);
+  const pick = await dialog.showMessageBox({
+    type: "question",
+    title: `${NAME}: reset a password`,
+    message: "Whose password?",
+    detail: `A new password is made and shown once, on this screen only. Every device signed in as that person is signed out.${logins.length > shown.length ? `\n\nOnly the first ${shown.length} logins are listed; an owner can reset the others in ${NAME} under Settings.` : ""}`,
+    buttons: [...shown.map((l) => describeLogin(l, several)), "Cancel"],
+    cancelId: shown.length,
+    defaultId: shown.length,
+    noLink: true,
+  });
+  const login = shown[pick.response];
+  if (!login) return;
+  const password = await resetLogin(pool, loadBcrypt(APP_DIR), login.id);
+  log(`password reset from the tray for ${login.email}`);
+  const done = await dialog.showMessageBox({
+    type: "info",
+    title: `${NAME}: new password`,
+    message: `New password for ${login.name} (${login.email})`,
+    detail: `${password}\n\nIt is shown only here, now. Sign in with it, then change it under Settings if you like.`,
+    buttons: ["Copy and close", "Close"],
+    defaultId: 0,
+    noLink: true,
+  });
+  if (done.response === 0) clipboard.writeText(password);
+}
+
 // ---------- window & tray ----------
 
 function base() {
@@ -944,6 +986,11 @@ function buildTray() {
         label: "Restore a backup...",
         enabled: !maintenance && !!pool,
         click: () => restoreFromBackup().catch((e) => dialog.showErrorBox(NAME, String(e))),
+      },
+      {
+        label: "Reset a password...",
+        enabled: !maintenance && !!pool,
+        click: () => resetPasswordDialog().catch((e) => dialog.showErrorBox(`${NAME}: reset a password`, String(e instanceof Error ? e.message : e))),
       },
       { type: "separator" },
       {

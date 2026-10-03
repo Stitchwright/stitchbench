@@ -5,6 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { safe, UserError, isUserError } from "@/lib/action";
+import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { codeKeys, numberKey } from "@/lib/parts";
 import { sameText } from "@/lib/input";
@@ -216,6 +217,7 @@ export async function findCustomers(q: string): Promise<CustomerHit[]> {
 export async function quickAddCustomer(fd: FormData): Promise<CustomerHit | { error: string }> {
   try {
     const user = await requireUser();
+    await requireBaseWritable(user); // a new record: refused while the program is read-only
     const text = (k: string) => String(fd.get(k) ?? "").trim();
     const name = text("name").slice(0, 120);
     const phone = text("phone").slice(0, 40) || null;
@@ -253,7 +255,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
 }
 
 /** Undo a sale that was rung up by mistake: stock goes back, consigned sales are reversed with the owner. */
-export const voidSale = safe(async function voidSale(saleId: string, formData: FormData) {
+export const voidSale = safe.whileLapsed("voidSale")(async function voidSale(saleId: string, formData: FormData) {
   const user = await requireAdmin();
   await voidSaleAs(
     user,

@@ -8,10 +8,10 @@ import { signOut } from "@/auth";
 import { isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
 import { getModules } from "@/lib/modules";
-import { fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
+import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
-import { GraceBanner, ModulePills, type GraceItem, type RenewPill } from "@/components/module-banner";
+import { GraceBanner, LapsedBar, ModulePills, type GraceItem, type RenewPill } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -28,14 +28,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // module that ended still sees the item, read-only).
   const gates = { ...toNavGates(modules), ...(await dataGates(user.shopId)) };
   // Marketing, unless hidden: customer replies nobody has handled (the Messages badge) and a paused channel (the pill).
-  const [replies, ms] = gates.marketing !== "hidden" ? await Promise.all([db.inboundText.count({ where: { shopId: user.shopId, keyword: null, handledAt: null } }), messagingView(user.shopId)]) : [0, null];
+  const [replies, ms] =
+    gates.marketing !== "hidden" ? await Promise.all([db.inboundText.count({ where: { shopId: user.shopId, keyword: null, handledAt: null } }), messagingView(user.shopId)]) : [0, null];
   const pausePill = ms?.emailPausedAt ? "Email paused: fix in Settings" : ms?.smsPausedAt ? "Texts paused: fix in Settings" : null;
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
   // Paid modules: a quiet renewal pill for admins, and a banner for everyone while a module is in its grace period.
   // Layouts don't re-render on navigation, so these may be one navigation stale; the pages and actions are the real gates.
   const shopRef = { id: user.shopId, name: shop?.name ?? "" };
-  const pills: RenewPill[] = admin ? MODULE_IDS.filter((id) => modules.states[id].status === "renew").map((id) => ({ id, label: modules.states[id].label, lastDay: fmtYmd(modules.states[id].lastDay ?? "").replace(/, \d{4}$/, "") })) : [];
+  const pills: RenewPill[] = admin
+    ? MODULE_IDS.filter((id) => modules.states[id].status === "renew").map((id) => ({
+        id,
+        label: modules.states[id].label,
+        lastDay: fmtYmd(modules.states[id].lastDay ?? "").replace(/, \d{4}$/, ""),
+        base: id === "base",
+      }))
+    : [];
   const grace: GraceItem[] = MODULE_IDS.filter((id) => modules.states[id].status === "grace").map((id) => {
     const s = modules.states[id];
     const graceEnd = s.graceLastDay ? Date.parse(`${s.graceLastDay}T23:59:59Z`) : modules.now.getTime();
@@ -44,9 +52,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       lastDay: fmtYmd(s.lastDay ?? ""),
       graceLastDay: fmtYmd(s.graceLastDay ?? ""),
       daysLeft: Math.max(0, Math.ceil((graceEnd - modules.now.getTime()) / 86_400_000)),
-      renewHref: salesMailto("renew", s.label, shopRef),
+      renewHref: id === "base" ? null : salesMailto("renew", s.label, shopRef),
+      base: id === "base",
     };
   });
+  // The program itself has lapsed (hub-accounts-billing-design.md 3.5): a bar on every page for every role; the nav
+  // keeps every item, since the pages are read-only.
+  const base = modules.states.base;
+  const lapsedSince = base.status === "lapsed" ? endedDay(base) : null;
 
   // The shop's https address for tablets (the Windows program's SECURE_URL), for the camera and copy buttons to name on a
   // plain-http page (src/components/secure-page.tsx). React hoists the tag into <head>. This layout renders per request
@@ -73,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </form>
         <Nav
           platformAdmin={isPlatformAdmin(user.email)}
-          chatUrl={hub?.installKey && hub.scope !== "partner" ? hub.discordUrl : null}
+          chatUrl={hub?.installKey && hub.scope === "member" ? hub.discordUrl : null}
           doesRepair={doesRepair}
           sellsRetail={shop?.sellsRetail ?? false}
           retailPartners={retailPartners > 0}
@@ -84,7 +97,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ModulePills items={pills} />
         {offline && (
           <div className="px-4 pb-2">
-            <span className="pill tone-wait text-xs" title="Sharing, the marketplace and messages to partner shops wait until the connection is back. Tickets, the register, customers and parts work as usual.">
+            <span
+              className="pill tone-wait text-xs"
+              title="Sharing, the marketplace and messages to partner shops wait until the connection is back. Tickets, the register, customers and parts work as usual."
+            >
               Offline since {fmtDateTime(new Date(offline), shop?.timeZone ?? DEFAULT_TIME_ZONE, { hour: "numeric", minute: "2-digit" })}
             </span>
           </div>
@@ -103,6 +119,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
       <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">
+        {lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />}
         <GraceBanner items={grace} admin={admin} />
         {children}
       </main>

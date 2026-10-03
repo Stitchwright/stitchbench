@@ -366,6 +366,37 @@ Discord.
 
 ---
 
+## Your StitchHub account
+
+A shop owner can have an **account on StitchHub**: an email address and a password. The account owns the shop (or
+several, for a repair shop that hosts its quilt shops' StitchShop companies) and is where the shop subscribes when
+subscriptions open; until then every shop is on a free trial or comped by the hub admin, and nothing changes in the
+program. Staff logins inside the program are separate and stay as they are.
+
+**Settings → Account** (owners only) is where it happens:
+- **Create your StitchHub account**: your email, and a tick to accept the terms and privacy policy (both pages are on
+  the hub and linked there). The hub emails a link to set a password; the page says "waiting for the email" until you
+  have, with **Send it again** if nothing arrives. A program that isn't on any hub yet joins the community's hub as
+  part of this, with no invite. If the address already has an account, the hub says so: use the next door.
+- **I already have an account**: **Show a link code** gives a 10-character code good for 15 minutes. Sign in on the hub
+  (the link is on the page) and type it under **Connect a shop**. This needs the program to be on the hub already.
+- The page shows what the hub last said about the shop (trial, comped, last day) and what the program itself is
+  licensed for, with **Check again** to ask the hub now. The hub tells the program at every sync; the program's own key
+  arrives the same way once billing exists and needs no pasting.
+- The Windows program also offers **Allow a password reset from my StitchHub account** (off by default; a later
+  version uses it).
+
+**If the program's key ever lapses** (a subscription that ended and its 14 days of grace ran out) the program becomes
+**read-only**: every page, print and export still works, open tickets can be finished and closed, payments, returns
+and voids go through, backups and syncs run; new tickets, sales, parts and edits wait for a new key, which comes from
+the account at the next sync (or by email from StitchBench, pasted under Settings → Modules). Nothing is deleted. A
+program that never connects to any hub keeps working as it always has.
+
+**A forgotten owner password on the Windows program**: the tray menu's **Reset a password...** lists the logins; pick
+one and a new password is made and shown once, on the shop PC's own screen. It needs the PC and nothing else.
+
+---
+
 ## Paid modules
 
 StitchBench's extra modules (Vac Shop, Small Appliance Repair, Scheduling, Marketing) are sold by StitchBench,

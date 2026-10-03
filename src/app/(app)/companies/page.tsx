@@ -15,7 +15,7 @@ import { CopyButton } from "@/components/copy-button";
 import { CompanyTimeZoneField } from "@/components/company-timezone-field";
 import { createCompany, setCompanyModule, setHubWrites } from "@/actions/companies";
 
-const SHORT: Record<ModuleId, string> = { vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing" };
+const SHORT: Record<ModuleId, string> = { base: "Program", vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing" };
 
 /** One short pill for the Modules column, or null when the module is off. */
 function modulePill(s: ModuleState) {

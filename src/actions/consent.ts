@@ -110,7 +110,7 @@ export const recordTextConsent = safe(async function recordTextConsent(customerI
   refresh(c.id);
 });
 
-export const withdrawTextConsent = safe(async function withdrawTextConsent(customerId: string, fd: FormData) {
+export const withdrawTextConsent = safe.whileLapsed("withdrawTextConsent")(async function withdrawTextConsent(customerId: string, fd: FormData) {
   const user = await requireUser();
   const c = await ownCustomer(user.shopId, customerId);
   if (!c.smsConsentAt) throw new UserError("They haven't agreed to marketing texts.");
@@ -123,7 +123,7 @@ export const withdrawTextConsent = safe(async function withdrawTextConsent(custo
 });
 
 /** "They don't want our messages": any user, from any channel (a call, a letter, an email reply, a pasted unsubscribe code). */
-export const recordOptOut = safe(async function recordOptOut(fd: FormData) {
+export const recordOptOut = safe.whileLapsed("recordOptOut")(async function recordOptOut(fd: FormData) {
   const user = await requireUser();
   const shopId = user.shopId;
   let customerId = str(fd.get("customerId"));
@@ -186,7 +186,7 @@ export const removeOptOut = safe(async function removeOptOut(fd: FormData) {
 });
 
 /** A customer's text reply has been read (and acted on by phone): marketing texts to that number may go again. */
-export const markReplyHandled = safe(async function markReplyHandled(sid: string) {
+export const markReplyHandled = safe.whileLapsed("markReplyHandled")(async function markReplyHandled(sid: string) {
   const user = await requireUser();
   const row = await db.inboundText.findUnique({ where: { shopId_sid: { shopId: user.shopId, sid: assertId(sid) } } });
   if (!row) throw new UserError("Reply not found.");

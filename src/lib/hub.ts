@@ -4,9 +4,11 @@ import "server-only";
 // (ManualLink, HubPost, HubPhoto, HubFigure). Pictures are fetched the first time someone looks at them.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
+import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
 import { baseNumber } from "@/lib/parts";
 import { readUpTo } from "@/lib/read-body";
+import { appName, programVersion, shopKindOf } from "@/lib/shops";
 import { monthPeriod } from "@/lib/time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 import type { NoteKind, PhotoKind } from "@/generated/prisma/enums";
@@ -63,6 +65,15 @@ export type LinkRevision = {
 
 export async function hubState() {
   return db.hubState.findUnique({ where: { id: 1 } });
+}
+
+/**
+ * The community's hub, compiled in (hub-accounts-billing-design.md 2.2): where an install that never joined any hub
+ * goes when its owner starts a StitchHub account, and where a partner code without an address points. A self-hosted
+ * hub still needs its invite. DEFAULT_HUB_URL overrides it for a test hub on this computer.
+ */
+export function hubDefaultUrl() {
+  return (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
 }
 
 export async function hubJoined() {
@@ -236,6 +247,27 @@ async function failure(r: Response) {
   return new HubError(msg, r.status);
 }
 
+/**
+ * A JSON request to a hub this install may not be on yet (starting a StitchHub account from a never-joined install),
+ * under the same rules as hubFetch: the address checked, no redirects followed, the hub's refusal as a HubError.
+ * `key`: an install key to send (the one this install had on that hub before it left), or none.
+ */
+export async function hubRequest<T>(base: string, path: string, o: { method?: string; json?: unknown; key?: string | null } = {}): Promise<T> {
+  const url = checkHubUrl(base);
+  if (!path.startsWith("/v1/") || /[#?\\]|(^|\/)\.\.?(\/|$)/.test(path)) throw new UserError("That hub request isn't allowed.");
+  const r = await reach(
+    url + path,
+    {
+      method: o.method ?? "POST",
+      headers: { "Content-Type": "application/json", ...(o.key ? { Authorization: `Bearer ${o.key}` } : {}) },
+      body: o.json === undefined ? undefined : JSON.stringify(o.json),
+    },
+    url,
+  );
+  if (!r.ok) throw await failure(r);
+  return (await r.json()) as T;
+}
+
 /** quick: a page is waiting on this (a picture, ratings); it gives up sooner when the hub is slow or down. */
 export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean } = {}) {
   const s = await hubState();
@@ -364,7 +396,45 @@ export async function formerInstall(base: string, installKey: string) {
   }
   if (!r.ok) throw await failure(r);
   const me = (await r.json().catch(() => ({}))) as { installId?: string; hubName?: string; scope?: string };
-  return me.installId ? { installId: me.installId, hubName: me.hubName ?? null, scope: me.scope === "partner" ? "partner" : "member" } : null;
+  return me.installId ? { installId: me.installId, hubName: me.hubName ?? null, scope: hubScope(me.scope) } : null;
+}
+
+/** The hub's word for an install's scope, as this program stores it: member, partner (partner channel only) or pending (an account not yet verified). */
+export function hubScope(s: unknown): "member" | "partner" | "pending" {
+  return s === "partner" || s === "pending" ? s : "member";
+}
+
+/**
+ * This install is now the one the hub answered with (an account started from a never-joined install, section 2.2 of
+ * hub-accounts-billing-design.md; or the install it had there before it left, taken back). Same bookkeeping as
+ * joinHub: every cursor starts over and the old connection's synced copies go. Refuses to replace a connection someone
+ * made meanwhile.
+ */
+export async function adoptInstall(a: { url: string; hubName: string | null; installId: string; installKey: string; scope: "member" | "partner" | "pending" }) {
+  const fresh = await hubState();
+  if (fresh?.installKey) throw new UserError("This program joined a hub a moment ago. Look at Settings → Community hub, then try again.");
+  // An install that was never on any hub has no copies of a hub's to clear.
+  const hadConnection = Boolean(fresh?.url || fresh?.formerUrl);
+  const data = {
+    url: a.url,
+    hubName: a.hubName,
+    installId: a.installId,
+    installKey: a.installKey,
+    joinedAt: new Date(),
+    cursor: "0",
+    orderCursor: null,
+    partnerCursor: "0",
+    lastError: null,
+    scope: a.scope,
+    formerUrl: null,
+    formerInstallId: null,
+    formerInstallKey: null,
+  };
+  await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+  if (hadConnection) {
+    await clearHubCopies();
+    await db.sharedPost.updateMany({ where: { hubId: { not: null } }, data: { hubId: null } });
+  }
 }
 
 /**
@@ -899,17 +969,20 @@ async function doSync(): Promise<SyncResult> {
     const me = (await (await hubFetch("/v1/me")).json()) as { hubName?: string; discordInvite?: string | null; scope?: string };
     // The hub's Discord link wins when it has one; otherwise keep the one that came with the invite.
     // Joined for partner shops only, the install stays that way whatever the hub says: only joinHub (a join key, from
-    // someone allowed to join the whole install) makes it a member.
-    const scope = s.scope === "partner" || me.scope === "partner" ? "partner" : "member";
+    // someone allowed to join the whole install) makes it a member. Joined by starting a StitchHub account ("pending"),
+    // it follows the hub: a member once the owner has opened the email and set a password.
+    const scope = s.scope === "partner" || me.scope === "partner" ? "partner" : s.scope === "pending" && me.scope !== "member" ? "pending" : "member";
     // Not written while partner-only here: a join key being used right now (joinHub) may be making it a member.
     const still = await writeState(run, { hubName: me.hubName ?? null, ...(s.scope !== "partner" ? { scope } : {}), ...(me.discordInvite ? { discordUrl: me.discordInvite } : {}) });
     if (!still) return { skipped: true };
-    // On the hub for partner shops only: nothing of the community's to sync.
-    if (scope === "partner") {
+    // Every company says who it is and learns its standing, whatever the install's scope: a partner-only or pending
+    // install still has an account and a key to keep (hub-accounts-billing-design.md 2.4).
+    if (!(await claimShops(run))) return { skipped: true };
+    // On the hub for partner shops only, or waiting for the account's email: nothing of the community's to sync.
+    if (scope !== "member") {
       await writeState(run, { lastSyncAt: new Date(), lastError: null });
       return { skipped: true };
     }
-    await claimShop(run);
     // A note that won't upload mustn't stop everything else from syncing; it's tried again next time.
     const pushed = await pushPending().catch((e) => {
       console.error("community hub: sending shared notes:", e instanceof Error ? e.message : e);
@@ -962,17 +1035,52 @@ async function doSync(): Promise<SyncResult> {
   }
 }
 
+// Connections (install ids) whose hub is too old to know /v1/shops/claim (404): not asked again while this process runs.
+const claimUnknown = ((globalThis as unknown as { __hubClaimUnknown?: Set<string> }).__hubClaimUnknown ??= new Set<string>());
+
 /**
- * A StitchBench with one company tells the hub which it is, once per connection and start of the program: what the
- * install listed, ordered, was rated for and shared before it named its company becomes that company's (its ratings
- * carry over). An older hub doesn't know this (404); nothing is lost then.
+ * What the hub is told about one company at every sync (hub-accounts-billing-design.md 2.4): its name, what it does,
+ * which program and version; `sole` on a one-company install, so what the install listed, ordered, was rated for and
+ * shared before it named its company becomes that company's (its ratings carry over).
  */
-async function claimShop(run: SyncRun) {
-  const done = globalThis as unknown as { __hubClaimed?: string | null };
-  if (done.__hubClaimed === run.installId) return;
-  const sole = await soleShopId();
-  if (sole) await hubFetch("/v1/shops/claim", { method: "POST", json: { shopRef: sole } }).catch(() => {});
-  done.__hubClaimed = run.installId;
+function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean }, sole: boolean) {
+  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole };
+}
+
+/**
+ * Every company on the install tells the hub who it is and learns its standing (and, when billing exists, its key):
+ * the answer goes to the Shop row and the License table (hub-standing.ts). The first claim starts the company's trial.
+ * False when the install moved to another hub (or left) meanwhile. An older hub doesn't know the route (404): nothing
+ * is lost then, and it isn't asked again until the program restarts. Any other refusal is the sync's error.
+ */
+async function claimShops(run: SyncRun): Promise<boolean> {
+  if (!run.installId || claimUnknown.has(run.installId)) return true;
+  const shops = await db.shop.findMany({ select: { id: true, name: true, doesRepair: true, sellsRetail: true }, orderBy: { createdAt: "asc" } });
+  for (const shop of shops) {
+    let answer: StandingAnswer;
+    try {
+      answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, shops.length === 1) })).json()) as StandingAnswer;
+    } catch (e) {
+      if (hubStatus(e) === 404) {
+        claimUnknown.add(run.installId);
+        return true;
+      }
+      throw e;
+    }
+    if (!(await sameHub(run))) return false;
+    await applyStanding(shop.id, answer);
+  }
+  return true;
+}
+
+/** One company's claim and standing now (Settings → Account's "Check again"): the same request the sync makes. */
+export async function claimShopNow(shopId: string): Promise<StandingAnswer> {
+  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true } });
+  if (!shop) throw new UserError("Company not found.");
+  const sole = (await db.shop.count()) === 1;
+  const answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole) })).json()) as StandingAnswer;
+  await applyStanding(shop.id, answer);
+  return answer;
 }
 
 /**

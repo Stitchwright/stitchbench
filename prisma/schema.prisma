@@ -23,20 +23,20 @@ enum Role {
 }
 
 model Shop {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   name                String
   phone               String?
   email               String?
   address             String?
-  laborRateCents      Int      @default(9800)
-  taxRatePct          Float    @default(0)
-  partsMarkupPct      Float    @default(30)
-  warrantyDays        Int      @default(90)
-  abandonedAfterDays  Int      @default(60)
-  storageFeeCents     Int      @default(4500)
-  nextTicketNumber    Int      @default(51)
+  laborRateCents      Int       @default(9800)
+  taxRatePct          Float     @default(0)
+  partsMarkupPct      Float     @default(30)
+  warrantyDays        Int       @default(90)
+  abandonedAfterDays  Int       @default(60)
+  storageFeeCents     Int       @default(4500)
+  nextTicketNumber    Int       @default(51)
   // Where the shop keeps its manual library on every PC (links show this path)
-  libraryRoot         String   @default("C:\\Manuals")
+  libraryRoot         String    @default("C:\\Manuals")
   // Service checklist template, one item per line of work (edited in Settings)
   checklistItems      String[]
   // Fine print at the bottom of the printed price list
@@ -44,51 +44,63 @@ model Shop {
   // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
   payInstructions     String?
   // Send the hub this company's monthly parts counts for the community's most-used list (counts only; off unless turned on)
-  shareUsage          Boolean  @default(false)
+  shareUsage          Boolean   @default(false)
   // What this company does: a repair bench (StitchBench), a sewing / quilt shop counter (StitchShop), or both
-  doesRepair          Boolean  @default(true)
-  sellsRetail         Boolean  @default(false)
-  nextSaleNumber      Int      @default(1001)
-  nextTagNumber       Int      @default(101)
-  nextOrderNumber     Int      @default(1001)
+  doesRepair          Boolean   @default(true)
+  sellsRetail         Boolean   @default(false)
+  nextSaleNumber      Int       @default(1001)
+  nextTagNumber       Int       @default(101)
+  nextOrderNumber     Int       @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
-  nextPartNumber      Int      @default(1)
+  nextPartNumber      Int       @default(1)
   // Line at the bottom of register receipts (returns policy, hours)
   receiptNote         String?
   // The shop's own time zone: where days and months start for reports and statements
-  timeZone            String   @default("America/New_York")
+  timeZone            String    @default("America/New_York")
   // Online booking (online-and-parts-design.md section 2): the public address /book/{bookingSlug}, on or off, the
   // first offered time this many hours from now, how far ahead, and the welcome text.
-  bookingSlug         String?  @unique
-  bookingOn           Boolean  @default(false)
-  bookingLeadHours    Int      @default(24)
-  bookingDaysAhead    Int      @default(60)
+  bookingSlug         String?   @unique
+  bookingOn           Boolean   @default(false)
+  bookingLeadHours    Int       @default(24)
+  bookingDaysAhead    Int       @default(60)
   bookingWelcome      String?
   // The online shop (online-and-parts-design.md section 3): /shop/{bookingSlug} (the same public address as booking),
   // on or off, pickup at the counter and / or flat-rate shipping, who takes the money ("own": the shop's Stripe account,
   // its keys sealed below; "platform": the hosted service's account, paid out to the shop by hand), the welcome and
   // the pickup instructions.
-  shopOn              Boolean  @default(false)
-  shopPickup          Boolean  @default(true)
-  shopShipping        Boolean  @default(false)
-  shopShipCents       Int      @default(0)
+  shopOn              Boolean   @default(false)
+  shopPickup          Boolean   @default(true)
+  shopShipping        Boolean   @default(false)
+  shopShipCents       Int       @default(0)
   shopFreeOverCents   Int?
-  shopPayVia          String   @default("own")
+  shopPayVia          String    @default("own")
   // Sales tax on online orders: "rate" (the shop's one rate, as at the counter) or "stripe" (Stripe Tax works out the
   // tax on shipped orders from the delivery address; pickup orders stay at the rate). Own-account shops only.
-  shopTaxVia          String   @default("rate")
+  shopTaxVia          String    @default("rate")
   shopWelcome         String?
   shopPickupNote      String?
   stripeKeySealed     String?
   stripeWebhookSealed String?
-  nextWebOrderNumber  Int      @default(1001)
+  nextWebOrderNumber  Int       @default(1001)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
-  checkInKind         String   @default("sewing")
+  checkInKind         String    @default("sewing")
   // Vac Shop "bags due": days between bag purchases
-  bagReminderDays     Int      @default(180)
+  bagReminderDays     Int       @default(180)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
-  hubWritesOff        Boolean  @default(false)
-  createdAt           DateTime @default(now())
+  hubWritesOff        Boolean   @default(false)
+  // This company's StitchHub account and standing, as the hub last told it (hub-accounts-billing-design.md 2.4, 5.2):
+  // shown on Settings → Account. Only the hub's signed key (a License row with source "hub") changes what the program allows.
+  hubAccountEmail     String?
+  hubAccountVerified  Boolean   @default(false)
+  hubStanding         String? // trial | active | past_due | waived | comped | lapsed, as the hub said
+  hubStandingAt       DateTime? // when the hub last answered
+  hubStandingUntil    String? // the hub's lastDay (YYYY-MM-DD), when it gave one
+  hubStandingNote     String? // the hub's message, shown as it came
+  // The owner allows a password reset from their StitchHub account (Windows program, package hosted-provisioning); off by default
+  hubResetOptIn       Boolean   @default(false)
+  // Which version of the hub's terms the owner accepted when the account was started from here
+  termsVersion        String?
+  createdAt           DateTime  @default(now())
 
   users           User[]
   customers       Customer[]
@@ -1265,9 +1277,13 @@ model License {
   key       String // the whole key as pasted: SB1.<payload>.<signature>
   addedBy   String? // name of the person who pasted it
   addedById String? // their User id
+  // pasted: Settings → Modules (or the owner's emailed key); hub: fetched from StitchHub with the sync, one hub row per
+  // company, replaced by the hub's next key and removed when the hub revokes it (hub-accounts-billing-design.md 3.5)
+  source    String   @default("pasted")
   createdAt DateTime @default(now())
 
   @@unique([shopId, keyId])
+  @@index([shopId, source])
 }
 
 // The StitchBench administrator's switch for one company's module (Companies screen, hosted app only). Rows are history;
@@ -1278,7 +1294,7 @@ model ModuleGrant {
   id        String   @id @default(cuid())
   shopId    String
   shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  module    String // vac | appliance | scheduling | marketing
+  module    String // base (the program itself) | vac | appliance | scheduling | marketing
   mode      String // on | off | none
   key       String? // mode on: SB1 key for this company and module, signed with the hosting key
   byEmail   String

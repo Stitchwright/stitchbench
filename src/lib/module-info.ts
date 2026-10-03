@@ -31,6 +31,8 @@ export type KeyView = {
   issuedTo: string | null;
   addedBy: string | null;
   addedAt: Date;
+  /** pasted (Settings → Modules, or a key from the hub's email) or hub (fetched with the sync, replaced by the hub's next one). */
+  source: string;
   state: "current" | "future" | "ended" | "not-valid" | "other-company";
   reason: string | null;
 };
@@ -48,7 +50,23 @@ export type Modules = {
   unknownModules: string[];
 };
 
+/**
+ * Which program this is, by the same variables src/lib/shops.ts appName() reads (this file stays pure, so it reads them
+ * itself). In the browser neither is set, so a client component says StitchBench; the pages are rendered on the server.
+ */
+export function programName(): "StitchShop" | "StitchBench" {
+  return process.env.APP_NAME === "StitchShop" || (!process.env.APP_NAME && process.env.DEFAULT_SHOP_KIND === "retail") ? "StitchShop" : "StitchBench";
+}
+
+export const SETTINGS_ACCOUNT_HREF = "/settings/account";
+
 export const MODULES: Record<ModuleId, { label: string; blurb: string; href: string }> = {
+  // The program itself (hub-accounts-billing-design.md 3.5): its key comes from StitchHub with the sync, or by email.
+  base: {
+    label: programName(),
+    href: SETTINGS_ACCOUNT_HREF,
+    blurb: "The program itself.",
+  },
   vac: {
     label: "Vac Shop",
     href: "/vac",
@@ -72,6 +90,22 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
 };
 
 export const isModuleId = (s: unknown): s is ModuleId => typeof s === "string" && (MODULE_IDS as readonly string[]).includes(s);
+
+/** The paid modules: everything but the program itself (Settings → Modules lists these; the program's own state is on Settings → Account). */
+export const PAID_MODULE_IDS = MODULE_IDS.filter((id) => id !== "base");
+
+/**
+ * What the program's own key allows (hub-accounts-billing-design.md 3.5). "off" (no key ever: an install that never
+ * connected to a hub) is fully working, not off; only "lapsed" makes the company read-only.
+ */
+export function baseWritable(status: ModuleStatus): boolean {
+  return status === "off" || canWrite(status);
+}
+
+/** The message every refused write carries while the program is read-only (the design's wording, with the day it happened). */
+export function readOnlyMessage(s: ModuleState, admin = true): string {
+  return `${programName()} for this company is read-only since ${endedDay(s)}. You can look at and export everything, finish open work and take payments.${admin ? " Subscribe in Settings → Account." : " Ask the shop owner about its StitchHub account."}`;
+}
 
 /** Who sells modules. The owner fills these in before the first release (INSTALL.md, "Paid modules"). */
 export const MODULE_SALES = { email: "bwattendorf@gmail.com", url: "" };
@@ -119,6 +153,11 @@ export function endedDay(s: ModuleState): string {
 /** The message requireModule / requireEquipment throw (modules-design.md section 6.6). */
 export function blockedMessage(s: ModuleState, admin: boolean): string {
   const { label } = MODULES[s.id];
+  if (s.id === "base") {
+    // The program itself: "off" never blocks, so the only refusal is the read-only one.
+    if (s.status === "lapsed") return readOnlyMessage(s, admin);
+    return `${label} isn't licensed for this company yet.${admin ? " See Settings → Account." : " Ask the shop owner."}`;
+  }
   if (s.status === "lapsed") {
     if (s.switchedOff) return `${label} was switched off for this company on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.`;
     return `${label} ended on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.${admin ? " To start new work, renew it in Settings → Modules." : " Ask the shop owner to renew it."}`;
@@ -134,7 +173,7 @@ export function pageGate(s: ModuleState, hasRecords = false): "write" | "read" |
   return "none";
 }
 
-/** m "monthly", y "yearly", a "switched on by StitchBench", t "trial", other: the word. */
+/** m "monthly", y "yearly", a "switched on by StitchBench", t "trial", c "free (comped)", w "free while partnered", other: the word. */
 export function planLabel(plan: string | null): string {
   switch (plan) {
     case "m":
@@ -145,6 +184,10 @@ export function planLabel(plan: string | null): string {
       return "switched on by StitchBench";
     case "t":
       return "trial";
+    case "c":
+      return "free (comped)";
+    case "w":
+      return "free while partnered";
     default:
       return plan ?? "";
   }

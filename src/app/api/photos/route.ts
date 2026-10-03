@@ -4,6 +4,7 @@ import { PHOTO_KINDS } from "@/lib/constants";
 import type { PhotoKind } from "@/generated/prisma/enums";
 import { formUpTo } from "@/lib/read-body";
 import { equipmentState, machineWorkable, ticketWorkable } from "@/lib/equipment/gate";
+import { baseResponse } from "@/lib/base-gate";
 import { blockedMessage } from "@/lib/module-info";
 
 const MAX_BYTES = 3 * 1024 * 1024; // photos are resized in the browser first; this is a backstop
@@ -28,6 +29,9 @@ export async function POST(req: Request) {
   if (ticketId && !(await db.ticket.findFirst({ where: { id: ticketId, shopId, machineId }, select: { id: true } }))) {
     return new Response("Ticket not found.", { status: 404 });
   }
+  // The program itself read-only (hub-accounts-billing-design.md 3.5): a photo is an edit.
+  const readOnly = await baseResponse(shopId, user.role !== "TECH");
+  if (readOnly) return readOnly;
   // The module gate: a photo is work on the ticket (or on the machine when there is none). modules-design.md 6.4.
   if (!(ticketId ? await ticketWorkable(shopId, ticketId) : await machineWorkable(shopId, machineId))) {
     const state = await equipmentState(shopId, machine.equipment);

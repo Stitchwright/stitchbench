@@ -35,19 +35,19 @@ export const removePhoto = safe(async function removePhoto(partId: string, photo
   revalidatePath(`/parts/${partId}`);
 });
 
-export const orderReady = safe(async function orderReady(orderId: string) {
+export const orderReady = safe.whileLapsed("orderReady")(async function orderReady(orderId: string) {
   const user = await requireUser();
   await markReadyFor(user, orderId);
   revalidatePath("/register/online");
 });
 
-export const orderDone = safe(async function orderDone(orderId: string, formData: FormData) {
+export const orderDone = safe.whileLapsed("orderDone")(async function orderDone(orderId: string, formData: FormData) {
   const user = await requireUser();
   await markDoneFor(user, orderId, { tracking: str(formData.get("tracking")) });
   revalidatePath("/register/online");
 });
 
-export const orderCancel = safe(async function orderCancel(orderId: string, formData: FormData) {
+export const orderCancel = safe.whileLapsed("orderCancel")(async function orderCancel(orderId: string, formData: FormData) {
   const user = await requireUser();
   await cancelOrderFor(user, orderId, str(formData.get("reason")) ?? "");
   revalidatePath("/register/online");
