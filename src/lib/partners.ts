@@ -1773,13 +1773,22 @@ export async function holdConsignReturn(shopId: string, linkId: string, itemKey:
  * already did) or refused (the claim is dropped). Returns the quantity restocked or dropped; 0 when nothing waits.
  */
 export async function answerConsignReturn(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, confirm: boolean, at: Date) {
+  return (await answerConsignReturnDetailed(shopId, link, itemKey, confirm, at)).qty;
+}
+
+/**
+ * The same, saying whether a claim was waiting: `claimed` is false when there was none (or another click took it), and
+ * `qty` is what went back on the shelf (0 when the claim was cleared but nothing was left out there to take back).
+ * The claim is cleared and the restock done in one transaction.
+ */
+export async function answerConsignReturnDetailed(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, confirm: boolean, at: Date): Promise<{ claimed: boolean; qty: number }> {
   return db.$transaction(async (tx) => {
     const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
-    if (!item || !(item.pendingReturn > 0)) return 0;
+    if (!item || !(item.pendingReturn > 0)) return { claimed: false, qty: 0 };
     // Claim it first, so two clicks can't restock it twice.
     const took = await tx.consignItem.updateMany({ where: { id: item.id, pendingReturn: item.pendingReturn }, data: { pendingReturn: 0, pendingAt: null } });
-    if (!took.count) return 0;
-    return confirm ? consignReturned(shopId, link, itemKey, item.pendingReturn, at, tx) : item.pendingReturn;
+    if (!took.count) return { claimed: false, qty: 0 };
+    return { claimed: true, qty: confirm ? await consignReturned(shopId, link, itemKey, item.pendingReturn, at, tx) : item.pendingReturn };
   });
 }
 

@@ -15,6 +15,7 @@ import { registerUnitHits } from "@/lib/vac/sale-units";
 import { viewItem, type RegisterItem } from "@/lib/register-item";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs, type SaleInput } from "@/lib/register-sale";
+import { refuseVoidOfOnlineSale } from "@/lib/shop/online-shop";
 import type { BookingDue } from "@/lib/booking-types";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
@@ -257,6 +258,7 @@ export async function completeSale(input: SaleInput): Promise<{ saleId: string; 
 /** Undo a sale that was rung up by mistake: stock goes back, consigned sales are reversed with the owner. */
 export const voidSale = safe.whileLapsed("voidSale")(async function voidSale(saleId: string, formData: FormData) {
   const user = await requireAdmin();
+  await refuseVoidOfOnlineSale(user.shopId, saleId);
   await voidSaleAs(
     user,
     saleId,

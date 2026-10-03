@@ -5,6 +5,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
+import { fineCost } from "@/lib/format";
 import type { CurrentUser } from "@/lib/session";
 import { withDisclosure } from "@/lib/part-labels";
 import { sendToPartner } from "@/lib/partners";
@@ -75,7 +76,11 @@ function saleByKey(shopId: string, clientKey: string | null) {
   return clientKey ? db.sale.findUnique({ where: { shopId_clientKey: { shopId, clientKey } }, select: { id: true, number: true, changeCents: true } }) : null;
 }
 
-export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number }> {
+/**
+ * `paidOnline`: the books write for an online order the customer has already paid (online-shop.ts only, never an
+ * action). Money taken is always booked, so the lapsed / moving gate is skipped for it.
+ */
+export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: { paidOnline?: boolean } = {}): Promise<{ saleId: string; number: number; changeCents: number }> {
   {
     const shopId = user.shopId;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
@@ -87,7 +92,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
     if (input.lines.length > 300) throw new UserError("That's too many lines for one sale.");
     // While the program is read-only (hub-accounts-billing-design.md 3.5): a return (every line money back) still goes
     // through, a sale doesn't.
-    if (!input.lines.every((l) => Number(l.qty) < 0)) await requireBaseWritable(user);
+    if (!opts.paidOnline && !input.lines.every((l) => Number(l.qty) < 0)) await requireBaseWritable(user);
     const rawTenders = Array.isArray(input.tenders) ? input.tenders : [];
     if (rawTenders.length > 20) throw new UserError("That's too many payments for one sale.");
 
@@ -210,6 +215,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput): Promi
         taxable: job ? false : part ? true : Boolean(l.taxable),
         discountable: !job,
         costCents: part?.costCents ?? null,
+        costTenThou: part ? fineCost(part.costCents, part.costTenThou) : null,
         consignLinkId: part?.consignLinkId ?? null,
         consignItemKey: part?.consignItemKey ?? null,
         machineId: l.machineId ?? null,

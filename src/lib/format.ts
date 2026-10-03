@@ -47,6 +47,20 @@ export function costText(costCents: number | null | undefined, costTenThou: numb
   return (costTenThou / 10_000).toFixed(4).replace(/0{1,2}$/, "");
 }
 
+/**
+ * A part's unit cost in ten-thousandths of a dollar: the finer figure while it still agrees with costCents, otherwise
+ * costCents x 100 (an older part's cents are exact). Null when there is no cost.
+ */
+export function fineCost(costCents: number | null | undefined, costTenThou: number | null | undefined): number | null {
+  if (costCents == null) return null;
+  return costTenThou != null && tenThouToCents(costTenThou) === costCents ? costTenThou : costCents * 100;
+}
+
+/** What qty units cost, in cents, rounded once for the whole line (1000 buttons at $0.004 cost $4, not $0). */
+export function lineCostCents(qty: number, costCents: number | null | undefined, costTenThou: number | null | undefined): number {
+  return Math.round((qty * (fineCost(costCents, costTenThou) ?? 0)) / 100);
+}
+
 /** The cost for display: money() for whole cents, up to 4 decimals when the cost is finer than a cent. */
 export function moneyCost(costCents: number | null | undefined, costTenThou: number | null | undefined): string {
   if (costCents == null) return "";

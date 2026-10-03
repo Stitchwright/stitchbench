@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { safe, UserError } from "@/lib/action";
 import { str } from "@/lib/format";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { addPhotoFor, cancelOrderFor, markDoneFor, markReadyFor, noteOrderFor, removePhotoFor, saveListingFor, saveShopSettingsFor } from "@/lib/shop/online-shop";
+import { addPhotoFor, cancelOrderFor, markDoneFor, markReadyFor, noteOrderFor, removePhotoFor, retryOrderFor, saveListingFor, saveShopSettingsFor } from "@/lib/shop/online-shop";
 
 export const saveShopSettings = safe(async function saveShopSettings(formData: FormData) {
   const user = await requireAdmin();
@@ -51,6 +51,14 @@ export const orderCancel = safe.whileLapsed("orderCancel")(async function orderC
   const user = await requireUser();
   await cancelOrderFor(user, orderId, str(formData.get("reason")) ?? "");
   revalidatePath("/register/online");
+});
+
+export const orderRetry = safe.whileLapsed("orderRetry")(async function orderRetry(orderId: string) {
+  const user = await requireUser();
+  await retryOrderFor(user, orderId);
+  revalidatePath("/register/online");
+  revalidatePath("/register", "layout");
+  revalidatePath("/parts", "layout");
 });
 
 export const orderNote = safe(async function orderNote(orderId: string, formData: FormData) {

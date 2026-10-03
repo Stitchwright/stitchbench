@@ -694,21 +694,42 @@ async function applyPaymentNow(orderId: string, a: { sessionId: string | null; i
     }
     return { applied: false, status: order.status };
   }
+  return finishPaid(order, now);
+}
+
+/** The staff note that marks a paid order whose books or refund steps did not finish (the Try again button shows on it). */
+export const ORDER_ATTENTION = "Needs attention: ";
+export const orderNeedsAttention = (o: { status: string; staffNote: string | null }) => o.status === "PAID" && !!o.staffNote?.startsWith(ORDER_ATTENTION);
+
+/**
+ * The steps after the payment is claimed, each safe to run again: the sale (found by its key `web-<id>` if it was made
+ * already), the order's link to it (written the moment the sale exists), the refund of what was short (same Stripe key
+ * and amount every time), the order's final state, the customer's mail. Money already taken is always booked, so the
+ * sale is made past the lapsed / moving gate (internal: this is only reached from a Stripe payment or the staff retry
+ * of an order that was paid). Any failure leaves the order PAID with "Needs attention" on it, and Try again runs this again.
+ */
+async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolean; status: string }> {
   try {
     const items = order.items as unknown as OrderItem[];
     const ids = items.map((i) => i.partId).filter(Boolean) as string[];
-    const parts = new Map((await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } })).map((p) => [p.id, p]));
+    const existing = await db.sale.findUnique({ where: { shopId_clientKey: { shopId: order.shopId, clientKey: `web-${order.id}` } }, select: { id: true, totalCents: true } });
     const sold: SaleLineInput[] = [];
-    const kept: OrderItem[] = [];
-    for (const it of items) {
-      const p = it.partId ? parts.get(it.partId) : null;
-      const onHand = p ? Math.max(0, p.qtyOnHand) : 0;
-      let have = Math.min(it.qty, onHand);
-      if (p?.unit === "yd") have = Math.floor(have * 8) / 8;
-      else have = Math.floor(have);
-      const short = Math.round((it.qty - have) * 1000) / 1000;
-      kept.push({ ...it, short: short > 0 ? short : undefined });
-      if (have > 0) sold.push({ partId: it.partId, description: it.description, qty: have, unitPriceCents: it.unitPriceCents, taxable: true });
+    let kept: OrderItem[] = [];
+    if (existing) {
+      // Stock was taken already: what was short is on the order's items (written with the sale's link).
+      kept = items;
+    } else {
+      const parts = new Map((await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } })).map((p) => [p.id, p]));
+      for (const it of items) {
+        const p = it.partId ? parts.get(it.partId) : null;
+        const onHand = p ? Math.max(0, p.qtyOnHand) : 0;
+        let have = Math.min(it.qty, onHand);
+        if (p?.unit === "yd") have = Math.floor(have * 8) / 8;
+        else have = Math.floor(have);
+        const short = Math.round((it.qty - have) * 1000) / 1000;
+        kept.push({ ...it, short: short > 0 ? short : undefined });
+        if (have > 0) sold.push({ partId: it.partId, description: it.description, qty: have, unitPriceCents: it.unitPriceCents, taxable: true });
+      }
     }
     const shipLine: SaleLineInput | null = sold.length && order.fulfil === "ship" && order.shipCents > 0 ? { description: "Shipping", qty: 1, unitPriceCents: order.shipCents, taxable: false } : null;
     const lines = [...sold, ...(shipLine ? [shipLine] : [])];
@@ -723,7 +744,7 @@ async function applyPaymentNow(orderId: string, a: { sessionId: string | null; i
       paidTax = session.total_details?.amount_tax ?? 0;
       givenTax = lines.length ? keptTax(session, items, kept, !!shipLine, paidTax) : 0;
     }
-    if (givenTax == null && lines.length) {
+    if (!existing && givenTax == null && lines.length) {
       // The rate as it stood at checkout. If today's rate no longer gives the tax the customer paid on the whole order
       // (the shop changed its rate meanwhile), the order's own tax is used, in proportion to what is sold.
       const wholeByRate = saleTotals(
@@ -739,35 +760,45 @@ async function applyPaymentNow(orderId: string, a: { sessionId: string | null; i
         givenTax = order.subtotalCents > 0 ? Math.round((order.taxCents * soldNet) / order.subtotalCents) : 0;
       }
     }
-    const totals =
-      givenTax != null
-        ? withGivenTax(lines, givenTax)
-        : saleTotals(
-            lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
-            0,
-            order.shop.taxRatePct,
-          );
-    const refund = Math.max(0, paidTotal - totals.total);
-    let saleId: string | null = null;
-    if (lines.length) {
+    const saleTotal = existing
+      ? existing.totalCents
+      : (givenTax != null
+          ? withGivenTax(lines, givenTax)
+          : saleTotals(
+              lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
+              0,
+              order.shop.taxRatePct,
+            )
+        ).total;
+    const refund = Math.max(0, paidTotal - saleTotal);
+    let saleId: string | null = existing?.id ?? null;
+    if (!existing && lines.length) {
       const user = await booksUserFor(order.shopId);
-      const r = await completeSaleAs(user, {
-        customerId: order.customerId,
-        lines,
-        tenders: [{ method: "ONLINE", amountCents: totals.total, note: `Online order ${fmtNo(order.number)}` }],
-        note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${givenTax != null ? ", tax by Stripe Tax" : ""}`,
-        clientKey: `web-${order.id}`,
-        taxCents: givenTax,
-      });
+      const r = await completeSaleAs(
+        user,
+        {
+          customerId: order.customerId,
+          lines,
+          tenders: [{ method: "ONLINE", amountCents: saleTotal, note: `Online order ${fmtNo(order.number)}` }],
+          note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${givenTax != null ? ", tax by Stripe Tax" : ""}`,
+          clientKey: `web-${order.id}`,
+          taxCents: givenTax,
+        },
+        { paidOnline: true },
+      );
       saleId = r.saleId;
     }
-    let refunded = 0;
-    if (refund > 0 && order.stripeIntent) {
+    // The link to the sale is written before the refund, so a refund that fails can't lose it.
+    if (saleId && order.saleId !== saleId) {
+      await db.webOrder.update({ where: { id: order.id }, data: { saleId, items: kept as unknown as Prisma.InputJsonValue, taxCents: paidTax, totalCents: paidTotal } });
+    }
+    let refunded = order.refundedCents;
+    if (refund > refunded && order.stripeIntent) {
       const key = stripeKeyFor({ id: order.shopId, shopPayVia: order.shop.shopPayVia, stripeKeySealed: order.shop.stripeKeySealed });
       await refundPayment(key, order.stripeIntent, refund, `web-order-short:${order.id}`, "out of stock");
       refunded = refund;
     }
-    const cancelled = !lines.length;
+    const cancelled = !saleId;
     const negative = saleId ? await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids }, qtyOnHand: { lt: 0 } }, select: { partNumber: true } }) : [];
     const stockNote = negative.length ? ` Check stock: ${negative.map((p) => p.partNumber).join(", ")} went below zero (sold at the counter at the same time?).` : "";
     await db.webOrder.update({
@@ -789,14 +820,32 @@ async function applyPaymentNow(orderId: string, a: { sessionId: string | null; i
       },
     });
     const fresh = (await db.webOrder.findUnique({ where: { id: order.id }, include: ORDER_INCLUDE }))!;
-    await notifyOrder(fresh, cancelled ? "cancelled" : "paid", now);
+    try {
+      await notifyOrder(fresh, cancelled ? "cancelled" : "paid", now);
+    } catch (e) {
+      console.error("online shop notice:", e instanceof Error ? e.message : e);
+    }
     return { applied: true, status: fresh.status };
   } catch (e) {
-    // Paid, but the books or the refund failed: the order stays PAID with the problem on it for staff to sort out.
-    await db.webOrder.update({ where: { id: order.id }, data: { staffNote: `Check this order: ${e instanceof Error ? e.message.slice(0, 400) : "error"}` } });
+    // Paid, but the books or the refund failed: the order stays PAID with the problem on it; Try again runs the rest.
+    await db.webOrder.update({ where: { id: order.id }, data: { staffNote: `${ORDER_ATTENTION}${e instanceof Error ? e.message.slice(0, 400) : "error"}` } });
     console.error("online shop payment:", e instanceof Error ? e.message : e);
     return { applied: true, status: "PAID" };
   }
+}
+
+/** Try again on an order marked "Needs attention": the steps after the payment run again, none twice. Owners and admins. */
+export async function retryOrderFor(user: CurrentUser, id: string, now = new Date()): Promise<void> {
+  if (user.role === "TECH") throw new UserError("Only an owner or admin can try an order again.");
+  const o = await ownOrder(user, id);
+  if (!orderNeedsAttention(o)) throw new UserError("This order doesn't need another try.");
+  await oneAtATime(`pay:${o.shopId}`, async () => {
+    // Read again inside the queue: another try may have finished it.
+    const fresh = await db.webOrder.findFirst({ where: { id: o.id, shopId: o.shopId }, include: ORDER_INCLUDE });
+    if (fresh && orderNeedsAttention(fresh)) await finishPaid(fresh, now);
+  });
+  const after = await db.webOrder.findFirst({ where: { id: o.id, shopId: o.shopId }, select: { staffNote: true, status: true } });
+  if (after && orderNeedsAttention(after)) throw new UserError(after.staffNote!.slice(ORDER_ATTENTION.length) || "It still didn't finish; try again in a moment.");
 }
 
 /** Totals with the tax Stripe worked out (the lines' own sums; nothing discounted). */
@@ -1012,6 +1061,7 @@ async function ownOrder(user: CurrentUser, id: string): Promise<OrderRow> {
 export async function markReadyFor(user: CurrentUser, id: string, now = new Date()): Promise<void> {
   const o = await ownOrder(user, id);
   if (o.status !== "PAID") throw new UserError(`This order is ${ORDER_STATUS_LABEL[o.status as OrderStatus].toLowerCase()}.`);
+  if (orderNeedsAttention(o)) throw new UserError("This order needs attention first: press Try again.");
   if (o.fulfil === "ship") throw new UserError("A shipped order is marked shipped, with its tracking number.");
   await db.webOrder.update({ where: { id }, data: { status: "READY", readyAt: now } });
   await notifyOrder({ ...o, status: "READY" }, "ready", now);
@@ -1021,6 +1071,7 @@ export async function markReadyFor(user: CurrentUser, id: string, now = new Date
 export async function markDoneFor(user: CurrentUser, id: string, a: { tracking?: string | null } = {}, now = new Date()): Promise<void> {
   const o = await ownOrder(user, id);
   if (o.status !== "PAID" && o.status !== "READY") throw new UserError(`This order is ${ORDER_STATUS_LABEL[o.status as OrderStatus].toLowerCase()}.`);
+  if (orderNeedsAttention(o)) throw new UserError("This order needs attention first: press Try again.");
   const tracking = a.tracking?.trim().slice(0, 120) || null;
   await db.webOrder.update({ where: { id }, data: { status: "DONE", doneAt: now, tracking } });
   if (o.fulfil === "ship") await notifyOrder({ ...o, status: "DONE", tracking }, "shipped", now);
@@ -1047,12 +1098,18 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
     const r = await refundPayment(key, o.stripeIntent, rest, `web-order-cancel:${o.id}`);
     await db.webOrder.update({ where: { id }, data: { refundedCents: o.refundedCents + r.amount, staffNote: `Refund of ${money(r.amount)} made; cancelling.` } });
   }
-  if (o.saleId) {
-    const sale = await db.sale.findFirst({ where: { id: o.saleId, shopId: o.shopId }, select: { status: true } });
-    if (sale && sale.status !== "VOIDED") await voidSaleAs(user, o.saleId, `Online order ${fmtNo(o.number)} cancelled: ${reason || "no reason given"}`);
-  }
+  // The sale by the order's link, or by its key when the link was never written (a sale made, then a failure).
+  const sale = await db.sale.findFirst({ where: { shopId: o.shopId, OR: [...(o.saleId ? [{ id: o.saleId }] : []), { clientKey: `web-${o.id}` }] }, select: { id: true, status: true } });
+  if (sale && sale.status !== "VOIDED") await voidSaleAs(user, sale.id, `Online order ${fmtNo(o.number)} cancelled: ${reason || "no reason given"}`);
   await db.webOrder.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, refundedCents: o.totalCents, staffNote: `Cancelled by ${user.name}: ${reason || "no reason given"}` } });
   await notifyOrder({ ...o, status: "CANCELLED", refundedCents: o.totalCents }, "cancelled", now);
+}
+
+/** The register's void must not undo an online order's sale (the customer's money would stay taken): cancel the order instead. */
+export async function refuseVoidOfOnlineSale(shopId: string, saleId: string): Promise<void> {
+  const sale = await db.sale.findFirst({ where: { id: saleId, shopId }, select: { clientKey: true } });
+  const order = await db.webOrder.findFirst({ where: { shopId, OR: [{ saleId }, ...(sale?.clientKey?.startsWith("web-") ? [{ id: sale.clientKey.slice(4) }] : [])] }, select: { number: true } });
+  if (order) throw new UserError(`This sale is online order ${fmtNo(order.number)}. Cancel the order on the Online orders page instead: that refunds the customer and puts the stock back.`);
 }
 
 /** A note staff keep on an order. */

@@ -37,6 +37,7 @@ export const WHILE_LAPSED = [
   "orderReady",
   "orderDone",
   "orderCancel",
+  "orderRetry",
   "recordEstimateAnswer",
   // A customer's opt-out always works (the law says so), and so does noting that a reply was dealt with
   "recordOptOut",
