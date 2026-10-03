@@ -5,7 +5,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Camera, CameraOff } from "lucide-react";
 import { saveCounts, scanCode, type ScanResult, type ScannedPart } from "@/actions/scan";
-import { beep, useBarcodeCamera } from "@/components/barcode-camera";
+import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
+import { InsecureNotice } from "@/components/secure-page";
 
 type Mode = "lookup" | "receive" | "count" | "ticket";
 type Ticket = { id: string; label: string };
@@ -109,7 +110,7 @@ export function ScanStation({ tickets, shopId }: { tickets: Ticket[]; shopId: st
   };
   // The camera reports a code once while it's in view (see useBarcodeCamera), so every code that arrives counts, as
   // does every handheld scan.
-  const { video: camVideo, on: camOn, start: camStart, stop: camStop } = useBarcodeCamera(enqueue);
+  const { video: camVideo, on: camOn, page: camPage, start: camStart, stop: camStop } = useBarcodeCamera(enqueue);
 
   async function save() {
     const r = await saveCounts([...counts.values()].map((c) => ({ partId: c.part.id, qty: c.n })));
@@ -186,6 +187,7 @@ export function ScanStation({ tickets, shopId }: { tickets: Ticket[]; shopId: st
           {camOn ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camOn ? "Stop camera" : "Use camera"}
         </button>
       </form>
+      <InsecureNotice what="The camera" instead={CAMERA_INSTEAD} page={camPage} />
       <video ref={camVideo} className={camOn ? "w-full max-w-md rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
       {mode === "count" && (

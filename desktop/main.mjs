@@ -19,6 +19,7 @@ import { backup, restore, listBackups, readManifest } from "./backup.mjs";
 import { loadReference } from "./reference.mjs";
 import { ensureAppRole, APP_ROLE } from "./app-role.mjs";
 import { startLinksGate } from "./links-gate.mjs";
+import { findTailscale, tailscaleStatus, serveStatus, serveOn, serveOff, linkIn } from "./tailscale.mjs";
 
 const HERE = import.meta.dirname;
 const PKG = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
@@ -136,6 +137,13 @@ function loadConfig() {
     // ONLY those pages on 127.0.0.1:linksPort (links-gate.mjs) for a tunnel the shop runs; see INSTALL.md.
     _publicUrl: "Optional https:// address customers can open (a tunnel you set up, pointed at the links port). Leave empty if unsure.",
     publicUrl: "",
+    // The program's own https address for the shop's tablets and phones: browsers allow the barcode camera and the copy
+    // buttons only on a secure page. The tray's "Secure address for tablets (Tailscale)" fills it in and remembers that
+    // it did (tailscaleServe); a shop with a certificate of its own (INSTALL.md) writes secureUrl by hand. Not the same
+    // thing as publicUrl: that one is for customers and serves only the public pages.
+    _secureUrl: "Optional https:// address of this program for the shop's tablets and phones. The tray's Tailscale item fills it in; see INSTALL.md.",
+    secureUrl: "",
+    tailscaleServe: false,
   };
   fs.mkdirSync(DATA, { recursive: true });
   const saved = readJson(CONFIG_FILE);
@@ -199,6 +207,22 @@ function links() {
     publicLinksChecked = r?.url ? r : null;
   }
   return publicLinksChecked;
+}
+
+let secureChecked;
+/**
+ * The checked secureUrl (same rules as publicUrl: https, host only), or null, with the reason logged once per start. It
+ * may not share publicUrl's host: the server serves only the public pages on that host (src/proxy.ts), so the program
+ * itself would be 404 there.
+ */
+function secure() {
+  if (secureChecked === undefined) {
+    const r = publicLinks(cfg.secureUrl);
+    if (r?.why) log(`secureUrl ignored: ${r.why}`);
+    else if (r && links()?.host === r.host) log(`secureUrl ignored: it is publicUrl's address, which serves only the customer pages`);
+    secureChecked = r?.url && links()?.host !== r.host ? r : null;
+  }
+  return secureChecked;
 }
 
 /** The links gate in front of the server, once it answers. Kept running across server restarts (it forwards by port). */
@@ -393,6 +417,9 @@ async function startServer() {
       // Customer links: only with a checked public address, and then only the public pages on that host (src/proxy.ts),
       // behind the links gate. Neither variable otherwise. TRUST_PROXY is never set here.
       ...(links() ? { PUBLIC_URL: links().url, PUBLIC_LINKS_ONLY: "true" } : {}),
+      // The program's own https address, when there is one: the app names it on non-secure pages when the camera or a
+      // copy button needs a secure one (src/lib/secure-address.ts). Read once per server start (restartServer applies a change).
+      ...(secure() ? { SECURE_URL: secure().url } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -445,6 +472,21 @@ async function stopServer() {
   if (server === s) server = null;
 }
 
+/** Stop and start the server (a setting it reads at start changed). Other devices reconnect by themselves. */
+async function restartServer(why) {
+  if (quitting || maintenance) return;
+  log(`restarting the server: ${why}`);
+  setStatus("restarting");
+  await stopServer();
+  try {
+    await startServer();
+    reloadWindow();
+  } catch (e) {
+    log("server restart failed:", e);
+    serverDown("won't start");
+  }
+}
+
 /** The server stopped on its own (or wouldn't start again): say so in the tray and keep trying, waiting longer each time. */
 function serverDown(why) {
   if (quitting || maintenance) return;
@@ -488,7 +530,9 @@ setInterval(async () => {
 // ---------- addresses for other devices ----------
 
 function addresses() {
-  const out = [{ label: `This PC's name`, url: `http://${os.hostname().toLowerCase()}:${cfg.port}` }];
+  // The secure address first: it is the one tablets and phones should use (camera, copy buttons, and encrypted).
+  const out = secure() ? [{ label: "Secure (https), for tablets and phones", url: secure().url }] : [];
+  out.push({ label: `This PC's name`, url: `http://${os.hostname().toLowerCase()}:${cfg.port}` });
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
     for (const a of list ?? []) {
       if (a.family !== "IPv4" || a.internal) continue;
@@ -498,6 +542,181 @@ function addresses() {
     }
   }
   return out;
+}
+
+// ---------- the secure address (Tailscale) ----------
+
+// What the tray knows about Tailscale on this PC; refreshed in the background (the tray menu is built synchronously).
+const ts = { exe: null, running: false, dnsName: "", httpsEnabled: false, serving: false, funnel: false, busy: false };
+
+/** Look again: is the CLI there, is it signed in, and does it serve our port? Then rebuild the tray. */
+async function refreshTailscale() {
+  try {
+    ts.exe = await findTailscale();
+    if (ts.exe) {
+      const s = await tailscaleStatus(ts.exe);
+      Object.assign(ts, { running: s.running, state: s.state, dnsName: s.dnsName, httpsEnabled: s.httpsEnabled });
+      const sv = ts.running ? await serveStatus(ts.exe, cfg.port) : { on: false, funnel: false };
+      ts.serving = sv.on;
+      ts.funnel = sv.funnel;
+    } else {
+      Object.assign(ts, { running: false, dnsName: "", httpsEnabled: false, serving: false, funnel: false });
+    }
+  } catch (e) {
+    log("tailscale:", e);
+  }
+  buildTray();
+}
+
+/** The address Tailscale serve gives this PC, from the device's DNS name. */
+const tailscaleUrl = () => (ts.dnsName ? `https://${ts.dnsName}` : "");
+
+/** Remember the secure address (or forget it) and make the server read it: SECURE_URL is set when it starts. */
+async function applySecureUrl(url, { tailscale }) {
+  saveSetting("secureUrl", url);
+  saveSetting("tailscaleServe", tailscale);
+  secureChecked = undefined;
+  buildTray();
+  await restartServer(url ? `secure address ${url}` : "secure address removed");
+}
+
+/** The remembered choice, put back if serve was reset outside the program (e.g. `tailscale serve reset`). */
+async function reapplyTailscale() {
+  if (!cfg.tailscaleServe || ts.busy || !ts.exe || !ts.running || ts.serving || !ts.dnsName) return;
+  if (ts.funnel) return log("tailscale serve not turned on again: Funnel is on for port 443 (see the tray item)");
+  try {
+    await serveOn(ts.exe, cfg.port);
+    ts.serving = true;
+    log(`tailscale serve turned on again for ${tailscaleUrl()}`);
+    if (secure()?.url !== tailscaleUrl()) await applySecureUrl(tailscaleUrl(), { tailscale: true });
+  } catch (e) {
+    log("tailscale serve couldn't be turned on again:", e);
+  }
+}
+
+const box = (o) => dialog.showMessageBox({ title: `${NAME}: secure address for tablets`, ...o });
+
+/** Tray → "Secure address for tablets (Tailscale)...": explain, check, turn on (or off), remember, restart the server. */
+async function secureAddressDialog() {
+  if (ts.busy) return;
+  ts.busy = true;
+  buildTray();
+  try {
+    await refreshTailscale();
+    const why = `Browsers allow the barcode camera and the copy buttons only on a secure (https) page, so a tablet or phone on http://<pc>:${cfg.port} can't use them. Tailscale can give ${NAME} a secure address that works on every device signed in to your Tailscale network, in the shop and on the road, with nothing to install on the tablets but Tailscale itself.`;
+    if (!ts.exe) {
+      const r = await box({
+        type: "info",
+        message: "Tailscale isn't installed on this PC.",
+        detail: `${why}\n\nInstall Tailscale (free for personal use and small teams) on this PC and on each tablet or phone, sign them all in to the same account, then come back to this menu item.`,
+        buttons: ["Open tailscale.com/download", "Close"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (r.response === 0) shell.openExternal("https://tailscale.com/download");
+      return;
+    }
+    if (!ts.running || !ts.dnsName) {
+      await box({
+        type: "warning",
+        message: "Tailscale is installed but not connected.",
+        detail: `Open Tailscale from its own tray icon, sign in (or press Connect), then try again.${ts.running ? "" : `\n\nTailscale says: ${ts.state ?? "not running"}.`}`,
+        buttons: ["Close"],
+      });
+      return;
+    }
+    if (ts.serving && cfg.tailscaleServe) {
+      // Already on: offer to turn it off.
+      const r = await box({
+        type: "question",
+        message: `The secure address is on: ${tailscaleUrl()}`,
+        detail: `Tablets and phones on your Tailscale network open ${NAME} there. Turning it off removes the address; the plain http addresses keep working. ${NAME}'s server restarts for a few seconds either way.`,
+        buttons: ["Copy the address", "Turn off", "Close"],
+        defaultId: 0,
+        cancelId: 2,
+      });
+      if (r.response === 0) clipboard.writeText(tailscaleUrl());
+      if (r.response === 1) {
+        await serveOff(ts.exe);
+        ts.serving = false;
+        log("tailscale serve turned off");
+        // A secureUrl written by hand for another arrangement is left alone; only the Tailscale one is forgotten.
+        await applySecureUrl(cfg.secureUrl === tailscaleUrl() ? "" : cfg.secureUrl, { tailscale: false });
+        notify(NAME, "The secure address is off.");
+      }
+      return;
+    }
+    if (ts.funnel) {
+      await box({
+        type: "error",
+        message: "Tailscale Funnel is on for port 443 on this PC.",
+        detail: `Serving ${NAME} on that port would put the whole program on the public internet. If the funnel is for customer links (publicUrl), move it to another port first, e.g.\n\ntailscale funnel --bg --https=8443 http://127.0.0.1:${cfg.linksPort}\n\nand set publicUrl to the :8443 address. Then try again.`,
+        buttons: ["Close"],
+      });
+      return;
+    }
+    if (!ts.httpsEnabled) {
+      const r = await box({
+        type: "warning",
+        message: "HTTPS certificates aren't enabled for your Tailscale network.",
+        detail: "In the Tailscale admin console, on the DNS page, turn on MagicDNS and HTTPS Certificates (one click each, free). Then try again.",
+        buttons: ["Open the DNS page", "Close"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (r.response === 0) shell.openExternal("https://login.tailscale.com/admin/dns");
+      return;
+    }
+    const r = await box({
+      type: "question",
+      message: `Give tablets and phones a secure address?`,
+      detail: `${why}\n\n${NAME} will be at\n\n${tailscaleUrl()}\n\nfor every device on your Tailscale network, and only for them. The address stays on until you turn it off here, and ${NAME}'s server restarts for a few seconds now so its pages can name it.`,
+      buttons: ["Turn on", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (r.response !== 0) return;
+    try {
+      await serveOn(ts.exe, cfg.port);
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e);
+      log("tailscale serve:", text);
+      const link = linkIn(text);
+      const r2 = await box({
+        type: "error",
+        message: "Tailscale couldn't set up the address.",
+        detail: `${text}${link ? "\n\nTailscale may need an admin to approve this on the page it names. Open it, approve, then try again." : ""}`,
+        buttons: link ? ["Open the page", "Close"] : ["Close"],
+        defaultId: 0,
+        cancelId: link ? 1 : 0,
+      });
+      if (link && r2.response === 0) shell.openExternal(link);
+      return;
+    }
+    ts.serving = true;
+    log(`tailscale serve on: ${tailscaleUrl()} -> http://127.0.0.1:${cfg.port}`);
+    await applySecureUrl(tailscaleUrl(), { tailscale: true });
+    clipboard.writeText(tailscaleUrl());
+    await box({
+      type: "info",
+      message: `${NAME} is now at ${tailscaleUrl()}`,
+      detail: "The address is copied to the clipboard and listed first under \"Address for other devices\". Open it on each tablet or phone (signed in to Tailscale) and bookmark it. The first visit can take a few seconds while Tailscale fetches the certificate.",
+      buttons: ["Close"],
+    });
+  } catch (e) {
+    log("secure address:", e);
+    dialog.showErrorBox(`${NAME}: secure address`, String(e instanceof Error ? e.message : e));
+  } finally {
+    ts.busy = false;
+    buildTray();
+  }
+}
+
+/** The tray item's label says where things stand without opening anything. */
+function secureAddressLabel() {
+  if (ts.busy) return "Secure address for tablets (Tailscale): working...";
+  if (ts.serving && cfg.tailscaleServe) return "Secure address for tablets (Tailscale): on...";
+  return "Secure address for tablets (Tailscale)...";
 }
 
 // ---------- backups ----------
@@ -713,6 +932,7 @@ function buildTray() {
         label: "Address for other devices (click to copy)",
         submenu: addr.map((a) => ({ label: `${a.label}: ${a.url}`, click: () => clipboard.writeText(a.url) })),
       },
+      { label: secureAddressLabel(), enabled: !ts.busy && !maintenance && !!pool, click: () => secureAddressDialog() },
       { type: "separator" },
       {
         label: backingUp ? "Backing up..." : "Back up now",
@@ -799,7 +1019,8 @@ if (!app.requestSingleInstanceLock()) {
       log("reference data:", e),
     );
     buildTray(); // addresses can change while starting (Tailscale comes up late)
-    setInterval(buildTray, 5 * 60_000);
+    refreshTailscale().then(reapplyTailscale); // in the background: the CLI may take a moment
+    setInterval(() => refreshTailscale().then(reapplyTailscale), 5 * 60_000);
     if (!process.argv.includes("--hidden") || signupOpen) showWindow();
     // Unless a restore has begun by then (on a new PC that's often the first thing done): it makes its own safety copy.
     if (Date.now() - lastBackupTime() > 26 * 3600_000) setTimeout(() => maintenance || backingUp || runBackup("startup"), 60_000);
