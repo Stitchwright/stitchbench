@@ -673,8 +673,40 @@ and Stripe Tax, not these).
   by hand; the model page shows doc-type coverage and groups links by type. Migration 20261003110000;
   `scripts/checks/manual-downloads.check.ts` (12 groups). Caveat: `SEED_LIBRARY=true` re-seeding drops LibraryDoc
   rows made by downloads until the Python index is rebuilt (dedupe still holds by path).
-- **Not done tonight**: the test build was not rebuilt with items 11 and 12 and the specs not rerun against them
-  (smoke, hub with the test hub, links pages); do that first thing, then the Windows update, then the ultra review.
+- **Package 2 `base-license`** (d73ee46, the import fix 1a66fab): the program's own standing. Module id `base` with a
+  hub-signed SB1 key (kid scope `hub`, `License.source` pasted | hub, one hub row per company, `revokeKeyIds`
+  honoured); every company claimed at every sync with shopRef, shopName, kind, program, version and `sole`; the
+  hub's standing and last day stored on the Shop; the `pending` hub scope; Settings → Account (door 1 create the
+  account, waiting for the email, send it again; door 2 a 15-minute link code; Check again; the 60-day nag; the
+  reset opt-in on Windows); read-only on lapse enforced in `safe()` with the allow-list `src/lib/lapse-allow.ts`
+  (`safe.whileLapsed("name")(fn)`; payments, closing statuses, returns, voids, exports, backups, syncs and sign-in
+  pass; new tickets, sales, stock moves refuse; public booking and the shop pause; workers skip lapsed shops); off =
+  working; the tray's "Reset a password"; migration 20261003130000_hub_accounts; `scripts/checks/base-license.check.ts`
+  (15 groups with a mock hub). Today's hub (key null, standing "trial" for ever) changes nothing in the program.
+  **Rule learned**: `UserError` / `isUserError` are imported from `@/lib/user-error` everywhere but the actions, because
+  `@/lib/action` is server-only now (safe() asks who is signed in) and a client component reached it through
+  `messaging/templates.ts`; the build, not tsc, caught it. Left for package 3 (hub): sign keys with
+  HUB_LICENSE_KEY/HUB_LICENSE_KID in the claim answer, standings active/past_due/waived/lapsed, re-issued waived keys,
+  the `hub1` line in license-keys.ts in both programs before the hub signs; package 4: PasswordReset and the hosted
+  reset, PLATFORM_API_TOKEN provisioning; package 5: TERMS_VERSION "2026-10-02-draft" becomes the hub's published
+  version. `tests/account.spec.ts` from the design is not written.
+- **Hub side of item 8** (stitchhub branch `hub-accounts`, db2f573): every listing, order, post, link and xpart
+  history row and buying link joins the hub's `shops` table for the company's current name; a request naming a
+  company can't act on another company's rows on the same install; migration 013_companies; test/companies.mjs. The
+  program side (an `X-Shop-Ref` header on every hub call, `shopRef` on order steps, claim with the name at each sync,
+  which package 2's claimShops now does) is the next wave.
+- **Company move design** (207adc0): `docs/plans/company-move-design.md`, after base-license, before
+  hosted-provisioning; fifteen open questions with recommended answers.
+- **Two late-evening test fixtures fixed** (dae199f and the spec commit after it): dev license keys now start
+  yesterday (a key made after 8 pm Eastern started tomorrow in the shop's zone and showed as not yet on), and the
+  scheduling-messaging spec's "tomorrow" is the shop zone's, not UTC's (after 8 pm Eastern its class was two days
+  out and no reminder queued). Neither was a product bug.
+- **Rebuilt and rerun tonight** on the final build: smoke, modules-basics, modules-lapse, notices, campaigns (text
+  test skipped by the clock), classes, calendar, parts-in, online-booking, online-shop, register-bookings, vac-shop,
+  appliances, scheduling-messaging. Not run: two-servers, partner-runs, and hub (it skips without HUB_JOIN_KEY and
+  PDF_URL; the local-test README has the set-up). The Windows install does NOT have tonight's batch yet (it was
+  updated before it): back up, `prepare-app`, `update_installed.ps1`, then try the Tailscale tray item and a
+  manual download on the real PC.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
