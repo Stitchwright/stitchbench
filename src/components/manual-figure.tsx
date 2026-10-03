@@ -140,6 +140,7 @@ export function ManualFigure({
   figureId,
   stored,
   width = 440,
+  openLink = true,
 }: {
   file: string;
   sourcePath: string | null;
@@ -148,6 +149,8 @@ export function ManualFigure({
   figureId?: string | null;
   stored?: boolean;
   width?: number;
+  /** false when the page already has its own "open the manual" link beside the figure */
+  openLink?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [path, setPath] = useState<string | null | undefined>(undefined); // local file; undefined = still looking
@@ -210,11 +213,12 @@ export function ManualFigure({
     );
   }
 
-  const openPage = path ? (
-    <button type="button" className="link text-xs" onClick={() => openLocal(path, page).catch((e) => toast.error(String(e?.message ?? e)))}>
-      Open p. {page} <ExternalLink size={10} className="inline" aria-hidden />
-    </button>
-  ) : null;
+  const openPage =
+    path && openLink ? (
+      <button type="button" className="link text-xs" onClick={() => openLocal(path, page).catch((e) => toast.error(String(e?.message ?? e)))}>
+        Open p. {page} <ExternalLink size={10} className="inline" aria-hidden />
+      </button>
+    ) : null;
 
   // Saved online: works on any device.
   if (stored && figureId) {

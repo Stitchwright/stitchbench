@@ -52,8 +52,8 @@ export type MoveTable = {
  * so an import can insert in file order with every foreign key already there. Models with a shopId of their own and no
  * relation (PartnerSeen, PartnerFailure) are here too. Not here: per-install tables (HubState, the hub's cached copies
  * ManualLink / HubPost / HubPhoto / HubFigure / XPart / RemovedXPart / Listing / ListingPhoto / MarketOrder, LibraryDoc,
- * ManualDownload, JobLease, CompanyMove) and the shipped reference sets (TensionSpec, FactorySetting, ModelImage,
- * FigureImage). The check script holds this list against the schema: every model with a shopId is here or in
+ * ManualDownload, JobLease, CompanyMove) and the shipped reference sets (TensionSpec, FactorySetting, ServiceMode,
+ * ModelImage, FigureImage). The check script holds this list against the schema: every model with a shopId is here or in
  * PER_INSTALL, so a new table can't be forgotten.
  */
 export const MOVE_TABLES: readonly MoveTable[] = [

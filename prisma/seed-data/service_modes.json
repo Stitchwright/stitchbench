@@ -29,6 +29,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_929D_ServiceManual_1998.pdf",
   "pages": "21, 23",
   "page": 21,
+  "figurePage": 21,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 21. LCD message-display serger. The manual also mentions a board check mode at power-on without saying how to enter it."
  },
@@ -66,6 +68,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_CS6000i+CS4000+ES2000+HS1000-series_ServiceManual_2005.pdf",
   "pages": "98, 102, 111",
   "page": 98,
+  "figurePage": 98,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-2, 4-6, 4-15. Some displays show U1/U0 instead of numbers."
  },
@@ -113,6 +117,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_CS8072+PC2800_ServiceManual_2001.pdf",
   "pages": "23, 25, 27",
   "page": 23,
+  "figurePage": 23,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 21."
  },
@@ -155,6 +161,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_CS8150+CS8060-8130_ServiceManual.pdf",
   "pages": "154, 156, 158, 181",
   "page": 154,
+  "figurePage": 154,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-4 (rendered). Two panel types: S2 numbers differ from S3."
  },
@@ -201,6 +209,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_HS2000_ServiceManual.pdf",
   "pages": "100, 104, 113",
   "page": 100,
+  "figurePage": 100,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-2, 4-6, 4-15."
  },
@@ -251,6 +261,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_HS3000+SQ9000+XR9000_ServiceManual.pdf",
   "pages": "102, 106-111, 139",
   "page": 102,
+  "figurePage": 102,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-2."
  },
@@ -298,6 +310,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_InnovisNV1000_ServiceManual_2006.pdf",
   "pages": "190-191, 194-196, 239",
   "page": 190,
+  "figurePage": 190,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-2 to 4-3. Button icons read as Start/Stop and Reverse from the identical NV1200 page (rendered); same layout as NV1200."
  },
@@ -346,6 +360,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NS40+NV30+NS30+JS70E+NS20+NV20_ServiceManual_2010.pdf",
   "pages": "142-143, 148-150, 183, 193",
   "page": 142,
+  "figurePage": 142,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3 to 4-4. NS80 manual has the same pages: Brother_NS80_ServiceManual.pdf pp. 137-138, 176, 186."
  },
@@ -394,6 +410,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NX600_ServiceManual.pdf",
   "pages": "158-159, 162-166, 176-179",
   "page": 158,
+  "figurePage": 158,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-4 to 4-5 (rendered). NX400/PC420 manual pp. 151-158 (only 03 and 06 tabled); NX450 manual pp. 156-161. The NX manuals' troubleshooting page calls the 0 mm feed position 'test mode 3'. NX200/PC210 extract (Brother_NX200+PC210_ServiceManual.pdf p. 12) has the same entry and cover-off method."
  },
@@ -436,6 +454,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC3000_ServiceManual_1998.pdf",
   "pages": "24, 26-29",
   "page": 24,
+  "figurePage": 24,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 22."
  },
@@ -479,6 +499,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC4000+PC5000_ServiceManual.pdf",
   "pages": "30-32, 38-39",
   "page": 30,
+  "figurePage": 30,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 28-30. Scanned manual (no text layer), read from rendered pages. Which factory code is the PC4000 and which the PC5000 is not stated on these pages. 07 is from the factory-settings rows (p. 38), not a test list."
  },
@@ -525,6 +547,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
   "pages": "20-24",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 18."
  },
@@ -575,6 +599,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC8200_ServiceManual.pdf",
   "pages": "25-26",
   "page": 25,
+  "figurePage": 25,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 24. Touch-panel calibration on p. 25 (Start/Stop + Reverse + Needle position at power-on)."
  },
@@ -619,6 +645,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PS1000_ServiceManual.pdf",
   "pages": "67-68",
   "page": 67,
+  "figurePage": 67,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 65. Models from p. 68."
  },
@@ -704,6 +732,8 @@
   "sourcePath": "Sewing\\Brother\\Brother_SQ9185+DZ2400+CX155LA+SM8270+XR3140+XS3109+CS7130+SQ9285+27-models_ServiceManual.pdf",
   "pages": "135-136, 140, 144, 148, 158",
   "page": 135,
+  "figurePage": 135,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-2 to 4-3. Identical pages: CE5500PRW/CE8080/CS5055PRW/XR6060/CE7070PRW manual pp. 141-142, 146-164; CP6500/CP7500/HS2500 manual pp. 140-141, 145-163."
  },
@@ -746,6 +776,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_HE240+SE350+SE400+LB6770+LB6800_ServiceManual.pdf",
   "pages": "195, 200-204",
   "page": 195,
+  "figurePage": 195,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-3."
  },
@@ -800,6 +832,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NV1200_ServiceManual.pdf",
   "pages": "196-197, 200-204, 209, 214-217, 224, 253",
   "page": 196,
+  "figurePage": 196,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-2 to 4-3. The table lists only 3, 4, 6 and 13; other numbers come from the adjustment pages. The one-point pattern page (p. 215) says test 11 while the table says 3: check on the machine."
  },
@@ -923,6 +957,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NV1250D_ServiceManual.pdf",
   "pages": "195-197, 201, 211-213, 221",
   "page": 195,
+  "figurePage": 195,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3 to 4-5."
  },
@@ -956,6 +992,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf",
   "pages": "298",
   "page": 298,
+  "figurePage": 298,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Same procedure: NV1250D p. 197, NV1500D p. 272, NV2500D/NV2800D p. 270, QC1000 p. 234, NV6000D p. 348. Baby Lock Ellageo/Ellegante: see the Baby Lock row."
  },
@@ -1028,6 +1066,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf",
   "pages": "297, 301-302, 314-323, 329",
   "page": 297,
+  "figurePage": 297,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-3 has both entry methods and the test table. Same test numbers in the NV1500D (pp. 275-296), NV2500D/NV2800D (pp. 273-294) and QC1000 (pp. 237-258) manuals, which show only the cover-off SW3+SW4 entry in text; the cover-on entry is taken from this NV4000D manual. Touch-panel calibration is a separate row."
  },
@@ -1187,6 +1227,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
   "pages": "344-347, 353-380, 393",
   "page": 344,
+  "figurePage": 344,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3 to 4-6. Test 29 input-check screen explained on p. 346."
  },
@@ -1302,6 +1344,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_NV950D_ServiceManual.pdf",
   "pages": "192-193, 198, 205, 214-218",
   "page": 192,
+  "figurePage": 192,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3 to 4-4."
  },
@@ -1356,6 +1400,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC6500_ServiceManual.pdf",
   "pages": "26, 28-30, 32, 34-36, 39",
   "page": 26,
+  "figurePage": 26,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 24."
  },
@@ -1414,6 +1460,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC7500_ServiceManual.pdf",
   "pages": "34",
   "page": 34,
+  "figurePage": 34,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed page 32. Scanned manual with no text layer: read from the rendered page at low resolution; confirm the small table numbers on the machine."
  },
@@ -1468,6 +1516,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PC8500_ServiceManual.pdf",
   "pages": "26-27",
   "page": 26,
+  "figurePage": 26,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 25. Touch-panel calibration on p. 26 (Start/Stop + Reverse + Needle position at power-on)."
  },
@@ -1506,6 +1556,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE400D_ServiceManual.pdf",
   "pages": "30-31, 33, 35, 43",
   "page": 30,
+  "figurePage": 30,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed page 29. The table's text layer is jumbled; test-to-item pairing read from the column order and the factory settings. Touch-panel calibration on p. 30 (Start/Stop + Reverse + Needle position at power-on)."
  },
@@ -1542,6 +1594,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_SE270D+NV500D+HE120_ServiceManual.pdf",
   "pages": "186, 189, 191-192",
   "page": 186,
+  "figurePage": 186,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-4 (rendered)."
  },
@@ -1661,6 +1715,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_ULT2002D_ServiceManual_2001.pdf",
   "pages": "26-30, 33, 38, 42",
   "page": 26,
+  "figurePage": 26,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 24-36. Same list in ULT2001 (pp. 26-30) and ULT2003D/ULT2001N/M3000 (pp. 27-31). Touch-panel calibration on p. 26: hold Start/Stop, Reverse and Needle position at power-on, touch crosses 1-5; one beep = good, four beeps = redo; do not press Thread cutter during it."
  },
@@ -1753,6 +1809,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_BES-960BC+1260BC_ServiceManual.pdf",
   "pages": "85-96",
   "page": 85,
+  "figurePage": 85,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 76-87. The same 7-segment test mode for BE-1204 PC-control type is in Brother_BE-1204B+1204C+1206B_ServiceManual.pdf pages 140-149 (chapter 5, printed 5-1 to 5-10)."
  },
@@ -1821,6 +1879,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_BE-1204B+1204C+1206B_ServiceManual.pdf",
   "pages": "125-139",
   "page": 125,
+  "figurePage": 125,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Chapter 4 of the manual (printed 4-1 to 4-15). Entry keys are icons in the PDF; the steps above are the public part only."
  },
@@ -1885,6 +1945,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_BES-116AC+916AC+1216AC_ServiceManual.pdf",
   "pages": "69-80",
   "page": 69,
+  "figurePage": 69,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 61-72, chapter 5. Entry is partly icons; public part only recorded."
  },
@@ -1971,6 +2033,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_BES-961BC+1261BC_ServiceManual_2000.pdf",
   "pages": "62, 89-105, 110-113",
   "page": 62,
+  "figurePage": 62,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 79-95. The factory settings row for rotary hook motor timing cites this mode's STEP adjust. BES-941BC/1241BC operator manual (pages 56, 147) refers to the same test mode but I did not open its entry page."
  },
@@ -2014,6 +2078,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_E100_ServiceManual_2002.pdf",
   "pages": "9, 24-26",
   "page": 9,
+  "figurePage": 9,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 2-1 and 2-16. Keys are icons (rendered p. 24): the second held key looks like the thread-cartridge key; confirm on a machine. T-7 purpose inferred from the section heading."
  },
@@ -2047,6 +2113,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE150_ServiceManual_1999.pdf",
   "pages": "16",
   "page": 16,
+  "figurePage": 16,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 14. Same page in the PE180D, SE2 and SE3 manuals (p. 16)."
  },
@@ -2081,6 +2149,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE200_ServiceManual.pdf",
   "pages": "16, 35",
   "page": 16,
+  "figurePage": 16,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 14."
  },
@@ -2117,6 +2187,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE700_ServiceManual.pdf",
   "pages": "166-167, 183, 207",
   "page": 166,
+  "figurePage": 166,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-4 (rendered). PE700II/PE750D manual has the same pages. Touch-panel calibration (p. 167): the text names Start/Stop, Reverse and Needle position held at power-on, but this model has no Reverse button; check on the machine (the PE770 uses Start/Stop + Needle position + Thread cutter)."
  },
@@ -2212,6 +2284,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE770+PE780D_ServiceManual.pdf",
   "pages": "163-164, 171, 181, 206",
   "page": 163,
+  "figurePage": 163,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3 to 4-4 (rendered). Touch-panel calibration on p. 165: hold Start/Stop, Needle position and Thread cutter while switching on, touch crosses 1-5, SUCCESS/ERROR shown."
  },
@@ -2260,6 +2334,8 @@
   "sourcePath": "Sewing\\Brother\\ServiceManuals\\Brother_PE800-PE810L-PE830DL-PE900-NS1150E-F440E-BE815L_ServiceManual_2016rev2022.pdf",
   "pages": "82-83, 87-88, 100-102, 105",
   "page": 82,
+  "figurePage": 82,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3, 4-4, 4-21 to 4-23. The manual has no full test list."
  },
@@ -2335,6 +2411,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_PR600_ServiceManual_2003.pdf",
   "pages": "213-223",
   "page": 213,
+  "figurePage": 213,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 4-5 to 4-15. Entry page read (p213); tests inferred from the near-identical PR600II text and the match of page headings."
  },
@@ -2411,6 +2489,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_PR600II+PR620_ServiceManual_2007.pdf",
   "pages": "207-213, 218-219, 222-229",
   "page": 207,
+  "figurePage": 207,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-5 to 4-11. Adjustment sections (needle position, spacing, hook timing) start with 'enter the test mode, MAIN BOARD TEST MODE, then NEEDLE POSITION / NEEDLE SPACING / NEEDLE THREADER'."
  },
@@ -2486,6 +2566,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_PR600II+PR620_ServiceManual_2007.pdf",
   "pages": "214-217",
   "page": 214,
+  "figurePage": 214,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-12 to 4-15."
  },
@@ -2562,6 +2644,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_PR650_ServiceManual_2010.pdf",
   "pages": "218-225, 234-235, 238-256",
   "page": 218,
+  "figurePage": 218,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-4 to 4-11. Adjustment procedures later in the chapter (needle clearance, hook timing, knife, picker, frame sensor) say 'enter the test mode, MAIN BOARD TEST MODE, then #nn'."
  },
@@ -2640,6 +2724,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_PR650_ServiceManual_2010.pdf",
   "pages": "218, 226-233",
   "page": 218,
+  "figurePage": 218,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-12 to 4-19."
  },
@@ -2705,6 +2791,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_BAS-311H_ServiceManual.pdf",
   "pages": "12-13, 15, 35-38, 112-113",
   "page": 12,
+  "figurePage": 12,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 3-1 to 3-29 and 8-103. Brother_BAS-311G+326G_ServiceManual_2005.pdf lists the same functions (page 9) and the same TEST-key exit (pages 112-116); not read in detail. Industrial programmable pattern sewer; the manual is filed under Embroidery\\Brother."
  },
@@ -2743,6 +2831,8 @@
   "sourcePath": "Embroidery\\Brother\\Brother_BAS-411+415_ServiceManual.pdf",
   "pages": "24-27",
   "page": 24,
+  "figurePage": 24,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 21-24. Text is OCR-ish with some garbling; entry keys read clearly. Industrial programmable pattern sewer; the manual is filed under Embroidery\\Brother."
  },
@@ -2778,6 +2868,8 @@
   "sourcePath": "Industrial-Sewing\\Brother\\_teamworksales\\LZ2-B855E, B856E INSTRUCTIONS.PDF",
   "pages": "84, 164",
   "page": 84,
+  "figurePage": 84,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 65 and 145 (operator manual). The Brother_B855E+856E_ServiceManual.pdf hook adjustment (p. 43) uses the same TEST state. Industrial zigzag lockstitch."
  },
@@ -2818,6 +2910,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\BLFileCorSM\\SMBLCC2.pdf",
   "pages": "144, 147-148, 181",
   "page": 144,
+  "figurePage": 144,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Same platform and page layout as Brother NX400/NX600 (printed page 4-4). Cover-on button icons and mode numbers read from the NX600 twin. BLCC extract SMBLCC.pdf p. 12 has the same entry page."
  },
@@ -2865,6 +2959,8 @@
   "sourcePath": "Sewing\\_General\\SMBLR.pdf",
   "pages": "160-161, 164-166",
   "page": 160,
+  "figurePage": 160,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Same manual layout as the Brother Innov-is NV1000 (printed pages 4-2 to 4-3). Button icons not printed as text; read from the NV1000/NV1200 twin."
  },
@@ -2911,6 +3007,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_ESp_ServiceManual_1997.pdf",
   "pages": "20-24, 27",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 18. Same manual as the Brother PC6000."
  },
@@ -2957,6 +3055,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\BLFileCorSM\\BL-BL137A-ServiceManual.pdf",
   "pages": "195, 200-204, 245, 258",
   "page": 195,
+  "figurePage": 195,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-3. Same platform as Brother HE240/SE400."
  },
@@ -3029,6 +3129,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLG+BLG2+BLG3-Ellegante_ServiceManual_2011.pdf",
   "pages": "300-301, 311, 316-321",
   "page": 300,
+  "figurePage": 300,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "The Baby Lock manuals show only the cover-off SW3+SW4 entry in text; the cover-on button entry comes from the Brother NV4000D manual (p. 297) of the same platform. Ellageo manual: BabyLock_BLL-Ellageo_ServiceManual_2005.pdf pp. 275-296. Short adjustment extract: BabyLock_BLG-Ellegante_ServiceManual-Adjustment.pdf pp. 5-22."
  },
@@ -3065,6 +3167,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf",
   "pages": "272",
   "page": 272,
+  "figurePage": 272,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 4-2 (Ellageo). Also Ellegante manual p. 297, Ellisimo (SMBLSO.pdf) p. 353, Ellisimo Gold and Gold 2 manuals p. 352 (printed 4-7)."
  },
@@ -3214,6 +3318,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\BLFileCorSM\\SMBLSO.pdf",
   "pages": "349-353, 358-385",
   "page": 349,
+  "figurePage": 349,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-3 to 4-7. Same platform as Brother NV6000D. Ellisimo Gold: BabyLock_BLSOG-EllisimoGold_ServiceManual_2011.pdf pp. 348-351. Ellisimo Gold 2: BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf pp. 348-351, 379 (adds 37)."
  },
@@ -3341,6 +3447,8 @@
   "sourcePath": "Sewing\\Baby-Lock\\BLFileCorSM\\BMP9ServiceManual.pdf",
   "pages": "218-234, 241, 292",
   "page": 218,
+  "figurePage": 218,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 4-4 to 4-20 and 6-2. Six-needle home embroidery machine (same family as Brother PR-series)."
  },
@@ -3375,6 +3483,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_1600P-QC_ServiceManual.pdf",
   "pages": "21",
   "page": 21,
+  "figurePage": 21,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed page 20. Same wording in Janome_HD9_ServiceManual_2019.pdf (PDF page 23). No numbered test menu in either manual; the factory settings that cite a test mode for the 1600P-QC are pointing at this one adjustment."
  },
@@ -3408,6 +3518,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_2030DC+XL601_ServiceManual.pdf",
   "pages": "26",
   "page": 26,
+  "figurePage": 26,
+  "figureBox": [],
   "confidence": "high",
   "notes": null
  },
@@ -3487,6 +3599,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_2030DC+XL601_ServiceManual.pdf",
   "pages": "20-24, 29",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Read in full on the 2030DC manual (printed pp 18-22). Identical entry text in Janome_3160QDC (PDF 20-24, 29), 3160QOV (2019), 8050, DC1050, DC2015 (PDF 19-23, 28) and Elna ElnitaEC60 (PDF 20-24, 29). Step numbering 08-11 summarised from the table, check on the machine."
  },
@@ -3523,6 +3637,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_2030DC+XL601_ServiceManual.pdf",
   "pages": "29",
   "page": 29,
+  "figurePage": 29,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Elna Elnita EC60 manual p29 the same."
  },
@@ -3554,6 +3670,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_5300QDC_ServiceManual_2020.pdf",
   "pages": "37-38",
   "page": 37,
+  "figurePage": 37,
+  "figureBox": [],
   "confidence": "high",
   "notes": null
  },
@@ -3610,6 +3728,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_5300QDC_ServiceManual_2020.pdf",
   "pages": "19-21, 27-32, 38",
   "page": 19,
+  "figurePage": 19,
+  "figureBox": [],
   "confidence": "high",
   "notes": "5300QDC detail read; 4300QDC (PDF 18, 20-21, 25, 29) and 4120QDC (PDF 19-24, 28) use the same entry text. Printed pages differ by 1-2."
  },
@@ -3677,6 +3797,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_ContinentalM7_ServiceManual_2020.pdf",
   "pages": "16, 22, 40-42",
   "page": 16,
+  "figurePage": 16,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Entry on p16."
  },
@@ -3754,6 +3876,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_DC2012_ServiceManual.pdf",
   "pages": "23-26, 36",
   "page": 23,
+  "figurePage": 23,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Read on DC2012. DC2013/DC2014/HF8077/7330 identical (PDF 23-24, 36); Elna 6001 (PDF 8-9, 25) and 6260QC (PDF 22-23, 35) same text. Menu numbers are from a flow chart, so confirm which Reverse press reaches the item."
  },
@@ -3805,6 +3929,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_DC5100_ServiceManual.pdf",
   "pages": "11-13, 30",
   "page": 11,
+  "figurePage": 11,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Entry buttons conflict between the manual and the notes file (Janome_TestAndSetModes_ServiceNotes p8). Try both."
  },
@@ -3863,6 +3989,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC6300P_ServiceManual.pdf",
   "pages": "35-39, 43-49",
   "page": 35,
+  "figurePage": 35,
+  "figureBox": [],
   "confidence": "high",
   "notes": "MC6500P (PDF 35-38, 43) and MC6600P (PDF 37, 45) share it; the service-notes file lists Elna 720/7200/7300 and says press 1 within 3 s for the test mode and 3 then M to restore factory settings (that clears all saved stitches/settings, ServiceNotes p8). Printed pages 33-47."
  },
@@ -3899,6 +4027,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_TestAndSetModes_ServiceNotes.pdf",
   "pages": "8",
   "page": 8,
+  "figurePage": 8,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "From the library's service-notes file, not the model manual."
  },
@@ -3945,6 +4075,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC6650_ServiceManual_2019.pdf",
   "pages": "34-38, 40, 42-46",
   "page": 34,
+  "figurePage": 34,
+  "figureBox": [],
   "confidence": "high",
   "notes": "MC6700P (PDF 38-42, 44, 46) and Elnita EF72 (PDF 34-38, 40, 42) identical. Self check steps summarised from the table."
  },
@@ -4034,6 +4166,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC7700QCP_ServiceManual.pdf",
   "pages": "30, 38",
   "page": 30,
+  "figurePage": 30,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Menu list is from the library service-notes file p5-7 (MC8900QCP) and p7 (7700QCP); the 7700QCP manual shows items 07 and 03."
  },
@@ -4065,6 +4199,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC8200QC_ServiceManual.pdf",
   "pages": "43",
   "page": 43,
+  "figurePage": 43,
+  "figureBox": [],
   "confidence": "high",
   "notes": null
  },
@@ -4121,6 +4257,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC8200QC_ServiceManual.pdf",
   "pages": "21, 23, 31, 33-34, 36-38, 42",
   "page": 21,
+  "figurePage": 21,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Entry text differs: p37 says needle up/down + lock stitch, p38 says needle up/down + thread cutter button, then press needle up/down within 1.5 s; try lock stitch first. Printed pages 19-41."
  },
@@ -4169,6 +4307,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_Sewist740DC_ServiceManual_2018.pdf",
   "pages": "18, 20-26",
   "page": 18,
+  "figurePage": 18,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Read on the 740DC. Sewist 780DC (PDF 18-27), M7100 (PDF 18-27) and Elnita EC30 (PDF 20-24) use the same entry wording. Step list not read line by line."
  },
@@ -4223,6 +4363,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_SkylineS6_ServiceManual_2018.pdf",
   "pages": "20, 22, 24, 26, 28, 32, 34, 36-41",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Same menu family as the MC8200QC manual. Factory setting mode (Start/Stop + Reverse) is used on p20 only for the Bobbin key (sets zigzag width to maximum for hook clearance); see the Factory setting mode rows."
  },
@@ -4296,6 +4438,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_SkylineS9_ServiceManual_2016.pdf",
   "pages": "17, 19, 24-25, 32, 37-42, 46, 48-49",
   "page": 17,
+  "figurePage": 17,
+  "figureBox": [],
   "confidence": "high",
   "notes": "S7 manual (PDF 17, 22-23, 35-39). Also Elna eXcellence 780 (PDF 20) and eXpressive 920 (PDF 21, 44)."
  },
@@ -4332,6 +4476,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_ContinentalM17_ServiceManual_2024.pdf",
   "pages": "24-37",
   "page": 24,
+  "figurePage": 24,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Also Factory setting mode (Start/Stop + Reverse), PDF 24, 46, 57-58 with a Destination key and the auto-off timer on p86. The 443-page 2022 file is mostly parts and was not mined."
  },
@@ -4397,6 +4543,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC1000_ServiceManual_2025.pdf",
   "pages": "14-17, 23, 29, 33-35, 42-45",
   "page": 14,
+  "figurePage": 14,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Key names read from the page text only."
  },
@@ -4443,6 +4591,8 @@
   "sourcePath": "Sewing\\Janome\\JSMMC10000\\SM MC10000.pdf",
   "pages": "20, 28-32",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Same procedure as the MC11000 manual."
  },
@@ -4499,6 +4649,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC11000_ServiceManual.pdf",
   "pages": "27, 32-37, 40",
   "page": 27,
+  "figurePage": 27,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pp 25-38. Service notes (p3-4) add: self-check = Start/Stop + Reverse + Lockstitch, a fuller list (Sew Test, Hoop Adjust, Cloth Guide, Needle Threader, Aging, Sensor Off, Clear Set) and warn never to answer YES on the Clear Set prompts (factory use, can damage the A board)."
  },
@@ -4534,6 +4686,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC11000_ServiceManual.pdf",
   "pages": "32",
   "page": 32,
+  "figurePage": 32,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Elna 9500 manual PDF 33."
  },
@@ -4591,6 +4745,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_TestAndSetModes_ServiceNotes.pdf",
   "pages": "3-4",
   "page": 3,
+  "figurePage": 3,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "From the service notes file."
  },
@@ -4682,6 +4838,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC15000_ServiceManual.pdf",
   "pages": "20, 24, 27-28, 31, 46-48, 50-51, 54, 56",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "MC12000 PDF 16, 20, 23-24, 39-41, 43-44, 47, 49. Further keys from the service notes p1-2 (Foot Up/Down offset, Knee Lifter, Bobbin gauges, Cloth Guide, Hoop Adjust MEM/DEF)."
  },
@@ -4766,6 +4924,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC9000_ServiceManual.pdf",
   "pages": "22-24, 31",
   "page": 22,
+  "figurePage": 22,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Same file as Janome_MemoryCraft9000_ServiceManual.pdf. Kenmore sibling below."
  },
@@ -4841,6 +5001,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC9400QCP_ServiceManual_2024.pdf",
   "pages": "22, 27-28, 41-43, 45, 47-50",
   "page": 22,
+  "figurePage": 22,
+  "figureBox": [],
   "confidence": "high",
   "notes": "MC9450QCP PDF 22, 27-28, 40-41, 44-45, 47, 49."
  },
@@ -4920,6 +5082,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC9410QC_ServiceManual_2024.pdf",
   "pages": "32, 38-39, 52-60",
   "page": 32,
+  "figurePage": 32,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Touch key position: hold needle up/down at power on (PDF 59). The Continental M8 2024 manual (Janome_ContinentalM8_ServiceManual_2024.pdf) uses the same mode on its adjustment pages (pp. 29, 33-36, 45, 61, 68)."
  },
@@ -4983,6 +5147,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC9410QC_ServiceManual_2024.pdf",
   "pages": "20-30",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "M6/M8 manuals PDF 17-28 same text. Version: Start/Stop + Reverse at power on (p30). The Continental M8 2024 manual (Janome_ContinentalM8_ServiceManual_2024.pdf pp. 17-24) has the same self-diagnostic test for the M8 Professional family."
  },
@@ -5046,6 +5212,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC9900_ServiceManual.pdf",
   "pages": "15-16, 22-23, 31, 34-41",
   "page": 15,
+  "figurePage": 15,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Entry wording differs between p15 and p23; try Start/Stop alone, then with Reverse."
  },
@@ -5126,6 +5294,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MB-4S_ServiceManual.pdf",
   "pages": "23-25, 45-48, 61-64",
   "page": 23,
+  "figurePage": 23,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Also MB-4 (2006), MB-4Se-V3 and MB-7e-V3 (2023, PDF 24, 46-49, 62-65); Elna 9900 (PDF 38). Motor drive time reset: service notes p1 say hold Forward + Bobbin Winder at power on, then press CLEAR (also MB-4S p60); it clears the 1,000 hour warning."
  },
@@ -5158,6 +5328,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MB-4S_ServiceManual.pdf",
   "pages": "60",
   "page": 60,
+  "figurePage": 60,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Entry buttons from the notes file; the manual page image holds the entry steps."
  },
@@ -5229,6 +5401,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_8200_ServiceManual.pdf",
   "pages": "23",
   "page": 23,
+  "figurePage": 23,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Notes file p6-7 add the Self-Check steps and say MC200E / Elna 8100 uses the same entry; MC350E manual itself has no mode text."
  },
@@ -5272,6 +5446,8 @@
   "sourcePath": "Sewing\\Janome\\ServiceManuals\\Janome_MC500E+MC450E_ServiceManual_2015.pdf",
   "pages": "14-15, 24, 26-27",
   "page": 14,
+  "figurePage": 14,
+  "figureBox": [],
   "confidence": "high",
   "notes": "MC550E manual (2019) PDF 15-16, 25, 27-28 the same."
  },
@@ -5337,6 +5513,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_6004_ServiceManual_1997.pdf",
   "pages": "16, 18, 30-31",
   "page": 16,
+  "figurePage": 16,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Reverse + BH1 at power on = sensor check; Reverse + pattern 8 = feed balance check."
  },
@@ -5375,6 +5553,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_6005-Heirloom_ServiceManual_1999.pdf",
   "pages": "8-9, 22-24",
   "page": 8,
+  "figurePage": 8,
+  "figureBox": [],
   "confidence": "medium",
   "notes": null
  },
@@ -5472,6 +5652,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_9020-XquisitII_ServiceManual_2004.pdf",
   "pages": "45-48, 50",
   "page": 45,
+  "figurePage": 45,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pp 43-48. 9020 and E9010 manuals share the system."
  },
@@ -5527,6 +5709,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_eXcellence780_ServiceManual_2016.pdf",
   "pages": "20, 25-26, 34, 39-43",
   "page": 20,
+  "figurePage": 20,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Entry read on each adjustment page (printed pages 18-41). Same mode as the Janome MC9410QC / Continental M6-M8 factory setting mode row."
  },
@@ -5562,6 +5746,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_eXperience520_ServiceManual.pdf",
   "pages": "23-24, 36",
   "page": 23,
+  "figurePage": 23,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Only the entry buttons differ from the DC2012 manual."
  },
@@ -5603,6 +5789,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_eXperience620_ServiceManual.pdf",
   "pages": "21, 24-27, 36",
   "page": 21,
+  "figurePage": 21,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Elna_6200_ServiceManual.pdf (PDF 20, 23-26, 35) has the same entry."
  },
@@ -5633,6 +5821,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_eXperience660_ServiceManual.pdf",
   "pages": "21, 24, 36",
   "page": 21,
+  "figurePage": 21,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Same layout as the 620; entry buttons differ."
  },
@@ -5711,6 +5901,8 @@
   "sourcePath": "Sewing\\_Embroidery-home\\EmbCollection\\9006_service_manual.pdf",
   "pages": "45-46",
   "page": 45,
+  "figurePage": 45,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "No text layer; read from images. Printed pp 42-43. Notes file: screen calibration = hold Reverse + Lock stitch + Needle up/down. MC8000 manual (PDF, also no text) not read."
  },
@@ -5765,6 +5957,8 @@
   "sourcePath": "Sewing\\Elna\\ServiceManuals\\Elna_9500_ServiceManual.pdf",
   "pages": "28, 33-38",
   "page": 28,
+  "figurePage": 28,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Sibling of the Janome MC11000 manual (same keys). Self-check and the longer test mode list are in the service notes."
  },
@@ -5834,6 +6028,8 @@
   "sourcePath": "Sewing\\Kenmore\\Kenmore_385.19001890_ServiceManual_1998.pdf",
   "pages": "15-16",
   "page": 15,
+  "figurePage": 15,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "OCR text is noisy."
  },
@@ -5868,6 +6064,8 @@
   "sourcePath": "Sewing\\Kenmore\\Kenmore_385.19001890_ServiceManual_1998.pdf",
   "pages": "38, 43",
   "page": 38,
+  "figurePage": 38,
+  "figureBox": [],
   "confidence": "medium",
   "notes": null
  },
@@ -5991,6 +6189,8 @@
   "sourcePath": "Sewing\\Juki\\ServiceManuals\\Juki_HZL-DX5+DX7_ServiceManual.pdf",
   "pages": "39-41",
   "page": 39,
+  "figurePage": 39,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 37-39 (6-22). Items used in adjustments also on PDF pages 19, 28, 31, 35, 36. Page 42 blank so the list stops at 23."
  },
@@ -6028,6 +6228,8 @@
   "sourcePath": "Sewing\\Juki\\ServiceManuals\\Juki_HZL-E61_ServiceManual.pdf",
   "pages": "23",
   "page": 23,
+  "figurePage": 23,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed page 20 (5-1-17/5-1-18). E70 and E80 manuals have the same page 23 (same text found by search)."
  },
@@ -6137,6 +6339,8 @@
   "sourcePath": "Sewing\\Juki\\ServiceManuals\\Juki_HZL-F300+F400+F600_ServiceManual.pdf",
   "pages": "27-29",
   "page": 27,
+  "figurePage": 27,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 25-26 (5-20). Same list as DX5/DX7 except 12 is reserved here and the auto-lifter items 21/22 are absent. Used in darning adjustment (item 3, p27), fagoting (2, p17), tension release (9, p21)."
  },
@@ -6248,6 +6452,8 @@
   "sourcePath": "Sewing\\Juki\\ServiceManuals\\Juki_HZL-G_ServiceManual.pdf",
   "pages": "32-33",
   "page": 32,
+  "figurePage": 32,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 30-31 (6-19). Darning use on p30, trimmer base on p27, tension release on p23."
  },
@@ -6340,6 +6546,8 @@
   "sourcePath": "Sewing\\Juki\\ServiceManuals\\Juki_HZL-NX7_ServiceManual.pdf",
   "pages": "32, 37-38",
   "page": 32,
+  "figurePage": 32,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 30, 35-36. Auto-lifter procedure (6-19-2) on p32: feed dog sunk, foot on throat plate for 0 mm, 12 mm spacer for 12 mm. Items are named, not numbered."
  },
@@ -6415,6 +6623,8 @@
   "sourcePath": "Sewing\\EverSewn\\PartsLists\\EverSewn_Sparrow-QE-Service-Manual_PartsList.pdf",
   "pages": "24, 28, 34-38",
   "page": 24,
+  "figurePage": 24,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 24-38. The entry buttons are pictures on p. 34; Reverse + Thread cutter is taken from the caution beside them. Same layout as the Singer 9910-9940 self-diagnostic program."
  },
@@ -6475,6 +6685,8 @@
   "sourcePath": "Sewing\\Bernina\\ServiceManuals\\Bernina_1230_ServiceManual-Supplement_1988.pdf",
   "pages": "12, 16-17",
   "page": 12,
+  "figurePage": 12,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Test numbering is partly garbled in the text layer of p16; codes approximate."
  },
@@ -6566,6 +6778,8 @@
   "sourcePath": "Sewing\\Bernina\\ServiceManuals\\Bernina_1630_ServiceManual_2004.pdf",
   "pages": "49-50",
   "page": 49,
+  "figurePage": 49,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Scanned pages, read from images. Entry says tests 1 to 9 selectable, the list on p50 shows 15; the manual's own page references for each test are 52-64. The 1530/1230 2004 supplements (no text layer) were not opened."
  },
@@ -6648,6 +6862,8 @@
   "sourcePath": "Sewing\\Bernina\\ServiceManuals\\Bernina_activa125+135+145_ServiceManual.pdf",
   "pages": "11-20",
   "page": 11,
+  "figurePage": 11,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 10-19. Page 11 also says motors can be powered by entering with the Clr button and choosing programme 8 (for adjusting exchange motors)."
  },
@@ -6752,6 +6968,8 @@
   "sourcePath": "Sewing\\Bernina\\ServiceManuals\\Bernina_artista165+170+180+185_ServiceManual-DE.pdf",
   "pages": "3, 32-35",
   "page": 3,
+  "figurePage": 3,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "German scan with no text layer, read from images. Entry key (clr) and list translated from page 33 contents; the key grid on p32 is a picture and was not read in detail."
  },
@@ -6871,6 +7089,8 @@
   "sourcePath": "Sewing\\Bernina\\ServiceManuals\\Bernina_B500+535+540+570+590_ServiceManual_2017.pdf",
   "pages": "4-5, 119-120, 150, 155",
   "page": 4,
+  "figurePage": 4,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Chapter 6. Draft version manual. No password seen on these pages."
  },
@@ -6905,6 +7125,8 @@
   "sourcePath": "Sewing\\Bernina\\ServiceManuals\\Bernina_Deco330_JanomeMC300E_ServiceManual.pdf",
   "pages": "25",
   "page": 25,
+  "figurePage": 25,
+  "figureBox": [],
   "confidence": "low",
   "notes": "Only the solenoid key is described; other keys not listed in the text layer."
  },
@@ -6941,6 +7163,8 @@
   "sourcePath": "Sewing\\Pfaff\\ServiceManuals\\Pfaff_4874_ServiceManual.pdf",
   "pages": "8-10, 12",
   "page": 8,
+  "figurePage": 8,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Sections D1-D3, E1."
  },
@@ -6982,6 +7206,8 @@
   "sourcePath": "Sewing\\Pfaff\\ServiceManuals\\Pfaff_Creative1475CD_ServiceManual.pdf",
   "pages": "100-101",
   "page": 100,
+  "figurePage": 100,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Scan, read from images. Only the first four steps checked. A separate external test computer is described in sections 40-46a."
  },
@@ -7050,6 +7276,8 @@
   "sourcePath": "Sewing\\Pfaff\\ServiceManuals\\Pfaff_Creative7550_ServiceManual.pdf",
   "pages": "99-104",
   "page": 99,
+  "figurePage": 99,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 98-103. Step numbers partly read from garbled text."
  },
@@ -7081,6 +7309,8 @@
   "sourcePath": "Sewing\\Pfaff\\PartsLists\\Pfaff_1200_GrandQuilter_Service_Manual_PartsList.pdf",
   "pages": "17",
   "page": 17,
+  "figurePage": 17,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Same adjustment as the Janome 1600P-QC / HD9 needle stop position row (Janome-built straight-stitch machine)."
  },
@@ -7150,6 +7380,8 @@
   "sourcePath": "Sewing\\Pfaff\\ServiceManuals\\Pfaff_Tiptronic2010+2020+2030+2040_ServiceManual.pdf",
   "pages": "90-98",
   "page": 90,
+  "figurePage": 90,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Sections 40-43; step numbers differ slightly by model. The Russian Expression manual (Pfaff_Expression2010-2020-2030-2040_ServiceManual_RU.pdf) has the same tables on pages 96 and 99."
  },
@@ -7194,6 +7426,8 @@
   "sourcePath": "Sewing\\Pfaff\\ServiceManuals\\Pfaff_Tiptronic6250_ServiceManual_2012.pdf",
   "pages": "94-95, 98",
   "page": 94,
+  "figurePage": 94,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Scan, read from images; later steps (p96-97) not opened. Printed pages 92-93, 96."
  },
@@ -7271,6 +7505,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\ServiceManuals\\Husqvarna-Viking_DesignerJade20_ServiceManual_2015.pdf",
   "pages": "30-35",
   "page": 30,
+  "figurePage": 30,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Page headers in this file read 'Jade 35'. Topaz 20/30 manual has the same menu structure (PDF pages 35-40, scan, read pages 35-36 only)."
  },
@@ -7359,6 +7595,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\ServiceManuals\\Husqvarna-Viking_Platinum770+775_ServiceManual_2002.pdf",
   "pages": "27-28",
   "page": 27,
+  "figurePage": 27,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Scan, read from images."
  },
@@ -7417,6 +7655,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\ServiceManuals\\HusqvarnaViking_Designer1_ServiceManual_2000.pdf",
   "pages": "6-10",
   "page": 6,
+  "figurePage": 6,
+  "figureBox": [],
   "confidence": "high",
   "notes": "No password on these pages."
  },
@@ -7467,6 +7707,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\Designer-Diamond\\Husqvarna-Viking_DesignerDiamond_ServiceManual_1047294-26_2010-06.pdf",
   "pages": "45-57",
   "page": 45,
+  "figurePage": 45,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 43-55 (offset 2). The 2009-09 edition has the same layout; not opened separately."
  },
@@ -7519,6 +7761,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\ServiceManuals\\Husqvarna-Viking_DesignerJade35_ServiceManual_2015.pdf",
   "pages": "22-30",
   "page": 22,
+  "figurePage": 22,
+  "figureBox": [],
   "confidence": "high",
   "notes": null
  },
@@ -7577,6 +7821,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\ServiceManuals\\Husqvarna-Viking_DesignerRubyRoyale_ServiceManual_2014.pdf",
   "pages": "48-62",
   "page": 48,
+  "figurePage": 48,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 48-62 offset 0. The manual states the password may change with firmware version."
  },
@@ -7629,6 +7875,8 @@
   "sourcePath": "Sewing\\Husqvarna-Viking\\ServiceManuals\\Husqvarna-Viking_DesignerTopaz20+30_ServiceManual.pdf",
   "pages": "35-36",
   "page": 35,
+  "figurePage": 35,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Scan, read from images; menus 2-5 (PDF 37-40) taken from the contents page only."
  },
@@ -7698,6 +7946,8 @@
   "sourcePath": "Sewing\\Singer\\Singer_9910+9920+9940_ServiceManual_2003.pdf",
   "pages": "25, 29-32",
   "page": 25,
+  "figurePage": 25,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Button combination is a picture, not read in words. A second combination on p29 switches off the beep."
  },
@@ -7731,6 +7981,8 @@
   "sourcePath": "Embroidery\\Barudan\\Barudan_BEKT-S1501CBIII_MaintenanceManual_2019.pdf",
   "pages": "22-23",
   "page": 22,
+  "figurePage": 22,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Only one adjusting screen is described in this short manual. The Barudan operator manuals have a sequin adjusting mode (pages 341-346 BEKS) that I did not record."
  },
@@ -7800,6 +8052,8 @@
   "sourcePath": "Embroidery\\Happy\\Happy_HCD-1501-40_MaintenanceManual_v1.1_2005.pdf",
   "pages": "162-166",
   "page": 162,
+  "figurePage": 162,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 162-166. Happy_HCR_MaintenanceManual_v1.1.pdf pages 133-134 has the identical entry and the same Machine items (printed E 39-E 40); not re-read in full, the HCR test list is on the following page."
  },
@@ -7899,6 +8153,8 @@
   "sourcePath": "Embroidery\\Happy\\Happy_HCD2-1501-40_MaintenanceManual_v1.0.pdf",
   "pages": "115, 122-124",
   "page": 115,
+  "figurePage": 115,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 122-124. Same entry and list in Happy_HCR2_MaintenanceManual_v1.0.pdf pages 136-138 (E5-1, E5-2). The icon in step 3 is a picture; I did not render it."
  },
@@ -7970,6 +8226,8 @@
   "sourcePath": "Embroidery\\Happy\\Happy_HCD3_MaintenanceManual_v1.1_2018.pdf",
   "pages": "123-125",
   "page": 123,
+  "figurePage": 123,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Printed pages 121-123."
  },
@@ -8019,6 +8277,8 @@
   "sourcePath": "Embroidery\\Happy\\Happy_HCS-1201-30_MaintenanceManual_ColorDisplayAddendum.pdf",
   "pages": "21-22",
   "page": 21,
+  "figurePage": 21,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Same flow in Happy_HCS-1201-30_MaintenanceManual_v3.0.pdf pages 158-160 (section 5-6). The code the manual gives is not recorded."
  },
@@ -8064,6 +8324,8 @@
   "sourcePath": "Embroidery\\SWF\\SWF_MA-6_ServiceManual-Installation_2010.pdf",
   "pages": "3",
   "page": 3,
+  "figurePage": 3,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Same page text in SWF_SingleBridge_ServiceManual-Installation_2010.pdf. Short installation guide; the operator manual only mentions a self-test dip switch."
  },
@@ -8118,6 +8380,8 @@
   "sourcePath": "Embroidery\\Melco\\Melco_BravoX_TechnicalManual.pdf",
   "pages": "36, 64, 69, 99-100, 110-114, 179",
   "page": 36,
+  "figurePage": 36,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Tab list from a screenshot on page 36. Sibling manuals (E16, E16 Plus, Bravo, EMT16 series) show the same Tools>Maintenance route (keypad test page 168 / 167 / 183); I did not verify their tab layout."
  },
@@ -8158,6 +8422,8 @@
   "sourcePath": "Embroidery\\Melco\\Melco_EMT10-12T_TechnicalManual_10162.pdf",
   "pages": "77-85",
   "page": 77,
+  "figurePage": 77,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Read page 77 in full; later pages confirmed by candidate scan."
  },
@@ -8224,6 +8490,8 @@
   "sourcePath": "Embroidery\\Melco\\Melco_EP1B_TechnicalManual_12616B.pdf",
   "pages": "53-58",
   "page": 53,
+  "figurePage": 53,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Printed pages 49-54, section 17."
  },
@@ -8255,6 +8523,8 @@
   "sourcePath": "Embroidery\\Toyota\\Toyota_ESP9000_ServiceManual.pdf",
   "pages": "15, 57, 71, 96, 104",
   "page": 15,
+  "figurePage": 15,
+  "figureBox": [],
   "confidence": "high",
   "notes": "Hook timing procedure page 57 (also 71). The manual has no list of other test numbers."
  },
@@ -8295,6 +8565,8 @@
   "sourcePath": "Embroidery\\ZSK\\ZSK_Multisticktronic_MaintenanceManual_00012v31_2004.pdf",
   "pages": "39-55",
   "page": 39,
+  "figurePage": 39,
+  "figureBox": [],
   "confidence": "medium",
   "notes": "Appendix F LCD pages 39-48, TFT pages 49-55. ZSK_T8-ControlUnit_OperatorManual lists a Service menu (page 34) with no procedure, so no row for the T8."
  }

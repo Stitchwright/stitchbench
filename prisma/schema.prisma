@@ -98,7 +98,8 @@ model Shop {
   hubStandingNote     String? // the hub's message, shown as it came
   // The owner allows a password reset from their StitchHub account (Windows program, package hosted-provisioning); off by default
   hubResetOptIn       Boolean   @default(false)
-  // Which version of the hub's terms the owner accepted when the account was started from here
+  // Which version of the hub's terms the company's account accepted: sent when the account is started from here, then as
+  // the hub reports it at each claim (it may have been accepted again on the hub)
   termsVersion        String?
   // Moving the company to another install (company-move-design.md sections 7 and 8). movingAt: the owner confirmed the
   // move and this copy is read-only (Cancel clears it); movedTo: where it is going, in the owner's words, then the hub's
@@ -423,6 +424,37 @@ model FactorySetting {
 
   @@index([brand])
   @@index([adjustment])
+}
+
+// ============================================================
+// Reference: how to put a machine into its test / service / diagnostic mode and leave it, and what the numbered tests
+// do, in our own words with the manual page (handoff item 15). Shared by all shops. Seeded from
+// prisma/seed-data/service_modes.json (scripts/library/service_modes_from_xlsx.py makes it from the owner's sheet).
+// Matched to a machine by modelKeys alone: a row lists the twin models other brands sell. The picture of the entry keys
+// is drawn from the tech's own manual like a factory setting's figure (figurePage + figureBox).
+// ============================================================
+
+model ServiceMode {
+  id         String   @id
+  brand      String
+  models     String // as printed, e.g. "CS6000i, CS4000, ES2000, HS1000 series"
+  modelKeys  String[] // normalized model tokens for matching, twins of other brands included
+  category   String?
+  mode       String // "Test mode", "Touch panel calibration", "Service program (menus 1-5)" ...
+  enterSteps String[]
+  exitSteps  String[]
+  tests      Json // [{ code, purpose }], in the manual's order
+  cautions   String?
+  sourceFile String
+  sourcePath String?
+  pages      String? // 1-based PDF pages, e.g. "98, 102, 111"
+  page       Int? // where the program opens the manual
+  figurePage Int?
+  figureBox  Float[]  @default([]) // [x0, y0, x1, y1] as fractions of the page; empty = whole page
+  confidence String? // high | medium | low
+  notes      String?
+
+  @@index([brand])
 }
 
 // ============================================================

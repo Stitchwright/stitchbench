@@ -20,7 +20,7 @@ fs.cpSync(path.join(root, "public"), path.join(out, "public"), { recursive: true
 fs.cpSync(path.join(root, "prisma", "migrations"), path.join(out, "migrations"), { recursive: true });
 // Reference data the program loads at start (reference.mjs); the hub's own seed files stay behind.
 fs.mkdirSync(path.join(out, "seed-data"), { recursive: true });
-for (const f of ["tension_specs.json", "factory_settings.json", "library_docs.json"]) {
+for (const f of ["tension_specs.json", "factory_settings.json", "service_modes.json", "library_docs.json"]) {
   fs.copyFileSync(path.join(root, "prisma", "seed-data", f), path.join(out, "seed-data", f));
 }
 

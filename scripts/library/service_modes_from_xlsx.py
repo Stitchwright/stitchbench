@@ -6,7 +6,7 @@ do, in our own words with the manual page. Edit the sheet, then run:
 
   python scripts/library/service_modes_from_xlsx.py            # sheet -> prisma/seed-data/service_modes.json
   python scripts/library/service_modes_from_xlsx.py --xlsx X.xlsx --out Y.json
-  npm run db:seed                                              # loads the set (once the ServiceMode table exists)
+  npm run db:seed                                              # loads the set into the ServiceMode table
 
 Cell formats the script reads back:
   enter_steps / exit_steps   one step per line ("1. Hold Start/Stop and Reverse ..."); the numbers are optional
@@ -17,6 +17,12 @@ Cell formats the script reads back:
   pages                      1-based PDF page numbers ("196-197, 200"); the first one becomes `page`, where the
                              program opens the manual
   confidence                 high | medium | low
+  figure_page, figure_box    optional columns for the picture of the entry keys the card shows beside the steps (cut
+                             from the tech's own PDF in the browser, then shared like a factory setting's figure).
+                             figure_page: a 1-based PDF page; blank = the first page in `pages`; "none" = no picture.
+                             figure_box: "x0, y0, x1, y1" as fractions of the page (0 = left / top, 1 = right / bottom),
+                             e.g. "0.08, 0.30, 0.55, 0.62"; blank = the whole page. Without the columns every row
+                             shows its whole first page.
 A row with an empty brand or no enter step is skipped. `id` is a short hash of brand, models, source file and mode,
 so it changes when one of those is edited (the seed replaces the whole set, so that is harmless).
 
@@ -129,6 +135,33 @@ def first_page(pages) -> int | None:
     return int(m.group(0)) if m else None
 
 
+def figure_page(cell, page: int | None, where: str) -> int | None:
+    """The picture's page: blank -> the procedure's first page, "none" (or "-", "0") -> no picture."""
+    text = str(cell if cell is not None else "").strip()
+    if not text:
+        return page
+    if text.lower() in ("none", "no", "-", "0"):
+        return None
+    m = re.fullmatch(r"(\d+)(?:\.0)?", text)  # a number cell comes back as 12 or 12.0
+    if not m or int(m.group(1)) < 1:
+        sys.exit(f"{where}: figure_page {text!r} is not a page number (or blank, or none)")
+    return int(m.group(1))
+
+
+def figure_box(cell, where: str) -> list[float]:
+    """"x0, y0, x1, y1" as fractions of the page -> [x0, y0, x1, y1]; blank -> [] (the whole page)."""
+    text = str(cell or "").strip()
+    if not text:
+        return []
+    try:
+        box = [float(x) for x in re.split(r"[,;\s]+", text.strip("[]() ")) if x]
+    except ValueError:
+        box = []
+    if len(box) != 4 or not all(0 <= x <= 1 for x in box) or box[0] >= box[2] or box[1] >= box[3]:
+        sys.exit(f"{where}: figure_box {text!r} must be four fractions x0, y0, x1, y1 with x0 < x1 and y0 < y1")
+    return [round(x, 3) for x in box]  # the figure id rounds to three places too (figure_id in common.py)
+
+
 def tests_cell(tests: list[dict]) -> str:
     """The sheet form of a test list (used by whoever writes the sheet from JSON)."""
     return ";\n".join(f"{t['code']}: {t['purpose'].replace(';', ',')}" if t.get("code") else t["purpose"].replace(";", ",")
@@ -152,7 +185,8 @@ def from_sheet(path: str) -> list[dict]:
         sys.exit(f"{path}: missing columns {missing}")
     rows, seen = [], {}
     for n, values in enumerate(it, start=2):
-        get = lambda c: values[idx[c]] if idx[c] < len(values) else None
+        # figure_page / figure_box are optional columns: a sheet without them reads as blank
+        get = lambda c: values[idx[c]] if c in idx and idx[c] < len(values) else None
         brand = str(get("brand") or "").strip()
         enter = split_steps(get("enter_steps"))
         if not brand or not enter:
@@ -167,6 +201,8 @@ def from_sheet(path: str) -> list[dict]:
             sys.exit(f"{path}: rows {seen[rid]} and {n} have the same brand, models, source file and mode")
         seen[rid] = n
         pages = str(get("pages") or "").strip()
+        page = first_page(pages)
+        where = f"{path} row {n}"
         rows.append({
             "id": rid,
             "brand": brand,
@@ -181,7 +217,9 @@ def from_sheet(path: str) -> list[dict]:
             "sourceFile": source_file,
             "sourcePath": str(get("source_path") or "").strip() or None,
             "pages": pages or None,
-            "page": first_page(pages),
+            "page": page,
+            "figurePage": figure_page(get("figure_page"), page, where),
+            "figureBox": figure_box(get("figure_box"), where),
             "confidence": str(get("confidence") or "").strip().lower() or None,
             "notes": str(get("notes") or "").strip() or None,
         })
@@ -202,6 +240,8 @@ def check(rows: list[dict]) -> None:
             print(f"warning: {r['brand']} {r['models']}: {p} is not in the library", file=sys.stderr)
         elif p in lib and r["page"] and lib[p].get("pages") and r["page"] > lib[p]["pages"]:
             print(f"warning: {r['brand']} {r['models']}: page {r['page']} > {lib[p]['pages']} pages", file=sys.stderr)
+        elif p in lib and r["figurePage"] and lib[p].get("pages") and r["figurePage"] > lib[p]["pages"]:
+            print(f"warning: {r['brand']} {r['models']}: figure page {r['figurePage']} > {lib[p]['pages']} pages", file=sys.stderr)
         if not r["modelKeys"]:
             print(f"warning: {r['brand']} {r['models']}: no model keys", file=sys.stderr)
 

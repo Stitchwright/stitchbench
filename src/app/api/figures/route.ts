@@ -35,10 +35,13 @@ export async function POST(req: Request) {
     return new Response("Missing figure.", { status: 400 });
   }
   if (file.size > 1_500_000) return new Response("Figure too large.", { status: 413 });
-  // Only the exact figure a known factory setting shows is stored (same manual, page and box).
+  // Only the exact figure a known factory setting or test mode shows is stored (same manual, page and box).
   const id = figureId(sourcePath, page, box);
-  const settings = await db.factorySetting.findMany({ where: { sourcePath, figurePage: page }, select: { figureBox: true } });
-  if (!settings.some((s) => figureId(sourcePath, page, s.figureBox) === id)) return new Response("Unknown figure.", { status: 404 });
+  const known = await Promise.all([
+    db.factorySetting.findMany({ where: { sourcePath, figurePage: page }, select: { figureBox: true } }),
+    db.serviceMode.findMany({ where: { sourcePath, figurePage: page }, select: { figureBox: true } }),
+  ]);
+  if (!known.flat().some((s) => figureId(sourcePath, page, s.figureBox) === id)) return new Response("Unknown figure.", { status: 404 });
   const width = Number(form.get("width")) || 0;
   const height = Number(form.get("height")) || 0;
   const data = new Uint8Array(await file.arrayBuffer());

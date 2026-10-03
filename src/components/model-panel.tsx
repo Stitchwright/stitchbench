@@ -7,6 +7,8 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { MachineInfo } from "@/components/machine-info";
 import { LibraryManuals } from "@/components/library-manuals";
 import { FactorySettings } from "@/components/factory-settings";
+import { ServiceModes } from "@/components/service-modes";
+import { modeAnchor, modesFor, withTestLinks } from "@/lib/service-modes";
 import { OpenSpecSource } from "@/components/local-manuals";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addNote, deleteNote, toggleNotePin } from "@/actions/records";
@@ -148,18 +150,22 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
 }
 
 /**
- * Everything known about one brand + model: factory tension, gotchas, manuals on this PC. A non-sewing `kind` (one
- * without the tension panel) skips the factory tension and timing sections and uses the kind's own quick links.
+ * Everything known about one brand + model: factory tension, timing, test mode, gotchas, manuals on this PC. A non-sewing
+ * `kind` (one without the tension panel) skips the factory tension, timing and test-mode sections and uses the kind's own
+ * quick links.
  */
 export async function ModelPanel({ shopId, brand, model, showLink = true, kind }: { shopId: string; brand: string; model: string; showLink?: boolean; kind?: EquipmentKind }) {
   const sewing = !kind || kind.panels.tension;
-  const [specs, settings, picture, library, shop] = await Promise.all([
+  const [specs, rawSettings, modes, picture, library, shop] = await Promise.all([
     sewing ? specsFor(brand, model) : [],
     sewing ? settingsFor(brand, model) : [],
+    sewing ? modesFor(brand, model) : [],
     pictureFor(brand, model),
     libraryFor(brand, model),
     db.shop.findUnique({ where: { id: shopId }, select: { libraryRoot: true } }),
   ]);
+  // A setting's "test mode 36" links to test 36 in the test-mode card below.
+  const settings = withTestLinks(rawSettings, modes, (l) => `#${modeAnchor(l.modeId, l.test)}`);
   const category = library[0]?.category ?? settings[0]?.category ?? specs[0]?.category ?? null;
   const modelPage = showLink ? (
     <Link href={modelHref(brand, model, kind?.key)} className="link text-sm">
@@ -189,6 +195,11 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
           <Section title={`Timing and adjustments${settings.length ? ` (${settings.length})` : ""}`}>
             <FactorySettings settings={settings} brand={brand} />
           </Section>
+          {modes.length > 0 && (
+            <Section id="test-mode" title={modes.length === 1 ? "Test mode" : `Test modes (${modes.length})`}>
+              <ServiceModes modes={modes} />
+            </Section>
+          )}
         </>
       )}
       <Section title="Important facts and gotchas">
