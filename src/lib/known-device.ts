@@ -1,0 +1,111 @@
+import "server-only";
+// The known-device cookie (round 3 M44). Wrong passwords for one login queue its tries and, past 20 waiting, refuse them
+// all (src/lib/sign-in.ts), the right password too, so someone guessing at the owner's email every 30 seconds would keep
+// the owner out. A browser that has signed in as that login before (or used a reset link for it) carries proof of it in
+// this cookie, and its tries skip that login's queue and cap; it has a small failure count of its own instead
+// (5 wrong in 15 minutes, then it is treated like any other browser). The per-address limit still applies to it.
+//
+// The cookie holds up to 10 entries, newest first, one per login signed in on this browser (a shared counter tablet has
+// several): "<issued, base 36>.<mac>" joined by "~", where mac = the first 16 bytes of HMAC-SHA256 over the email and the
+// issue time, keyed from AUTH_SECRET. No email is in it, and it opens nothing by itself: it never signs anyone in, only
+// lets this browser's own tries at the password through while a flood is queued. An entry lasts 180 days from the last
+// sign-in. A password change or reset doesn't cancel it (the browser the reset link was used in gets one, so the owner
+// can get back in during a flood); changing AUTH_SECRET cancels them all. Without AUTH_SECRET it is simply off.
+import crypto from "node:crypto";
+import { cookies, headers } from "next/headers";
+import { normalizeEmail } from "@/lib/email";
+
+export const KNOWN_DEVICE_DAYS = 180;
+const LIFE = KNOWN_DEVICE_DAYS * 86_400_000;
+const SKEW = 5 * 60_000; // an entry "from the future" is refused beyond this (a server clock put right)
+const MAX_ENTRIES = 10;
+
+/** One cookie per program: the Windows program's AUTH_COOKIE_PREFIX, as src/auth.config.ts uses for the session. */
+export function knownDeviceCookieName(): string {
+  const own = (process.env.AUTH_COOKIE_PREFIX ?? "").replace(/[^a-z0-9]/gi, "");
+  return own ? `${own}.known-device` : "known-device";
+}
+
+function key(): Buffer | null {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (!secret) return null;
+  return crypto.createHmac("sha256", secret).update("stitchbench known-device v1").digest();
+}
+
+function mac(k: Buffer, email: string, t: number): string {
+  return crypto.createHmac("sha256", k).update(`${email}\n${t}`).digest().subarray(0, 16).toString("base64url");
+}
+
+type Entry = { t: number; mac: string };
+
+function entries(value: string | null | undefined): Entry[] {
+  return (value ?? "")
+    .split("~")
+    .slice(0, MAX_ENTRIES)
+    .flatMap((e) => {
+      const m = /^([0-9a-z]{1,11})\.([A-Za-z0-9_-]{22})$/.exec(e);
+      return m ? [{ t: parseInt(m[1], 36), mac: m[2] }] : [];
+    });
+}
+
+const live = (e: Entry, now: number) => now - e.t <= LIFE && e.t <= now + SKEW;
+
+/**
+ * The entry of this cookie value that proves this browser signed in as `email` (normalized) in the last 180 days, as its
+ * mac (which names the browser's own failure count), or null.
+ */
+export function knownDeviceFor(value: string | null | undefined, email: string, now = Date.now()): string | null {
+  const k = key();
+  if (!k || !email) return null;
+  for (const e of entries(value)) {
+    if (!live(e, now)) continue;
+    const want = Buffer.from(mac(k, email, e.t));
+    const got = Buffer.from(e.mac);
+    if (want.length === got.length && crypto.timingSafeEqual(want, got)) return e.mac;
+  }
+  return null;
+}
+
+/** The cookie value with a fresh entry for `email` first: its older entry and expired ones dropped, 10 at most. Null without AUTH_SECRET. */
+export function withKnownDevice(value: string | null | undefined, email: string, now = Date.now()): string | null {
+  const k = key();
+  if (!k || !email) return null;
+  const mine = knownDeviceFor(value, email, now);
+  const keep = entries(value).filter((e) => e.mac !== mine && live(e, now));
+  return [{ t: now, mac: mac(k, email, now) }, ...keep]
+    .slice(0, MAX_ENTRIES)
+    .map((e) => `${e.t.toString(36)}.${e.mac}`)
+    .join("~");
+}
+
+/** This cookie's value from a request's Cookie header (what Auth.js hands authorize()), or null. */
+export function knownDeviceCookie(req: Request | Headers | undefined): string | null {
+  const h = req instanceof Headers ? req : req?.headers;
+  const raw = h?.get("cookie");
+  if (!raw) return null;
+  const name = knownDeviceCookieName();
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0 || part.slice(0, i).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * After a right password (the sign-in page) or a reset link used (/reset): this browser is known for that login from now
+ * on. Server actions only (it sets a cookie). httpOnly, SameSite=Lax, Secure when the request came over https.
+ */
+export async function rememberThisDevice(emailRaw: unknown): Promise<void> {
+  const email = normalizeEmail(emailRaw);
+  const jar = await cookies();
+  const name = knownDeviceCookieName();
+  const value = withKnownDevice(jar.get(name)?.value, email);
+  if (!value) return;
+  const proto = (await headers()).get("x-forwarded-proto")?.split(",")[0]?.trim();
+  jar.set(name, value, { httpOnly: true, sameSite: "lax", path: "/", secure: proto === "https", maxAge: KNOWN_DEVICE_DAYS * 86_400 });
+}

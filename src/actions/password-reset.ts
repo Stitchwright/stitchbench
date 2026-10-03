@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { safe, shownOnce } from "@/lib/action";
 import { clientAddress } from "@/lib/client-ip";
 import { finishReset, ownerResetLinkFor, requestResetFor } from "@/lib/password-reset";
+import { rememberThisDevice } from "@/lib/known-device";
 import { assertId } from "@/lib/input";
 import { requirePlatformAdmin } from "@/lib/session";
 
@@ -17,9 +18,14 @@ export const requestPasswordReset = safe.whileLapsed("requestPasswordReset")(asy
   r.work.catch(() => undefined);
 });
 
-/** /reset?t=...: the new password, then the sign-in page. */
+/**
+ * /reset?t=...: the new password, then the sign-in page. The browser the link was used in is known for that login from
+ * now on (the link proved the mailbox), so the owner gets in there even while someone floods the account with wrong
+ * passwords (src/lib/known-device.ts, round 3 M44).
+ */
 export const finishPasswordReset = safe.whileLapsed("finishPasswordReset")(async function finishPasswordReset(fd: FormData) {
-  await finishReset(fd.get("t"), fd.get("password"), fd.get("again"));
+  const { email } = await finishReset(fd.get("t"), fd.get("password"), fd.get("again"));
+  await rememberThisDevice(email);
   redirect("/login?reset=1");
 });
 

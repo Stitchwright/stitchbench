@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { requireUser, sessionUser } from "@/lib/session";
+import { endEverySession } from "@/lib/sign-in";
 import { db } from "@/lib/db";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEFAULT_TIME_ZONE } from "@/lib/time-zone";
@@ -113,6 +114,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <form
             action={async () => {
               "use server";
+              // Every device signed in as this login signs out too (sessionVersion + 1), so a copy of the cookie stops
+              // working as well (round 3 L42).
+              const me = await sessionUser();
+              if (me) await endEverySession(me.id);
               await signOut({ redirectTo: "/login" });
             }}
           >

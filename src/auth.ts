@@ -1,112 +1,15 @@
-import { clientAddress } from "@/lib/client-ip";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { z } from "zod";
-import { db } from "@/lib/db";
-import { isValidEmail, normalizeEmail } from "@/lib/email";
+import { checkSignIn } from "@/lib/sign-in";
 import { authConfig } from "@/auth.config";
 
-// The same email rule accounts are made with (lib/email): a stricter check here locked out logins like owner@myshop.
-const credentialsSchema = z.object({
-  email: z.string().transform(normalizeEmail).refine(isValidEmail),
-  password: z.string().min(1),
-});
-
-// Wrong passwords slow sign-in down, without letting anyone lock an owner out by guessing at their email:
-// - per account: after 5 wrong in 15 minutes, tries are taken one at a time and each waits longer (up to 30 s), but
-//   the right password still works;
-// - per network address, only where a proxy we trust reports it (TRUST_PROXY=true on Railway; a shop PC has no proxy
-//   and a device could claim any address): 50 wrong in 15 minutes, then refused.
-// The count is kept until 15 minutes pass with no wrong try (not 15 minutes from the first), so steady guessing never
-// gets a fresh start.
-// In memory: a restart forgets, which is fine for a shop PC or one hosted server.
-const WINDOW = 15 * 60_000;
-const MAX_KEYS = 50_000;
-const failures = new Map<string, { n: number; last: number }>();
-// Tries still being checked (the password compare takes a moment). They count from the moment they start, so a burst
-// sent all at once can't slip past the limits together before the first one has been written down as wrong.
-const underWay = new Map<string, number>();
-
-function count(key: string) {
-  const f = failures.get(key);
-  return (!f || Date.now() - f.last > WINDOW ? 0 : f.n) + (underWay.get(key) ?? 0);
-}
-
-function begin(key: string) {
-  underWay.set(key, (underWay.get(key) ?? 0) + 1);
-}
-
-function end(key: string) {
-  const n = (underWay.get(key) ?? 1) - 1;
-  if (n > 0) underWay.set(key, n);
-  else underWay.delete(key);
-}
-
-function fail(key: string) {
-  const f = failures.get(key);
-  const fresh = !f || Date.now() - f.last > WINDOW;
-  failures.delete(key); // re-added last: when the map is full, the keys that failed longest ago go first
-  failures.set(key, { n: fresh ? 1 : f.n + 1, last: Date.now() });
-  for (const k of failures.keys()) {
-    if (failures.size <= MAX_KEYS) break;
-    failures.delete(k);
-  }
-}
-
-const waiting = new Map<string, { tail: Promise<unknown>; n: number }>();
-
-/** Once an account is being guessed at (`n` tries wrong or under way), its tries run one at a time, each after a growing wait. */
-async function paced<T>(email: string, n: number, fn: () => Promise<T>): Promise<T | null> {
-  if (n < 5) return fn();
-  const q = waiting.get(email) ?? { tail: Promise.resolve(), n: 0 };
-  if (q.n >= 20) return null; // a flood: the queue is already long enough
-  const wait = Math.min(30_000, 1000 * 2 ** (n - 5));
-  const run = q.tail.catch(() => {}).then(() => new Promise((r) => setTimeout(r, wait))).then(fn);
-  q.tail = run;
-  q.n++;
-  waiting.set(email, q);
-  try {
-    return await run;
-  } finally {
-    if (--q.n === 0) waiting.delete(email);
-  }
-}
-
-// Compared against when the email isn't known, so a wrong email takes as long as a wrong password.
-const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 10);
-
+// The password check, its limits (per account, per known browser, per address) and why: src/lib/sign-in.ts.
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   session: { strategy: "jwt" },
   providers: [
     Credentials({
-      async authorize(credentials, request) {
-        const parsed = credentialsSchema.safeParse(credentials);
-        if (!parsed.success) return null;
-        const email = parsed.data.email;
-        const ip = clientAddress(request);
-        if (ip && count(`i:${ip}`) >= 50) return null;
-        // Counted, and this try marked as under way, before anything is awaited: no other try can slip in between.
-        const n = count(`e:${email}`);
-        const keys = ip ? [`e:${email}`, `i:${ip}`] : [`e:${email}`];
-        for (const k of keys) begin(k);
-        try {
-          return await paced(email, n, async () => {
-            const user = await db.user.findUnique({ where: { email } });
-            const ok = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
-            if (!user || !user.active || !ok) {
-              fail(`e:${email}`);
-              if (ip) fail(`i:${ip}`);
-              return null;
-            }
-            failures.delete(`e:${email}`);
-            return { id: user.id, email: user.email, name: user.name, role: user.role, shopId: user.shopId, sv: user.sessionVersion };
-          });
-        } finally {
-          for (const k of keys) end(k);
-        }
-      },
+      authorize: (credentials, request) => checkSignIn(credentials, request),
     }),
   ],
 });
