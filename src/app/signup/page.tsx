@@ -127,6 +127,17 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           <input id="partnerCode" name="partnerCode" autoComplete="off" className="input mono" placeholder="7KQP-M2XH-9TRD" />
         </div>
         <button className="btn btn-primary w-full">Create shop</button>
+        {process.env.SETUP_TOKEN && (
+          // The Windows program's first run (company-move-design.md section 8): its window opens the tray's file
+          // dialog for this link (desktop/main.mjs); a plain link, so the window sees the navigation.
+          <p className="muted text-center text-sm">
+            Moving your company here from another {appName()}?{" "}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full navigation: the program's window (desktop/main.mjs) sees it and opens its file dialog */}
+            <a href="/move-in?choose=1" className="link">
+              Restore a company from a move file
+            </a>
+          </p>
+        )}
       </form>
     </div>
   );

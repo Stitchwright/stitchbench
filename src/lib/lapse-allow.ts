@@ -108,4 +108,6 @@ export const HAND_ALLOWED = [
  * What stops: /api/photos (403), public online booking and the online shop (paused), the message worker (the company is
  * skipped, as modules-design.md 6.4 does for Scheduling and Marketing).
  */
-export const ALSO_ALLOWED = ["/api/export/*", "/api/sales", "/api/move/download/*", "hub sync", "partner sync", "backups", "sign in / out"] as const;
+// The StitchBench administrator's company import (/api/move/upload/*, the PC's /api/move/local) is outside the rule too:
+// it makes another company, and the administrator's own standing is beside the point (as with setCompanyModule).
+export const ALSO_ALLOWED = ["/api/export/*", "/api/sales", "/api/move/download/*", "/api/move/upload/*", "/api/move/local", "hub sync", "partner sync", "backups", "sign in / out"] as const;

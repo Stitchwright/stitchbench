@@ -14,6 +14,8 @@ import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { CompanyTimeZoneField } from "@/components/company-timezone-field";
 import { createCompany, setCompanyModule, setHubWrites } from "@/actions/companies";
+import { recentImports } from "@/lib/move/upload";
+import { ImportCompany } from "./import-company";
 
 const SHORT: Record<ModuleId, string> = { base: "Program", vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing" };
 
@@ -63,7 +65,7 @@ export default async function Companies() {
   });
   const desktop = isDesktop();
   const canSign = !desktop && hostedSigner() != null;
-  const [modules, history] = await Promise.all([loadModulesMany(shops.map((s) => s.id)), grantHistory(20)]);
+  const [modules, history, imports] = await Promise.all([loadModulesMany(shops.map((s) => s.id)), grantHistory(20), recentImports(user)]);
   const nameOf = new Map(shops.map((s) => [s.id, s.name]));
   const modeText = (mode: string, note: string | null) => (mode === "on" ? (note?.startsWith("Extended") ? "extended" : "on") : mode === "off" ? "off" : "keys decide");
 
@@ -97,6 +99,11 @@ export default async function Companies() {
                   <td className="font-semibold">
                     {s.name}
                     {s.id === user.shopId && <span className="pill tone-neutral ml-2">yours</span>}
+                    {s.movedInAt && (
+                      <span className="pill tone-neutral ml-2" title={s.movedFrom ?? undefined}>
+                        moved in {fmtDate(s.movedInAt, tz)}
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap">
                     <span className="mono text-xs">{s.id}</span> <CopyButton text={s.id} />
@@ -295,6 +302,10 @@ export default async function Companies() {
             <Submit>Create company</Submit>
           </div>
         </ActionForm>
+      </Section>
+
+      <Section title="Import a company">
+        <ImportCompany recent={imports} />
       </Section>
     </div>
   );

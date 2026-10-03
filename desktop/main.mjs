@@ -42,6 +42,8 @@ let gate = null; // the links gate (links-gate.mjs), running while publicUrl is 
 let quitting = false;
 let signupOpen = false;
 let setupToken = "";
+// The server's door for a move file (src/lib/move/local.ts): a secret made at each server start, never sent anywhere else.
+let moveSecret = "";
 let stopping = false; // stopServer asked the server to exit
 let starting = false; // startServer is waiting for it to answer
 let dbOwned = false; // the postgres this program started is running (not one it only connected to, nor one that died)
@@ -392,6 +394,7 @@ async function startServer() {
   // program's own window can: it opens /signup with a token nobody on the network has.
   signupOpen = shops === 0;
   setupToken = signupOpen ? crypto.randomBytes(24).toString("base64url") : "";
+  moveSecret = crypto.randomBytes(32).toString("base64url");
   const child = spawn(process.execPath, [path.join(APP_DIR, "server.js")], {
     cwd: APP_DIR,
     env: {
@@ -413,6 +416,8 @@ async function startServer() {
       PLATFORM_ADMIN_EMAILS: cfg.platformAdminEmails,
       ALLOW_SIGNUP: signupOpen ? "true" : "false",
       SETUP_TOKEN: setupToken,
+      // Only this program can ask the server to read a move file from disk (tray: Restore a company from a move file).
+      MOVE_LOCAL_SECRET: moveSecret,
       APP_NAME: NAME,
       DEFAULT_SHOP_KIND: FLAVOR === "stitchshop" ? "retail" : "repair",
       // The installer's version, told to StitchHub with each company's claim (src/lib/shops.ts programVersion).
@@ -527,6 +532,7 @@ setInterval(async () => {
   if (shops > 0) {
     log("first company created; sign-up is closed");
     signupOpen = false;
+    buildTray(); // "Restore a company from a move file" is for a PC without one
   }
 }, 15_000);
 
@@ -860,6 +866,102 @@ async function resetPasswordDialog() {
   if (done.response === 0) clipboard.writeText(password);
 }
 
+// ---------- a company from a move file ----------
+
+/** This PC is set up to keep several companies (platformAdminEmails; company-move-design.md decision 13). */
+const hostsMany = () =>
+  String(cfg?.platformAdminEmails ?? "")
+    .split(",")
+    .some((e) => e.trim());
+
+/**
+ * A one-use token for the server's door (src/lib/move/local.ts takeMoveToken, the same sum): an HMAC under the secret
+ * this program gave the server at start, of a fresh nonce, an expiry two minutes on and the file's path.
+ */
+function moveToken(file) {
+  const nonce = crypto.randomBytes(16).toString("base64url");
+  const until = String(Date.now() + 120_000);
+  const mac = crypto.createHmac("sha256", moveSecret).update(`${nonce}.${until}.${file}`).digest("base64url");
+  return `${nonce}.${until}.${mac}`;
+}
+
+/**
+ * Tray → "Restore a company from a move file..." (and the first-run page's link to /move-in?choose=1): pick the file
+ * the other install made, and the server reads it from disk and imports it (company-move-design.md section 8): no
+ * upload, no size limit but the disk's. Only while this PC has no company, or is set up to host several; the server
+ * checks that again. The window then shows the progress, what to enter again, and the way to sign in.
+ */
+async function restoreMoveFile() {
+  if (!pool || maintenance) return;
+  const title = `${NAME}: restore a company`;
+  if (!server) {
+    dialog.showErrorBox(title, `${NAME} isn't running right now. Try again in a minute.`);
+    return;
+  }
+  const shops = Number((await pool.query(`SELECT count(*) AS n FROM "Shop"`)).rows[0].n);
+  if (shops > 0 && !hostsMany()) {
+    await dialog.showMessageBox({
+      type: "info",
+      title,
+      message: `${NAME} on this PC already has its company.`,
+      detail:
+        "A move file brings a company to a PC that has none yet (the first time the program runs). To keep several companies on one PC, set platformAdminEmails in the settings file first (see INSTALL.md).",
+    });
+    return;
+  }
+  const pick = await dialog.showOpenDialog({
+    title: "Choose the move file",
+    properties: ["openFile"],
+    filters: [
+      { name: "Move files", extensions: ["gz"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (pick.canceled || !pick.filePaths[0]) return;
+  const file = pick.filePaths[0];
+  const ok = await dialog.showMessageBox({
+    type: "question",
+    buttons: ["Restore", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+    title,
+    message: `Bring in the company in ${path.basename(file)}?`,
+    detail: `Every line of the file is checked first: if anything is wrong, nothing is added and you are told why. The file stays where it is.${shops > 0 ? " The data already here is backed up first." : ""}`,
+  });
+  if (ok.response !== 0) return;
+  if (shops > 0 && !(await runBackup("before importing a company", { prune: false }))) {
+    dialog.showErrorBox(title, `The current data couldn't be backed up first, so nothing was imported.\n\nLog: ${LOG_FILE}`);
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(`http://127.0.0.1:${cfg.port}/api/move/local`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-move-token": moveToken(file) },
+      body: JSON.stringify({ path: file }),
+    });
+  } catch (e) {
+    dialog.showErrorBox(title, `${NAME} didn't answer: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.job) {
+    dialog.showErrorBox(title, body.error ?? `${NAME} refused the file (${res.status}).`);
+    return;
+  }
+  log(`importing a company from ${file}`);
+  showWindow();
+  win?.loadURL(`${base()}/move-in/${encodeURIComponent(body.job)}`);
+}
+
+/** The program's own links on its pages: /move-in?choose=1 opens the file dialog, /move-in?home=1 goes back to the start page. */
+function moveDoor(url) {
+  if (!isApp(url)) return null;
+  const u = new URL(url);
+  if (u.pathname !== "/move-in") return null;
+  return u.searchParams.get("choose") === "1" ? "choose" : u.searchParams.get("home") === "1" ? "home" : null;
+}
+
 // ---------- window & tray ----------
 
 function base() {
@@ -915,6 +1017,13 @@ function guardSessions() {
     });
     if (contents.getType() === "window") {
       contents.on("will-navigate", (e, url) => {
+        const door = moveDoor(url);
+        if (door) {
+          e.preventDefault();
+          if (door === "home") win?.loadURL(home());
+          else restoreMoveFile().catch((err) => dialog.showErrorBox(NAME, String(err instanceof Error ? err.message : err)));
+          return;
+        }
         if (isApp(url)) return;
         e.preventDefault();
         openOutside(url);
@@ -987,6 +1096,16 @@ function buildTray() {
         enabled: !maintenance && !!pool,
         click: () => restoreFromBackup().catch((e) => dialog.showErrorBox(NAME, String(e))),
       },
+      // A company from another install's move file: on a PC without one yet, or one set up to host several.
+      ...(signupOpen || hostsMany()
+        ? [
+            {
+              label: signupOpen ? "Restore a company from a move file..." : "Import a company from a move file...",
+              enabled: !maintenance && !!pool,
+              click: () => restoreMoveFile().catch((e) => dialog.showErrorBox(NAME, String(e instanceof Error ? e.message : e))),
+            },
+          ]
+        : []),
       {
         label: "Reset a password...",
         enabled: !maintenance && !!pool,

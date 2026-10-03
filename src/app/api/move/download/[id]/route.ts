@@ -5,25 +5,16 @@
 import { sessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { exportCompany } from "@/lib/move/export";
+import { secureRequest } from "@/lib/move/http";
 import { isPlatformAdmin } from "@/lib/shops";
 import { isUserError } from "@/lib/user-error";
 import { secureAddress } from "@/lib/secure-address";
-
-const LOCAL = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-
-/** https (the request's own scheme, or the proxy's X-Forwarded-Proto on a hosted install), or the PC itself. */
-function secure(req: Request): boolean {
-  const u = new URL(req.url);
-  const proto = (req.headers.get("x-forwarded-proto") ?? u.protocol.replace(":", "")).split(",")[0].trim().toLowerCase();
-  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? u.host).split(",")[0].trim().replace(/:\d+$/, "").toLowerCase();
-  return proto === "https" || LOCAL.has(host);
-}
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await sessionUser();
   if (!user) return new Response("Sign in first.", { status: 401 });
   if (user.role !== "OWNER" && !isPlatformAdmin(user.email)) return new Response("Only the shop owner can download the move file.", { status: 403 });
-  if (!secure(req)) {
+  if (!secureRequest(req)) {
     const https = secureAddress();
     return new Response(`The move file holds everything the shop holds, so it is downloaded only over https or on the program's own PC.${https ? ` Open ${https} and try again.` : ""}`, {
       status: 403,
