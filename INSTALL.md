@@ -473,12 +473,15 @@ All optional. The Windows program sets the ones it needs from its settings file.
 | `MESSAGE_WORKER_SECONDS` | 30 | how often the worker looks for messages to send |
 | `MESSAGE_BATCH` | 20 | messages per shop, per channel, per run |
 | `READY_NOTICE_DELAY_SECONDS` | 120 | how long a ready notice waits so a mistaken status click can be undone |
-| `PUBLIC_URL` | | the public https address for customer links (hosted installs; the Windows program takes it from `publicUrl`) |
+| `PUBLIC_URL` | | the public https address for customer links, the booking page and the online shop (hosted installs; the Windows program takes it from `publicUrl`). Without it the hosted booking page and shop have no address and checkout refuses |
 | `PUBLIC_LINKS_ONLY` | | `true`: requests whose Host is `PUBLIC_URL`'s host get only the public pages (always on in the Windows program) |
 | `SETTINGS_KEY` | `AUTH_SECRET` | the key the mail password and Twilio secret are sealed with; **required on a hosted production build** |
 | `SETTINGS_KEY_PREVIOUS` | | the old `SETTINGS_KEY` while rotating keys (read only; values are re-sealed with the new one) |
 | `SMTP_ALLOW_HOSTS` | | `host:port` list of private or plain mail servers a hosted install may use (tests: the sink) |
 | `TWILIO_API_BASE` | `https://api.twilio.com` | tests only: the Twilio mock |
+| `STRIPE_SECRET_KEY` | | the hosted service's own Stripe account, for shops that choose "through StitchShop's account" in Settings → Online shop (with `STRIPE_WEBHOOK_SECRET`; its webhook is `/api/shop/stripe/platform`). Shops using their own Stripe account need neither |
+| `STRIPE_WEBHOOK_SECRET` | | the signing secret of that platform webhook |
+| `STRIPE_API_BASE` | `https://api.stripe.com` | tests only: the Stripe mock |
 
 ## For maintainers
 
