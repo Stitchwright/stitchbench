@@ -19,6 +19,8 @@ export type ImportRow = {
   description?: string | null;
   brand?: string | null;
   costCents?: number | null;
+  /** The same cost in ten-thousandths of a dollar, when the sheet gives a finer figure than cents. */
+  costTenThou?: number | null;
   priceCents?: number | null;
   qty?: number | null;
   location?: string | null;
@@ -39,6 +41,7 @@ type Item = {
   brand: string | null;
   location: string | null;
   costCents: number | null;
+  costTenThou: number | null;
   priceCents: number | null;
   unit: string | null;
   altNumbers: string[];
@@ -78,7 +81,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
       const items = (
         await tx.part.findMany({
           where: { shopId },
-          select: { id: true, partNumber: true, description: true, brand: true, location: true, costCents: true, priceCents: true, unit: true, altNumbers: true, numberKeys: true, condition: true, origin: true, consignLinkId: true },
+          select: { id: true, partNumber: true, description: true, brand: true, location: true, costCents: true, costTenThou: true, priceCents: true, unit: true, altNumbers: true, numberKeys: true, condition: true, origin: true, consignLinkId: true },
         })
       ).map((p): Item => ({ ...p, consigned: p.consignLinkId != null, fresh: false, changed: false, more: 0 }));
       // Every number in use, in lower case: the database holds a number once in any case (a partner's consigned
@@ -117,7 +120,10 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
           continue;
         }
         const alt = barcode && barcode !== partNumber ? [barcode] : [];
-        const cost = cents(r.costCents);
+        // The finer figure counts only while it still rounds to the cents the row gives (a stale or edited pair is cents only).
+        const costT = typeof r.costTenThou === "number" && Number.isInteger(r.costTenThou) && r.costTenThou >= 0 && r.costTenThou <= MAX_CENTS * 100 ? r.costTenThou : null;
+        const cost = costT != null ? Math.round(costT / 100) : cents(r.costCents);
+        const costTenThou = costT != null && cents(r.costCents) === cost ? costT : null;
         const price = cents(r.priceCents);
         const brand = String(r.brand ?? "").trim() || null;
         const location = String(r.location ?? "").trim() || null;
@@ -164,7 +170,10 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             const altNumbers = [...new Set([...item.altNumbers, ...alsoKnownAs, ...alt])].filter((n) => n !== ownNumber);
             item.description = description || item.description;
             item.brand = brand || item.brand;
-            item.costCents = cost ?? item.costCents;
+            if (cost != null) {
+              item.costCents = cost;
+              item.costTenThou = costTenThou;
+            }
             item.priceCents = price ?? item.priceCents;
             item.location = location || item.location;
             item.origin = origin ?? item.origin;
@@ -193,6 +202,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             brand,
             location,
             costCents: cost,
+            costTenThou,
             priceCents: price,
             unit,
             altNumbers: alts,
@@ -232,6 +242,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
             origin: it.origin,
             supplier: opts.supplier,
             costCents: it.costCents,
+            costTenThou: it.costTenThou,
             priceCents: it.priceCents,
             altNumbers: it.altNumbers,
             numberKeys: it.numberKeys,
@@ -243,11 +254,11 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
       // Items that were here already: all their new details in one statement, all their added stock in another.
       const details = items.filter((it) => it.changed);
       if (details.length) {
-        const list = JSON.stringify(details.map((it) => ({ id: it.id, description: it.description, brand: it.brand, location: it.location, costCents: it.costCents, priceCents: it.priceCents, origin: it.origin, altNumbers: it.altNumbers, numberKeys: it.numberKeys })));
+        const list = JSON.stringify(details.map((it) => ({ id: it.id, description: it.description, brand: it.brand, location: it.location, costCents: it.costCents, costTenThou: it.costTenThou, priceCents: it.priceCents, origin: it.origin, altNumbers: it.altNumbers, numberKeys: it.numberKeys })));
         await tx.$executeRaw`
-          UPDATE "Part" p SET description = v.description, brand = v.brand, location = v.location, "costCents" = v."costCents", "priceCents" = v."priceCents",
+          UPDATE "Part" p SET description = v.description, brand = v.brand, location = v.location, "costCents" = v."costCents", "costTenThou" = v."costTenThou", "priceCents" = v."priceCents",
             origin = v.origin::"PartOrigin", "altNumbers" = ARRAY(SELECT jsonb_array_elements_text(v."altNumbers")), "numberKeys" = ARRAY(SELECT jsonb_array_elements_text(v."numberKeys"))
-          FROM jsonb_to_recordset(${list}::jsonb) AS v(id text, description text, brand text, location text, "costCents" int, "priceCents" int, origin text, "altNumbers" jsonb, "numberKeys" jsonb)
+          FROM jsonb_to_recordset(${list}::jsonb) AS v(id text, description text, brand text, location text, "costCents" int, "costTenThou" int, "priceCents" int, origin text, "altNumbers" jsonb, "numberKeys" jsonb)
           WHERE p.id = v.id AND p."shopId" = ${shopId}`;
       }
       const stock = items.filter((it) => it.more > 0);

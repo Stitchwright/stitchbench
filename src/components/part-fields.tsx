@@ -1,3 +1,4 @@
+import { costText } from "@/lib/format";
 import { CONDITIONS, CONDITION_OPTION, ORIGINS, ORIGIN_OPTION } from "@/lib/part-labels";
 
 type P = {
@@ -13,6 +14,7 @@ type P = {
   location: string | null;
   reorderAt: number;
   costCents: number | null;
+  costTenThou?: number | null;
   priceCents: number | null;
   supplier: string | null;
   notes: string | null;
@@ -140,7 +142,7 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
         <label htmlFor="cost" className="label">
           Cost each ($)
         </label>
-        <input id="cost" name="cost" inputMode="decimal" defaultValue={c2d(part?.costCents)} className="input num" {...locked} />
+        <input id="cost" name="cost" inputMode="decimal" defaultValue={costText(part?.costCents, part?.costTenThou)} className="input num" {...locked} />
       </div>
       <div className="field">
         <label htmlFor="price" className="label">

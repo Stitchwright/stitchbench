@@ -4,7 +4,7 @@ import { parseTable } from "@/lib/parse-table";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { importItems, type ImportRow } from "@/actions/inventory-import";
-import { money, toCents } from "@/lib/format";
+import { money, parseCost, toCents } from "@/lib/format";
 import { EXCEL_NUMBER } from "@/lib/input";
 import { CONDITION_NAME, ORIGIN_NAME, conditionFromText, originFromText } from "@/lib/part-labels";
 
@@ -54,6 +54,12 @@ function cents(v: string): number | null {
   return c != null && c >= 0 ? c : null;
 }
 
+/** The same cost to 4 decimals (ten-thousandths of a dollar), for a supplier price finer than a cent. */
+function tenThou(v: string): number | null {
+  const t = parseCost(v);
+  return t != null && t >= 0 ? t : null;
+}
+
 function guess(headers: string[]): Record<Field, number> {
   const used = new Set<number>();
   const map = {} as Record<Field, number>;
@@ -86,6 +92,7 @@ export function ImportItems() {
       description: cell(r, "description") || null,
       brand: cell(r, "brand") || null,
       costCents: cents(cell(r, "cost")),
+      costTenThou: tenThou(cell(r, "cost")),
       priceCents: cents(cell(r, "price")),
       qty: cell(r, "qty") === "" ? null : parseQty(cell(r, "qty")),
       location: cell(r, "location") || null,

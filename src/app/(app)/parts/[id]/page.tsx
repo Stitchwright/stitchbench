@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { fmtDate, money } from "@/lib/format";
+import { fmtDate, money, moneyCost } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
@@ -98,7 +98,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
           <Section title="Stock">
             <div className="mb-4 grid grid-cols-3 gap-3">
               <KV k="On hand" v={<span className="num text-xl font-semibold">{qtyText(p.qtyOnHand, p.unit)}</span>} />
-              <KV k="Cost" v={money(p.costCents)} />
+              <KV k="Cost" v={moneyCost(p.costCents, p.costTenThou)} />
               <KV k="Price" v={money(p.priceCents)} />
             </div>
             {p.consignLinkId ? (
