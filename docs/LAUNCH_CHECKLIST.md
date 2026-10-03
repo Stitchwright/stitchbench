@@ -51,8 +51,8 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 - [ ] Test mode first: the online shop's test purchase on hosted StitchShop (card 4242 4242 4242 4242).
 - [ ] Hub billing: one product per plan with its prices (Solo $25/month and $250/year, Shop $45 and $450, and the
       four founding prices $15 / $150 and $30 / $300), their ids in the hub's eight `STRIPE_PRICE_*` variables (names
-      in HANDOFF 2ad), the webhook to the hub with its **nine** events (the hub README lists them; `charge.dispute.closed`
-      is new), the Customer Portal settings for switching plans (hub README). Test a subscription with a test card,
+      in HANDOFF 2ad), the webhook to the hub with its **ten** events (the hub README lists them; `charge.dispute.closed`
+      and `charge.dispute.updated` are new), the Customer Portal settings for switching plans (hub README). Test a subscription with a test card,
       including one during the trial (no charge until the trial ends). Then switch to live keys.
 - [ ] In Stripe's Billing settings, turn on the reminder email before a free trial ends, so no shop is surprised by
       its first charge (a lawyer question too: some states require that notice for automatic renewals).
