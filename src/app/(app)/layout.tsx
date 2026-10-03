@@ -12,6 +12,7 @@ import { fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { GraceBanner, ModulePills, type GraceItem, type RenewPill } from "@/components/module-banner";
+import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -47,8 +48,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     };
   });
 
+  // The shop's https address for tablets (the Windows program's SECURE_URL), for the camera and copy buttons to name on a
+  // plain-http page (src/components/secure-page.tsx). React hoists the tag into <head>. This layout renders per request
+  // (requireUser), so the value is the running program's, not the build's.
+  const secureUrl = secureAddress();
+
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
+      {secureUrl && <meta name={SECURE_ADDRESS_META} content={secureUrl} />}
       <aside className="no-print border-b border-line bg-surface md:sticky md:top-0 md:h-screen md:overflow-y-auto md:w-60 md:shrink-0 md:border-r md:border-b-0">
         <div className="flex items-center justify-between gap-2 px-4 py-3 md:block md:py-5">
           <Link href="/" className="block">

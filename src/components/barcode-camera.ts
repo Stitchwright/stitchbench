@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { insecureMessage, useSecurePage } from "@/components/secure-page";
+
+export const CAMERA_INSTEAD = "Here, use a USB or Bluetooth scanner, or type the code.";
 
 type Detector = { detect(src: HTMLVideoElement): Promise<{ rawValue: string }[]> };
 
@@ -12,11 +15,13 @@ const REPEAT_GAP_MS = 1500;
  * Read barcodes with the phone / tablet / webcam camera. USB and Bluetooth scanners don't need this: they type the
  * code and press Enter. `onCode` always sees the latest state of the page (it isn't frozen when the camera starts).
  * A code held in view is reported once, however long it stays there; it is reported again only after it has been out
- * of view for a moment, so the next identical item on a shelf still counts.
+ * of view for a moment, so the next identical item on a shelf still counts. `page` says whether this page may use the
+ * camera at all (a secure page) and the https address to use instead when it may not: show <InsecureNotice> with it.
  */
 export function useBarcodeCamera(onCode: (code: string) => void) {
   const video = useRef<HTMLVideoElement>(null);
   const [on, setOn] = useState(false);
+  const page = useSecurePage();
   const stopRef = useRef<(() => void) | null>(null);
   const handler = useRef(onCode);
   const seen = useRef({ code: "", at: 0 });
@@ -36,9 +41,13 @@ export function useBarcodeCamera(onCode: (code: string) => void) {
 
   async function start() {
     // Browsers only hand the camera to a secure page: https, or the shop PC's own window. A phone on the shop's plain
-    // http address gets told so, instead of a cryptic error.
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      toast.error("The camera only works on an https address or on the shop PC itself. Here, use a USB or Bluetooth scanner, or type the code.");
+    // http address is told so, with the shop's https address when there is one, instead of a cryptic error.
+    if (!window.isSecureContext) {
+      toast.error(insecureMessage("The camera", CAMERA_INSTEAD, page.address), { duration: 12_000 });
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error(`This browser has no camera access. ${CAMERA_INSTEAD}`);
       return;
     }
     try {
@@ -86,7 +95,7 @@ export function useBarcodeCamera(onCode: (code: string) => void) {
     }
   }
 
-  return { video, on, start, stop: () => stopRef.current?.() };
+  return { video, on, page, start, stop: () => stopRef.current?.() };
 }
 
 /** A short beep: high for found, low for not found. */

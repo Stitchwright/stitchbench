@@ -22,7 +22,8 @@ import {
 import type { RegisterItem } from "@/lib/register-item";
 import type { BookingDue } from "@/lib/booking-types";
 import { enrollAtRegister, openClassSeats } from "@/actions/class-register";
-import { beep, useBarcodeCamera } from "@/components/barcode-camera";
+import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
+import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { VacUnitTools } from "@/components/vac/unit-tools";
 import { money, toCents } from "@/lib/format";
@@ -359,7 +360,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   }
 
   // A camera sees the same code many times a second: count it once. A handheld scanner's every scan counts.
-  const { video: camVideo, on: camOn, start: camStart, stop: camStop } = useBarcodeCamera((c) => {
+  const { video: camVideo, on: camOn, page: camPage, start: camStart, stop: camStop } = useBarcodeCamera((c) => {
     if (c === last.current.code && Date.now() - last.current.at < 1500) return;
     last.current = { code: c, at: Date.now() };
     lookup(c);
@@ -496,6 +497,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             {camOn ? <CameraOff size={14} aria-hidden /> : <Camera size={14} aria-hidden />} {camOn ? "Stop camera" : "Camera"}
           </button>
         </form>
+        <InsecureNotice what="The camera" instead={CAMERA_INSTEAD} page={camPage} />
         <video ref={camVideo} className={camOn ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
         <div className="flex flex-wrap gap-2">

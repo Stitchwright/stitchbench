@@ -42,6 +42,8 @@ The tray icon's **Address for other devices** lists the addresses. Click one to 
 - **Same Wi-Fi:** `http://<pc-name>:3100` in any browser, on a laptop, tablet or phone.
 - **On the road:** install [Tailscale](https://tailscale.com) (free) on the shop PC and on each laptop or phone,
   signed in to the same account, and use the *Tailscale* address from the tray.
+- **Tablets and phones that scan with the camera, or use the copy buttons:** they need the *Secure (https)* address;
+  see [HTTPS on the shop network](#https-on-the-shop-network-tablets-and-phones) below.
 
 The Wi-Fi addresses are plain `http://`: sign-ins cross the network unencrypted, so anyone who can listen on that
 Wi-Fi could read them. Use them only on a network just for the shop's own devices, with its own password. When
@@ -52,6 +54,74 @@ the right password still works. The Windows program has no limit per device, so 
 guessing at different accounts: that is one more reason to keep customers off the shop's own network.
 
 Add each person under **Settings → People**. Everyone signs in with their own email and password.
+
+### HTTPS on the shop network (tablets and phones)
+
+Browsers allow two things only on a *secure* page (an `https://` address, or the shop PC's own window): the **camera
+barcode scanner** (register, scan station) and the **one-tap copy buttons**. A tablet or phone on the plain
+`http://<pc-name>:3100` address can't use them; the program says so where it matters, names the secure address when it
+has one, and the handheld USB / Bluetooth scanners and typed codes keep working regardless. To give the tablets a
+secure address:
+
+**Preferred: Tailscale.** It gives the shop PC an `https://<pc>.<tailnet>.ts.net` address with a real certificate,
+reachable from every device signed in to your Tailscale network (in the shop and on the road), with nothing to install
+on the tablets but Tailscale itself. It's free for personal use and small teams.
+1. Install [Tailscale](https://tailscale.com/download) on the shop PC and on each tablet or phone, and sign them all
+   in to the same account (the same *tailnet*).
+2. In the Tailscale admin console → [DNS](https://login.tailscale.com/admin/dns), turn on **MagicDNS** and
+   **HTTPS Certificates** (one click each; the tray item tells you if this is missing).
+3. On the shop PC, open the tray menu → **Secure address for tablets (Tailscale)…** and press **Turn on**. The
+   program runs `tailscale serve --bg --https=443 http://127.0.0.1:3100`, remembers the choice (`secureUrl` and
+   `tailscaleServe` in the settings file), restarts its server for a few seconds, and copies the new address. From then
+   on it is listed first under **Address for other devices**, as *Secure (https), for tablets and phones*. If Tailscale
+   asks an admin to approve Serve the first time, the dialog shows the link.
+4. On each tablet, open that address and bookmark it (add it to the home screen). The first visit can take a few
+   seconds while Tailscale fetches the certificate. Sign in as usual; the camera and copy buttons now work.
+
+The same tray item turns it off again (`tailscale serve --https=443 off`). Tailscale keeps the serve setting across
+reboots on its own, and the program puts it back if something reset it. The address only answers inside your tailnet:
+nothing is opened to the internet. Notes:
+- The plain `http://` addresses keep working for the PC itself and for anything that doesn't need the camera.
+- The program's own window on the PC is already a secure page; nothing changes there.
+- If you also use **Tailscale Funnel** for customer links (`publicUrl`), it must not be on port 443, or the whole
+  program would be on the public internet: the tray item refuses in that case. Run the funnel on another port, e.g.
+  `tailscale funnel --bg --https=8443 http://127.0.0.1:3101`, and set `publicUrl` to the `:8443` address. The secure
+  address and `publicUrl` must differ: `publicUrl`'s host serves only the customer pages.
+- Running StitchBench and StitchShop on one PC? Only one program can have port 443. Turn the secure address on for
+  one of them; the other can be served by hand on another port (`tailscale serve --bg --https=8444
+  http://127.0.0.1:3110`) and its address written into that program's `secureUrl`.
+
+**Fallback: your own certificate (shops without Tailscale).** A certificate the tablets are told to trust also makes
+the address secure. The program does not make one itself yet (planned: an https listener on port 3443 with a
+certificate the tray can export; it needs the proxy, the certificate generation and the tablet trust steps tested on
+iPhone and Android, so it is more than a day and not in this version). Until then, a small reverse proxy on the shop PC
+does it; [Caddy](https://caddyserver.com) is the simplest because it makes and trusts a local certificate authority on
+its own:
+1. Install Caddy on the shop PC (`winget install CaddyServer.Caddy`, or the download from caddyserver.com), make a
+   folder such as `C:\Caddy`, and put a file named `Caddyfile` there with:
+   ```
+   https://<pc-name>:3443 {
+     tls internal
+     reverse_proxy 127.0.0.1:3100
+   }
+   ```
+   `<pc-name>` is the name tablets reach the PC by (the one in the tray's *This PC's name* address). A fixed IP address
+   works too, but the name is safer: certificates are tied to it.
+2. In that folder run `caddy run` once as administrator (`caddy trust` installs its root certificate on the PC), then
+   install it as a service so it starts with Windows: `caddy start` at login, or a service through `sc create` or
+   Task Scheduler. Allow port 3443 on the *Private* network when Windows asks.
+3. Copy Caddy's root certificate `%APPDATA%\Caddy\pki\authorities\local\root.crt` to each tablet and trust it:
+   - **iPhone / iPad:** AirDrop or email the file, open it, then Settings → General → VPN & Device Management → install
+     the profile, then Settings → General → About → Certificate Trust Settings → turn on full trust for it.
+   - **Android:** Settings → Security → More security settings → Encryption & credentials → Install a certificate →
+     CA certificate → choose the file (the wording differs a little per maker). Chrome trusts it after that.
+   - **Windows / Mac laptops:** double-click the file and put it in Trusted Root Certification Authorities (Windows)
+     or Keychain → System → Always Trust (Mac).
+4. Put the address in the program's settings file, `"secureUrl": "https://<pc-name>:3443"`, and restart StitchBench.
+   The tray lists it first and the program names it on tablets that are still on the plain address.
+
+Caddy's root certificate is valid for ten years and the leaf certificates renew themselves. Keep the `pki` folder as
+private as the backups: anyone with the root key can impersonate the shop PC to the tablets that trust it.
 
 ### When the internet is down
 Everything the shop does all day is on the shop PC: tickets, customers, machines, the register, inventory,
@@ -107,6 +177,8 @@ makes it up if it is missing and resets the role's password to it at every start
 | `openAtLogin` | start with Windows |
 | `publicUrl` | optional: the https address customers open for estimate and unsubscribe links (a tunnel pointed at the links port); see Messages below |
 | `linksPort` | the port that serves only the public pages (default the web port + 1) |
+| `secureUrl` | optional: the program's own https address for the shop's tablets and phones (camera, copy buttons); the tray's Tailscale item fills it in, or set it by hand for your own certificate. See [HTTPS on the shop network](#https-on-the-shop-network-tablets-and-phones) |
+| `tailscaleServe` | set by the tray's **Secure address for tablets (Tailscale)** item: `true` while it is on (the program puts the serve back if Tailscale lost it) |
 
 ### Updating and uninstalling
 - **Update:** install the newer version over the old one. The database updates itself on the next start.
@@ -443,7 +515,9 @@ changeable under Rules).
 Customer links (estimate approval, one-click unsubscribe) need an address the customer's phone can open. The Windows
 program serves **only the public pages** on a second port, the *links port* (`linksPort` in the settings file,
 default the web port + 1, so 3101), and only when `publicUrl` is set. Point a tunnel at that port (Cloudflare Tunnel,
-Tailscale Funnel, ngrok, or a port forward with a certificate) and put its https address in `publicUrl`. Without a
+Tailscale Funnel, ngrok, or a port forward with a certificate) and put its https address in `publicUrl`. A Tailscale
+Funnel must not be on port 443 if the tray's secure address for tablets is on (that one is the program itself, on 443):
+use e.g. `tailscale funnel --bg --https=8443 http://127.0.0.1:3101`. Without a
 public address everything still works: estimates say "reply to this text or call us", and unsubscribes arrive by
 reply. Hosted installs set `PUBLIC_URL` to their own address.
 
@@ -525,8 +599,10 @@ built up reputation (EV certificates and Trusted Signing skip that). Keep signin
 
 ### Updating an installed program without a new installer
 Stop StitchBench (tray → Quit). Copy `desktop/server` over
-`%LOCALAPPDATA%\Programs\StitchBench\resources\server`, and `main.mjs`, `migrate.mjs`, `backup.mjs` and
-`reference.mjs` into `%LOCALAPPDATA%\Programs\StitchBench\resources\app`, then start StitchBench again. It applies
+`%LOCALAPPDATA%\Programs\StitchBench\resources\server`, and every program file listed in `desktop/package.json`
+(`build.files`: `main.mjs`, `migrate.mjs`, `backup.mjs`, `reference.mjs`, `app-role.mjs`, `links-gate.mjs`,
+`tailscale.mjs`) into `%LOCALAPPDATA%\Programs\StitchBench\resources\app`, then start StitchBench again
+(`scripts/local-test/update_installed.ps1 -Version <v>` does all of this). It applies
 any database updates and new reference data by itself.
 
 ### Tools in `desktop/`

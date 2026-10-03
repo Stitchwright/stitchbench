@@ -40,6 +40,7 @@
       "reference.mjs",
       "app-role.mjs",
       "links-gate.mjs",
+      "tailscale.mjs",
       "icon.png",
       "package.json",
       "node_modules/**/*"
