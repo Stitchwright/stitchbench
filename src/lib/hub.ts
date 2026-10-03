@@ -3,6 +3,7 @@ import "server-only";
 // Sync pushes what this shop shared, then pulls every change since last time into the local copy
 // (ManualLink, HubPost, HubPhoto, HubFigure). Pictures are fetched the first time someone looks at them.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { actingCompany, asCompany } from "@/lib/acting-company";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
@@ -43,8 +44,10 @@ type HubPostIn = {
   body: string;
   deleted: boolean;
   mine: boolean;
-  // The company on the sharing install (hubs from before per-company identity don't send it)
+  // The company on the sharing install (hubs from before per-company identity don't send it), and its id in the hub's
+  // shops table once it has claimed itself; shopName is then the company's current name
   shopRef?: string | null;
+  shopId?: string | null;
   createdAt: string;
   photos: { id: string; kind: PhotoKind; caption: string | null; mime: string; sortOrder: number }[];
 };
@@ -153,9 +156,12 @@ export function hubOfflineSince() {
   return net.offlineSince;
 }
 
-/** Sync work: always tries the hub in full, whatever happened last time. */
+/**
+ * Sync work: always tries the hub in full, whatever happened last time, and speaks for the install, not for the company
+ * whose action set it off (a sync started by one company's click pushes every company's notes and claims).
+ */
 export function inBackground<T>(fn: () => Promise<T>) {
-  return net.background.run(true, fn);
+  return net.background.run(true, () => asCompany(null, fn));
 }
 
 function wentOffline(why: string) {
@@ -244,7 +250,20 @@ async function failure(r: Response) {
   } catch {
     /* not JSON */
   }
+  // The hub refused a change to a row of another company on this same install (it says so when the request named a
+  // company, X-Shop-Ref): in the person's words, about this program.
+  const other = r.status === 403 && /^That (\w[\w ]*?) belongs to another company/.exec(msg);
+  if (other) msg = `That ${other[1]} belongs to another company on this ${appName()}.`;
   return new HubError(msg, r.status);
+}
+
+/**
+ * The company a hub call speaks for: the one given, else the one acting (the signed-in person's, set by safe() for the
+ * whole action); none in background work. `shopRef: null` says "the install itself" on purpose.
+ */
+function companyHeader(shopRef: string | null | undefined): Record<string, string> {
+  const ref = shopRef === undefined ? actingCompany() : shopRef;
+  return ref ? { "X-Shop-Ref": ref } : {};
 }
 
 /**
@@ -252,14 +271,14 @@ async function failure(r: Response) {
  * under the same rules as hubFetch: the address checked, no redirects followed, the hub's refusal as a HubError.
  * `key`: an install key to send (the one this install had on that hub before it left), or none.
  */
-export async function hubRequest<T>(base: string, path: string, o: { method?: string; json?: unknown; key?: string | null } = {}): Promise<T> {
+export async function hubRequest<T>(base: string, path: string, o: { method?: string; json?: unknown; key?: string | null; shopRef?: string | null } = {}): Promise<T> {
   const url = checkHubUrl(base);
   if (!path.startsWith("/v1/") || /[#?\\]|(^|\/)\.\.?(\/|$)/.test(path)) throw new UserError("That hub request isn't allowed.");
   const r = await reach(
     url + path,
     {
       method: o.method ?? "POST",
-      headers: { "Content-Type": "application/json", ...(o.key ? { Authorization: `Bearer ${o.key}` } : {}) },
+      headers: { "Content-Type": "application/json", ...(o.key ? { Authorization: `Bearer ${o.key}` } : {}), ...companyHeader(o.shopRef) },
       body: o.json === undefined ? undefined : JSON.stringify(o.json),
     },
     url,
@@ -268,8 +287,12 @@ export async function hubRequest<T>(base: string, path: string, o: { method?: st
   return (await r.json()) as T;
 }
 
-/** quick: a page is waiting on this (a picture, ratings); it gives up sooner when the hub is slow or down. */
-export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean } = {}) {
+/**
+ * quick: a page is waiting on this (a picture, ratings); it gives up sooner when the hub is slow or down.
+ * shopRef: the company this call speaks for (X-Shop-Ref) when it isn't the acting one (companyHeader): a page, or a
+ * library function called outside an action, names it.
+ */
+export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean; shopRef?: string | null } = {}) {
   const s = await hubState();
   if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → Community hub).");
   // The install key goes with every request: only to an address the join rules allow (https, or http on this computer).
@@ -279,12 +302,12 @@ export async function hubFetch(path: string, init: RequestInit & { json?: unknow
   if (!route.startsWith("/v1/") || /(^|\/)\.\.?(\/|$)|%2e|%2f|%5c|\\|#/i.test(route) || path.includes("#")) {
     throw new UserError("That hub request isn't allowed.");
   }
-  const { json, ...rest } = init;
+  const { json, shopRef, ...rest } = init;
   const r = await reach(
     base + path,
     {
       ...rest,
-      headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
+      headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...companyHeader(shopRef), ...(rest.headers ?? {}) },
       body: json !== undefined ? JSON.stringify(json) : rest.body,
     },
     base,
@@ -565,8 +588,10 @@ export type HubListing = {
   id: string;
   shopName: string;
   mine: boolean;
-  // The company on the seller's install that listed it (hubs from before per-company identity don't send it)
+  // The company on the seller's install that listed it (hubs from before per-company identity don't send it), and its
+  // id in the hub's shops table once it has claimed itself; shopName is then the company's current name
   shopRef?: string | null;
+  shopId?: string | null;
   title: string;
   description: string | null;
   kind: string;
@@ -592,6 +617,16 @@ export type HubListing = {
 };
 
 export type Reputation = { avg: number | null; count: number };
+/** GET /v1/reputation/:installId?shopRef=: a shop's standing, with the company's current name and hub id once it has claimed itself. */
+export type ReputationAnswer = {
+  installId: string;
+  shopRef: string | null;
+  shopId?: string | null;
+  shopName?: string | null;
+  asSeller: Reputation;
+  asBuyer: Reputation;
+  recent: { stars: number; comment: string | null; role: string; at: string }[];
+};
 export type Rating = { stars: number; comment: string | null; at: string } | null;
 
 export type HubOrder = {
@@ -602,9 +637,12 @@ export type HubOrder = {
   item: { title: string; brand: string | null; partNumber: string | null; condition: string; origin?: string | null };
   sellerShop: string;
   buyerShop: string;
-  // Which company on each install (hubs from before per-company identity don't send them)
+  // Which company on each install (hubs from before per-company identity don't send them), and their ids in the hub's
+  // shops table once claimed; sellerShop and buyerShop are then the companies' current names
   sellerShopRef?: string | null;
   buyerShopRef?: string | null;
+  sellerShopId?: string | null;
+  buyerShopId?: string | null;
   qty: number;
   unitPriceCents: number;
   shippingCents: number | null;
@@ -1078,7 +1116,7 @@ export async function claimShopNow(shopId: string): Promise<StandingAnswer> {
   const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true } });
   if (!shop) throw new UserError("Company not found.");
   const sole = (await db.shop.count()) === 1;
-  const answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole) })).json()) as StandingAnswer;
+  const answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole), shopRef: shop.id })).json()) as StandingAnswer;
   await applyStanding(shop.id, answer);
   return answer;
 }

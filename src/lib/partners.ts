@@ -231,7 +231,7 @@ export function longPartnerCode(url: string, code: string) {
 
 /** This shop makes a code for the shop it wants to partner with. Needs the hub (Settings -> Community hub). */
 export async function createPartnerInvite(shopId: string, shopName: string, side: Side, terms: PartnerTerms) {
-  const r = (await (await hubFetch("/v1/partners/invites", { method: "POST", json: { shopRef: shopId, shopName, side, terms } })).json()) as {
+  const r = (await (await hubFetch("/v1/partners/invites", { method: "POST", json: { shopRef: shopId, shopName, side, terms }, shopRef: shopId })).json()) as {
     code: string;
     expiresAt: string;
   };
@@ -251,7 +251,7 @@ export async function redeemPartnerCode(shopId: string, shopName: string, contac
   let out: { link: HubPartnerLink; side: Side };
   if (st?.url && st.installKey) {
     if (url && url !== st.url) throw new UserError(`This install uses the hub at ${st.url}; that code is for ${url}. Ask for a code from the same hub.`);
-    out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName } })).json()) as typeof out;
+    out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName }, shopRef: shopId })).json()) as typeof out;
   } else {
     const base = url ?? DEFAULT_HUB_URL;
     // The code's hub is the one this install left, and it still knows the install: the same install again, for its
@@ -278,7 +278,7 @@ export async function redeemPartnerCode(shopId: string, shopName: string, contac
         formerInstallKey: null,
       };
       await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
-      out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName } })).json()) as typeof out;
+      out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName }, shopRef: shopId })).json()) as typeof out;
     } else {
       let r: Response;
       try {
@@ -323,7 +323,7 @@ export async function redeemPartnerCode(shopId: string, shopName: string, contac
 
 export async function endPartnership(shopId: string, linkId: string, note: string | null) {
   await partnerLink(shopId, linkId);
-  const l = (await (await hubFetch(`/v1/partners/links/${hubId(linkId)}/end`, { method: "POST", json: { shopRef: shopId, note } })).json()) as HubPartnerLink;
+  const l = (await (await hubFetch(`/v1/partners/links/${hubId(linkId)}/end`, { method: "POST", json: { shopRef: shopId, note }, shopRef: shopId })).json()) as HubPartnerLink;
   await db.partnerLink.update({ where: { shopId_id: { shopId, id: linkId } }, data: { status: l.status, endedAt: l.endedAt ? new Date(l.endedAt) : new Date() } });
 }
 
