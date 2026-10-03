@@ -10,6 +10,7 @@ import { withDisclosure } from "@/lib/part-labels";
 import { sameText } from "@/lib/input";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, toCents } from "@/lib/format";
+import { removePaymentFor } from "@/lib/payments";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { CLOSING_STATUSES, PAYMENT_LABEL, SITE_STATUS_ORDER, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
@@ -595,10 +596,7 @@ export const addPayment = safe.whileLapsed("addPayment")(async function addPayme
 export const removePayment = safe.whileLapsed("removePayment")(async function removePayment(paymentId: string) {
   // Taking a payment off a ticket is for the owner or an admin (like voiding a register sale).
   const user = await requireAdmin();
-  const p = await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } } });
-  if (!p) throw new UserError("Payment not found.");
-  await db.payment.delete({ where: { id: paymentId } });
-  refresh(p.ticketId);
+  refresh(await removePaymentFor(user, paymentId));
   revalidatePath("/sales");
 });
 

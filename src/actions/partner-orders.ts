@@ -11,7 +11,7 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { numberKey, partKeys, partNumberClash, stockFor } from "@/lib/parts";
 import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
-import { consignReturned, MAX_MONEY, MAX_QTY, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
+import { answerConsignReturn, consignReturned, MAX_MONEY, MAX_QTY, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
 
@@ -159,7 +159,7 @@ export const partnerOrderAction = safe.whileLapsed("partnerOrderAction")(async f
             throw await partNumberClash(e, shopId, stock.partNumber);
           });
         }
-        await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: l.qty }, costCents: l.unitCents } });
+        await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: l.qty }, costCents: l.unitCents, costTenThou: null } });
         await tx.stockMove.create({ data: { shopId, partId: part.id, qty: l.qty, reason: "RECEIVED", userId: user.id, note: `${o.number} from ${link.partnerName}`, createdAt: at } });
       }
     } else {
@@ -258,6 +258,24 @@ export const returnConsigned = safe(async function returnConsigned(linkId: strin
     return n;
   });
   if (!back) throw new UserError("Nothing went back: the shelf count changed meanwhile. Reload and try again.");
+  refresh(linkId);
+});
+
+/** Repair shop: the sewing shop's hand-off arrived, so it goes back on the shelf (like confirming a settlement payment). */
+export const confirmConsignReturn = safe(async function confirmConsignReturn(linkId: string, itemKey: string) {
+  const user = await requireAdmin();
+  const link = await partnerLink(user.shopId, linkId);
+  if (link.side !== "repair") throw new UserError("The repair shop confirms stock coming back.");
+  if (!(await answerConsignReturn(user.shopId, link, itemKey, true, new Date()))) throw new UserError("Nothing is waiting to be confirmed for that item.");
+  refresh(linkId);
+});
+
+/** Repair shop: it didn't arrive. The claim is dropped and nothing goes on the shelf. */
+export const refuseConsignReturn = safe(async function refuseConsignReturn(linkId: string, itemKey: string) {
+  const user = await requireAdmin();
+  const link = await partnerLink(user.shopId, linkId);
+  if (link.side !== "repair") throw new UserError("The repair shop confirms stock coming back.");
+  if (!(await answerConsignReturn(user.shopId, link, itemKey, false, new Date()))) throw new UserError("Nothing is waiting to be confirmed for that item.");
   refresh(linkId);
 });
 

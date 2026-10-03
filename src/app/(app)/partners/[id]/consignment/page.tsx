@@ -7,8 +7,8 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { qtyText } from "@/lib/register-math";
 import { PageHeader, Section, Empty } from "@/components/ui";
-import { ActionForm, Submit } from "@/components/action-form";
-import { countConsigned, placeConsignment, returnConsigned } from "@/actions/partner-orders";
+import { ActionButton, ActionForm, Submit } from "@/components/action-form";
+import { confirmConsignReturn, countConsigned, placeConsignment, refuseConsignReturn, returnConsigned } from "@/actions/partner-orders";
 
 export default async function Consignment({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -66,7 +66,14 @@ export default async function Consignment({ params }: { params: Promise<{ id: st
                       <td className="num text-right">{money(i.priceCents)}</td>
                       <td className="num text-right">{qtyText(i.placed, unit)}</td>
                       <td className="num text-right">{qtyText(i.sold, unit)}</td>
-                      <td className="num text-right">{qtyText(i.returned, unit)}</td>
+                      <td className="num text-right">
+                        {qtyText(i.returned, unit)}
+                        {i.pendingReturn > 0 && (
+                          <div className="pill tone-wait" title="Not on your shelf until you confirm it arrived">
+                            {qtyText(i.pendingReturn, unit)} {owner ? "says it handed back" : "waiting for them to confirm"}
+                          </div>
+                        )}
+                      </td>
                       <td className="num text-right font-semibold">{qtyText(shelf(i), unit)}</td>
                       <td className="text-xs">
                         {i.countedAt ? (
@@ -79,6 +86,16 @@ export default async function Consignment({ params }: { params: Promise<{ id: st
                         )}
                       </td>
                       <td>
+                        {owner && admin && i.pendingReturn > 0 && (
+                          <div className="flex gap-1">
+                            <ActionButton action={confirmConsignReturn.bind(null, id, i.itemKey)} success="Back on your shelf">
+                              Confirm it arrived
+                            </ActionButton>
+                            <ActionButton action={refuseConsignReturn.bind(null, id, i.itemKey)} success="Not received">
+                              Not received
+                            </ActionButton>
+                          </div>
+                        )}
                         {shelf(i) > 0 && !owner && (
                           <ActionForm action={returnConsigned.bind(null, id, i.itemKey)} className="flex gap-1" success="Recorded">
                             <input name="qty" aria-label={`Quantity of ${i.partNumber} going back`} inputMode="decimal" className="input num w-16" placeholder="qty" required />

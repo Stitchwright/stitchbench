@@ -1431,10 +1431,14 @@ async function applyMessage(m: HubMessage, tx: Prisma.TransactionClient, ctx: Ho
     case "consign.return": {
       const msgId = text(d.id, 80);
       if (msgId && !(await firstTime(tx, shopId, `consign.return:${link.id}:${msgId}`))) return;
-      // The sewing shop hands stock back; we put it back on our shelf, never more than is out there.
+      // The sewing shop says it handed stock back. Nothing goes on our shelf until someone here confirms it arrived
+      // (the same as a settlement payment); until then it waits on the consignment page.
       for (const x of arr(d.items, 500, "items")) {
         const it = obj(x, "item");
-        await consignReturned(shopId, link, idOf(it.itemKey, "item"), Math.abs(qtyOf(it.qty, "qty")), at, tx);
+        const itemKey = idOf(it.itemKey, "item");
+        const qty = Math.abs(qtyOf(it.qty, "qty"));
+        if (link.side === "repair") await holdConsignReturn(shopId, link.id, itemKey, qty, at, tx);
+        else await consignReturned(shopId, link, itemKey, qty, at, tx);
       }
       return;
     }
@@ -1746,6 +1750,36 @@ async function receiveConsigned(shopId: string, link: { id: string; partnerName:
     where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } },
     create: { shopId, linkId: link.id, side: "holder", itemKey, partId: part.id, partNumber: part.partNumber, description: part.description, priceCents: price, placed: qty },
     update: { placed: { increment: qty }, priceCents: price || undefined, partId: part.id },
+  });
+}
+
+/**
+ * The sewing shop's word that it handed stock back: kept on the item as pending (never more than is still out there,
+ * counting what is already pending) until the repair shop confirms it arrived. Nothing moves on the shelf yet.
+ */
+export async function holdConsignReturn(shopId: string, linkId: string, itemKey: string, qty: number, at: Date, tx: Prisma.TransactionClient) {
+  if (!(qty > 0)) return 0;
+  const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId, itemKey } } });
+  if (!item) return 0;
+  const room = Math.max(0, item.placed - item.sold - item.returned - item.pendingReturn);
+  const add = qty <= room + SLACK ? qty : room;
+  if (!(add > SLACK)) return 0;
+  await tx.consignItem.update({ where: { id: item.id }, data: { pendingReturn: { increment: add }, pendingAt: at } });
+  return add;
+}
+
+/**
+ * The repair shop's answer to a hand-off claim: confirmed (it goes back on the shelf, as the sewing shop's own side
+ * already did) or refused (the claim is dropped). Returns the quantity restocked or dropped; 0 when nothing waits.
+ */
+export async function answerConsignReturn(shopId: string, link: { id: string; side: string; partnerName: string }, itemKey: string, confirm: boolean, at: Date) {
+  return db.$transaction(async (tx) => {
+    const item = await tx.consignItem.findUnique({ where: { shopId_linkId_itemKey: { shopId, linkId: link.id, itemKey } } });
+    if (!item || !(item.pendingReturn > 0)) return 0;
+    // Claim it first, so two clicks can't restock it twice.
+    const took = await tx.consignItem.updateMany({ where: { id: item.id, pendingReturn: item.pendingReturn }, data: { pendingReturn: 0, pendingAt: null } });
+    if (!took.count) return 0;
+    return confirm ? consignReturned(shopId, link, itemKey, item.pendingReturn, at, tx) : item.pendingReturn;
   });
 }
 

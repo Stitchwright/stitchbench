@@ -8,7 +8,7 @@ import { openWaits } from "@/lib/part-waits";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
-import { MAX_STOCK, centsField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
+import { MAX_STOCK, centsField, costField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
 import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
@@ -50,7 +50,7 @@ function partData(formData: FormData) {
     // Whether partner shops see it in their catalog isn't a field of this form: it is chosen with "Offer this part" on
     // the part's page (HANDOFF item 9), and a Save here keeps it as it is.
     wholesaleCents: centsField(formData.get("wholesale"), "Partner price"),
-    costCents: centsField(formData.get("cost"), "Cost"),
+    ...(costField(formData.get("cost"), "Cost") ?? { costCents: null, costTenThou: null }),
     priceCents: centsField(formData.get("price"), "Price"),
     supplier: str(formData.get("supplier")),
     notes: str(formData.get("notes")),
@@ -110,7 +110,7 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   if (!partNumber) throw new UserError("Enter a part number.");
   // What an item costs, sells for and is offered to partner shops at is for an owner or admin to change (the register
   // holds a tech to the price too): a tech's Save keeps those as they were.
-  if (user.role === "TECH") Object.assign(data, { costCents: p.costCents, priceCents: p.priceCents, wholesaleCents: p.wholesaleCents });
+  if (user.role === "TECH") Object.assign(data, { costCents: p.costCents, costTenThou: p.costTenThou, priceCents: p.priceCents, wholesaleCents: p.wholesaleCents });
   const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: sameText(partNumber) } });
   if (clash) throw new UserError(`${clash.partNumber} is already another item in inventory.`);
   const altNumbers = data.altNumbers.filter((n) => n !== partNumber);
@@ -145,9 +145,9 @@ export async function moveStock(partId: string, formData: FormData): Promise<Act
       await countStock(user.shopId, partId, n, user.id, note ?? "Shelf count");
     } else {
       if (n <= 0) throw new UserError("Enter how many arrived.");
-      const cost = centsField(formData.get("cost"), "Cost");
+      const cost = costField(formData.get("cost"), "Cost");
       await db.$transaction([
-        db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost != null ? { costCents: cost } : {}) } }),
+        db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost ?? {}) } }),
         db.stockMove.create({ data: { shopId: user.shopId, partId, qty: n, reason: "RECEIVED", userId: user.id, note } }),
       ]);
     }

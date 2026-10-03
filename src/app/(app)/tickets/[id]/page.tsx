@@ -95,6 +95,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const measurable = settings.filter((x) => (x.valueMin != null || x.valueMax != null) && (x.unit === "mm" || x.unit === "deg"));
   const meas = (t.measurements ?? {}) as Record<string, { found?: number; left?: number }>;
   const spec = specs.find((s) => s.upperMinG != null || s.bobbinMinG != null);
+  // Payments that were removed stay on the ticket, each beside the negative one that undid it.
+  const reversed = new Set(t.payments.map((p) => p.reversesId).filter((x): x is string => !!x));
   const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.tradeCommissionPct ?? t.viaAccount?.commissionPct, job?.commissionCents);
   const checklistItems = isSite ? INSTALL_CHECKLIST : checklistFor(kind, t.shop);
   const checklist = (t.checklist ?? {}) as Record<string, { done: boolean; by?: string; at?: string }>;
@@ -524,17 +526,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             {t.payments.length > 0 && (
               <ul className="mb-4 divide-y divide-line text-sm">
                 {t.payments.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                  <li key={p.id} className={`flex items-center justify-between gap-3 py-2${reversed.has(p.id) ? " muted" : ""}`}>
                     <span>
                       {fmtDate(p.paidAt, tz)} · {PAYMENT_LABEL[p.method]}
+                      {reversed.has(p.id) && <span> · removed</span>}
                       {p.method === "INVOICE" && <span className="muted"> · billed to the account: owed until it&apos;s paid</span>}
                       {p.note && <span className="muted"> · {p.note}</span>}
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="num font-semibold">{money(p.amountCents)}</span>
-                      <ActionButton action={removePayment.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove payment">
-                        <Trash2 size={12} aria-label="Remove" />
-                      </ActionButton>
+                      {!p.reversesId && !reversed.has(p.id) && (
+                        <ActionButton action={removePayment.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove payment">
+                          <Trash2 size={12} aria-label="Remove" />
+                        </ActionButton>
+                      )}
                     </span>
                   </li>
                 ))}

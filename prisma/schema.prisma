@@ -585,6 +585,8 @@ model Payment {
   amountCents Int
   paidAt      DateTime      @default(now())
   note        String?
+  // A removed payment stays: a negative payment dated the day it was removed points at the original.
+  reversesId  String?       @unique
 
   @@index([ticketId])
   @@index([paidAt])
@@ -624,6 +626,9 @@ model Part {
   qtyOnHand       Float         @default(0) // fabric sells in fractions of a yard
   reorderAt       Float         @default(0)
   costCents       Int?
+  // The same cost in ten-thousandths of a dollar ($0.125 = 1250), for supplier prices finer than a cent; costCents is
+  // this rounded to cents and is what margins and exports read. Empty on older parts: costCents is then exact.
+  costTenThou     Int?
   priceCents      Int?
   supplier        String?
   notes           String?
@@ -1276,22 +1281,25 @@ model PartnerOrder {
 // Consignment: the repair shop's stock on a sewing shop's shelf. Owner side = my stock out there; holder side = the
 // partner's stock I sell. itemKey is the owner's part id, the same on both sides.
 model ConsignItem {
-  id          String    @id @default(cuid())
-  shopId      String
-  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  linkId      String
-  side        String // owner | holder
-  itemKey     String
-  partId      String?
-  partNumber  String
-  description String
-  priceCents  Int // the shelf price
-  placed      Float     @default(0)
-  sold        Float     @default(0)
-  returned    Float     @default(0)
-  countedQty  Float?
-  countedAt   DateTime?
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  linkId        String
+  side          String // owner | holder
+  itemKey       String
+  partId        String?
+  partNumber    String
+  description   String
+  priceCents    Int // the shelf price
+  placed        Float     @default(0)
+  sold          Float     @default(0)
+  returned      Float     @default(0)
+  countedQty    Float?
+  countedAt     DateTime?
+  // The sewing shop says it handed this much back; it goes on the shelf only when the repair shop confirms it arrived.
+  pendingReturn Float     @default(0)
+  pendingAt     DateTime?
+  updatedAt     DateTime  @updatedAt
 
   @@unique([shopId, linkId, itemKey])
 }
