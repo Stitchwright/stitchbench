@@ -309,14 +309,16 @@ async function run() {
         const key = `guest_${i}`;
         const st = stageOf(gm.stage);
         const embroidery = /embroid/i.test(gm.kind ?? "");
-        const type = /featherweight|singer 2\d\d|15-91|vintage/i.test(`${gm.make} ${gm.model} ${gm.job}`) ? (/featherweight/i.test(gm.model) ? "Featherweight" : "Vintage") : embroidery ? "Embroidery only" : /bernina|pfaff|husqvarna|\bviking\b/i.test(gm.make) ? "Premium computerized" : "Computerized";
+        const serger = /serger|overlock|coverstitch/i.test(`${gm.kind ?? ""} ${gm.model}`);
+        const combo = embroidery && /sew|unit|designer|deluxe/i.test(`${gm.model} ${gm.job}`);
+        const type = serger ? "Serger / cover" : combo ? "Sew + embroidery" : /featherweight|singer 2\d\d|15-91|vintage/i.test(`${gm.make} ${gm.model} ${gm.job}`) ? (/featherweight/i.test(gm.model) ? "Featherweight" : "Vintage") : embroidery ? "Embroidery only" : /bernina|pfaff|husqvarna|\bviking\b/i.test(gm.make) ? "Premium computerized" : "Computerized";
         machines.push({ key, cust: "guest", brand: gm.make, model: gm.model, serial: `DEMO-${String(7100 + i * 37)}`, type });
-        const base = /featherweight/i.test(gm.model) ? 11900 : embroidery ? 17900 : type === "Premium computerized" ? 24900 : 15900;
-        const svcName = /featherweight/i.test(gm.model) ? "Clean, oil, time & adjust - Featherweight 221/222" : embroidery ? "Clean, oil, time & adjust - embroidery only" : type === "Premium computerized" ? "Clean, oil, time & adjust - premium computerized" : type === "Vintage" ? "Clean, oil, time & adjust - other vintage" : "Clean, oil, time & adjust - computerized";
+        const base = /featherweight/i.test(gm.model) ? 11900 : serger ? 15900 : combo ? 19900 : embroidery ? 17900 : type === "Premium computerized" ? 24900 : 15900;
+        const svcName = /featherweight/i.test(gm.model) ? "Clean, oil, time & adjust - Featherweight 221/222" : serger ? "Clean, oil, time & adjust - serger / coverstitch" : combo ? "Clean, oil, time & adjust - sew & embroidery combo" : embroidery ? "Clean, oil, time & adjust - embroidery only" : type === "Premium computerized" ? "Clean, oil, time & adjust - premium computerized" : type === "Vintage" ? "Clean, oil, time & adjust - other vintage" : "Clean, oil, time & adjust - computerized";
         const lines: Line[] = [{ kind: "SERVICE", d: svcName, cents: base, taxable: false }];
         let wait: TicketSpec["wait"];
         if (st.status === "WAITING_PARTS") {
-          const m = /needs? (?:an? |the )?(?:new )?(.+?)\.?$/i.exec(gm.job);
+          const m = /(?:needs? |\bnew )(?:an? |the )?(?:new )?([^.;,]+)/i.exec(gm.job);
           const pdesc = gm.part ?? (m ? m[1].replace(/^(.)/, (c) => c.toUpperCase()) : "Replacement part");
           const pc = gm.partPriceCents ?? 4200;
           const pkey = `rp_${key}`;
@@ -324,6 +326,12 @@ async function run() {
           lines.push({ kind: "PART", d: `${pdesc}, ${gm.make} ${gm.model}`, cents: pc, taxable: true, partKey: pkey });
           lines.push({ kind: "LABOR", d: "Fit and test the new part", qty: 0.5, cents: 9800, taxable: false });
           wait = { description: `${pdesc} (${gm.make} ${gm.model})`, partKey: pkey, supplier: `${gm.make} parts desk`, orderedAgo: Math.max(1, st.ago - 2), etaDays: 4 };
+        } else if (st.status === "WAITING_CUSTOMER_OK") {
+          // An estimate waiting for the customer: a part to fit if she approves.
+          const m = /(?:needs? |\bnew )(?:an? |the )?(?:new )?([^.;,]+)/i.exec(gm.job);
+          const pdesc = gm.part ?? (m ? m[1].replace(/^(.)/, (c) => c.toUpperCase()) : "Replacement part");
+          lines.push({ kind: "PART", d: `${pdesc}, ${gm.make} ${gm.model}`, cents: gm.partPriceCents ?? 3200, taxable: true });
+          lines.push({ kind: "LABOR", d: "Fit and test the new part", qty: 0.5, cents: 9800, taxable: false });
         } else if (/belt/i.test(gm.job)) {
           const pkey = `rp_${key}`;
           itemsExtra.push({ key: pkey, number: `RP-${modelKey(gm.model).slice(0, 8)}-${i + 1}`, desc: `Motor belt, ${gm.make} ${gm.model}`, priceCents: 1450, stock: 5 });
@@ -340,7 +348,7 @@ async function run() {
           readyAgo: st.status === "READY_FOR_PICKUP" ? 1 : undefined,
           service: svcName,
           problem: gm.job,
-          diagnosis: st.status === "WAITING_PARTS" ? "Confirmed the fault on the bench; the part has to be replaced." : st.status === "READY_FOR_PICKUP" ? "No faults found. Tension and timing within spec." : "Cleaned out; checking timing and belt.",
+          diagnosis: st.status === "WAITING_PARTS" ? "Confirmed the fault on the bench; the part has to be replaced." : st.status === "READY_FOR_PICKUP" ? "No faults found. Tension and timing within spec." : st.status === "WAITING_CUSTOMER_OK" ? "Cleaned and checked; the part is worn and should be replaced. Estimate sent for her OK." : "Cleaned out; checking timing and belt.",
           workDone: st.status === "READY_FOR_PICKUP" ? "Cleaned and oiled to the manual, timing and tension set, test stitch-out done." : undefined,
           lines,
           accessories: embroidery ? ["Power cord", "Foot control", "Hoop", "Embroidery unit"] : ["Power cord", "Foot control", "Case / bag"],
@@ -780,7 +788,7 @@ async function run() {
     await appt(tDrop, "patricia", 5, "11:30", 15, "BOOKED");
     await appt(tLong, "guild", 6, "10:00", 120, "BOOKED", { fee: 4000, note: "Guild charity quilts, three tops." });
     await appt(tLong, null, 5, "14:00", 120, "BOOKED", { blocked: true, title: "Longarm maintenance (Gus)", resource: "Longarm" });
-    if (guest) await appt(tPick, "guest", 3, "11:00", 15, "BOOKED", { ticketId: ticketIdBy["guest_0"], note: "Pickup of the ready machine." });
+    if (guest) await appt(tPick, "guest", 3, "11:00", 15, "BOOKED", { ticketId: ticketIdBy[guestTicketSpecs.find((t) => t.status === "READY_FOR_PICKUP")?.machine ?? "guest_0"], note: "Pickup of the ready machine." });
     await appt(tPick, "walt", 0, "15:30", 15, "BOOKED", { ticketId: ticketIdBy["walt_s"], source: "counter" });
 
     // ---------- shifts (two weeks around today) ----------
