@@ -15,6 +15,8 @@ export type StandingAnswer = {
   message?: string | null;
   key?: string | null;
   revokeKeyIds?: string[] | null;
+  /** The hub's terms version in force and the one the company's account accepted (a hub from package terms-launch on). */
+  terms?: { version?: string | null; accepted?: string | null } | null;
 };
 
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
@@ -22,6 +24,7 @@ const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v
 export async function applyStanding(shopId: string, a: StandingAnswer): Promise<void> {
   const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true } });
   if (!shop) return;
+  const accepted = text(a.terms?.accepted, 40);
   await db.shop.update({
     where: { id: shopId },
     data: {
@@ -31,6 +34,9 @@ export async function applyStanding(shopId: string, a: StandingAnswer): Promise<
       hubStandingNote: text(a.message, 500),
       hubAccountEmail: text(a.account?.email, 200),
       hubAccountVerified: a.account?.verified === true,
+      // What the account accepted, as the hub keeps it (it may have accepted a newer version on the hub's own page). An
+      // older hub, or an account that accepted nothing yet, leaves what this program sent when it started the account.
+      ...(accepted ? { termsVersion: accepted } : {}),
     },
   });
   // Keys the hub took back (a refund, a chargeback): only rows the hub itself issued.
