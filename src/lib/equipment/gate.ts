@@ -4,7 +4,7 @@ import "server-only";
 // can be finished (modules-design.md D3 and section 6.3).
 import type { TicketStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { CLOSING_STATUSES } from "@/lib/constants";
 import { workable } from "@/lib/license";
 import { blockedMessage, type ModuleState } from "@/lib/module-info";

@@ -1,5 +1,5 @@
 // Reading a kind's intake answers and readings out of a form (modules-design.md section 9.3). Pure.
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { FieldDef, ReadingDef } from "./types";
 
 const KEY = /^[a-z0-9-]{1,40}$/;

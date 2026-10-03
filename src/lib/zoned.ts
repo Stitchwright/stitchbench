@@ -1,6 +1,6 @@
 // Shop-time helpers for scheduling and messages (scheduling-messaging-design.md section 4.1). Pure, safe in the
 // browser: an independent copy of the wall-clock logic in partners.ts / time-zone.ts, so client code can use it too.
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 
 export type Wall = { year: number; month: number; day: number; hour: number; minute: number; weekday: number }; // month 1-12, weekday 0 = Sunday
 

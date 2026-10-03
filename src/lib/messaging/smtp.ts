@@ -7,7 +7,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import SMTPConnection from "nodemailer/lib/smtp-connection";
 import MailComposer from "nodemailer/lib/mail-composer";
-import { isUserError, UserError } from "@/lib/action";
+import { isUserError, UserError } from "@/lib/user-error";
 import { isDesktop } from "@/lib/modules";
 import { privateAddress } from "@/lib/safe-fetch";
 import { SendError } from "./errors";

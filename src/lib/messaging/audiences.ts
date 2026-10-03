@@ -3,7 +3,7 @@ import "server-only";
 // this shop only, never a trade account or another company's), and the check a campaign page shows before it is sent.
 import type { Campaign } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { money } from "@/lib/format";
 import { fmtWhen } from "@/lib/zoned";
 import { allowed, consentState } from "@/lib/messaging/consent";

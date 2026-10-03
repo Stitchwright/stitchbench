@@ -1,5 +1,5 @@
 // Checks on what reaches the server from a browser.
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 
 /**
  * A row id passed to a server action. Actions can be posted to directly with any JSON, so an id may arrive as an

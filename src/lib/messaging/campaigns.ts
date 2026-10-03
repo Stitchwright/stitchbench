@@ -3,7 +3,7 @@ import "server-only";
 // callable with a user so the check scripts can drive it. The actions check who is asking and the module.
 import type { Campaign } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { isDesktop } from "@/lib/modules";
 import { allow } from "@/lib/rate-limit";
 import type { CurrentUser } from "@/lib/session";

@@ -1,7 +1,7 @@
 // The customer's answer to an estimate (scheduling-messaging-design.md 10.4): a POST from the page's confirm step. No
 // session and no module check for an existing link; the token is the only power it carries.
 import { allowPublic } from "@/lib/rate-limit";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { clientAddress } from "@/lib/client-ip";
 import { answerByToken } from "@/lib/estimate-links";
 import { cleanText } from "@/lib/messaging/templates";

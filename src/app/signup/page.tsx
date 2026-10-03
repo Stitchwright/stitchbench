@@ -7,7 +7,7 @@ import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { appName, createShopWithOwner, defaultShopKind, isPlatformAdmin, RESERVED_EMAIL, type ShopKind } from "@/lib/shops";
 import { hubJoined } from "@/lib/hub";
 import { redeemPartnerCode } from "@/lib/partners";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { TimeZoneField } from "@/components/time-zone-field";
 
 /**

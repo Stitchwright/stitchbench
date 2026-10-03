@@ -3,7 +3,7 @@
 // The barcode scanner station: look a part up, receive it, put it on a ticket, or count the shelf.
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
 import { OPEN_STATUSES } from "@/lib/constants";

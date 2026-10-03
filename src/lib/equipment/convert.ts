@@ -3,7 +3,7 @@ import "server-only";
 // workable and the target kind usable, never a unit for sale, never with work on an open ticket (modules-design.md 9.5).
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { CLOSING_STATUSES } from "@/lib/constants";
 import type { CurrentUser } from "@/lib/session";
 import { requireModule } from "@/lib/modules";

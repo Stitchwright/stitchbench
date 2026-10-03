@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import type { EstimateLink, InboundText, OutMessage, Prisma } from "@/generated/prisma/client";
 import { SKIP_REASON_LABEL } from "@/lib/constants";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { requireEquipment } from "@/lib/equipment/gate";
 import { answerRetailEstimate, answerTicketEstimate } from "@/lib/estimate-answer";
 import { fmtDateTime, money, ticketNo } from "@/lib/format";

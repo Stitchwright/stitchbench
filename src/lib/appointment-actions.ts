@@ -3,7 +3,7 @@ import "server-only";
 // script can drive it. Every function needs Scheduling; the admin-only ones say so.
 import type { AppointmentType, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { assertId } from "@/lib/input";
 import { money, str, ticketNo, toCents } from "@/lib/format";
 import type { CurrentUser } from "@/lib/session";

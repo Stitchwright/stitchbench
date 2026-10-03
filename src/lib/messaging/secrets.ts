@@ -2,7 +2,7 @@ import "server-only";
 // The mail password and the Twilio secret at rest: AES-256-GCM under a key derived from SETTINGS_KEY (hosted) or
 // AUTH_SECRET (the Windows program), bound to the shop and field (scheduling-messaging-design.md section 4.1).
 import crypto from "node:crypto";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { isDesktop } from "@/lib/modules";
 
 export type SecretField = "smtpPass" | "twilioToken" | "stripeKey" | "stripeWebhook" | `estimateToken:${string}` | `orderLink:${string}`;

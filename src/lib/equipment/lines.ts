@@ -1,6 +1,6 @@
 // Reading the "What you repair" form (modules-design.md 11.2): one-per-line boxes, the accessory box with its "*"
 // ticks, and the check-in question rows (`q.*` arrays by index, no client JavaScript). Pure.
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { FieldDef } from "./types";
 
 export const MAX_QUESTIONS = 30;

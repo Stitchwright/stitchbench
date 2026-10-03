@@ -3,7 +3,7 @@ import "server-only";
 // kind check-in opens on. Bodies with a user; src/actions/equipment.ts adds requireAdmin and the revalidation.
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { str } from "@/lib/format";
 import { requireModule } from "@/lib/modules";
 import type { CurrentUser } from "@/lib/session";

@@ -1,5 +1,5 @@
 // Message wording and merge fields (scheduling-messaging-design.md section 5). Pure.
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import type { Channel } from "./types";
 
 export const COMMON_FIELDS = ["first_name", "name", "shop_name", "shop_phone"] as const;

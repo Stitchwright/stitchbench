@@ -4,7 +4,7 @@ import "server-only";
 // when they have one bagged vacuum), the call list's marks (called, snoozed, stopped), the one-off send through
 // Marketing, and the worker's "still wanted?" for a queued reminder. runBagsDue does nothing: automatic sending is cut.
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView } from "@/lib/messaging/settings";

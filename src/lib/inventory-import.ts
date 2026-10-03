@@ -4,7 +4,7 @@ import "server-only";
 // for as long as the sheet is long), and it holds one database connection for a second or two, not for minutes.
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { EXCEL_NUMBER } from "@/lib/input";
 import { MAX_CENTS, MAX_STOCK, isPartNumberClash, numberKey, partKeys } from "@/lib/parts";
 import { CONDITIONS, ORIGINS, numberNames, twinNumber } from "@/lib/part-labels";

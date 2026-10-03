@@ -1,7 +1,7 @@
 // A customer's booking or class sign-up from /book/{slug} (online-and-parts-design.md section 2). No session: the slug
 // names the shop and the form carries the rest. Rate-limited per address and per shop; a filled honeypot or a form
 // submitted within five seconds of opening is dropped quietly. Always a 303 back to a page that says what happened.
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { bookOnline, signUpOnline, type OnlineCustomer } from "@/lib/online-booking";
 import { allowPublic, allow } from "@/lib/rate-limit";
 import { formUpTo } from "@/lib/read-body";

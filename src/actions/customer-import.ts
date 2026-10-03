@@ -3,7 +3,7 @@
 // Bringing in a customer list (scheduling-messaging-design.md 11.2): admins, with Marketing on. The counts and the
 // problems come back to the page, so this is a data action, not safe().
 import { revalidatePath } from "next/cache";
-import { isUserError } from "@/lib/action";
+import { isUserError } from "@/lib/user-error";
 import { requireAdmin } from "@/lib/session";
 import { requireOn } from "@/lib/module-gate";
 import { importCustomersAs, type ImportResult, type ImportRow } from "@/lib/messaging/campaigns";

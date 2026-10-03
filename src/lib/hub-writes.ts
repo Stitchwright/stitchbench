@@ -2,7 +2,7 @@ import "server-only";
 // Whether this company may write to the community hub (links, cross-references, shared posts), and the name its
 // writes carry. The StitchBench administrator switches a company's writes off from Companies (Shop.hubWritesOff).
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 
 /**
  * Throws when the company's hub writes are switched off. Otherwise returns the byName to send: "{user} ({company})"

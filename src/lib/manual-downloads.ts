@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ManualLink } from "@/generated/prisma/client";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { db } from "@/lib/db";
 import { brandKey, modelKey } from "@/lib/format";
 import { hubFetch, hubId, hubJoined } from "@/lib/hub";

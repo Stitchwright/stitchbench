@@ -3,7 +3,7 @@ import "server-only";
 // way anyone is signed up (enrollIn, under the class lock). The actions in src/actions/classes.ts check who is asking.
 import type { Enrollment, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { UserError } from "@/lib/action";
+import { UserError } from "@/lib/user-error";
 import { lockKeys } from "@/lib/lock";
 import { addDays, addMonths, fmtWhen, nthWeekdayIn, nthWeekdayOf, ymdParts } from "@/lib/zoned";
 
