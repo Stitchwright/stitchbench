@@ -847,6 +847,16 @@ with `openssl rand -hex 32` on the owner's PC). Everything below is on `scheduli
   Diamond tension or factory rows although the seed JSON does (`npm run db:seed` on the dev DB); retake the website's
   screenshots from the release build (the header and dashboard changed).
 
+## 2ae. Review split since `review-part2` (3 Oct 2026; the owner has no free ultra reviews left)
+
+`review-part2` (1169f6a, 12 commits on main) is set up and not reviewed. After it, the work splits into parts under
+8,000 changed lines, each reviewed after the previous part is merged to main (ultra review diffs against local main):
+part 3 ends at ada57e9^ (about 1,550 lines); part 4 is ada57e9 alone (8,700 lines, almost all
+`prisma/seed-data/service_modes.json`: data, merge without a code review); part 5 ends at b5be68b^ (about 6,830);
+part 6 ends at 5482e9e^ (about 7,420, of which 2,840 are model keys in factory_settings.json); part 7 is the rest
+(docs and research, plus anything later). Branches are made when needed (`git branch review-part3 ada57e9^` etc.).
+Meanwhile Claude ran a focused local review of the riskiest code (billing, money, sign-in): see the next commit.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
