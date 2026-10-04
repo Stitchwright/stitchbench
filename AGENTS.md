@@ -15,4 +15,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
   shop choosing the file (the sharing rule: chosen per item, never automatic).
 - Tension specs come from Bruce's manual library (C:\Manuals\_business-notes\Thread_Tension_Specs.xlsx); regenerate `prisma/seed-data/tension_specs.json` from that sheet, run `python scripts/library/fill_model_keys.py` (fills model keys for names without digits; lookups only match on keys), then `npm run db:seed`.
 - Mirror the paper Machine Log's statuses and lists (`src/lib/constants.ts`).
+- After any `npm install` on Windows, check `package-lock.json` still has `node_modules/@emnapi/core` and
+  `node_modules/@emnapi/runtime` (npm on Windows prunes these Linux-only optional packages; `npm ci` on GitHub and
+  Railway then fails). Put them back as in commit f295adb if they're gone.
 - Work in progress (review fixes, new features): read `docs/HANDOFF.md` before starting.
