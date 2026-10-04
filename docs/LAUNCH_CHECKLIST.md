@@ -7,12 +7,18 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 ## Week 1: get it running
 
 **Order early (it takes days to arrive)**
-- [ ] **Code-signing certificate** for the Windows installer (you, 30 min to order). An OV certificate from a
-      reseller such as SSL.com or Sectigo; validation of your business takes several days, and certificates now come
-      on a hardware token or a cloud signing service. Until it arrives the installer works but Windows warns "unknown
-      publisher". Needs your business's legal name and address.
+- [ ] **Code-signing** for the Windows installer (you, 30 min to apply). First try **Azure Trusted Signing** (about
+      $10 a month, no hardware, and GitHub's installer build can sign every release itself); Microsoft verifies the
+      business, so apply as Timing & Tension or as yourself if the business is too new. If it says no: a Sectigo OV
+      certificate through SSL.com (about $130 to $250 a year plus eSigner cloud signing or your own YubiKey 5 FIPS).
+      Until it's done, test shops use the hosted version; an unsigned installer needs "More info", "Run anyway", and
+      Smart App Control blocks it outright.
 - [ ] **A lawyer** for the terms and privacy drafts (`docs/legal/`, with the questions marked `[LAWYER: ...]`). Book
       the review now; the manual-repository questions can come later.
+
+- [ ] **Register a copyright agent** at the US Copyright Office ($6, online) and set up a takedown email address; the
+      lawyer's review should include the manual repository's questions. Both gate the repository, which comes right
+      after the test month.
 
 **Day 1-2: review and deploy what's built** (you start it, Claude fixes)
 - [ ] Run the code review on `review-part2` (`git checkout review-part2`, then `/ultrareview`), and on the work since
@@ -76,8 +82,6 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
       features behind it.
 
 ## Can wait until after the test month
-- The manual repository's setup: register a copyright agent ($6 at the Copyright Office), a takedown email, the
-  lawyer's answers on the repository questions.
 - An Anthropic key on the hub for the Assistant.
 - Stripe Connect for the online shop, Stripe Terminal card readers.
 - Reward cards.
