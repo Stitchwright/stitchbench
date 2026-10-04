@@ -1144,8 +1144,14 @@ accounts and billing: design first).
    after a grace period, a friendly "subscribe to keep going" notice, nothing locked. The waiver covers the base plan
    only; add-ons are paid. Review partnered shops' support hours and add-on uptake after six months.
 
-23. **Order after the test month (recommended 4 Oct 2026):** the manual repository (the draw for techs; its legal gate
-   is the lawyer, the copyright agent and a takedown address) beside Fabric Smarts (the draw for quilt shops).
+23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
+   or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per
+   company, W2 signed partner invites: short designs first), the real-partnership rule (item 22) if the owner says
+   yes, the Windows install update after a backup, and a dry run of the owner's deploy sitting (merge with the hub
+   branch, Stripe prices, deploy). (2) Next-month features on their OWN branches off `scheduling-features`, so the
+   launch merge stays small: `manual-repo` (the hub side first: storage, the review queue, takedowns; uploads off
+   until the lawyer and the copyright agent) and `fabric-smarts` (F1 first). They ship after the test month; test
+   shops stay on one fixed release.
 
 15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026). **Data extracted 3 Oct**: `prisma/seed-data/service_modes.json`, 136 procedures from 124 service manuals (82 high, 53 medium, 1 low confidence; Brother 46, Janome 34, Elna 9, Baby Lock 8, Viking 7, Bernina 6, Pfaff 6, Juki 5 and more; Tajima's manuals have none); 249 of the 250 factory settings that mention test mode now have an entry procedure, and 167 of 168 numbered references match a test. No passwords recorded (a row stops at the prompt). The owner's sheet to check and correct: `C:\Manuals\_business-notes\Service_Modes.xlsx`, with `SERVICE_MODES_NOTES_2026-10-03.md` (eight things to try on a machine; the PC6500 factory row's "test mode 10" is probably wrong); `scripts/library/service_modes_from_xlsx.py` turns the corrected sheet back into the seed. Still to build: the ServiceMode table, the seed and Windows reference loaders, the card on the machine and ticket pages (match on modelKeys alone: rows carry twin models of other brands). **Owner, 3 Oct: the manual's pictures may be kept and shown**: each procedure gets the figure page and box (as FactorySetting has `figurePage` / `figureBox`), cropped from the local PDF and shared through the hub's figure path like the factory-setting figures, so the card shows the button diagram beside the steps; first for the rows whose entry keys are only drawn (Brother E100, Singer 9910-9940, EverSewn Sparrow QE, Elna 9006, Melco EP1B, Happy HCD2/HCD3), then the rest. Original plan: The factory settings refer to test
    mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
