@@ -73,6 +73,16 @@ export function GraceBanner({ items, admin }: { items: GraceItem[]; admin: boole
  * The company is being moved to another install (company-move-design.md section 7): one bar at the top of every page, for
  * every role. Shown instead of the lapsed bar: the move is what the owner did last, and Cancel is what undoes it.
  */
+/** The real-partnership rule's grace (src/lib/hub-standing.ts partnershipNotice): the hub's friendly words, for owners and admins. */
+export function PartnershipNotice({ note }: { note: string | null }) {
+  if (!note) return null;
+  return (
+    <div className="no-print card card-pad tone-wait mb-4 text-sm" role="status" data-testid="partnership-notice">
+      {note}
+    </div>
+  );
+}
+
 export function MovingBar({ to, since, movedOn, deleteOn, admin }: { to: string | null; since: string; movedOn?: string | null; deleteOn?: string | null; admin: boolean }) {
   // Moved (the hub said so, or the owner did): the old copy, kept read-only until it is deleted by hand after 30 days.
   if (movedOn) {

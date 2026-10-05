@@ -27,6 +27,16 @@ export type StandingAnswer = {
   terms?: { version?: string | null; accepted?: string | null } | null;
 };
 
+/**
+ * The real-partnership rule's notice (hub README, "The real-partnership rule"): a quilt shop's waiver in its 30-day grace
+ * is standing "waived" with a last day (the grace's end) and the hub's friendly words as the note; a waiver that holds has
+ * no last day. Words only: the key decides what the program allows, and nothing here locks anything.
+ */
+export function partnershipNotice(s: { hubStanding: string | null; hubStandingUntil: string | null; hubStandingNote: string | null }): { until: string; note: string } | null {
+  if (s.hubStanding !== "waived" || !s.hubStandingUntil || !s.hubStandingNote) return null;
+  return { until: s.hubStandingUntil, note: s.hubStandingNote };
+}
+
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 
 export async function applyStanding(shopId: string, a: StandingAnswer): Promise<void> {

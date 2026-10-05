@@ -1138,11 +1138,15 @@ accounts and billing: design first).
    (packages F1-F6, after the test month; owner decisions in its section 10), research in `docs/research/`, the
    owner's report https://claude.ai/artifact/4DWQgNFGMYWve7E5k5Ytgy. Outreach emails are DRAFTS: the owner sends them.
 
-22. **A "real partnership" rule for free StitchShop** (recommended 4 Oct 2026; **owner said yes 5 Oct 2026**, built on the branch): the free
-   Shop plan for a partnered quilt shop holds while its repair partner's StitchBench subscription is paid (not a
-   trial) and at least one repair passes between them each quarter (the hub can count partner tickets); otherwise,
-   after a grace period, a friendly "subscribe to keep going" notice, nothing locked. The waiver covers the base plan
-   only; add-ons are paid. Review partnered shops' support hours and add-on uptake after six months.
+22. **A "real partnership" rule for free StitchShop** (recommended 4 Oct 2026; **owner said yes 5 Oct 2026; built 5 Oct, not pushed or deployed**):
+   the waiver (Shop plan, base only; add-ons stay paid) holds while the repair partner is a paying subscriber (active, or trialing with a
+   card; not a free trial, comp, past_due, lapsed or waived) and at least one repair passed in the last or current calendar quarter, which the hub
+   counts itself from partner messages (distinct `job.new` from the quilt shop plus `pickup.done`; no program reporting, no program schema change);
+   a new link is exempt 90 days. When either breaks: 30 days' grace (hub migration 022 `waiver_grace`), still waived, the program shows the hub's words
+   as a notice for owners/admins (`partnershipNotice` in `src/lib/hub-standing.ts`, bar in the layout), then the normal standing (trial if unused, else
+   the lapse rules). Hub: `waiverRule` in `src/billing.mjs`, admin page lists partner, its standing, last repair and grace end; tests in
+   `test/billing.mjs` sections 10 and 10b; program check `scripts/checks/partnership-rule.check.ts`. Weak spot: partner messages aren't signed
+   (L134), so a quilt shop could fake `job.new`; review partnered shops' support hours and add-on uptake after six months.
 
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
    or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per

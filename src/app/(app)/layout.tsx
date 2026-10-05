@@ -12,16 +12,17 @@ import { getModules } from "@/lib/modules";
 import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
-import { GraceBanner, LapsedBar, ModulePills, MovingBar, type GraceItem, type RenewPill } from "@/components/module-banner";
+import { GraceBanner, LapsedBar, ModulePills, MovingBar, PartnershipNotice, type GraceItem, type RenewPill } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 import { deleteFrom } from "@/lib/move/format";
+import { partnershipNotice } from "@/lib/hub-standing";
 import { AppHeader } from "@/components/app-header";
 import { HubResetPrompt } from "@/components/hub-reset-prompt";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const [shop, hub, retailPartners, modules] = await Promise.all([
-    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true } }),
+    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true, hubStanding: true, hubStandingUntil: true, hubStandingNote: true } }),
     db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
     getModules(user.shopId),
@@ -144,6 +145,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />
         )}
         <GraceBanner items={grace} admin={admin} />
+        {admin && shop && <PartnershipNotice note={partnershipNotice(shop)?.note ?? null} />}
         {children}
       </main>
       {/* The Windows program's own window only: a password reset the owner asked for on their StitchHub account. */}
