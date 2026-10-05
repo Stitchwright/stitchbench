@@ -44,7 +44,7 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
       for the footer, and decide whether hosted costs the same $25 as Windows.
 - [ ] Keep `LIVE = false` (search engines stay out) until the test month is done.
 
-**Day 4-5: the hub goes live with accounts** (together, an evening)
+**Day 4-5: the hub goes live with accounts** (together, an evening; step by step in `docs/HUB_DAY.md`)
 - [ ] Email for the hub's account mail: a sending address (`MAIL_FROM`) and a mail service (`SMTP_URL`; a Gmail app
       password works to start, a service like Postmark or Resend is better for delivery).
 - [ ] Point **hub.stitchbench.app** at the hub on Railway (`HUB_URL`).
