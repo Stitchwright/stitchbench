@@ -1138,7 +1138,7 @@ accounts and billing: design first).
    (packages F1-F6, after the test month; owner decisions in its section 10), research in `docs/research/`, the
    owner's report https://claude.ai/artifact/4DWQgNFGMYWve7E5k5Ytgy. Outreach emails are DRAFTS: the owner sends them.
 
-22. **A "real partnership" rule for free StitchShop** (recommended 4 Oct 2026, owner to decide before launch): the free
+22. **A "real partnership" rule for free StitchShop** (recommended 4 Oct 2026; **owner said yes 5 Oct 2026**, built on the branch): the free
    Shop plan for a partnered quilt shop holds while its repair partner's StitchBench subscription is paid (not a
    trial) and at least one repair passes between them each quarter (the hub can count partner tickets); otherwise,
    after a grace period, a friendly "subscribe to keep going" notice, nothing locked. The waiver covers the base plan
