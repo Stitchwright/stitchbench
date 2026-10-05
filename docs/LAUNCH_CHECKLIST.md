@@ -33,7 +33,8 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 - [x] Buy **stitchbench.app** and **stitchshop.app** at Namecheap; auto-renew on. (Done 4 Oct 2026, $33.84 for all three.)
 - [x] Also buy **timingandtension.com** for the repair business (spelled timing-and-tension; it's on the business card
       and Denise's tour pitch will show it once it's yours). Same Cloudflare move.
-- [ ] Make a free **Cloudflare** account and move both domains' nameservers to it (one setting each at Namecheap).
+- [x] Make a free **Cloudflare** account and move the domains' nameservers to it. (Done 5 Oct 2026: all three on the
+      bwattendorfdev@gmail.com Cloudflare account, free plan, nameservers dina and mario.ns.cloudflare.com.)
 
 **Day 3: the website live** (together, 1 hour)
 - [ ] A private GitHub repository for the site (`C:\Users\bwatt\stitchsite`), connected to Cloudflare Pages.
