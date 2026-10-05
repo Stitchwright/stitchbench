@@ -38,7 +38,10 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 
 **Day 3: the website live** (together, 1 hour)
 - [ ] A private GitHub repository for the site (`C:\Users\bwatt\stitchsite`), connected to Cloudflare Pages.
-- [ ] stitchbench.app on the site, stitchshop.app redirecting to /stitchshop/. Fill in your business's legal name
+- [x] The site is live on stitchbench.app and www (5 Oct 2026): private repo bwattendorf/stitchsite, Cloudflare
+      Pages project `stitchbench`, uploaded with wrangler from `out/`. Still to do: stitchshop.app redirecting to
+      /stitchshop/.
+- [ ] (was) stitchbench.app on the site, stitchshop.app redirecting to /stitchshop/. Fill in your business's legal name
       for the footer, and decide whether hosted costs the same $25 as Windows.
 - [ ] Keep `LIVE = false` (search engines stay out) until the test month is done.
 
