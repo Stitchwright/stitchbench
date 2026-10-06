@@ -8,6 +8,7 @@ import { takeInMachine } from "@/actions/repair-jobs";
 import { findCustomers, type CustomerHit } from "@/actions/register";
 import { shrinkImage } from "@/components/photo-upload";
 import { NotifyByField } from "@/components/notify-by-field";
+import { PlateButton } from "@/components/assistant/plate-button";
 import { ACCESSORIES, MACHINE_TYPES } from "@/lib/constants";
 
 type Photo = { blob: Blob; url: string };
@@ -21,7 +22,18 @@ const MAX_PHOTO_BYTES = 2_600_000;
  * notifyRequired: Marketing is on and email or texts are ready, so "How should we tell them" must be answered for a
  * customer who hasn't been asked yet. marketingHidden: the question isn't shown at all.
  */
-export function IntakeForm({ partners, notifyRequired = false, marketingHidden = true }: { partners: { id: string; name: string }[]; notifyRequired?: boolean; marketingHidden?: boolean }) {
+export function IntakeForm({
+  partners,
+  notifyRequired = false,
+  marketingHidden = true,
+  plate = null,
+}: {
+  partners: { id: string; name: string }[];
+  notifyRequired?: boolean;
+  marketingHidden?: boolean;
+  /** "Read the plate" (the Assistant): shown unless null; `unavailable` is the reason it can't work now. */
+  plate?: { unavailable?: string } | null;
+}) {
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -157,6 +169,7 @@ export function IntakeForm({ partners, notifyRequired = false, marketingHidden =
           </label>
           <input id="serial" name="serial" className="input mono" />
         </div>
+        {plate && <PlateButton unavailable={plate.unavailable} />}
         <div className="field">
           <label htmlFor="machineType" className="label">
             Type

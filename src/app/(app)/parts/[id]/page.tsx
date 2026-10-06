@@ -15,6 +15,8 @@ import { OfferPartForm } from "@/components/offer-part-form";
 import { withdrawOffer } from "@/actions/market";
 import { PartSearchLinks } from "@/components/part-search-links";
 import { hubJoined } from "@/lib/hub";
+import { entryFor } from "@/lib/assistant/ui";
+import { LooksLikeCard } from "@/components/assistant/parts-helpers";
 import { listingDefaultsFor, offersFor } from "@/lib/offer";
 import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
@@ -45,6 +47,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   });
   if (!p) notFound();
   const [joined, xrefs, offers] = await Promise.all([hubJoined(), xrefForKeys(p.numberKeys), offersFor(user.shopId, p)]);
+  const looks = joined && xrefs.length === 0 ? await entryFor(user.shopId, "parts") : null;
   const ticketIds = [...new Set(p.moves.map((m) => m.ticketId).filter(Boolean))] as string[];
   const tickets = await db.ticket.findMany({ where: { id: { in: ticketIds }, shopId: user.shopId }, select: { id: true, number: true } });
   const tno = new Map(tickets.map((t) => [t.id, t.number]));
@@ -213,6 +216,11 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 <ActionButton action={addPartToCrossRef.bind(null, p.id)} className="btn btn-sm">
                   Add it to the cross-reference
                 </ActionButton>
+                {looks?.show && (
+                  <div className="no-print border-t border-line pt-2">
+                    <LooksLikeCard partId={p.id} unavailable={looks.unavailable} />
+                  </div>
+                )}
               </div>
             ) : (
               <ul className="space-y-3 text-sm">

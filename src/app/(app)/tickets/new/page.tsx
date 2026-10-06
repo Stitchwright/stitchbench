@@ -5,6 +5,8 @@ import { firstValues } from "@/lib/search-params";
 import { money, ticketNo } from "@/lib/format";
 import { getModules } from "@/lib/modules";
 import { gateFor } from "@/lib/module-gate";
+import { entryFor } from "@/lib/assistant/ui";
+import { PlateButton } from "@/components/assistant/plate-button";
 import { needNotifyBy } from "@/lib/customer-input";
 import { canWorkOn } from "@/lib/equipment/gate";
 import { kindByKey, kindOf, servicesFor, shopKinds } from "@/lib/equipment/shop";
@@ -38,7 +40,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
   const sewing = kind.key === "sewing";
   // "How should we tell them": asked (required) while Marketing is on and email or texts are ready; offered as an
   // optional choice while Marketing isn't hidden; not shown otherwise.
-  const [accounts, services, specBrands, presetCustomer, blocked, needNotify, marketingGate] = await Promise.all([
+  const [accounts, services, specBrands, presetCustomer, blocked, needNotify, marketingGate, plate] = await Promise.all([
     db.customer.findMany({ where: { shopId: user.shopId, kind: "TRADE" }, orderBy: { name: "asc" } }),
     servicesFor(user.shopId, kind.key),
     sewing ? db.tensionSpec.findMany({ distinct: ["brand"], select: { brand: true }, orderBy: { brand: "asc" } }) : [],
@@ -49,6 +51,8 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
     !usable && kind.module ? getModules(user.shopId).then((m) => m.states[kind.module!]) : null,
     needNotifyBy(user.shopId),
     gateFor(user.shopId, "marketing"),
+    // "Read the plate" beside Brand / Model / Serial: free reads need no module; hidden for a machine already chosen.
+    machine ? Promise.resolve({ show: false } as const) : entryFor(user.shopId, "plate", { module: false }),
   ]);
   const brands = sewing ? specBrands.map((b) => b.brand) : kind.brands;
   const chipHref = (key: string) => `/tickets/new?kind=${encodeURIComponent(key)}${sp.customerId ? `&customerId=${encodeURIComponent(sp.customerId)}` : ""}`;
@@ -168,6 +172,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
                   </div>
                 )}
                 <IntakeFields defs={kind.intakeFields} on="machine" />
+                {plate.show && <PlateButton unavailable={plate.unavailable} />}
                 <p className="muted text-xs sm:col-span-2">A serial number we&apos;ve seen before links this ticket to that {noun}&apos;s history.</p>
               </div>
             )}

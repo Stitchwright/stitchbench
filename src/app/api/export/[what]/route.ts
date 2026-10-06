@@ -411,6 +411,19 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
         ...ns.map((n) => [n.brand, n.modelLabel, n.kind, n.pinned ? "yes" : "", n.body, n.author?.name, at(n.createdAt)]),
       ];
     }
+    case "assistant": {
+      // The Assistant's log: what was sent and what came back, per call (never module-gated: it is the company's own record).
+      const who = await userNames(shopId);
+      const calls = await db.assistantCall.findMany({ where: { shopId }, orderBy: { createdAt: "asc" } });
+      const sent = (r: unknown) => {
+        const q = (r ?? {}) as { system?: string; messages?: { content?: string }[]; image?: { bytes?: number } };
+        return [q.system, ...(q.messages ?? []).map((m) => m.content), q.image ? `[photo ${q.image.bytes} bytes]` : null].filter(Boolean).join("\n---\n");
+      };
+      return [
+        ["date", "feature", "by", "ticket_id", "model", "sent", "answer", "used", "input_tokens", "cached_tokens", "output_tokens", "cost_cents", "error"],
+        ...calls.map((c) => [at(c.createdAt), c.feature, c.byUserId ? who.get(c.byUserId) : "", c.ticketId, c.model, sent(c.request), c.response, c.accepted == null ? "" : c.accepted ? "yes" : "no", c.inputTokens, c.cacheTokens, c.outputTokens, (c.costMillicents / 1000).toFixed(3), c.error]),
+      ];
+    }
     default:
       return null;
   }
