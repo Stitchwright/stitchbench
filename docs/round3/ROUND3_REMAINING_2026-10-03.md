@@ -184,6 +184,41 @@ wave 1 rather than in parallel with it.
   `src/lib/partners.ts`, `src/actions/partners.ts`, `src/lib/move/format.ts` (a new per-company table), the partner
   pages. StitchHub: `src/partners.mjs` only if the design needs the hub to carry a new field. After batches A and B.
 
+### W2 design: partner invites and messages signed end to end (6 Oct 2026)
+
+- Keys. Each company has one Ed25519 key pair in a new per-company table `PartnerKey` (in `src/lib/move/format.ts`). The
+  private key is sealed with `secrets.ts` (as the mail password is) and never sent anywhere; the public key goes to the
+  hub with each invite and redeem, and the hub keeps it per side of the link. A move leaves the sealed key out of the file
+  (as it does other secrets): the company gets a new key on the new install, and each partner trusts it by a new partner code.
+- Invite. The inviter signs (fingerprint, side, shop, terms hash, time) with its key; the hub stores that with the key. The
+  redeemer signs (code hash, shop, time) with its own. The long code `stitchpartner:` also carries the inviter's fingerprint:
+  the redeemer refuses the partnership if the key the hub hands back doesn't match it, or if the signature on the invite
+  doesn't verify. A short code carries no fingerprint, so both pages show both fingerprints (five groups of four) to read out.
+- Pinning. Each side pins the partner's key on its `PartnerLink` when the partnership is made (the redeemer from the
+  checked answer, the inviter from `link.created` whose proof must verify against a code hash it kept in `PartnerKey.invites`).
+  A `link.created` with no matching local invite creates or changes nothing, which closes L134's "hub makes a partnership".
+  Exception for the transition: an invite made before the upgrade left no record, so for 15 days after a company's key is
+  made a keyless `link.created` is still taken (marked unverified). A partner key is never replaced except by a new invite.
+- Messages. The sender signs `SBPM1 | link | side | type | id | seq | ts | sha256(canonical data)`; `seq` is a millisecond
+  clock that only rises per link and sender (it survives a restored backup). The signature goes with the message through
+  the hub (`sig` on the outbox row, so a retry sends the same one). The receiver verifies it against the pinned key before
+  applying; a changed field, another key, another link or sender, a replayed or older `seq` (a retry of a set-aside message
+  excepted), and an unsigned message from a partner whose key is pinned are refused (set aside, and the partner told).
+- Transition. An unsigned message from a partner with no key pinned (an older program) is applied and counted on the link
+  (`unsignedIn`, shown as "unverified" on the partner page); the first valid signed message pins the partner's key (trust on first
+  use). From 1 Apr 2027 (`PARTNER_UNSIGNED_UNTIL` overrides) unsigned messages are refused everywhere. Upgrade order: the hub first.
+- Hub. It verifies the signature when it takes a message, stores `sig`, marks it `verified`, and refuses a bad signature, another
+  key than the one on file for that side, and an unsigned message once that side has a key. `waiverRule` counts plain
+  `job.new` / `pickup.done` only while a side has no key; with keys on both sides it counts only the repair shop's own verified
+  `job.update` and `pickup.done`, so a quilt shop cannot make repairs up to keep its free plan, with or without the hub.
+- Limits, said plainly: the hub still reads every message; it can still end a partnership (`link.ended` is unsigned) and withhold
+  or delay messages; on a short code the first key the hub shows can be one it made (until the two fingerprints are compared);
+  trust on first use covers old partnerships. No new actions (a lost key is repaired by a new partner code), so no `safe()` or lapse
+  accounting changes.
+- Built 6 Oct 2026 (StitchHub migration 023, StitchBench migration `20261006100000_partner_signing`): L134 and I27 FIXED for partners
+  that have upgraded; checks `scripts/checks/partner-signing.check.ts` and the hub's `test/partner-signing.mjs`. Not built: a way to compare
+  fingerprints other than reading the two pages; signing `link.ended`.
+
 ## Per-finding notes
 
 ### Medium
