@@ -464,6 +464,55 @@ nothing deletes it by itself. Then:
 A company that comes back to an install it left is imported again the same way, after its old copy there has been
 deleted (a move never merges two copies).
 
+## Off-site backup
+
+The nightly backup above stays on the shop PC. Off-site backup keeps a second copy of the company somewhere else,
+**locked with a key only the owner holds**, so losing the PC (fire, theft, a dead disk) doesn't lose the company. It is
+**off until the owner turns it on**, in **Settings → Off-site backup** (owner or admin):
+
+1. **Make my recovery key.** The program keeps only the public half. The private half is shown once as a recovery sheet
+   (52 characters in 13 groups of four): print it and keep it away from the shop computer. Nobody can open the backups
+   without it, not even us, and a lost sheet can't be printed again (a new key starts a new set of backups; the old ones
+   stay closed).
+2. **Type the key back** from the sheet. Backups switch on only when it is right.
+3. **Where it goes**: with StitchHub (it arranges the storage; the files go straight to it and the hub can't read them),
+   a folder (a USB disk, a OneDrive or Dropbox folder), or a bucket of your own (R2, B2, Wasabi, S3 or MinIO: address,
+   bucket, region and keys; the secret key is kept for this company only and isn't shown again).
+
+A backup runs every night after 2 am shop time (and at start-up when one was missed). Pictures go once each; the rest
+every night. The last 14 days, 8 Sundays and 12 months are kept. **Back up off-site now** and **Test my recovery key**
+(type the key; the newest backup is opened and its row counts shown beside today's: do this twice a year) are on the same
+page. `OFFSITE=off` in the environment stops the schedule on a server.
+
+**Restore.** The backup is an ordinary company move file once opened. On the StitchHub account page the owner makes a
+**restore code** (24 hours); the command line takes it and the recovery key:
+
+    npm run check scripts/offsite/restore.ts --hub https://<hub> --code shr_... --key ABCD-EFGH-... --import
+    npm run check scripts/offsite/restore.ts --folder D:/Backups/StitchBench --key ABCD-EFGH-... --import
+
+`--list` shows the backups first; `--backup <name>` picks one; without `--import` it writes the move file to import
+by hand (Companies, or the Windows first run). The importer's rules apply: the company must not already be on this install.
+Restoring with a restore code from the hub also takes the company over on the hub. The mail password, Twilio token and Stripe
+keys are never in a backup: enter them again.
+
+**For the hub's operator** (hub migration `050_backups.sql`): `BACKUP_S3_ENDPOINT` (for R2,
+`https://<account>.r2.cloudflarestorage.com`), `BACKUP_S3_BUCKET`, `BACKUP_S3_KEY_ID`, `BACKUP_S3_SECRET`,
+`BACKUP_S3_REGION` (`auto` for R2), and `BACKUP_QUOTA_GB` (25 by default, per company). Without them the hub answers
+"Off-site backup storage isn't set up on this hub yet."
+
+## Reports, sales tax and the bookkeeping export
+
+**Reports** (owner and admin) show sales by day, week or month, by category and how it was paid, tickets, top customers, the
+gift card and store credit liability, and the **sales tax report** (by rate charged, with tax-exempt sales listed with their
+certificate numbers); each has **Download CSV**. A customer marked **tax exempt** (a certificate number, and the last day it is
+good, on the customer's page; owner and admin only) isn't charged tax at the register or on a new ticket, and the sale or
+ticket keeps the certificate number; the cashier can tick **Charge tax anyway**.
+
+**Bookkeeping** (Reports → Bookkeeping, names in Settings → Bookkeeping) makes one summary journal entry per day, as a CSV
+for QuickBooks Online's journal import or an IIF for QuickBooks Desktop. Each day balances to the cent. Cost of goods and
+inventory aren't in it. **Mark exported through** a day so the next export starts after it. The CSV's column headings are
+QuickBooks Online's journal-entry template as we know it: have your bookkeeper try a week before relying on it.
+
 ---
 
 ## Paid modules

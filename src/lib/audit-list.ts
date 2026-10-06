@@ -47,6 +47,7 @@ export const AUDIT_ACTIONS = {
   "note.delete": { category: "deletes", label: "Model note deleted" },
   // Settings
   "books.settings": { category: "settings", label: "Bookkeeping names or choices changed" },
+  "offsite.settings": { category: "settings", label: "Off-site backup switched on or off, or its key or place changed" },
   "hub.join": { category: "settings", label: "Joined StitchHub" },
   "hub.leave": { category: "settings", label: "Left StitchHub" },
   "hub.usage": { category: "settings", label: "Sharing of parts used switched on or off" },

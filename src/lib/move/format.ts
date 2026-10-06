@@ -60,6 +60,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
   { t: "User", key: "id" },
   { t: "BooksSettings", key: '"shopId"' }, // the bookkeeping export's names (one row per company)
+  { t: "OffsiteSettings", key: '"shopId"', leftOut: ["bucket"] }, // off-site backup: on or off, target, the public key; the own-bucket settings (a secret sealed under the install's key) are left out
+  { t: "OffsiteObject", key: "id" }, // the company's index of its off-site store: photos are not sent again after a move
   { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
   { t: "Customer", key: "id" },
   { t: "GiftCard", key: "id" }, // -> Customer
@@ -124,6 +126,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
   Listing: "the hub's copy of this company's marketplace listings; the hub sends them again after the move",
   MarketOrder: "the hub's copy of this company's marketplace orders; the hub sends them again after the move",
   CompanyMove: "this copy's own move record",
+  OffsiteRun: "this install's history of off-site backup runs",
 };
 
 /** "Table.column" for every column the file sets to null, as the header's leftOut list. */

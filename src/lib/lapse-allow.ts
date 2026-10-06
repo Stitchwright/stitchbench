@@ -28,6 +28,15 @@ export const WHILE_LAPSED = [
   // Bookkeeping names and the "exported through" day: no business record changes
   "saveBooksSettings",
   "markBooksExported",
+  // Off-site backup: never lost to a lapse (later-round-1-design.md 1.7)
+  "makeOffsiteKey",
+  "confirmOffsiteKey",
+  "saveOffsiteTarget",
+  "saveOffsiteBucket",
+  "testOffsiteBucket",
+  "turnOffsiteOff",
+  "backUpNow",
+  "testOffsiteKey",
   // Payments, returns and voids
   "addPayment",
   "removePayment",

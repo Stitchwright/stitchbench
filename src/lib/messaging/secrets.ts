@@ -7,7 +7,7 @@ import { isDesktop } from "@/lib/modules";
 
 // moveToken:<CompanyMove id>: a company move's StitchHub token, kept until the hub has the company where it went
 // (src/lib/move/hub-step.ts).
-export type SecretField = "smtpPass" | "twilioToken" | "stripeKey" | "stripeWebhook" | "partnerKey" | `estimateToken:${string}` | `orderLink:${string}` | `moveToken:${string}`;
+export type SecretField = "smtpPass" | "twilioToken" | "stripeKey" | "stripeWebhook" | "partnerKey" | "offsiteBucket" | `estimateToken:${string}` | `orderLink:${string}` | `moveToken:${string}`;
 
 type DerivedKey = { kid: string; key: Buffer };
 

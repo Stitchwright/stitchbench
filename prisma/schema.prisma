@@ -130,6 +130,9 @@ model Shop {
   partnerLinks    PartnerLink[]
   partnerKey      PartnerKey?
   books           BooksSettings?
+  offsite         OffsiteSettings?
+  offsiteObjects  OffsiteObject[]
+  offsiteRuns     OffsiteRun[]
   repairJobs      RepairJob[]
   partnerOrders   PartnerOrder[]
   consignItems    ConsignItem[]
@@ -1225,6 +1228,58 @@ model BooksSettings {
   cardClearing    String   @default("")
   exportedThrough String? // "YYYY-MM-DD", the shop's day
   updatedAt       DateTime @updatedAt
+}
+
+// Off-site backup (later-round-1-design.md section 1), one row per company. OFF until the owner has made the recovery key
+// and typed part of it back. The program keeps only the public half of the key pair.
+model OffsiteSettings {
+  shopId       String    @id
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  on           Boolean   @default(false)
+  target       String    @default("hub") // hub | folder | bucket
+  folderPath   String    @default("")
+  // The shop's own S3-compatible bucket (offsite-bucket): { endpoint, bucket, region, accessKeyId, secretSealed }
+  bucket       Json?
+  publicKey    String? // base64, 32 bytes
+  keyId        String? // the key's fingerprint, 16 hex characters
+  keyMadeAt    DateTime?
+  keyCheckedAt DateTime?
+  updatedAt    DateTime  @updatedAt
+}
+
+// A company's index of its off-site store: the data files and the photo objects (each sent once). Travels with the company
+// in a move, so photos aren't sent again afterwards.
+model OffsiteObject {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name       String
+  kind       String // data | photo
+  photoTable String?
+  photoId    String?
+  size       Int
+  sha256     String
+  uploadedAt DateTime  @default(now())
+  // When the photo's row left the database (its object goes after the grace period), or when the object was pruned
+  goneAt     DateTime?
+
+  @@unique([shopId, name])
+  @@index([shopId, kind, uploadedAt])
+}
+
+// This install's history of runs (per install: not in a move).
+model OffsiteRun {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String    @default("running") // running | ok | failed
+  bytes      BigInt    @default(0)
+  photos     Int       @default(0)
+  error      String?
+
+  @@index([shopId, startedAt])
 }
 
 model PartnerKey {

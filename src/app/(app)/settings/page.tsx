@@ -277,6 +277,15 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
+        <Section title="Off-site backup">
+          <p className="muted mb-2 text-sm">A copy of this company, locked with a key only you hold, kept away from this computer. Off until you set it up.</p>
+          <Link href="/settings/offsite" className="btn btn-sm">
+            Off-site backup
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Audit log">
           <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
           <Link href="/settings/audit" className="btn btn-sm">
