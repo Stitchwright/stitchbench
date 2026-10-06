@@ -37,7 +37,7 @@ export async function rowsOf(table: string, shopId: string): Promise<string> {
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(table)) throw new Error(`rowsOf: odd table name ${table}`);
   const column = table === "Shop" ? "id" : "shopId";
   const rows = await db.$queryRawUnsafe<unknown[]>(`SELECT * FROM "${table}" WHERE "${column}" = $1 ORDER BY id`, shopId);
-  return JSON.stringify(rows);
+  return JSON.stringify(rows, (_k, v) => (typeof v === "bigint" ? v.toString() : v)); // BigInt columns (PartnerLink sequence numbers) don't serialize by themselves
 }
 
 /** A company's rows in each of `tables`, keyed by table, to compare with assertUnchanged after the other company's calls. */

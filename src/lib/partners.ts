@@ -30,6 +30,8 @@ import { hookContext, type HookCtx } from "@/lib/notices/context";
 import { onJobsBack, onJobStatus } from "@/lib/notices/hooks";
 import { changeTicketStatus } from "@/lib/ticket-status";
 import { planOutcome, receivedList, type RunPlan, type Side as RunSide } from "@/lib/partner-runs";
+import { asSent, codeHashOf, fingerprint, isPublicKey, sigShape, signInvite, signMessage, signRedeem, verifyInvite, verifyMessageSig, verifyRedeem, type Proof, type SigEnvelope } from "@/lib/partner-signing";
+import { legacyInviteWindowOpen, notePendingInvite, ownKey, pendingInvites, consumePendingInvite } from "@/lib/partner-keys";
 
 /** The community's hub, for a partner code that names no address (the same default an account start uses: src/lib/hub.ts). */
 export const DEFAULT_HUB_URL = hubDefaultUrl();
@@ -125,8 +127,8 @@ export type HubPartnerLink = {
   id: string;
   status: string;
   terms: unknown;
-  repair: { installId: string; shopRef: string; name: string };
-  retail: { installId: string; shopRef: string; name: string };
+  repair: { installId: string; shopRef: string; name: string; publicKey?: string | null; proof?: Proof | null };
+  retail: { installId: string; shopRef: string; name: string; publicKey?: string | null; proof?: Proof | null };
   createdAt: string;
   endedAt: string | null;
 };
@@ -206,39 +208,50 @@ export async function sendToPartner(shopId: string, linkId: string, type: string
 // ---------- joining ----------
 
 /** A partner code as handed over: the short code, or "stitchpartner:..." carrying the hub's address too. */
-export function parsePartnerCode(text: string): { code: string; url: string | null } {
+export function parsePartnerCode(text: string): { code: string; url: string | null; fp: string | null } {
   const t = text.trim();
   if (t.toLowerCase().startsWith("stitchpartner:")) {
-    let j: { url?: string; code?: string } | null = null;
+    let j: { url?: string; code?: string; fp?: string } | null = null;
     try {
-      j = JSON.parse(Buffer.from(t.slice(14).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as { url?: string; code?: string };
+      j = JSON.parse(Buffer.from(t.slice(14).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as { url?: string; code?: string; fp?: string };
     } catch {
       /* damaged */
     }
     if (!j?.code || !j.url) throw new UserError("That partner code is damaged. Copy it again.");
     const code = String(j.code).toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (code.length !== 12) throw new UserError("That partner code is damaged. Copy it again.");
-    return { code, url: checkHubUrl(String(j.url)) };
+    // The inviter's key fingerprint, when its program made one: the redeemer checks the hub's answer against it.
+    const fp = typeof j.fp === "string" && /^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(j.fp) ? j.fp : null;
+    return { code, url: checkHubUrl(String(j.url)), fp };
   }
   const code = t.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (code.length !== 12) throw new UserError("A partner code has 12 letters and numbers, like 7KQP-M2XH-9TRD.");
-  return { code, url: null };
+  return { code, url: null, fp: null };
 }
 
-export function longPartnerCode(url: string, code: string) {
-  return "stitchpartner:" + Buffer.from(JSON.stringify({ url, code })).toString("base64url");
+export function longPartnerCode(url: string, code: string, fp: string | null = null) {
+  return "stitchpartner:" + Buffer.from(JSON.stringify(fp ? { url, code, fp } : { url, code })).toString("base64url");
 }
 
 /** This shop makes a code for the shop it wants to partner with. Needs the hub (Settings -> Community hub). */
 export async function createPartnerInvite(shopId: string, shopName: string, side: Side, terms: PartnerTerms) {
-  const r = (await (await hubFetch("/v1/partners/invites", { method: "POST", json: { shopRef: shopId, shopName, side, terms }, shopRef: shopId })).json()) as {
+  // Signed with this company's key (made now if it has none): the hub keeps the key with the invite and the redeemer
+  // checks the signature, so the key in the long code and the key the hub hands over can't differ unnoticed.
+  const key = await ownKey(shopId);
+  const proof = signInvite(key, { side, shopRef: shopId, terms });
+  const r = (await (
+    await hubFetch("/v1/partners/invites", { method: "POST", json: { shopRef: shopId, shopName, side, terms, publicKey: key.publicKey, proof }, shopRef: shopId })
+  ).json()) as {
     code: string;
     expiresAt: string;
   };
+  // What link.created is held against when the partner redeems it (and nothing else makes a partnership here).
+  await notePendingInvite(shopId, { side, codeHash: codeHashOf(r.code.replace(/[^A-Z0-9]/g, "")), expiresAt: r.expiresAt });
   // Start listening for the partner redeeming it.
   await db.hubState.update({ where: { id: 1 }, data: { partnerCursor: (await hubState())?.partnerCursor ?? "0" } });
   const s0 = await hubState();
-  return { ...r, long: longPartnerCode(s0!.url!, r.code) };
+  const fp = fingerprint(key.publicKey);
+  return { ...r, fingerprint: fp, long: longPartnerCode(s0!.url!, r.code, fp) };
 }
 
 /**
@@ -246,12 +259,15 @@ export async function createPartnerInvite(shopId: string, shopName: string, side
  * only. Joining a hub changes the whole install, so callers check who may do that (requireInstallAdmin).
  */
 export async function redeemPartnerCode(shopId: string, shopName: string, contact: string | null, text: string) {
-  const { code, url } = parsePartnerCode(text);
+  const { code, url, fp } = parsePartnerCode(text);
+  // This company's key, with a proof made for this code: the hub keeps it on the link for the partner to pin.
+  const myKey = await ownKey(shopId);
+  const keyFields = { publicKey: myKey.publicKey, proof: signRedeem(myKey, { codeHash: codeHashOf(code), shopRef: shopId }) };
   const st = await hubState();
   let out: { link: HubPartnerLink; side: Side };
   if (st?.url && st.installKey) {
     if (url && url !== st.url) throw new UserError(`This install uses the hub at ${st.url}; that code is for ${url}. Ask for a code from the same hub.`);
-    out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName }, shopRef: shopId })).json()) as typeof out;
+    out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName, ...keyFields }, shopRef: shopId })).json()) as typeof out;
   } else {
     const base = url ?? DEFAULT_HUB_URL;
     // The code's hub is the one this install left, and it still knows the install: the same install again, for its
@@ -278,14 +294,14 @@ export async function redeemPartnerCode(shopId: string, shopName: string, contac
         formerInstallKey: null,
       };
       await db.hubState.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
-      out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName }, shopRef: shopId })).json()) as typeof out;
+      out = (await (await hubFetch("/v1/partners/redeem", { method: "POST", json: { code, shopRef: shopId, shopName, ...keyFields }, shopRef: shopId })).json()) as typeof out;
     } else {
       let r: Response;
       try {
         r = await fetch(`${base}/v1/partners/join`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, shopRef: shopId, shopName, contact }),
+          body: JSON.stringify({ code, shopRef: shopId, shopName, contact, ...keyFields }),
           signal: AbortSignal.timeout(30_000),
         });
       } catch {
@@ -314,7 +330,10 @@ export async function redeemPartnerCode(shopId: string, shopName: string, contac
       out = j;
     }
   }
-  await saveLinkFromHub(shopId, out.side, out.link);
+  // What the hub answered is checked before it is taken: the inviter's key against the long code's fingerprint and the
+  // signature on the invite (a hub can't swap in a key of its own without it showing).
+  const pin = checkInviterKey(out.side, out.link, fp);
+  await saveLinkFromHub(shopId, out.side, out.link, db, "redeem", pin);
   const s1 = await hubState();
   if (s1?.partnerCursor == null) await db.hubState.update({ where: { id: 1 }, data: { partnerCursor: "0" } });
   kickPartnerSync();
@@ -352,7 +371,10 @@ function hubLinkOf(v: unknown): HubPartnerLink {
   const l = obj(v, "link");
   const side = (x: unknown, what: string) => {
     const o = obj(x, what);
-    return { installId: String(o.installId ?? ""), shopRef: String(o.shopRef ?? ""), name: need(o.name, 120, `${what} name`) };
+    const key = typeof o.publicKey === "string" && o.publicKey ? o.publicKey.slice(0, 300) : null;
+    const pr = o.proof && typeof o.proof === "object" && !Array.isArray(o.proof) ? (o.proof as Obj) : null;
+    const proof = key && pr && typeof pr.issuedAt === "string" && typeof pr.sig === "string" ? { issuedAt: pr.issuedAt, sig: pr.sig } : null;
+    return { installId: String(o.installId ?? ""), shopRef: String(o.shopRef ?? ""), name: need(o.name, 120, `${what} name`), publicKey: key, proof };
   };
   return {
     id: idOf(l.id, "link id"),
@@ -365,17 +387,64 @@ function hubLinkOf(v: unknown): HubPartnerLink {
   };
 }
 
-/** `tx`: inside the transaction that applies a hub message, so the link is written with the message's "seen" row. */
-export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartnerLink, tx: Prisma.TransactionClient = db) {
+/** How the partner's key was pinned: "code-checked" (the long code's fingerprint matched), "code", "invite" (a code made here, the redeemer proved the key), "invite-unrecorded" (an invite made before there was a record), "first-message". */
+export type KeyPin = { key: string | null; how: string };
+
+/**
+ * The inviter's key in the redeem answer, checked: the invite's signature must verify under it, and when the code was
+ * the long one its fingerprint must be the one in the code. UserError when the hub's answer doesn't hold up (nothing is
+ * saved). `mySide`: this company's side; the inviter is the other. An older inviter sends no key: nothing to pin (and a
+ * code that carried a fingerprint with no key in the answer is refused: the hub left it out).
+ */
+export function checkInviterKey(mySide: Side, raw: HubPartnerLink, fp: string | null): KeyPin {
+  const l = hubLinkOf(raw);
+  const theirs = mySide === "repair" ? l.retail : l.repair;
+  const theirSide: Side = mySide === "repair" ? "retail" : "repair";
+  if (!theirs.publicKey) {
+    if (fp) throw new UserError("That partner code names a signing key for the other shop, but the hub gave none back. Don't use this partnership; ask the other shop for a new code.");
+    return { key: null, how: "none" };
+  }
+  if (!isPublicKey(theirs.publicKey) || !verifyInvite(theirs.publicKey, { side: theirSide, shopRef: theirs.shopRef, terms: l.terms }, theirs.proof)) {
+    throw new UserError("The other shop's signature on its partner code doesn't check out, so the partnership wasn't saved here. Ask them for a new code.");
+  }
+  if (fp && fingerprint(theirs.publicKey) !== fp) {
+    throw new UserError("The other shop's signing key isn't the one in the code you were given, so the partnership wasn't saved here. Ask them for a new code (and tell whoever runs the hub).");
+  }
+  return { key: theirs.publicKey, how: fp ? "code-checked" : "code" };
+}
+
+/**
+ * `tx`: inside the transaction that applies a hub message, so the link is written with the message's "seen" row.
+ * `via`: "redeem" for the answer to a code this company just entered (checked by checkInviterKey, `pin` is its result);
+ * "hub" for a link.created or a link the hub lists, which only this company's own invite allows (the redeemer's proof
+ * must verify against a code this company made and nobody has used), so a hub can't make a partnership, or change one,
+ * on its own. An invite made before there was a record is taken for 15 days after the company's key was made.
+ */
+export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartnerLink, tx: Prisma.TransactionClient = db, via: "redeem" | "hub" = "hub", pin?: KeyPin) {
   const l = hubLinkOf(raw);
   const partnerName = side === "repair" ? l.retail.name : l.repair.name;
   const terms = normalizeTerms(l.terms);
   const where = { shopId_id: { shopId, id: l.id } };
   const existing = await tx.partnerLink.findUnique({ where });
   const endedAt = l.endedAt ? new Date(l.endedAt) : null;
+  if (via === "hub") {
+    const theirs = side === "repair" ? l.retail : l.repair;
+    if (theirs.publicKey && !isPublicKey(theirs.publicKey)) return bad("the partner's signing key isn't an Ed25519 key");
+    const pending = await pendingInvites(shopId, side, tx);
+    const proved = theirs.publicKey ? pending.find((p) => verifyRedeem(theirs.publicKey!, { codeHash: p.codeHash, shopRef: theirs.shopRef }, theirs.proof)) : pending[0];
+    let how = "invite";
+    if (proved) await consumePendingInvite(shopId, proved.codeHash, tx);
+    else if (existing) return; // a link already here changes only through a code this company made or entered
+    else if (await legacyInviteWindowOpen(shopId, tx)) how = "invite-unrecorded";
+    else return bad("a partnership was announced that no partner code made here or entered here made");
+    pin = { key: theirs.publicKey ?? null, how: theirs.publicKey ? how : "none" };
+  }
+  const keyData = pin?.key
+    ? { partnerKey: pin.key, partnerKeyHow: pin.how, partnerKeyAt: new Date(), ...(existing?.partnerKey !== pin.key ? { sigSeqIn: 0 } : {}) }
+    : {};
   if (!existing) {
     const accountId = side === "repair" ? await tradeAccountFor(shopId, partnerName, terms, tx) : null;
-    await tx.partnerLink.create({ data: { id: l.id, shopId, side, partnerName, status: l.status, terms, accountId, endedAt } });
+    await tx.partnerLink.create({ data: { id: l.id, shopId, side, partnerName, status: l.status, terms, accountId, endedAt, ...keyData } });
     return;
   }
   // The same two shops used a new code (after ending, or while still linked): its terms become a new version that both
@@ -387,6 +456,7 @@ export async function saveLinkFromHub(shopId: string, side: Side, raw: HubPartne
       partnerName,
       status: l.status,
       endedAt,
+      ...keyData,
       ...(newTerms ? { terms, termsVersion: existing.termsVersion + 1, accepted: {}, proposedTerms: Prisma.DbNull, proposedBy: null, priorTerms: Prisma.DbNull, withdrawnTerms: Prisma.DbNull } : {}),
     },
   });
@@ -630,8 +700,7 @@ export async function catchUpPartnerMessages(shopId: string, since: string): Pro
       const key = `${m.linkId}:${m.fromSide}:${m.id}:${m.toSide}`.slice(0, 300);
       if (await db.partnerSeen.findUnique({ where: { shopId_key: { shopId, key } } })) continue;
       try {
-        await linkFor(shopId, m);
-        if (await applyOnce(shopId, key, m)) received++;
+        if (await takeMessage(shopId, m)) received++;
         await db.partnerFailure.deleteMany({ where: { shopId, key } }).catch(() => {});
       } catch (e) {
         await noteFailure(shopId, key, m, e, true);
@@ -655,6 +724,27 @@ async function pruneOutbox() {
   if (Date.now() - outboxPrunedAt < 3600_000) return;
   outboxPrunedAt = Date.now();
   await db.partnerOutbox.deleteMany({ where: { sentAt: { lt: new Date(Date.now() - OUTBOX_KEPT_DAYS * 86400_000) } } }).catch(() => {});
+}
+
+/**
+ * This company's signature on an outbox message, made the first time it is sent and kept on the row so a retry sends
+ * the same one. The sequence number is a millisecond clock that only goes up per partnership, so it keeps rising even
+ * after a restored backup; a message signed with an earlier key (a new one was made since) is signed again.
+ */
+export async function signedOutbox(m: { id: string; shopId: string; linkId: string; type: string; data: unknown; sig: unknown }): Promise<SigEnvelope> {
+  const key = await ownKey(m.shopId);
+  const have = sigShape(m.sig);
+  if (have && have.pub === key.publicKey) return have;
+  const seq = await db.$transaction(async (tx) => {
+    const link = await tx.partnerLink.findUnique({ where: { shopId_id: { shopId: m.shopId, id: m.linkId } } });
+    if (!link) throw new UserError("That partnership isn't on this shop.");
+    const next = link.sigSeqOut + BigInt(1) > BigInt(Date.now()) ? link.sigSeqOut + BigInt(1) : BigInt(Date.now());
+    await tx.partnerLink.update({ where: { shopId_id: { shopId: m.shopId, id: m.linkId } }, data: { sigSeqOut: next } });
+    return { next, side: link.side };
+  });
+  const env = signMessage(key, { linkId: m.linkId, fromSide: seq.side, type: m.type, id: m.id, data: asSent(m.data) }, String(seq.next));
+  await db.partnerOutbox.update({ where: { id: m.id }, data: { sig: env as unknown as Prisma.InputJsonValue } });
+  return env;
 }
 
 /**
@@ -686,8 +776,8 @@ async function pushOutbox() {
     if (++tried > 300) break; // the rest next time
     const m = await db.partnerOutbox.findUnique({ where: { id: w.id } });
     if (!m || m.sentAt || m.deadAt) continue;
-    const json = { id: m.id, shopRef: m.shopId, type: m.type, data: m.data };
     try {
+      const json = { id: m.id, shopRef: m.shopId, type: m.type, data: m.data, sig: await signedOutbox(m) };
       // A machine intake carries photos (a few MB); on a slow shop connection that takes longer than the usual 30 s,
       // so the wait grows with the size: a minute more per MB, three minutes at most (as shared notes get).
       const timeout = 30_000 + Math.min(150_000, Math.round((JSON.stringify(json).length / 1_000_000) * 60_000));
@@ -721,13 +811,13 @@ async function pushOutbox() {
 export async function resendPartnerMessages(shopId: string, linkId?: string) {
   const r = await db.partnerOutbox.updateMany({
     where: { shopId, ...(linkId ? { linkId } : {}), sentAt: null, deadAt: { not: null } },
-    data: { deadAt: null, nextTryAt: null, tries: 0 },
+    data: { deadAt: null, nextTryAt: null, tries: 0, sig: Prisma.DbNull }, // signed again (a new key may be on file now)
   });
   if (r.count) kickPartnerSync();
   return r.count;
 }
 
-type HubMessage = {
+export type HubMessage = {
   seq: string;
   id: string;
   linkId: string;
@@ -736,6 +826,7 @@ type HubMessage = {
   toShopRef: string;
   type: string;
   data: Obj;
+  sig?: unknown;
   createdAt: string;
 };
 
@@ -766,12 +857,58 @@ async function linkFor(shopId: string, m: HubMessage) {
   return db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: m.linkId } } });
 }
 
+// A partner that hasn't pinned a key yet (an older program) may still send unsigned messages until this day.
+const unsignedUntil = () => Date.parse(process.env.PARTNER_UNSIGNED_UNTIL ?? "") || Date.parse("2027-04-01T00:00:00Z");
+
+/**
+ * A partner's message checked against the key pinned for it: unsigned from a partner whose key is pinned, a signature that
+ * doesn't verify (a changed field, another link, another sender), or a key other than the pinned one is refused (a
+ * PartnerDataError: set aside and the partner told). A partner with no key yet (an older program) is taken unsigned and
+ * counted as unverified until that day; its first signed message pins its key. Returns the signature to hold the
+ * sequence number against (null for an unsigned message and for the hub's own).
+ */
+export async function verifyIncoming(shopId: string, m: HubMessage): Promise<SigEnvelope | null> {
+  if (m.fromSide === "hub") return null;
+  const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: String(m.linkId) } } });
+  if (!link) return null; // applyMessage ignores a message for a partnership that isn't here
+  const where = { shopId_id: { shopId, id: link.id } };
+  const env = sigShape(m.sig);
+  if (!env) {
+    if (m.sig != null) return bad("its signature is malformed");
+    if (link.partnerKey) return bad("it isn't signed, but this partner signs its messages (an unsigned one could come from anyone)");
+    if (Date.now() >= unsignedUntil()) return bad("it isn't signed, and unsigned messages aren't taken any more: the partner's program needs updating");
+    await db.partnerLink.update({ where, data: { unsignedIn: { increment: 1 }, lastUnsignedAt: new Date() } });
+    return null;
+  }
+  if (!verifyMessageSig(env, { linkId: String(m.linkId), fromSide: m.fromSide, type: m.type, id: m.id, data: m.data })) {
+    return bad("its signature doesn't check out (the message was changed on the way, or isn't from the partner)");
+  }
+  if (link.partnerKey) {
+    if (link.partnerKey !== env.pub) return bad("it is signed with a key other than the one this partnership was made with. If the partner reinstalled, make a new partner code");
+  } else {
+    // First signed message of a partnership made before signing (or by an older program): its key is trusted from here on.
+    await db.partnerLink.updateMany({ where: { shopId, id: link.id, partnerKey: null }, data: { partnerKey: env.pub, partnerKeyHow: "first-message", partnerKeyAt: new Date(), sigSeqIn: 0 } });
+  }
+  return env;
+}
+
+/** The key a message is recorded under in PartnerSeen and PartnerFailure. */
+export const messageKey = (m: Pick<HubMessage, "linkId" | "fromSide" | "id" | "toSide">) => `${m.linkId}:${m.fromSide}:${m.id}:${m.toSide}`.slice(0, 300);
+
+/** One message from the hub, whole: the partnership, the signature, then the apply. False when it was applied already. `retry`: a message set aside, tried again. */
+export async function takeMessage(shopId: string, m: HubMessage, retry = false): Promise<boolean> {
+  // The partnership first (it may have to come from the hub): not inside the message's transaction.
+  await linkFor(shopId, m);
+  const sig = await verifyIncoming(shopId, m);
+  return applyOnce(shopId, messageKey(m), m, sig, !retry);
+}
+
 /**
  * Apply one message and write its "seen" row in one transaction: a crash between the two, or a second server process
  * pulling the same page, can't apply it twice (the seen row goes in first; one already there, once the other
  * transaction has committed, means it was applied, and nothing is done). False when it was applied already.
  */
-async function applyOnce(shopId: string, key: string, m: HubMessage) {
+async function applyOnce(shopId: string, key: string, m: HubMessage, sig: SigEnvelope | null = null, checkSeq = true) {
   // applyMessage runs inside this transaction, and the notices hook a job.update calls must never open a second pool
   // connection inside it (with a pool of one that would wait forever): what the hook needs is loaded here, before the
   // transaction begins, and handed down.
@@ -780,6 +917,13 @@ async function applyOnce(shopId: string, key: string, m: HubMessage) {
     async (tx) => {
       const fresh = await tx.partnerSeen.createMany({ data: [{ shopId, key }], skipDuplicates: true });
       if (!fresh.count) return false;
+      // A signed message's sequence number must be newer than the last one taken from this partner (a message set
+      // aside and tried again by hand is the one exception: it is older by nature, and its "seen" row guards it).
+      if (sig && checkSeq) {
+        const seq = BigInt(sig.seq);
+        const moved = await tx.partnerLink.updateMany({ where: { shopId, id: m.linkId, sigSeqIn: { lt: seq } }, data: { sigSeqIn: seq } });
+        if (!moved.count) return bad("it repeats or comes before a message already taken from this partner (its sequence number isn't newer)");
+      }
       await applyMessage(m, tx, ctx);
       return true;
     },
@@ -825,9 +969,7 @@ async function pullMessages(cursor: string) {
         const seen = await db.partnerSeen.findUnique({ where: { shopId_key: { shopId: shop.id, key } } });
         if (!seen) {
           try {
-            // The partnership first (it may have to come from the hub): not inside the message's transaction.
-            await linkFor(shop.id, m);
-            if (await applyOnce(shop.id, key, m)) received++;
+            if (await takeMessage(shop.id, m)) received++;
             // An earlier try that failed is over with: it mustn't stay on the Partners page as still failing.
             await db.partnerFailure.deleteMany({ where: { shopId: shop.id, key } }).catch(() => {});
           } catch (e) {
@@ -915,8 +1057,7 @@ export async function retryPartnerMessage(shopId: string, key: string) {
   // A fresh start for it: the "seen" row written when it was set aside, and the entry itself, go first.
   await db.$transaction([db.partnerSeen.deleteMany({ where: { shopId, key } }), db.partnerFailure.deleteMany({ where: { shopId, key } })]);
   try {
-    await linkFor(shopId, m);
-    await applyOnce(shopId, key, m);
+    await takeMessage(shopId, m, true);
   } catch (e) {
     const { msg } = await noteFailure(shopId, key, m, e, true);
     throw new UserError(`It couldn't be applied this time either: ${msg}.`);
@@ -979,6 +1120,11 @@ async function doPartnerSync(): Promise<PartnerSyncResult> {
   if (st.partnerCursor == null && !(await db.partnerLink.count())) return { skipped: true };
   const result = await withSyncLease(async () => {
     try {
+      // Every company with a partnership has its signing key before anything is sent or taken (the key's age is what
+      // lets an invite made before signing existed still be taken, for a while).
+      for (const l of await db.partnerLink.findMany({ distinct: ["shopId"], select: { shopId: true } })) {
+        await ownKey(l.shopId).catch((e) => console.error(`partner key for ${l.shopId}:`, e instanceof Error ? e.message : e));
+      }
       await pushJobUpdates();
       await pushCatalogs();
       await pushFeatures();

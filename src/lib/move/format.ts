@@ -80,6 +80,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "SaleLine", key: "id", via: { column: "saleId", parent: "Sale" } }, // -> Part too
   { t: "StockUnit", key: "id" }, // -> Machine
   { t: "VacCare", key: '"machineId"' }, // -> Machine (one row per machine)
+  { t: "PartnerKey", key: '"shopId"', leftOut: ["privateSealed"] }, // the sealed private key stays behind: the company makes a new key (src/lib/partner-keys.ts)
   { t: "PartnerLink", key: "id" },
   { t: "PartnerOutbox", key: "id" },
   { t: "RepairJob", key: "id" }, // -> Customer, Machine
@@ -125,7 +126,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
 export const LEFT_OUT: readonly string[] = MOVE_TABLES.flatMap((t) => (t.leftOut ?? []).map((c) => `${t.t}.${c}`));
 
 /** What the owner enters again on the new side, in the words the Settings page uses. */
-export const LEFT_OUT_WORDS = ["the mail password", "the Twilio secret", "the Stripe keys and webhook secret", "estimate and online-order links (customers get new ones)"];
+export const LEFT_OUT_WORDS = ["the mail password", "the Twilio secret", "the Stripe keys and webhook secret", "estimate and online-order links (customers get new ones)", "the partner signing key (the company makes a new one, and each partner trusts it by a new partner code)"];
 
 export const tableNames = (): string[] => MOVE_TABLES.map((t) => t.t);
 
