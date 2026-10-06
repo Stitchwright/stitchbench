@@ -58,6 +58,16 @@ model Shop {
   fabAbcBPct          Int       @default(95)
   fabGmroiGood        Float     @default(3)
   fabGmroiReview      Float     @default(1.5)
+  // Fabric ordering (package F3): the review period in weeks, the safety-stock z for collections (90%) and staples (95%),
+  // the lead time in days for a supplier with no received order yet, and "Reorder now" (this percent of the lot sold in
+  // this many days, and the weeks of supply under lead time plus this many weeks).
+  fabReviewWeeks      Int       @default(2)
+  fabZCollection      Float     @default(1.28)
+  fabZStaple          Float     @default(1.65)
+  fabLeadDays         Int       @default(14)
+  fabUrgentSoldPct    Int       @default(60)
+  fabUrgentDays       Int       @default(28)
+  fabUrgentWeeks      Int       @default(2)
   warrantyDays        Int       @default(90)
   abandonedAfterDays  Int       @default(60)
   storageFeeCents     Int       @default(4500)
@@ -149,6 +159,9 @@ model Shop {
   parts           Part[]
   stockMoves      StockMove[]
   fabricMarkdowns FabricMarkdown[]
+  fabricSuppliers FabricSupplier[]
+  purchaseOrders  PurchaseOrder[]
+  purchaseLines   PurchaseOrderLine[]
   notes           ModelNote[]
   serviceItems    ServiceItem[]
   photos          MachinePhoto[]
@@ -697,6 +710,7 @@ model Part {
 
   moves     StockMove[]
   markdowns FabricMarkdown[]
+  poLines   PurchaseOrderLine[]
   photos    PartPhoto[]
   lines     TicketLine[]
   sources   PartSource[]
@@ -2121,4 +2135,82 @@ model FabricMarkdown {
   undoneAt     DateTime?
 
   @@index([shopId, partId, createdAt])
+}
+
+// Fabric ordering (fabric-smarts-design.md sections 5 and 6, package F3). A supplier the shop buys fabric from: the name is
+// what the fabrics' supplier text says (found or made when an order is started). leadDays is the shop's own figure;
+// learnedDays is worked out from received orders (sent to first received) and is what the reorder math uses once
+// learnedOrders is more than 0. minOrderCents is a warning on the order, not a block.
+model FabricSupplier {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name          String
+  leadDays      Int?
+  learnedDays   Int?
+  learnedOrders Int      @default(0)
+  minOrderCents Int      @default(0)
+  orderEmail    String?
+  createdAt     DateTime @default(now())
+
+  orders PurchaseOrder[]
+
+  @@unique([shopId, name])
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum PoUnit {
+  YD
+  BOLT
+}
+
+model PurchaseOrder {
+  id              String              @id @default(cuid())
+  shopId          String
+  shop            Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number          Int
+  supplierId      String
+  supplier        FabricSupplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierName    String
+  status          PurchaseOrderStatus @default(DRAFT)
+  note            String?
+  createdAt       DateTime            @default(now())
+  sentAt          DateTime?
+  firstReceivedAt DateTime?
+  receivedAt      DateTime?
+  cancelledAt     DateTime?
+
+  lines PurchaseOrderLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+}
+
+// One line: the fabric (kept by number and description too, so the order reads right if the item is changed), the amount
+// in yards or bolts (a bolt is boltYards, copied when the line is made), the maker's item number and the cost a yard.
+model PurchaseOrderLine {
+  id            String        @id @default(cuid())
+  shopId        String
+  shop          Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId       String
+  order         PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId        String?
+  part          Part?         @relation(fields: [partId], references: [id], onDelete: SetNull)
+  itemNumber    String
+  description   String
+  unit          PoUnit        @default(YD)
+  qty           Float
+  boltYards     Float         @default(15)
+  costCents     Int?
+  receivedYards Float         @default(0)
+
+  @@index([orderId])
+  @@index([shopId, partId])
 }

@@ -9,6 +9,7 @@ import { str } from "@/lib/format";
 import { MAX_CENTS, MAX_STOCK, centsField, partKeys, partNumberClash } from "@/lib/parts";
 import { inEighths, yards } from "@/lib/register-math";
 import { CUT_INFO, cutPlan, cutPrices, type CutKind } from "@/lib/fabric-math";
+import { onOrderFor } from "@/lib/fabric-orders";
 import type { CurrentUser } from "@/lib/session";
 import type { InPrint } from "@/generated/prisma/enums";
 
@@ -105,7 +106,8 @@ export type BoltEnd = {
 };
 
 /**
- * Fabric with `boltEndYards` or fewer left and none on order (no open "waiting on a part" for it), least first. The items
+ * Fabric with `boltEndYards` or fewer left and none on order (no open "waiting on a part" for it and no yards still to
+ * come on a sent purchase order), least first. The items
  * the cuts feed (fat quarters, remnant) aren't bolt ends themselves.
  */
 export async function boltEndsFor(shopId: string): Promise<{ rows: BoltEnd[]; limit: number }> {
@@ -114,7 +116,9 @@ export async function boltEndsFor(shopId: string): Promise<{ rows: BoltEnd[]; li
     db.part.findMany({ where: { shopId, OR: [{ fatQuarterId: { not: null } }, { halfYardId: { not: null } }, { remnantId: { not: null } }] }, select: { fatQuarterId: true, halfYardId: true, remnantId: true } }),
     db.partWait.findMany({ where: { shopId, receivedAt: null, cancelledAt: null, partId: { not: null } }, select: { partId: true } }),
   ]);
-  const skip = new Set<string>([...linked.flatMap((l) => [l.fatQuarterId, l.halfYardId, l.remnantId]), ...ordered.map((o) => o.partId)].filter((x): x is string => !!x));
+  const po = await onOrderFor(shopId);
+  const onPo = [...po].filter(([, v]) => v.open > 0).map(([id]) => id);
+  const skip = new Set<string>([...linked.flatMap((l) => [l.fatQuarterId, l.halfYardId, l.remnantId]), ...ordered.map((o) => o.partId), ...onPo].filter((x): x is string => !!x));
   const parts = await db.part.findMany({
     where: { shopId, kind: "FABRIC", unit: "yd", consignLinkId: null, qtyOnHand: { gt: 0, lte: shop.boltEndYards }, id: { notIn: [...skip] } },
     orderBy: [{ qtyOnHand: "asc" }, { description: "asc" }],
