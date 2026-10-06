@@ -7,9 +7,9 @@ import { CUSTOMER_MARK, redact, type Redaction } from "./redact";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type Built = { feature: FeatureId; cls: ModelClass; system: string; messages: ChatMessage[]; maxTokens: number; sources?: Source[] };
-export type SourceKind = "ticket" | "gotcha" | "hubpost" | "spec" | "setting" | "servicemode" | "general";
+export type SourceKind = "manual" | "ticket" | "gotcha" | "hubpost" | "spec" | "setting" | "servicemode" | "general";
 /** `href` is where a person opens the source (never sent to the model). */
-export type Source = { kind: SourceKind; ref: string; label: string; href?: string };
+export type Source = { kind: SourceKind; ref: string; label: string; href?: string; page?: number };
 
 export type TicketFacts = {
   number: number;

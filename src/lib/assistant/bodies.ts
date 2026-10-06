@@ -84,7 +84,7 @@ export async function plateRead(user: Pick<CurrentUser, "id" | "shopId">, data: 
   return { plate, retried };
 }
 
-export async function saveSettings(user: Pick<CurrentUser, "shopId" | "role">, o: { draftOn: boolean; causesOn: boolean; plateOn: boolean; offerFirstNames: boolean; voice: string | null }) {
+export async function saveSettings(user: Pick<CurrentUser, "shopId" | "role">, o: { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn?: boolean; offerFirstNames: boolean; voice: string | null }) {
   if (user.role === "TECH") throw new UserError("Only the shop owner or an admin can change this.");
   if ((o.voice ?? "").length > 900) throw new UserError("Keep the sample to a few sentences (900 characters).");
   const data = { ...o, voice: o.voice?.trim() || null };
