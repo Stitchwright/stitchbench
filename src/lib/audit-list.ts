@@ -32,6 +32,8 @@ export const AUDIT_ACTIONS = {
   "giftcard.cashout": { category: "money", label: "Gift card balance paid out in cash" },
   "ticket.tax": { category: "money", label: "Tax switched off or on for a ticket" },
   "customer.taxexempt": { category: "money", label: "Customer's tax-exempt certificate changed" },
+  "order.cancel": { category: "money", label: "Online order cancelled" },
+  "estimate.answer": { category: "money", label: "Estimate answered by staff (phone or text)" },
   "credit.issue": { category: "money", label: "Store credit given" },
   // Prices
   "part.price": { category: "prices", label: "Item price or cost changed" },
@@ -41,8 +43,13 @@ export const AUDIT_ACTIONS = {
   "stock.count": { category: "stock", label: "Stock recounted or adjusted" },
   // Deletes
   "ticketline.remove": { category: "deletes", label: "Ticket line removed" },
+  "photo.delete": { category: "deletes", label: "Machine photo deleted" },
+  "note.delete": { category: "deletes", label: "Model note deleted" },
   // Settings
   "books.settings": { category: "settings", label: "Bookkeeping names or choices changed" },
+  "hub.join": { category: "settings", label: "Joined StitchHub" },
+  "hub.leave": { category: "settings", label: "Left StitchHub" },
+  "hub.usage": { category: "settings", label: "Sharing of parts used switched on or off" },
   "shop.details": { category: "settings", label: "Shop details changed" },
   // People
   "user.add": { category: "people", label: "Login added" },

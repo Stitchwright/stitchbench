@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
+import { actorOf, audit } from "@/lib/audit";
 import { UserError } from "@/lib/user-error";
 import { money, str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
@@ -1088,6 +1089,7 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
   if (o.status === "DONE") throw new UserError("This order went out. Take a return at the register instead.");
   if (o.status === "PENDING") {
     await db.webOrder.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, staffNote: `Cancelled by ${user.name}: ${reason || "no reason given"}` } });
+    await audit(db, actorOf(user), { action: "order.cancel", subjectType: "WebOrder", subjectId: id, subjectLabel: `Online order ${fmtNo(o.number)} (not paid)`, amountCents: 0, reason: reason || null });
     return;
   }
   const rest = o.totalCents - o.refundedCents;
@@ -1102,6 +1104,7 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
   const sale = await db.sale.findFirst({ where: { shopId: o.shopId, OR: [...(o.saleId ? [{ id: o.saleId }] : []), { clientKey: `web-${o.id}` }] }, select: { id: true, status: true } });
   if (sale && sale.status !== "VOIDED") await voidSaleAs(user, sale.id, `Online order ${fmtNo(o.number)} cancelled: ${reason || "no reason given"}`);
   await db.webOrder.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, refundedCents: o.totalCents, staffNote: `Cancelled by ${user.name}: ${reason || "no reason given"}` } });
+  await audit(db, actorOf(user), { action: "order.cancel", subjectType: "WebOrder", subjectId: id, subjectLabel: `Online order ${fmtNo(o.number)}`, amountCents: o.totalCents, reason: reason || null });
   await notifyOrder({ ...o, status: "CANCELLED", refundedCents: o.totalCents }, "cancelled", now);
 }
 
