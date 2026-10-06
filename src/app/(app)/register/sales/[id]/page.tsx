@@ -10,6 +10,7 @@ import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
 import { SaleUnitNotes } from "@/components/vac/sale-unit-notes";
 import { voidSale } from "@/actions/register";
+import { lastFour } from "@/lib/gift-card-number";
 
 /** A register receipt, narrow enough for an 80 mm receipt printer and fine on letter paper. */
 export default async function Receipt({ params }: { params: Promise<{ id: string }> }) {
@@ -21,6 +22,12 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
   });
   if (!sale) notFound();
   const shop = sale.shop;
+  // Cards this sale sold, loaded or gave as store credit: their numbers print on the receipt (the gift slip).
+  const cardEntries = await db.giftCardEntry.findMany({
+    where: { shopId: user.shopId, saleId: sale.id, reason: { in: ["SOLD", "LOADED", "REFUNDED_TO"] } },
+    include: { card: true },
+    orderBy: { at: "asc" },
+  });
   const svg = barcodeSvg(`S${sale.number}`, 7);
   const tenders = sale.tenders as Tender[];
   // Clock times in the shop's zone: a hosted install's server runs on UTC, which would put an evening sale on tomorrow's date.
@@ -78,9 +85,29 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
           <span>{money(Math.abs(sale.totalCents))}</span>
         </div>
         {tenders.map((t, i) => (
-          <Line key={i} k={TENDER_LABEL[t.method] ?? t.method} v={money(t.amountCents)} />
+          <div key={i}>
+            <Line k={`${TENDER_LABEL[t.method] ?? t.method}${t.last4 ? ` ending ${t.last4}` : ""}`} v={money(t.amountCents)} />
+            {t.leftCents != null && <div className="text-right text-xs">{t.amountCents < 0 ? "Now holds" : "Left on it"} {money(t.leftCents)}</div>}
+          </div>
         ))}
         {sale.changeCents > 0 && <Line k="Change" v={money(sale.changeCents)} />}
+        {cardEntries.map((e) => {
+          const credit = e.card.kind === "credit";
+          // A slip with no customer behind it carries its whole number; a customer's credit and a loaded card show the end.
+          const showNumber = e.reason === "SOLD" || (credit && !e.card.customerId);
+          const bars = showNumber ? barcodeSvg(e.card.number, 7) : null;
+          return (
+            <div key={e.id} className="mt-3 border-t border-dashed border-line pt-2 text-center">
+              <div className="font-bold">
+                {credit ? "Store credit" : "Gift card"} {e.reason === "LOADED" ? "loaded" : e.reason === "SOLD" ? "" : "given"} {money(e.amountCents)}
+              </div>
+              {showNumber ? <div className="mono font-bold">{e.card.number}</div> : <div>ending {lastFour(e.card.number)}</div>}
+              {bars && <div className="mx-auto mt-1 w-48" dangerouslySetInnerHTML={{ __html: bars }} />}
+              {e.reason !== "SOLD" && <div className="text-xs">Balance now {money(e.card.balanceCents)}</div>}
+              <div className="text-xs">Never expires. No fees.</div>
+            </div>
+          );
+        })}
         {svg && <div className="mx-auto mt-3 w-48" dangerouslySetInnerHTML={{ __html: svg }} />}
         {shop.receiptNote && <p className="mt-2 text-center text-xs whitespace-pre-line">{shop.receiptNote}</p>}
         <p className="mt-2 text-center text-xs">Thank you!</p>

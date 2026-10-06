@@ -95,6 +95,8 @@ export const BY_HAND = [
  */
 export const HAND_ALLOWED = [
   "itemByCode",
+  // A gift card or store credit looked up by its number (the register, the card page): reading is always allowed
+  "giftCardByNumber",
   "findItems",
   "pickupJobs",
   "pickupJobByTag",

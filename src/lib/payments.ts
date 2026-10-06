@@ -4,6 +4,8 @@ import { UserError } from "@/lib/user-error";
 import { PAYMENT_LABEL } from "@/lib/constants";
 import { money, ticketNo } from "@/lib/format";
 import { actorOf, audit } from "@/lib/audit";
+import { requireBaseWritable } from "@/lib/base-gate";
+import { applyCardTender, cardWords, reversePayment } from "@/lib/gift-cards";
 import type { CurrentUser } from "@/lib/session";
 import type { PaymentMethod } from "@/generated/prisma/enums";
 
@@ -15,16 +17,32 @@ const MAX_MONEY = 10_000_000;
  * whatever the module's state; money back (a minus amount) is the owner's or an admin's call. The payment and its audit
  * entry commit together.
  */
-export async function addPaymentFor(user: CurrentUser, ticketId: string, input: { amountCents: number | null; method: PaymentMethod; note: string | null }): Promise<void> {
-  const ticket = await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId }, select: { id: true, number: true } });
+export async function addPaymentFor(user: CurrentUser, ticketId: string, input: { amountCents: number | null; method: PaymentMethod; note: string | null; card?: string | null }): Promise<void> {
+  const ticket = await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId }, select: { id: true, number: true, customerId: true } });
   if (!ticket) throw new UserError("Ticket not found.");
   const amount = input.amountCents;
   if (amount == null || amount === 0) throw new UserError("Enter the amount paid.");
   if (Math.abs(amount) > MAX_MONEY) throw new UserError("That's more than $100,000. Check the amount.");
   if (amount < 0 && user.role === "TECH") throw new UserError("Only the shop owner or an admin can record a refund.");
   if (!Object.hasOwn(PAYMENT_LABEL, input.method)) throw new UserError("Pick how it was paid.");
+  const onCard = input.method === "GIFT" || input.method === "CREDIT";
+  // Spending a gift card or store credit is a sale: refused while the program is read-only (design 2.5). Money back onto a
+  // card (a refund) and taking a payment off go through, like every other payment.
+  if (onCard && amount > 0) await requireBaseWritable(user);
   await db.$transaction(async (tx) => {
-    const p = await tx.payment.create({ data: { ticketId, method: input.method, amountCents: amount, note: input.note } });
+    let note = input.note;
+    const p = await tx.payment.create({ data: { ticketId, method: input.method, amountCents: amount, note } });
+    if (onCard) {
+      const r = await applyCardTender(
+        tx,
+        actorOf(user),
+        { method: input.method as "GIFT" | "CREDIT", amountCents: amount, cardNumber: input.card },
+        { customerId: ticket.customerId, paymentId: p.id, ticketId, label: `Ticket #${ticketNo(ticket.number)}` },
+      );
+      const card = await tx.giftCard.findUniqueOrThrow({ where: { id: r.cardId }, select: { kind: true, number: true } });
+      note = [note, r.issued ? `New store credit slip ${card.number}` : cardWords(card)].filter(Boolean).join(" · ").slice(0, 500);
+      await tx.payment.update({ where: { id: p.id }, data: { note } });
+    }
     await audit(tx, actorOf(user), {
       action: "payment.add",
       subjectType: "Ticket",
@@ -51,9 +69,11 @@ export async function removePaymentFor(user: CurrentUser, paymentId: string): Pr
   const label = `${PAYMENT_LABEL[p.method]} payment of ${money(p.amountCents)}`;
   try {
     await db.$transaction(async (tx) => {
-      await tx.payment.create({
+      const removal = await tx.payment.create({
         data: { ticketId: p.ticketId, method: p.method, amountCents: -p.amountCents, paidAt: new Date(), reversesId: p.id, note: `Removed: the ${label}${p.note ? ` (${p.note})` : ""}`.slice(0, 500) },
       });
+      // What the payment did to a gift card or store credit comes back (or goes back off it).
+      await reversePayment(tx, actorOf(user), { id: p.id, ticketId: p.ticketId }, removal.id);
       await audit(tx, actorOf(user), {
         action: "payment.remove",
         subjectType: "Ticket",

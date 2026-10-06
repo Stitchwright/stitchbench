@@ -126,6 +126,7 @@ model Shop {
   photos          MachinePhoto[]
   sharedPosts     SharedPost[]
   sales           Sale[]
+  giftCards       GiftCard[]
   partnerLinks    PartnerLink[]
   partnerKey      PartnerKey?
   repairJobs      RepairJob[]
@@ -283,6 +284,7 @@ model Customer {
   tickets       Ticket[]       @relation("TicketCustomer")
   viaTickets    Ticket[]       @relation("TicketViaAccount")
   sales         Sale[]
+  giftCards     GiftCard[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -580,6 +582,8 @@ enum PaymentMethod {
   SHOP_COLLECTED
   INVOICE
   OTHER
+  GIFT
+  CREDIT
 }
 
 model Payment {
@@ -1132,6 +1136,8 @@ model SaleLine {
   // A class seat or an appointment paid (qty 1) or refunded (qty -1) on this line (plain ids)
   enrollmentId   String?
   appointmentId  String?
+  // A gift card sold, loaded or paid out on this line (plain id)
+  giftCardId     String?
 
   @@index([saleId])
   @@index([stockUnitId])
@@ -2112,4 +2118,54 @@ model AuditEntry {
 
   @@index([shopId, at])
   @@index([shopId, subjectType, subjectId])
+}
+
+// ============================================================
+// Gift cards and store credit (later-round-1-design.md section 2). The ledger (GiftCardEntry) is the truth;
+// balanceCents is its sum, kept in step in the same transaction (never below 0: a database check says so).
+// ============================================================
+model GiftCard {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // Printed on the card: GC-XXXX-XXXX-XXXX-C, or a number from a pre-printed blank (6 to 24 letters and digits)
+  number       String
+  kind         String    @default("gift") // gift | credit
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  balanceCents Int       @default(0)
+  status       String    @default("active") // active | void
+  issuedAt     DateTime  @default(now())
+  lastUsedAt   DateTime?
+  note         String?
+  createdById  String?
+
+  entries GiftCardEntry[]
+
+  @@unique([shopId, number])
+  @@index([shopId, customerId])
+}
+
+model GiftCardEntry {
+  id          String   @id @default(cuid())
+  shopId      String
+  cardId      String
+  card        GiftCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  at          DateTime @default(now())
+  // + onto the card, - off it
+  amountCents Int
+  // SOLD | LOADED | REDEEMED | REFUNDED_TO | CASHED_OUT | ADJUSTED | OPENING | VOID | MOVED
+  reason      String
+  // Plain ids of what caused it
+  saleId      String?
+  saleLineId  String?
+  paymentId   String?
+  ticketId    String?
+  userId      String?
+  note        String?
+
+  @@index([cardId, at])
+  @@index([shopId, at])
+  @@index([saleId])
+  @@index([paymentId])
 }
