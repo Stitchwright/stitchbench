@@ -61,6 +61,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "User", key: "id" },
   { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
   { t: "Customer", key: "id" },
+  { t: "GiftCard", key: "id" }, // -> Customer
   { t: "Machine", key: "id" }, // -> Customer
   { t: "ModelNote", key: "id" }, // -> User
   { t: "ServiceItem", key: "id" },
@@ -70,6 +71,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Ticket", key: "id" }, // -> Machine, Customer
   { t: "TicketLine", key: "id", via: { column: "ticketId", parent: "Ticket" } }, // -> Part too
   { t: "Payment", key: "id", via: { column: "ticketId", parent: "Ticket" } },
+  { t: "GiftCardEntry", key: "id" }, // -> GiftCard (its sale, payment and ticket ids are plain)
   { t: "TicketSite", key: '"ticketId"' }, // -> Ticket (one row per ticket)
   { t: "PartWait", key: "id" }, // -> Ticket, Part
   { t: "StockMove", key: "id" }, // -> Part, User

@@ -34,6 +34,13 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
         ...cs.map((c) => [c.name, c.kind, c.phone, c.email, c.address, c.code, c.commissionPct, c.notes, at(c.createdAt), c.notifyBy, at(c.smsConsentAt), c.smsConsentPhone, c.smsConsentSource]),
       ];
     }
+    case "gift-cards": {
+      const cs = await db.giftCard.findMany({ where: { shopId }, include: { customer: { select: { name: true } } }, orderBy: { issuedAt: "asc" } });
+      return [
+        ["number", "kind", "status", "customer", "balance", "issued", "last_used", "note"],
+        ...cs.map((c) => [c.number, c.kind === "credit" ? "store credit" : "gift card", c.status, c.customer?.name, dollars(c.balanceCents), at(c.issuedAt), at(c.lastUsedAt), c.note]),
+      ];
+    }
     case "audit": {
       const es = await db.auditEntry.findMany({ where: { shopId }, orderBy: [{ at: "asc" }, { id: "asc" }] });
       return [

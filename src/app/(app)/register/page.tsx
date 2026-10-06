@@ -49,6 +49,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         title="Register"
         actions={
           <>
+            <Link href="/register/gift-cards" className="btn">
+              Gift cards
+            </Link>
             <Link href="/register/sales" className="btn">
               Sales
             </Link>

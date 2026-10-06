@@ -24,6 +24,13 @@ export const AUDIT_ACTIONS = {
   "sale.return": { category: "money", label: "Return or refund at the register" },
   "sale.discount": { category: "money", label: "Discount given at the register" },
   "sale.price_override": { category: "money", label: "Register price different from the item's" },
+  "giftcard.sell": { category: "money", label: "Gift card sold" },
+  "giftcard.load": { category: "money", label: "Gift card loaded" },
+  "giftcard.opening": { category: "money", label: "Existing gift card added" },
+  "giftcard.adjust": { category: "money", label: "Gift card balance adjusted" },
+  "giftcard.move": { category: "money", label: "Gift card moved to a new number" },
+  "giftcard.cashout": { category: "money", label: "Gift card balance paid out in cash" },
+  "credit.issue": { category: "money", label: "Store credit given" },
   // Prices
   "part.price": { category: "prices", label: "Item price or cost changed" },
   "service.price": { category: "prices", label: "Service price changed" },

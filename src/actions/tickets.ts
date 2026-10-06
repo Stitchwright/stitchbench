@@ -593,6 +593,7 @@ export const addPayment = safe.whileLapsed("addPayment")(async function addPayme
     amountCents: toCents(formData.get("amount")),
     method: (str(formData.get("method")) ?? "CARD") as PaymentMethod,
     note: fits(str(formData.get("note")), "Note"),
+    card: str(formData.get("card")),
   });
   refresh(ticketId);
   revalidatePath("/sales");

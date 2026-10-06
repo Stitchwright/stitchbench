@@ -222,6 +222,8 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   });
   await db.suppression.create({ data: { shopId, channel: "email", address: "gone@example.test", scope: "marketing", source: "link" } });
   await db.consentEvent.create({ data: { shopId, customerId: cust.id, channel: "email", event: "marketing_yes", source: "counter" } });
+  const giftCard = await db.giftCard.create({ data: { shopId, number: "GC-MOVE-TEST-0001", kind: "gift", customerId: cust.id, balanceCents: 4200 } });
+  await db.giftCardEntry.create({ data: { shopId, cardId: giftCard.id, amountCents: 4200, reason: "SOLD", note: "move check" } });
   await db.auditEntry.create({ data: { shopId, userName: "Move check", role: "OWNER", category: "money", action: "sale.void", subjectType: "Sale", subjectLabel: "Sale #1", changes: { status: ["COMPLETED", "VOIDED"] } } });
   await db.inboundText.create({ data: { shopId, sid: `SM${crypto.randomBytes(16).toString("hex")}`, fromNumber: "+12125550123", body: "Thanks", receivedAt: new Date(now - day) } });
   await db.estimateLink.create({

@@ -579,6 +579,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 </label>
                 <input id="payNote" name="note" className="input" placeholder="check #, last 4..." />
               </div>
+              <div className="field min-w-40">
+                <label htmlFor="payCard" className="label">
+                  Gift card or credit number
+                </label>
+                <input id="payCard" name="card" className="input mono" autoComplete="off" placeholder="only for gift card / store credit" />
+              </div>
               <Submit>Record payment</Submit>
             </ActionForm>
           </Section>

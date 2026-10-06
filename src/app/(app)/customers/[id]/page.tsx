@@ -17,6 +17,7 @@ import { gateFor } from "@/lib/module-gate";
 import { saveCustomer } from "@/actions/records";
 import { CustomerMergePanel, type MergeParams } from "@/components/merge-panel";
 import { firstValues } from "@/lib/search-params";
+import { StoreCreditSection } from "@/components/store-credit-section";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -114,6 +115,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
             )}
           </Section>
         )}
+        {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}
         {orders.length > 0 && (
           <Section title="Online orders">
             <ul className="divide-y divide-line text-sm">

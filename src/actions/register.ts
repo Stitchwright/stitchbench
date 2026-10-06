@@ -9,7 +9,8 @@ import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { codeKeys, numberKey } from "@/lib/parts";
 import { sameText } from "@/lib/input";
-import { lineNet } from "@/lib/register-math";
+import { lineNet, type Tender } from "@/lib/register-math";
+import type { Issued } from "@/lib/gift-card-number";
 import { splitForReturn } from "@/lib/sale-return";
 import { registerUnitHits } from "@/lib/vac/sale-units";
 import { viewItem, type RegisterItem } from "@/lib/register-item";
@@ -161,6 +162,8 @@ export type SaleForReturn = {
   lines: SaleReturnLine[];
   /** Payment lines for a repair bill, left out: reverse those with the repair shop instead (same as voiding a sale). */
   skippedRepairLines: number;
+  /** Gift cards and store credit the sale was paid with: the default way back is onto the same card. */
+  cardsPaid: { number: string; kind: "gift" | "credit"; amountCents: number }[];
 };
 
 /**
@@ -189,7 +192,13 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
       lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable });
     }
   }
-  return { id: sale.id, number: sale.number, customer: sale.customer, lines, skippedRepairLines };
+  const paid = (sale.tenders as Tender[]).filter((t) => t.cardId && t.amountCents > 0);
+  const cards = paid.length ? await db.giftCard.findMany({ where: { shopId: user.shopId, id: { in: paid.map((t) => t.cardId!) } }, select: { id: true, number: true, kind: true } }) : [];
+  const cardsPaid = paid.flatMap((t) => {
+    const c = cards.find((x) => x.id === t.cardId);
+    return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
+  });
+  return { id: sale.id, number: sale.number, customer: sale.customer, lines, skippedRepairLines, cardsPaid };
 }
 
 export type CustomerHit = { id: string; name: string; phone: string | null };
@@ -234,7 +243,7 @@ export async function quickAddCustomer(fd: FormData): Promise<CustomerHit | { er
   }
 }
 
-export async function completeSale(input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number } | { error: string }> {
+export async function completeSale(input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] } | { error: string }> {
   try {
     const user = await requireUser();
     // A given tax amount and the ONLINE tender belong to the online shop's payment path, never to the counter.
