@@ -133,6 +133,7 @@ export const HAND_ALLOWED = [
 export const ALSO_ALLOWED = [
   "/api/export/*",
   "/api/sales",
+  "/api/reports/*",
   "/api/move/download/*",
   "/api/move/upload/*",
   "/api/move/local",
