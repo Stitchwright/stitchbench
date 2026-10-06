@@ -135,6 +135,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
   Listing: "the hub's copy of this company's marketplace listings; the hub sends them again after the move",
   MarketOrder: "the hub's copy of this company's marketplace orders; the hub sends them again after the move",
   CompanyMove: "this copy's own move record",
+  ManualOffer: "a company's offers to the hub's manual repository: they name files in this PC's library and uploads made by this install on the hub, so they stay with this copy",
 };
 
 /** "Table.column" for every column the file sets to null, as the header's leftOut list. */

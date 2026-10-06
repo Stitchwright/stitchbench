@@ -236,7 +236,7 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
       <Section title={`Manuals${library.length ? ` (${library.length})` : ""}`}>
         {library.length > 0 && libraryFrom && <FromBase base={libraryFrom.name ? libraryFrom : { ...libraryFrom, name: baseName?.name ?? null }} what="manuals" />}
         <LibraryManuals
-          docs={library.map((d) => ({ path: d.path, file: d.file, docType: d.docType, pages: d.pages, sizeBytes: d.sizeBytes }))}
+          docs={library.map((d) => ({ path: d.path, file: d.file, docType: d.docType, pages: d.pages, sizeBytes: d.sizeBytes, withdrawnWhy: d.withdrawnWhy }))}
           root={shop?.libraryRoot ?? "C:\\Manuals"}
           brand={brand}
           model={model}

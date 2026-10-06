@@ -18,6 +18,7 @@ import { saveKitSettings } from "@/actions/kits";
 import { KIT_FIELDS } from "@/lib/kits-math";
 import { INSIGHT_FIELDS } from "@/lib/fabric-insight-math";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
+import { setTechsOfferManuals } from "@/actions/manual-repository";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
 import { gateFor } from "@/lib/module-gate";
@@ -63,7 +64,7 @@ function moduleLine(s: ModuleState) {
 }
 
 /** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
-async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: string }) {
+async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZone: string; owner?: { techsOffer: boolean } }) {
   const [s, links, notes, figures] = await Promise.all([db.hubState.findUnique({ where: { id: 1 } }), db.manualLink.count(), db.hubPost.count(), db.hubFigure.count()]);
   const joined = Boolean(s?.url && s.installKey);
   return (
@@ -91,6 +92,22 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
             </p>
           )}
           {s!.lastError && <p className="pill tone-bad inline-block">Last sync failed: {s!.lastError}</p>}
+          {owner && s!.scope === "member" && (
+            <div className="border-t border-line pt-3">
+              <div className="font-semibold">Manual repository</div>
+              <p className="muted">
+                Owners and admins can offer a manual from the library to the hub&apos;s repository, one file at a time. {s!.repoUploads === "soon" ? "The manual repository opens soon. " : ""}Strikes for copyright notices land on
+                this company&apos;s account, so techs can&apos;t offer unless you allow it.
+              </p>
+              <ActionButton
+                action={setTechsOfferManuals.bind(null, !owner.techsOffer)}
+                className="btn btn-sm mt-2"
+                success={owner.techsOffer ? "Techs can no longer offer manuals" : "Techs may offer manuals"}
+              >
+                {owner.techsOffer ? "Techs may offer manuals: on (turn off)" : "Techs may offer manuals: off (turn on)"}
+              </ActionButton>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <ActionButton action={syncCommunityHub} className="btn btn-sm" success="Synced with the hub">
               Sync now
@@ -194,7 +211,7 @@ export default async function SettingsPage() {
       </Section>
 
       <div id="hub">
-        <CommunityHub admin={await isInstallAdmin(user)} timeZone={await shopTimeZone(user.shopId)} />
+        <CommunityHub admin={await isInstallAdmin(user)} timeZone={await shopTimeZone(user.shopId)} owner={user.role === "OWNER" ? { techsOffer: Boolean((await db.shop.findUnique({ where: { id: user.shopId }, select: { techsOfferManuals: true } }))?.techsOfferManuals) } : undefined} />
       </div>
 
       {admin && (

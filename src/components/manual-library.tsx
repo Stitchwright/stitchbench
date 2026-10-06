@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FolderOpen, RefreshCw, FileText, ExternalLink } from "lucide-react";
+import { HostedOffer } from "@/components/hosted-offer";
 import {
   connectFolder,
   disconnect,
@@ -14,7 +15,8 @@ import {
   type LibraryIndex,
 } from "@/lib/local-manuals";
 
-export function ManualLibrary() {
+/** canOffer: hosted install and this person may offer: each file gets "Offer to the repository" (the browser reads and sends it). */
+export function ManualLibrary({ canOffer = false }: { canOffer?: boolean }) {
   const [index, setIndex] = useState<LibraryIndex | undefined>();
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -132,7 +134,7 @@ export function ManualLibrary() {
           )}
           <ul className="card divide-y divide-line">
             {hits.map((f) => (
-              <li key={f.path} className="flex items-center gap-3 px-4 py-2">
+              <li key={f.path} className="flex flex-wrap items-center gap-3 px-4 py-2">
                 <FileText size={16} className="shrink-0 text-ink-2" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{f.name}</div>
@@ -145,6 +147,7 @@ export function ManualLibrary() {
                 >
                   Open <ExternalLink size={12} aria-hidden />
                 </button>
+                {canOffer && <HostedOffer path={f.path} name={f.name} />}
               </li>
             ))}
           </ul>
