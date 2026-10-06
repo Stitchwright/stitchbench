@@ -128,6 +128,7 @@ async function main() {
       smsConsentSource: null,
       smsConsentText: null,
       lastReviewAskAt: null,
+      longarmCertifiedAt: null,
       createdAt: new Date(),
     };
     const consentAt = new Date("2026-05-01T15:00:00Z");
@@ -258,6 +259,11 @@ async function main() {
     await db.inboundText.create({ data: { shopId: A, sid: `SM${token()}`, fromNumber: "+12125550199", body: "Thanks!", receivedAt: new Date(), customerId: dup.id } });
     await db.estimateLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), maskedUrl: "https://x/e/•••abcd", totalCents: 4500, lines: [], expiresAt: new Date(Date.now() + DAY) } });
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
+    await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
+    await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
+    const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
+    await db.clubMember.create({ data: { shopId: A, clubId: cldup.id, customerId: dup.id } });
     const camp = await db.campaign.create({ data: { shopId: A, name: "Fall sale", channel: "email", body: "Hi", audience: {}, status: "SENT", members: [other.id, dup.id, keep.id] } });
 
     const beforeDup = await counts(CUSTOMER_REFS, dup.id, A);
@@ -429,6 +435,11 @@ async function main() {
         answeredAt: new Date(),
       },
     });
+    await db.longarmOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
+    await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
+    const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
+    await db.clubMember.create({ data: { shopId: A, clubId: cldel.id, customerId: del.id } });
     const camp2 = await db.campaign.create({ data: { shopId: A, name: "Spring", channel: "email", body: "Hi", audience: {}, status: "SENT", members: [del.id, other.id] } });
     for (const r of CUSTOMER_REFS) {
       if (r.field !== "viaAccountId") assert.ok((await refCount(db, r, del.id, A)) > 0, `the check seeds a row for ${key(r)} on the deleted customer`);

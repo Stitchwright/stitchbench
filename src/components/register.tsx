@@ -565,10 +565,16 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       code.current?.focus();
                     }}
                   >
-                    <span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {it.photoId && (
+                        // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
+                        <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                      )}
+                      <span className="min-w-0">
                       <span className="mono">{it.partNumber}</span> {it.description}
                       {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                      </span>
                     </span>
                     <span className="num">
                       {money(it.priceCents)}

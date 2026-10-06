@@ -9,6 +9,8 @@
 // signed with STRIPE_MOCK_WEBHOOK_SECRET, default whsec_mock1234567890) and sends the browser to success_url;
 // "Cancel" goes to cancel_url. GET /v1/checkout/sessions/{id} reports it. POST /v1/refunds records a refund.
 // Test hooks: POST /__pay/{id} pays without a browser; GET /__sessions, GET /__refunds; DELETE /__state.
+// Clubs (package F7): POST /v1/customers; subscription-mode sessions make a subscription when paid; GET, POST (pause_collection)
+// and DELETE /v1/subscriptions/{id}; mock.event(type, obj) and mock.invoice(subId, "paid"|"failed") build events to feed a handler.
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
@@ -62,21 +64,29 @@ const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "
 
 /**
  * @param {{ port?: number; webhookBase?: string | null; webhookSecret?: string }} o
- * @returns {Promise<{ port: number; sessions: Map<string, any>; refunds: any[]; webhooks: { url: string; status: number }[]; pay(id: string): Promise<any>; clear(): void; close(): Promise<void> }>}
+ * @returns {Promise<{ port: number; sessions: Map<string, any>; refunds: any[]; webhooks: { url: string; status: number }[]; customers: Map<string, any>; subscriptions: Map<string, any>; pay(id: string): Promise<any>; event(type: string, obj: any): any; invoice(subId: string, outcome: "paid" | "failed", o?: { at?: Date }): any; clear(): void; close(): Promise<void> }>}
  */
 export async function startStripeMock(o = {}) {
   const sessions = new Map();
   const refunds = [];
   const webhooks = [];
+  // Clubs (package F7): customers and subscriptions made through the API and subscription-mode Checkout.
+  const customers = new Map();
+  const subscriptions = new Map();
   const secret = o.webhookSecret ?? process.env.STRIPE_MOCK_WEBHOOK_SECRET ?? "whsec_mock1234567890";
   const webhookBase = o.webhookBase === undefined ? (process.env.STRIPE_MOCK_WEBHOOK_BASE ?? null) : o.webhookBase;
   let port = o.port ?? Number(process.env.STRIPE_MOCK_PORT ?? 3403);
+
+  /** An event as Stripe would send it (an object with its type), for a check that feeds the webhook handler directly. */
+  function event(type, obj) {
+    return { id: `evt_${hex(12)}`, object: "event", type, created: Math.floor(Date.now() / 1000), data: { object: obj } };
+  }
 
   async function sendWebhook(s, type) {
     if (!webhookBase) return;
     const endpoint = s.metadata?.endpoint ?? "platform";
     const url = `${webhookBase.replace(/\/$/, "")}/${endpoint}`;
-    const body = JSON.stringify({ id: `evt_${hex(12)}`, object: "event", type, created: Math.floor(Date.now() / 1000), data: { object: s } });
+    const body = JSON.stringify(event(type, s));
     const t = Math.floor(Date.now() / 1000);
     const sig = `t=${t},v1=${crypto.createHmac("sha256", secret).update(`${t}.${body}`).digest("hex")}`;
     try {
@@ -94,6 +104,11 @@ export async function startStripeMock(o = {}) {
       s.payment_status = "paid";
       s.status = "complete";
       s.payment_intent = `pi_${hex(12)}`;
+      if (s.mode === "subscription") {
+        const sub = { id: `sub_${hex(12)}`, object: "subscription", status: "active", customer: s.customer, metadata: s.subscription_metadata ?? {}, pause_collection: null, items: s.line_items, billing_cycle_anchor: s.billing_cycle_anchor ?? null };
+        subscriptions.set(sub.id, sub);
+        s.subscription = sub.id;
+      }
       await sendWebhook(s, "checkout.session.completed");
     }
     return s;
@@ -178,6 +193,10 @@ export async function startStripeMock(o = {}) {
           currency: "usd",
           customer_email: f.customer_email ?? null,
           client_reference_id: f.client_reference_id ?? null,
+          customer: f.customer ?? null,
+          subscription: null,
+          subscription_metadata: f.subscription_data?.metadata ?? null,
+          billing_cycle_anchor: f.subscription_data?.billing_cycle_anchor ? Number(f.subscription_data.billing_cycle_anchor) : null,
           metadata: f.metadata ?? {},
           success_url: f.success_url,
           cancel_url: f.cancel_url,
@@ -192,6 +211,38 @@ export async function startStripeMock(o = {}) {
       if (m && req.method === "GET") {
         const s = sessions.get(m[1]);
         return s ? json(res, 200, s) : stripeError(res, 404, `No such checkout.session: '${m[1]}'`);
+      }
+      if (p === "/v1/customers" && req.method === "POST") {
+        const f = parseForm(await readBody(req));
+        const idem = req.headers["idempotency-key"];
+        const prior = idem ? [...customers.values()].find((c) => c.idempotency_key === idem) : null;
+        if (prior) return json(res, 200, prior);
+        const c = { id: `cus_${hex(10)}`, object: "customer", name: f.name ?? null, email: f.email ?? null, metadata: f.metadata ?? {}, idempotency_key: idem ?? null };
+        customers.set(c.id, c);
+        return json(res, 200, c);
+      }
+      m = /^\/v1\/subscriptions\/(sub_[A-Za-z0-9]+)$/.exec(p);
+      if (m) {
+        const sub = subscriptions.get(m[1]);
+        if (!sub) return stripeError(res, 404, `No such subscription: '${m[1]}'`);
+        if (req.method === "GET") return json(res, 200, sub);
+        if (req.method === "POST") {
+          const f = parseForm(await readBody(req));
+          if ("pause_collection" in f) sub.pause_collection = f.pause_collection && typeof f.pause_collection === "object" ? { behavior: f.pause_collection.behavior ?? "void" } : null;
+          return json(res, 200, sub);
+        }
+        if (req.method === "DELETE") {
+          sub.status = "canceled";
+          const ev = event("customer.subscription.deleted", sub);
+          if (webhookBase) {
+            const body = JSON.stringify(ev);
+            const t = Math.floor(Date.now() / 1000);
+            const sig = `t=${t},v1=${crypto.createHmac("sha256", secret).update(`${t}.${body}`).digest("hex")}`;
+            const url = `${webhookBase.replace(/\/$/, "")}/${sub.metadata?.endpoint ?? "platform"}`;
+            fetch(url, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": sig }, body }).then((r) => webhooks.push({ url, status: r.status }), () => webhooks.push({ url, status: 0 }));
+          }
+          return json(res, 200, sub);
+        }
       }
       if (p === "/v1/refunds" && req.method === "POST") {
         const f = parseForm(await readBody(req));
@@ -222,8 +273,21 @@ export async function startStripeMock(o = {}) {
     sessions,
     refunds,
     webhooks,
+    customers,
+    subscriptions,
     pay,
+    event,
+    /** An invoice event for a subscription ("paid" or "failed"), as Stripe would send it; `at` is the invoice's time. */
+    invoice(subId, outcome, o = {}) {
+      const sub = subscriptions.get(subId);
+      if (!sub) return null;
+      const amount = Number(sub.items?.data?.[0]?.price_data?.unit_amount ?? 0);
+      const inv = { id: `in_${hex(10)}`, object: "invoice", subscription: sub.id, customer: sub.customer, amount_due: amount, amount_paid: outcome === "paid" ? amount : 0, status: outcome === "paid" ? "paid" : "open", created: Math.floor((o.at ?? new Date()).getTime() / 1000), metadata: {} };
+      return event(outcome === "paid" ? "invoice.paid" : "invoice.payment_failed", inv);
+    },
     clear() {
+      customers.clear();
+      subscriptions.clear();
       sessions.clear();
       refunds.length = 0;
       webhooks.length = 0;

@@ -10,6 +10,7 @@ import { createPart } from "@/actions/parts";
 import { KIND_LABEL } from "@/lib/parts";
 import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
+import { FIRST_PHOTO } from "@/lib/register-item";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -68,7 +69,7 @@ export default async function Parts({
   const SHOWN = 1000;
   // The count and the shelf value cover every matching item, not only the ones listed.
   const [parts, all] = await Promise.all([
-    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN }),
+    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN, include: FIRST_PHOTO }),
     db.part.findMany({ where, select: { costCents: true, costTenThou: true, qtyOnHand: true } }),
   ]);
   // At the fine cost (ten-thousandths), rounded once for the whole shelf, not per unit.
@@ -209,6 +210,11 @@ export default async function Parts({
                   <th className="w-8">
                     <span className="sr-only">Label</span>
                   </th>
+                  {shop.sellsRetail && (
+                    <th className="w-14">
+                      <span className="sr-only">Picture</span>
+                    </th>
+                  )}
                   <th>Part #</th>
                   <th>Description</th>
                   <th>Fits</th>
@@ -229,6 +235,14 @@ export default async function Parts({
                         className="check"
                       />
                     </td>
+                    {shop.sellsRetail && (
+                      <td>
+                        {p.photos[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
+                          <img src={`/api/parts/photo/${p.photos[0].id}`} alt={`${p.partNumber} swatch`} className="h-10 w-10 rounded border border-line object-cover" loading="lazy" />
+                        ) : null}
+                      </td>
+                    )}
                     <td className="mono">
                       <Link href={`/parts/${p.id}`} className="link">
                         {p.partNumber}
@@ -281,7 +295,7 @@ export default async function Parts({
       <div id="add">
         <Section title="Add a part or accessory">
           <ActionForm action={createPart} className="grid-form">
-            <PartFields withQty defaultNumber={newCode} />
+            <PartFields withQty defaultNumber={newCode} fabric={shop.sellsRetail} />
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Submit>Add part</Submit>
               <BarcodeLookupButton />

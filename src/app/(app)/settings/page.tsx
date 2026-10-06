@@ -11,6 +11,12 @@ import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODU
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
+import { saveFabricSettings } from "@/actions/fabric";
+import { saveOrderSettings } from "@/actions/fabric-orders";
+import { ORDER_FIELDS } from "@/lib/fabric-orders-math";
+import { saveKitSettings } from "@/actions/kits";
+import { KIT_FIELDS } from "@/lib/kits-math";
+import { INSIGHT_FIELDS } from "@/lib/fabric-insight-math";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
@@ -347,6 +353,68 @@ export default async function SettingsPage() {
             ))}
             <div className="sm:col-span-2">
               <Submit>Save shop</Submit>
+            </div>
+          </ActionForm>
+        </Section>
+      )}
+
+      {admin && shop.sellsRetail && (
+        <Section title="Fabric">
+          <ActionForm action={saveFabricSettings} success="Saved" className="grid-form">
+            {(
+              [
+                ["fatQuarterMarkupPct", "Fat quarter markup over a quarter of the yard price (%)", String(shop.fatQuarterMarkupPct)],
+                ["halfYardMarkupPct", "Half yard markup over half the yard price (%)", String(shop.halfYardMarkupPct)],
+                ["remnantPricePct", "Remnant price as a percent of the yard price (never under cost + 5%)", String(shop.remnantPricePct)],
+                ["boltEndYards", "A bolt end is this many yards or fewer", String(shop.boltEndYards)],
+              ] as const
+            ).map(([k, label, v]) => (
+              <div key={k} className="field">
+                <label htmlFor={k} className="label">
+                  {label}
+                </label>
+                <input id={k} name={k} defaultValue={v} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <h3 className="sm:col-span-2 mt-2 text-sm font-semibold">What sells, slow fabric and markdowns</h3>
+            {INSIGHT_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={f.kind === "cents" ? String(shop[f.key] / 100) : String(shop[f.key])} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save fabric settings</Submit>
+            </div>
+          </ActionForm>
+          <ActionForm action={saveOrderSettings} success="Saved" className="grid-form mt-4">
+            <h3 className="sm:col-span-2 text-sm font-semibold">Reordering</h3>
+            {ORDER_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={String(shop[f.key])} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save reordering settings</Submit>
+            </div>
+          </ActionForm>
+          <ActionForm action={saveKitSettings} success="Saved" className="grid-form mt-4">
+            <h3 className="sm:col-span-2 text-sm font-semibold">Kits</h3>
+            {KIT_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={String(shop[f.key])} inputMode="numeric" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save kit settings</Submit>
             </div>
           </ActionForm>
         </Section>

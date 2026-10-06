@@ -76,7 +76,7 @@ export async function checkSmtpHost(host: string, port: number, security: string
 }
 
 export type SmtpSession = {
-  send(m: { to: string; toName?: string | null; subject: string; text: string; html: string; headers: Record<string, string> }): Promise<{ id: string }>;
+  send(m: { to: string; toName?: string | null; subject: string; text: string; html: string; headers: Record<string, string>; attachments?: { filename: string; content: string; contentType: string }[] }): Promise<{ id: string }>;
   close(): void;
 };
 
@@ -264,6 +264,7 @@ export async function openSmtp(cfg: SendConfig): Promise<SmtpSession> {
         text: m.text,
         html: m.html,
         headers: m.headers,
+        attachments: m.attachments,
       });
       const node = composer.compile();
       const raw = await node.build();
