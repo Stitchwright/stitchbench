@@ -912,6 +912,21 @@ Meanwhile Claude ran a focused local review of the riskiest code (billing, money
   (96e58d9), migration 20261010000000_fabric_basics (rename at merge); its own test DBs `stitchbench_fabric` and
   `stitchbench_fabric_shadow` on the dev Postgres.
 
+## 2ai. 6-7 Oct 2026 night (committed and pushed, not on main)
+
+- **W1 email unique per company** built (a2dcddc, migration 20261006200000_email_per_company): unique on (shopId,
+  email); a "Choose a company" step when one password fits several logins (a 5-minute, one-use ticket bound to the
+  browser); three padded bcrypt compares; known-device per login (key v3); one reset mail with a link per login; move
+  import and adding people refuse only within the same company. Check `email-per-company` (8 groups) plus signin,
+  hosted-provisioning, move-import, base-license, plans pass; `tests/auth.spec.ts` updated, not yet run.
+- **Branch `manual-repo`:** package 3 takedowns (437b9cb, migration 031): /copyright (closed until the owner sets
+  `COPYRIGHT_AGENT_NAME`, `COPYRIGHT_AGENT_ADDRESS`, `COPYRIGHT_EMAIL`), notices, counter-notices with the business-day
+  window, strikes (three ends uploading), refused brands (refused outright), admin Notices / Strikes / Blocked, a CSV
+  log. `test:db` there still fails on `waiver_grace` only until merged with hub-accounts (fixed there in 7597186).
+- **Branch `fabric-smarts`:** F2 insight (47e01c6, migration 20261011000000_fabric_insight): What sells (velocity,
+  weeks of supply, A/B/C, GMROI, roll-ups), Slow fabric (FIFO age, mark down vs fat quarters with the numbers), the
+  markdown ladder with records and same-day undo, 18 shop settings. Next: F3 reorder and purchase orders, F4 kits.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
