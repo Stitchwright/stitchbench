@@ -894,6 +894,23 @@ Meanwhile Claude ran a focused local review of the riskiest code (billing, money
 - The L6 count script (`scripts/hosted/count-unassigned-market.mjs`) is on the branch only, so its count waits for the
   deploy of the branch, not today's deploy of main.
 
+## 2ah. 6 Oct 2026 evening: signed partner messages, designs, two feature branches (committed, not on main)
+
+- **W2 signed partner messages** (program 29913db design, ffa8cab build, migration 20261006100000_partner_signing;
+  hub f0879df, 614ce93, migration 023): each company signs its partner messages; partners pin each other's keys;
+  unsigned messages from old programs are accepted as "unverified" until 1 Apr 2027 (`PARTNER_UNSIGNED_UNTIL`); the
+  hub's partnership rule counts only the repair shop's own verified messages once both sides have keys. Upgrade the
+  hub first. A company move gets a new key, so its partners re-trust it with a new partner code (owner to approve).
+- Hub test setup fixed (0bf55d8: reused scratch DBs kept an old join key); `waiver_grace` added to the export (7597186).
+- **W1 email unique per company:** design `docs/plans/email-per-company-design.md` (d7af2bd), about 3.5 days, six owner
+  questions with recommended answers; build next.
+- **Branch `manual-repo`** (stitchhub; worktree C:/Users/bwatt/stitchhub-manual-repo; pushed): repo-storage (065b664)
+  and repo-hub (feec653), migration 030 (renumber at merge), uploads off by default, the free /account Manuals page.
+  Takedowns (package 3) next.
+- **Branch `fabric-smarts`** (stitchbench; worktree C:/Users/bwatt/stitchbench-fabric; pushed): F1 fabric basics
+  (96e58d9), migration 20261010000000_fabric_basics (rename at merge); its own test DBs `stitchbench_fabric` and
+  `stitchbench_fabric_shadow` on the dev Postgres.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
