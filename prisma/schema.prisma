@@ -23,60 +23,60 @@ enum Role {
 }
 
 model Shop {
-  id                   String    @id @default(cuid())
+  id                   String        @id @default(cuid())
   name                 String
   phone                String?
   email                String?
   address              String?
-  laborRateCents       Int       @default(9800)
-  taxRatePct           Float     @default(0)
-  partsMarkupPct       Float     @default(30)
+  laborRateCents       Int           @default(9800)
+  taxRatePct           Float         @default(0)
+  partsMarkupPct       Float         @default(30)
   // Fabric (fabric-smarts-design.md section 9): fat quarter price = yard price / 4 x (1 + this %), a half yard =
   // yard price / 2 x (1 + this %), a remnant sells at this % of the yard price (never under cost x 1.05), and a bolt
   // end is this many yards or fewer.
-  fatQuarterMarkupPct  Float     @default(15)
-  halfYardMarkupPct    Float     @default(10)
-  remnantPricePct      Float     @default(50)
-  boltEndYards         Float     @default(1)
+  fatQuarterMarkupPct  Float         @default(15)
+  halfYardMarkupPct    Float         @default(10)
+  remnantPricePct      Float         @default(50)
+  boltEndYards         Float         @default(1)
   // Fabric insight (fabric-smarts-design.md sections 2 and 9; docs/research/fabric-analytics-methods.md): every threshold
   // of What sells, Slow fabric and the markdown ladder. Days, percents and cents; the floor is a percent of cost.
-  fabVelocityWeeks     Int       @default(12)
-  fabEarlyDays         Int       @default(21)
-  fabBlendDays         Int       @default(42)
-  fabUnratedDays       Int       @default(42)
-  fabWatchDays         Int       @default(90)
-  fabWatchWeeks        Int       @default(26)
-  fabMarkdownDays      Int       @default(120)
-  fabClearanceDays     Int       @default(180)
-  fabMarkdownSoldPct   Int       @default(60)
-  fabStep1Pct          Int       @default(20)
-  fabStep2Pct          Int       @default(35)
-  fabStep3Pct          Int       @default(50)
-  fabFloorPct          Int       @default(105)
-  fabCutCostCents      Int       @default(50)
-  fabAbcAPct           Int       @default(80)
-  fabAbcBPct           Int       @default(95)
-  fabGmroiGood         Float     @default(3)
-  fabGmroiReview       Float     @default(1.5)
+  fabVelocityWeeks     Int           @default(12)
+  fabEarlyDays         Int           @default(21)
+  fabBlendDays         Int           @default(42)
+  fabUnratedDays       Int           @default(42)
+  fabWatchDays         Int           @default(90)
+  fabWatchWeeks        Int           @default(26)
+  fabMarkdownDays      Int           @default(120)
+  fabClearanceDays     Int           @default(180)
+  fabMarkdownSoldPct   Int           @default(60)
+  fabStep1Pct          Int           @default(20)
+  fabStep2Pct          Int           @default(35)
+  fabStep3Pct          Int           @default(50)
+  fabFloorPct          Int           @default(105)
+  fabCutCostCents      Int           @default(50)
+  fabAbcAPct           Int           @default(80)
+  fabAbcBPct           Int           @default(95)
+  fabGmroiGood         Float         @default(3)
+  fabGmroiReview       Float         @default(1.5)
   // Fabric ordering (package F3): the review period in weeks, the safety-stock z for collections (90%) and staples (95%),
   // the lead time in days for a supplier with no received order yet, and "Reorder now" (this percent of the lot sold in
   // this many days, and the weeks of supply under lead time plus this many weeks).
-  fabReviewWeeks       Int       @default(2)
-  fabZCollection       Float     @default(1.28)
-  fabZStaple           Float     @default(1.65)
-  fabLeadDays          Int       @default(14)
-  fabUrgentSoldPct     Int       @default(60)
-  fabUrgentDays        Int       @default(28)
-  fabUrgentWeeks       Int       @default(2)
+  fabReviewWeeks       Int           @default(2)
+  fabZCollection       Float         @default(1.28)
+  fabZStaple           Float         @default(1.65)
+  fabLeadDays          Int           @default(14)
+  fabUrgentSoldPct     Int           @default(60)
+  fabUrgentDays        Int           @default(28)
+  fabUrgentWeeks       Int           @default(2)
   // Kits (package F4): the margin a kit price aims for (percent of the price) and the bundle discount off the parts' shelf prices.
-  fabKitMarginPct      Int       @default(50)
-  fabBundleDiscountPct Int       @default(5)
-  warrantyDays         Int       @default(90)
-  abandonedAfterDays   Int       @default(60)
-  storageFeeCents      Int       @default(4500)
-  nextTicketNumber     Int       @default(51)
+  fabKitMarginPct      Int           @default(50)
+  fabBundleDiscountPct Int           @default(5)
+  warrantyDays         Int           @default(90)
+  abandonedAfterDays   Int           @default(60)
+  storageFeeCents      Int           @default(4500)
+  nextTicketNumber     Int           @default(51)
   // Where the shop keeps its manual library on every PC (links show this path)
-  libraryRoot          String    @default("C:\\Manuals")
+  libraryRoot          String        @default("C:\\Manuals")
   // Service checklist template, one item per line of work (edited in Settings)
   checklistItems       String[]
   // Fine print at the bottom of the printed price list
@@ -84,64 +84,64 @@ model Shop {
   // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
   payInstructions      String?
   // Send the hub this company's monthly parts counts for the community's most-used list (counts only; off unless turned on)
-  shareUsage           Boolean   @default(false)
+  shareUsage           Boolean       @default(false)
   // What this company does: a repair bench (StitchBench), a sewing / quilt shop counter (StitchShop), or both
-  doesRepair           Boolean   @default(true)
-  sellsRetail          Boolean   @default(false)
-  nextSaleNumber       Int       @default(1001)
-  nextLongarmNumber    Int       @default(1)
-  nextTagNumber        Int       @default(101)
-  nextOrderNumber      Int       @default(1001)
+  doesRepair           Boolean       @default(true)
+  sellsRetail          Boolean       @default(false)
+  nextSaleNumber       Int           @default(1001)
+  nextLongarmNumber    Int           @default(1)
+  nextTagNumber        Int           @default(101)
+  nextOrderNumber      Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
-  nextPartNumber       Int       @default(1)
+  nextPartNumber       Int           @default(1)
   // Line at the bottom of register receipts (returns policy, hours)
   receiptNote          String?
   // The shop's own time zone: where days and months start for reports and statements
-  timeZone             String    @default("America/New_York")
+  timeZone             String        @default("America/New_York")
   // Online booking (online-and-parts-design.md section 2): the public address /book/{bookingSlug}, on or off, the
   // first offered time this many hours from now, how far ahead, and the welcome text.
-  bookingSlug          String?   @unique
-  bookingOn            Boolean   @default(false)
-  bookingLeadHours     Int       @default(24)
-  bookingDaysAhead     Int       @default(60)
+  bookingSlug          String?       @unique
+  bookingOn            Boolean       @default(false)
+  bookingLeadHours     Int           @default(24)
+  bookingDaysAhead     Int           @default(60)
   bookingWelcome       String?
   // The online shop (online-and-parts-design.md section 3): /shop/{bookingSlug} (the same public address as booking),
   // on or off, pickup at the counter and / or flat-rate shipping, who takes the money ("own": the shop's Stripe account,
   // its keys sealed below; "platform": the hosted service's account, paid out to the shop by hand), the welcome and
   // the pickup instructions.
-  shopOn               Boolean   @default(false)
-  shopPickup           Boolean   @default(true)
-  shopShipping         Boolean   @default(false)
-  shopShipCents        Int       @default(0)
+  shopOn               Boolean       @default(false)
+  shopPickup           Boolean       @default(true)
+  shopShipping         Boolean       @default(false)
+  shopShipCents        Int           @default(0)
   shopFreeOverCents    Int?
-  shopPayVia           String    @default("own")
+  shopPayVia           String        @default("own")
   // Sales tax on online orders: "rate" (the shop's one rate, as at the counter) or "stripe" (Stripe Tax works out the
   // tax on shipped orders from the delivery address; pickup orders stay at the rate). Own-account shops only.
-  shopTaxVia           String    @default("rate")
+  shopTaxVia           String        @default("rate")
   shopWelcome          String?
   shopPickupNote       String?
   stripeKeySealed      String?
   stripeWebhookSealed  String?
-  nextWebOrderNumber   Int       @default(1001)
+  nextWebOrderNumber   Int           @default(1001)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
-  checkInKind          String    @default("sewing")
+  checkInKind          String        @default("sewing")
   // Vac Shop "bags due": days between bag purchases
-  bagReminderDays      Int       @default(180)
+  bagReminderDays      Int           @default(180)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
-  hubWritesOff         Boolean   @default(false)
+  hubWritesOff         Boolean       @default(false)
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
-  techsOfferManuals   Boolean   @default(false)
-  manualOffers        ManualOffer[]
+  techsOfferManuals    Boolean       @default(false)
+  manualOffers         ManualOffer[]
   // This company's StitchHub account and standing, as the hub last told it (hub-accounts-billing-design.md 2.4, 5.2):
   // shown on Settings → Account. Only the hub's signed key (a License row with source "hub") changes what the program allows.
   hubAccountEmail      String?
-  hubAccountVerified   Boolean   @default(false)
+  hubAccountVerified   Boolean       @default(false)
   hubStanding          String? // trial | active | past_due | waived | comped | lapsed, as the hub said
   hubStandingAt        DateTime? // when the hub last answered
   hubStandingUntil     String? // the hub's lastDay (YYYY-MM-DD), when it gave one
   hubStandingNote      String? // the hub's message, shown as it came
   // The owner allows a password reset from their StitchHub account (Windows program, package hosted-provisioning); off by default
-  hubResetOptIn        Boolean   @default(false)
+  hubResetOptIn        Boolean       @default(false)
   // Which version of the hub's terms the company's account accepted: sent when the account is started from here, then as
   // the hub reports it at each claim (it may have been accepted again on the hub)
   termsVersion         String?
@@ -157,70 +157,80 @@ model Shop {
   // Made by StitchHub's "Start a hosted shop" (POST /api/platform/companies, package hosted-provisioning): the Companies
   // page says "Started from StitchHub"
   startedFromHubAt     DateTime?
-  createdAt            DateTime  @default(now())
+  // The Assistant add-on (ai-assistant-scope.md 2.3): this month's calls as the hub last counted them, in the company's
+  // zone ("2026-10"), and the month's limit with any top-ups; the hub's count is the authority, this one shows offline.
+  assistantMonth       String?
+  assistantCalls       Int           @default(0)
+  assistantLimit       Int           @default(300)
+  createdAt            DateTime      @default(now())
 
-  users           User[]
-  customers       Customer[]
-  machines        Machine[]
-  tickets         Ticket[]
-  parts           Part[]
-  stockMoves      StockMove[]
-  fabricMarkdowns FabricMarkdown[]
-  fabricSuppliers FabricSupplier[]
-  purchaseOrders  PurchaseOrder[]
-  purchaseLines   PurchaseOrderLine[]
-  kits            Kit[]
-  kitLines        KitLine[]
-  kitSeries       KitSeries[]
-  kitMembers      KitSeriesMember[]
-  clubs           Club[]
-  clubMembers     ClubMember[]
-  clubMonths      ClubMonth[]
-  clubPicks       ClubPick[]
-  clubPayments    ClubPayment[]
-  longarmOrders   LongarmOrder[]
-  longarmPhotos   LongarmPhoto[]
-  notes           ModelNote[]
-  serviceItems    ServiceItem[]
-  photos          MachinePhoto[]
-  sharedPosts     SharedPost[]
-  sales           Sale[]
-  partnerLinks    PartnerLink[]
-  partnerKey      PartnerKey?
-  repairJobs      RepairJob[]
-  partnerOrders   PartnerOrder[]
-  consignItems    ConsignItem[]
-  consignSales    ConsignSale[]
-  settlements     Settlement[]
-  outbox          PartnerOutbox[]
+  users             User[]
+  customers         Customer[]
+  machines          Machine[]
+  tickets           Ticket[]
+  parts             Part[]
+  stockMoves        StockMove[]
+  fabricMarkdowns   FabricMarkdown[]
+  fabricSuppliers   FabricSupplier[]
+  purchaseOrders    PurchaseOrder[]
+  purchaseLines     PurchaseOrderLine[]
+  kits              Kit[]
+  kitLines          KitLine[]
+  kitSeries         KitSeries[]
+  kitMembers        KitSeriesMember[]
+  clubs             Club[]
+  clubMembers       ClubMember[]
+  clubMonths        ClubMonth[]
+  clubPicks         ClubPick[]
+  clubPayments      ClubPayment[]
+  longarmOrders     LongarmOrder[]
+  longarmPhotos     LongarmPhoto[]
+  notes             ModelNote[]
+  serviceItems      ServiceItem[]
+  photos            MachinePhoto[]
+  sharedPosts       SharedPost[]
+  sales             Sale[]
+  partnerLinks      PartnerLink[]
+  partnerKey        PartnerKey?
+  repairJobs        RepairJob[]
+  partnerOrders     PartnerOrder[]
+  consignItems      ConsignItem[]
+  consignSales      ConsignSale[]
+  settlements       Settlement[]
+  outbox            PartnerOutbox[]
   // Paid modules
-  licenses        License[]
-  moduleGrants    ModuleGrant[]
-  equipmentKinds  ShopEquipmentKind[]
-  ticketSites     TicketSite[]
-  partWaits       PartWait[]
-  bookingLinks    BookingLink[]
-  webOrders       WebOrder[]
-  partPhotos      PartPhoto[]
-  stockUnits      StockUnit[]
-  vacCares        VacCare[]
-  manualDownloads ManualDownload[]
+  licenses          License[]
+  moduleGrants      ModuleGrant[]
+  equipmentKinds    ShopEquipmentKind[]
+  ticketSites       TicketSite[]
+  partWaits         PartWait[]
+  bookingLinks      BookingLink[]
+  webOrders         WebOrder[]
+  partPhotos        PartPhoto[]
+  stockUnits        StockUnit[]
+  vacCares          VacCare[]
+  manualDownloads   ManualDownload[]
   // Scheduling and messages
-  partnerRuns     PartnerRun[]
-  messaging       MessagingSettings?
-  outMessages     OutMessage[]
-  suppressions    Suppression[]
-  consentEvents   ConsentEvent[]
-  inboundTexts    InboundText[]
-  campaigns       Campaign[]
-  estimateLinks   EstimateLink[]
-  classes         ShopClass[]
-  classMeetings   ClassMeeting[]
-  enrollments     Enrollment[]
-  apptTypes       AppointmentType[]
-  appointments    Appointment[]
-  shifts          Shift[]
-  companyMoves    CompanyMove[]
+  partnerRuns       PartnerRun[]
+  messaging         MessagingSettings?
+  outMessages       OutMessage[]
+  suppressions      Suppression[]
+  consentEvents     ConsentEvent[]
+  inboundTexts      InboundText[]
+  campaigns         Campaign[]
+  estimateLinks     EstimateLink[]
+  classes           ShopClass[]
+  classMeetings     ClassMeeting[]
+  enrollments       Enrollment[]
+  apptTypes         AppointmentType[]
+  appointments      Appointment[]
+  shifts            Shift[]
+  companyMoves      CompanyMove[]
+  // The Assistant add-on
+  assistantSettings AssistantSettings?
+  assistantCallLog  AssistantCall[]
+  manualPages       ManualPage[]
+  manualIndexDocs   ManualIndexDoc[]
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -2633,4 +2643,84 @@ model LongarmPhoto {
   createdAt DateTime     @default(now())
 
   @@index([shopId, orderId])
+}
+
+// ============================================================
+// The Assistant add-on (docs/plans/ai-assistant-scope.md). Nothing here is called on its own: a person presses a button.
+// ============================================================
+
+// A company's Assistant settings (Settings -> Assistant): a switch per feature group, the shop's voice sample, and the
+// consent switch for customers' first names in drafts (off: drafts carry {first_name}, filled in on this PC).
+model AssistantSettings {
+  shopId          String   @id
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  draftOn         Boolean  @default(true)
+  causesOn        Boolean  @default(true)
+  plateOn         Boolean  @default(true)
+  manualsOn       Boolean  @default(true)
+  partsOn         Boolean  @default(true)
+  offerFirstNames Boolean  @default(false)
+  voice           String?
+  updatedAt       DateTime @updatedAt
+}
+
+// What the Assistant was asked and what it said, per company: the record a tech can check, and the month's count.
+model AssistantCall {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  feature        String // draft_work_done | draft_diagnosis | draft_partner_note | draft_estimate | draft_ready | likely_causes | read_plate
+  ticketId       String? // what it was about: at most one of these is set
+  repairJobId    String?
+  machineId      String?
+  partId         String?
+  byUserId       String?
+  model          String // the model id the hub used
+  request        Json // the redacted request exactly as sent: { system, messages, maxTokens } (a photo as its size and hash)
+  response       String // the model's text, or the structured JSON as text; a serial masked as [serial]
+  sources        Json     @default("[]") // [{ kind: ticket|gotcha|hubpost|spec|setting|servicemode|general, ref, label }]
+  inputTokens    Int      @default(0)
+  cacheTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  costMillicents Int      @default(0) // thousandths of a cent: money stays an integer, and a call is under a cent
+  ms             Int      @default(0)
+  accepted       Boolean? // "Use this" pressed, or "helped"; null for calls that only showed something
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([shopId, ticketId])
+}
+
+// Text pulled out of a library PDF so a company can search its manuals (Assistant: Ask the manuals). One row per page that
+// has text, per company: the company chose to index (a button), and the text stays in this database; only the few
+// matching pages of a question go to the model. A page with no text (a scan) has no row. `docId` is LibraryDoc.id (no
+// relation: the library is this PC's, rebuilt on its own). Search is Postgres full text (a GIN index on
+// to_tsvector('english', text), made in the migration: Prisma can't express it). Rebuildable, so it stays on the install.
+model ManualPage {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  docId  String
+  page   Int
+  text   String
+
+  @@unique([shopId, docId, page])
+  @@index([shopId, docId])
+}
+
+// Where indexing stands for one library file of one company: the resume point (donePages) and what couldn't be read.
+model ManualIndexDoc {
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  docId      String
+  totalPages Int      @default(0)
+  donePages  Int      @default(0)
+  blankPages Int      @default(0) // pages with no text (scans): not searchable yet
+  status     String   @default("queued") // queued | running | paused | done | failed
+  error      String?
+  updatedAt  DateTime @updatedAt
+
+  @@id([shopId, docId])
+  @@index([shopId, status])
 }

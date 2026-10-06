@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 
 // "base" is the program itself (hub-accounts-billing-design.md 3.5): off means fully working, lapsed means read-only.
-export const MODULE_IDS = ["base", "vac", "appliance", "scheduling", "marketing"] as const;
+export const MODULE_IDS = ["base", "vac", "appliance", "scheduling", "marketing", "assistant"] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 export type KeyScope = "any" | "hosted" | "dev" | "hub";
 /** A retired signing key: its keys count only up to `lastDay`, and (after a leak) only the genuine ones listed in `allow`. */
