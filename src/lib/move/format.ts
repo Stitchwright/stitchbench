@@ -112,6 +112,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Shift", key: "id" }, // -> User
   { t: "BookingLink", key: "id" },
   { t: "WebOrder", key: "id", leftOut: ["linkSealed"] },
+  { t: "AssistantSettings", key: '"shopId"' }, // the company's own Assistant switches and voice sample (one row per company)
+  { t: "AssistantCall", key: "id" }, // the company's own log of what the Assistant was asked and said
 ];
 
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */

@@ -22,6 +22,12 @@ export type StandingAnswer = {
   interval?: string | null;
   founding?: boolean | null;
   key?: string | null;
+  /**
+   * Keys for add-on modules the company bought on the hub (the Assistant: its own subscription, module "assistant"), a hub from
+   * the Assistant billing package on. Verified like the base key and kept as hub rows of their own: the hub's newest
+   * replaces the older one, and the base key's arrival never takes them away (nor theirs the base key).
+   */
+  moduleKeys?: string[] | null;
   revokeKeyIds?: string[] | null;
   /** The hub's terms version in force and the one the company's account accepted (a hub from package terms-launch on). */
   terms?: { version?: string | null; accepted?: string | null } | null;
@@ -60,6 +66,7 @@ export async function applyStanding(shopId: string, a: StandingAnswer): Promise<
   // Keys the hub took back (a refund, a chargeback): only rows the hub itself issued.
   const revoke = (Array.isArray(a.revokeKeyIds) ? a.revokeKeyIds : []).filter((k): k is string => typeof k === "string" && /^[0-9A-Z]{6,20}$/.test(k)).slice(0, 100);
   if (revoke.length) await db.license.deleteMany({ where: { shopId, source: "hub", keyId: { in: revoke } } });
+  await applyModuleKeys(shopId, a.moduleKeys);
   // The key: it must verify with a compiled public key, be for this company and carry the program itself. One hub row
   // per company: the hub's newest key replaces whatever hub key came before. A hub that sends none leaves the stored
   // key where it is; its last day plus grace is then the limit (an offline PC, a hub that went away).
@@ -72,7 +79,7 @@ export async function applyStanding(shopId: string, a: StandingAnswer): Promise<
   }
   const keyId = v.payload.id;
   await db.$transaction([
-    db.license.deleteMany({ where: { shopId, source: "hub", keyId: { not: keyId } } }),
+    db.license.deleteMany({ where: { shopId, source: "hub", keyId: { not: keyId }, NOT: { keyId: { in: await moduleKeyIds(shopId) } } } }),
     db.license.upsert({ where: { shopId_keyId: { shopId, keyId } }, create: { shopId, keyId, key, source: "hub", addedBy: "StitchHub" }, update: { key, source: "hub" } }),
   ]);
 }
@@ -106,4 +113,44 @@ export async function applyMovedOut(shopId: string, m: MovedAway): Promise<void>
     db.companyMove.updateMany({ where: { shopId, direction: "export", hubTokenSealed: { not: null } }, data: { hubTokenSealed: null } }),
   ]);
   console.info(`[move] ${JSON.stringify({ company: shopId, movedOut: m.at.toISOString(), to: m.to })}`);
+}
+
+/** A hub-issued key that is an add-on's (carries "assistant" and not "base"), as opposed to the program's own. */
+function isModuleOnly(key: string, shopId: string): { keyId: string } | null {
+  const v = verifyFor(key, "pasted");
+  if (!v.ok || v.payload.s !== shopId || v.payload.m.includes("base") || !v.payload.m.includes("assistant")) return null;
+  return { keyId: v.payload.id };
+}
+
+/** The key ids of this company's hub rows that are add-on keys (the base key's replacement must leave them). */
+async function moduleKeyIds(shopId: string): Promise<string[]> {
+  const rows = await db.license.findMany({ where: { shopId, source: "hub" }, select: { key: true } });
+  return rows.flatMap((r) => isModuleOnly(r.key, shopId)?.keyId ?? []);
+}
+
+/**
+ * The add-on keys the hub sent (moduleKeys): each must verify, be for this company and carry the module. The newest
+ * replaces an older hub add-on key; none sent leaves what is stored (an ended subscription's key runs out on its own last
+ * day plus grace, like the base key's). Only rows the hub issued are ever replaced.
+ */
+async function applyModuleKeys(shopId: string, sent: string[] | null | undefined): Promise<void> {
+  if (!Array.isArray(sent)) return;
+  const good = sent
+    .filter((k): k is string => typeof k === "string")
+    .slice(0, 5)
+    .flatMap((k) => {
+      const m = isModuleOnly(k.trim(), shopId);
+      return m ? [{ keyId: m.keyId, key: k.trim() }] : [];
+    });
+  if (!good.length) {
+    if (sent.length) console.error(`community hub: an add-on key it sent for company ${shopId} isn't usable here`);
+    return;
+  }
+  const keep = good.map((g) => g.keyId);
+  const old = await moduleKeyIds(shopId);
+  const stale = old.filter((id) => !keep.includes(id));
+  await db.$transaction([
+    ...(stale.length ? [db.license.deleteMany({ where: { shopId, source: "hub", keyId: { in: stale } } })] : []),
+    ...good.map((g) => db.license.upsert({ where: { shopId_keyId: { shopId, keyId: g.keyId } }, create: { shopId, keyId: g.keyId, key: g.key, source: "hub", addedBy: "StitchHub" }, update: { key: g.key, source: "hub" } })),
+  ]);
 }

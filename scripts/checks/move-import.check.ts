@@ -267,6 +267,8 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
       items: [{ partId: part.id, qty: 1 }],
     },
   });
+  await db.assistantSettings.create({ data: { shopId: shopId, voice: "Short and friendly." } });
+  await db.assistantCall.create({ data: { shopId: shopId, feature: "draft_work_done", model: "claude-sonnet-5-5", request: { system: "s", messages: [] }, response: "Done." } });
   await db.shop.update({
     where: { id: shopId },
     data: {

@@ -12,10 +12,13 @@ export const FEATURES = {
   likely_causes: { label: "What's likely wrong", cls: "suggest", group: "causes" },
   read_plate: { label: "Read the plate", cls: "read", group: "plate" },
   ask_manuals: { label: "Ask the manuals", cls: "manuals", group: "manuals" },
+  looks_like: { label: "Looks like (parts)", cls: "read", group: "parts" },
+  parts_for_job: { label: "Parts this job usually needs", cls: "suggest", group: "parts" },
+  match_columns: { label: "Match the columns (inventory import)", cls: "read", group: "parts" },
 } as const satisfies Record<string, { label: string; cls: ModelClass; group: FeatureGroup }>;
 
 export type FeatureId = keyof typeof FEATURES;
-export type FeatureGroup = "draft" | "causes" | "plate" | "manuals";
+export type FeatureGroup = "draft" | "causes" | "plate" | "manuals" | "parts";
 export const FEATURE_IDS = Object.keys(FEATURES) as FeatureId[];
 export const isFeature = (s: unknown): s is FeatureId => typeof s === "string" && Object.hasOwn(FEATURES, s);
 
@@ -28,6 +31,7 @@ export const GROUP_LABEL: Record<FeatureGroup, { label: string; blurb: string }>
   draft: { label: "Draft it", blurb: "Turns a tech's shorthand into the invoice wording, a note to the sewing shop, or an estimate or ready message." },
   causes: { label: "What's likely wrong", blurb: "On a ticket: likely causes and the checks to make, from this shop's past tickets, gotcha notes, community notes and the specs." },
   plate: { label: "Read the plate", blurb: "At check-in: a photo of the rating plate fills in make, model and serial." },
+  parts: { label: "Parts helpers", blurb: "\"Looks like\" suggestions on a part, \"Parts this job usually needs\" on a ticket, and \"Match the columns\" on the inventory import. Part numbers, descriptions and column headings only; never a customer." },
   manuals: { label: "Ask the manuals", blurb: "On a model page or ticket: answers a question from the text of your own indexed manuals, citing the pages. Only the few matching pages go to the model." },
 };
 

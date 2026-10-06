@@ -19,6 +19,7 @@ export type TicketAssistantView = {
   buttons: boolean;
   drafts: Entry;
   causes: Entry;
+  parts: Entry;
   latest: Record<"draft_work_done" | "draft_diagnosis" | "draft_partner_note" | "draft_estimate" | "draft_ready", Latest>;
   /** "What we'll send" until the feature has been used on this ticket. */
   previews: Partial<Record<FeatureId, string>>;
@@ -37,7 +38,7 @@ export async function ticketAssistantView(o: { shopId: string; ticketId: string;
   const [tz, calls] = await Promise.all([shopTimeZone(shopId), db.assistantCall.findMany({ where: { shopId, ticketId }, orderBy: { createdAt: "desc" }, take: 40 })]);
   const buttons = gate === "on" && o.canWork;
   const none: Entry = { show: false };
-  const [drafts, causes] = buttons ? await Promise.all([entryFor(shopId, "draft"), entryFor(shopId, "causes")]) : [none, none];
+  const [drafts, causes, parts] = buttons ? await Promise.all([entryFor(shopId, "draft"), entryFor(shopId, "causes"), entryFor(shopId, "parts")]) : [none, none, none];
 
   const done = calls.filter((c) => !c.error);
   const latestOf = (f: FeatureId): Latest => {
@@ -67,6 +68,7 @@ export async function ticketAssistantView(o: { shopId: string; ticketId: string;
     buttons,
     drafts,
     causes,
+    parts,
     latest: {
       draft_work_done: latestOf("draft_work_done"),
       draft_diagnosis: latestOf("draft_diagnosis"),

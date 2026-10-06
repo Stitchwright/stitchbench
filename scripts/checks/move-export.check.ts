@@ -162,6 +162,8 @@ async function main() {
       },
     });
     await db.shop.update({ where: { id: a.shopId }, data: { stripeKeySealed: seal("sk_test_x", a.shopId, "stripeKey"), stripeWebhookSealed: seal("whsec_x", a.shopId, "stripeWebhook") } });
+    await db.assistantSettings.create({ data: { shopId: a.shopId, voice: "Short and friendly." } });
+    await db.assistantCall.create({ data: { shopId: a.shopId, feature: "draft_work_done", model: "claude-sonnet-5-5", request: { system: "s", messages: [] }, response: "Done." } });
     const linkId = await linkPair(a.shopId, b.shopId);
     await db.partnerSeen.create({ data: { shopId: a.shopId, key: `${linkId}:1` } });
     // Company B has its own rows, none of which may appear in A's file.

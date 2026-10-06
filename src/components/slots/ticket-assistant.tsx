@@ -4,10 +4,11 @@
 // off nothing shows; once it has ended, only the log (read-only); the card never prints. Nothing here calls the model:
 // only a button a person presses does.
 import type { CurrentUser } from "@/lib/session";
-import { FEATURES, type FeatureId } from "@/lib/assistant/features";
+import { type FeatureId } from "@/lib/assistant/features";
 import { ticketAssistantView } from "@/lib/assistant/ticket-view";
 import { CausesCard } from "@/components/assistant/causes-card";
 import { DraftBox } from "@/components/assistant/draft-box";
+import { JobPartsCard } from "@/components/assistant/parts-helpers";
 
 const WORDS: Partial<Record<FeatureId, string>> = {
   draft_work_done: "Work done",
@@ -16,6 +17,7 @@ const WORDS: Partial<Record<FeatureId, string>> = {
   draft_estimate: "the estimate message",
   draft_ready: "the ready message",
   likely_causes: "likely causes",
+  parts_for_job: "parts this job usually needs",
 };
 
 export async function TicketAssistantSlot({ ticketId, user, canWork, partnerJob }: { ticketId: string; user: CurrentUser; canWork: boolean; partnerJob: boolean }) {
@@ -39,13 +41,14 @@ export async function TicketAssistantSlot({ ticketId, user, canWork, partnerJob 
         </div>
       )}
       {v.causes.show && <CausesCard ticketId={ticketId} latest={v.latestCauses} preview={v.previews.likely_causes} unavailable={v.causes.unavailable} />}
+      {v.parts.show && <JobPartsCard ticketId={ticketId} unavailable={v.parts.unavailable} />}
       {v.history.length > 0 && (
         <details className="text-xs">
           <summary className="muted cursor-pointer">What the Assistant did on this ticket</summary>
           <ul className="mt-1 space-y-0.5">
             {v.history.map((c) => (
               <li key={c.id}>
-                {c.at}: {c.feature === "likely_causes" ? "asked for" : c.feature in FEATURES ? "drafted" : "ran"} {WORDS[c.feature as FeatureId] ?? c.feature}
+                {c.at}: {c.feature === "likely_causes" || c.feature === "parts_for_job" ? "asked for" : c.feature.startsWith("draft_") ? "drafted" : "ran"} {WORDS[c.feature as FeatureId] ?? c.feature}
                 {c.accepted === true ? " (used)" : c.accepted === false ? " (not useful)" : ""}
               </li>
             ))}
