@@ -900,10 +900,11 @@ Meanwhile Claude ran a focused local review of the riskiest code (billing, money
   hub f0879df, 614ce93, migration 023): each company signs its partner messages; partners pin each other's keys;
   unsigned messages from old programs are accepted as "unverified" until 1 Apr 2027 (`PARTNER_UNSIGNED_UNTIL`); the
   hub's partnership rule counts only the repair shop's own verified messages once both sides have keys. Upgrade the
-  hub first. A company move gets a new key, so its partners re-trust it with a new partner code (owner to approve).
+  hub first. A company move gets a new key, so its partners re-trust it with a new partner code (owner approved, 6 Oct).
 - Hub test setup fixed (0bf55d8: reused scratch DBs kept an old join key); `waiver_grace` added to the export (7597186).
-- **W1 email unique per company:** design `docs/plans/email-per-company-design.md` (d7af2bd), about 3.5 days, six owner
-  questions with recommended answers; build next.
+- **W1 email unique per company:** design `docs/plans/email-per-company-design.md` (d7af2bd), about 3.5 days; the owner took all six
+  recommended answers (6 Oct: chooser step, no in-app switcher, one reset link per login, admin may hold several
+  logins on the reserved address, reset mail names the companies, a one-time rename to go back); build next.
 - **Branch `manual-repo`** (stitchhub; worktree C:/Users/bwatt/stitchhub-manual-repo; pushed): repo-storage (065b664)
   and repo-hub (feec653), migration 030 (renumber at merge), uploads off by default, the free /account Manuals page.
   Takedowns (package 3) next.
