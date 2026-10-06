@@ -84,6 +84,12 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 - [ ] The month of real use starts. They run a fixed release; only fixes go out; Claude keeps building the queued
       features behind it.
 
+**After hub day and Stripe day: reach out**
+- [ ] Sewing Machine Repair Guy (Wes): email sent 5 Oct with the tech tour; follow up with a founding account offer.
+- [ ] Sewing Doc Academy (you're a member and graduate): write to Andi Barney as a graduate who built StitchBench;
+      offer her certified techs a founding-shop deal; later, StitchBench as the business school's recommended
+      software. Meanwhile attend their free member open houses and listen.
+
 ## Can wait until after the test month
 - An Anthropic key on the hub for the Assistant.
 - Stripe Connect for the online shop, Stripe Terminal card readers.
