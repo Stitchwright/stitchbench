@@ -38,6 +38,26 @@ model Shop {
   halfYardMarkupPct   Float     @default(10)
   remnantPricePct     Float     @default(50)
   boltEndYards        Float     @default(1)
+  // Fabric insight (fabric-smarts-design.md sections 2 and 9; docs/research/fabric-analytics-methods.md): every threshold
+  // of What sells, Slow fabric and the markdown ladder. Days, percents and cents; the floor is a percent of cost.
+  fabVelocityWeeks    Int       @default(12)
+  fabEarlyDays        Int       @default(21)
+  fabBlendDays        Int       @default(42)
+  fabUnratedDays      Int       @default(42)
+  fabWatchDays        Int       @default(90)
+  fabWatchWeeks       Int       @default(26)
+  fabMarkdownDays     Int       @default(120)
+  fabClearanceDays    Int       @default(180)
+  fabMarkdownSoldPct  Int       @default(60)
+  fabStep1Pct         Int       @default(20)
+  fabStep2Pct         Int       @default(35)
+  fabStep3Pct         Int       @default(50)
+  fabFloorPct         Int       @default(105)
+  fabCutCostCents     Int       @default(50)
+  fabAbcAPct          Int       @default(80)
+  fabAbcBPct          Int       @default(95)
+  fabGmroiGood        Float     @default(3)
+  fabGmroiReview      Float     @default(1.5)
   warrantyDays        Int       @default(90)
   abandonedAfterDays  Int       @default(60)
   storageFeeCents     Int       @default(4500)
@@ -128,6 +148,7 @@ model Shop {
   tickets         Ticket[]
   parts           Part[]
   stockMoves      StockMove[]
+  fabricMarkdowns FabricMarkdown[]
   notes           ModelNote[]
   serviceItems    ServiceItem[]
   photos          MachinePhoto[]
@@ -675,6 +696,7 @@ model Part {
   remnantId       String?
 
   moves     StockMove[]
+  markdowns FabricMarkdown[]
   photos    PartPhoto[]
   lines     TicketLine[]
   sources   PartSource[]
@@ -2076,4 +2098,27 @@ model Shift {
 
   @@index([shopId, startsAt])
   @@index([userId, startsAt])
+}
+
+// Fabric markdown ladder (fabric-smarts-design.md section 2): one row each time a fabric's price is marked down a step, so
+// the ladder knows the current step. regularCents is the price before step 1 (the steps are percents off it); the ladder
+// is on this row while the fabric's price is still newCents. An undo (same shop day) restores oldCents and sets undoneAt.
+model FabricMarkdown {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId       String
+  part         Part      @relation(fields: [partId], references: [id], onDelete: Cascade)
+  step         Int // 1 to 3
+  pct          Int // percent off the regular price at this step
+  regularCents Int
+  oldCents     Int
+  newCents     Int
+  reason       String
+  userId       String? // a plain id, with the name kept: the row outlives a deleted login
+  userName     String?
+  createdAt    DateTime  @default(now())
+  undoneAt     DateTime?
+
+  @@index([shopId, partId, createdAt])
 }

@@ -72,6 +72,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "TicketSite", key: '"ticketId"' }, // -> Ticket (one row per ticket)
   { t: "PartWait", key: "id" }, // -> Ticket, Part
   { t: "StockMove", key: "id" }, // -> Part, User
+  { t: "FabricMarkdown", key: "id" }, // -> Part
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
   { t: "SharedPost", key: "id" }, // -> User

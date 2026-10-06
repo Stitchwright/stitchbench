@@ -145,6 +145,7 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.ticketSite.create({ data: { ticketId: ticket.id, shopId, address: "1 Main St", startsAt: new Date(now + day) } });
   await db.partWait.create({ data: { shopId, ticketId: ticket.id, partId: part.id, description: "Hook" } });
   await db.stockMove.create({ data: { shopId, partId: part.id, qty: 3, reason: "RECEIVED", userId: a.user.id } });
+  await db.fabricMarkdown.create({ data: { shopId, partId: part.id, step: 1, pct: 20, regularCents: 1400, oldCents: 1400, newCents: 1120, reason: "Slow fabric", userId: a.user.id, userName: "Check" } });
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, ticketId: ticket.id, mime: "image/jpeg", data: crypto.randomBytes(3000) } });
   // A photo bigger than one upload part, so the hosted door's file is two parts.
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, mime: "image/jpeg", data: new Uint8Array(bigPhoto) } });
