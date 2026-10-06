@@ -173,6 +173,7 @@ model Shop {
   clubMembers     ClubMember[]
   clubMonths      ClubMonth[]
   clubPicks       ClubPick[]
+  clubPayments    ClubPayment[]
   notes           ModelNote[]
   serviceItems    ServiceItem[]
   photos          MachinePhoto[]
@@ -2389,7 +2390,8 @@ model ClubMember {
   pausedAt             DateTime?
   cancelledAt          DateTime?
 
-  picks ClubPick[]
+  picks    ClubPick[]
+  payments ClubPayment[]
 
   @@unique([clubId, customerId])
   @@index([shopId, clubId, status])
@@ -2409,6 +2411,30 @@ model ClubMonth {
 
   @@unique([clubId, month])
   @@index([shopId])
+}
+
+// A paid club month, as the books have it: the register sale it posted (a plain id: the sale stays in the books when the
+// member goes), what was paid with tax included, how, and the Stripe invoice (or checkout) that paid it, which makes a
+// retried webhook post nothing twice. voidedAt: refunded or taken back (the sale was voided).
+model ClubPayment {
+  id            String     @id @default(cuid())
+  shopId        String
+  shop          Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  memberId      String
+  member        ClubMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  month         String
+  amountCents   Int
+  method        String // CASH | CARD | CHECK | OTHER
+  invoiceId     String?
+  paymentIntent String?
+  saleId        String
+  voidedAt      DateTime?
+  createdAt     DateTime   @default(now())
+
+  @@unique([shopId, invoiceId])
+  @@unique([shopId, saleId])
+  @@index([shopId, memberId, month])
+  @@index([shopId, paymentIntent])
 }
 
 // One member's share of a month: made when the pick list is opened, done when handed over or shipped.

@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { noted, safe, shownOnce } from "@/lib/action";
 import { requireUser } from "@/lib/session";
-import { addMemberFor, cancelMemberFor, cardLinkFor, closeClubFor, markPaidFor, markPickDoneFor, pauseMemberFor, resumeMemberFor, saveClubFor, saveMemberFor, setMonthFor, undoPickFor } from "@/lib/clubs";
+import { addMemberFor, cancelMemberFor, cardLinkFor, closeClubFor, markPaidFor, markPickDoneFor, takeBackPaidFor, pauseMemberFor, resumeMemberFor, saveClubFor, saveMemberFor, setMonthFor, undoPickFor } from "@/lib/clubs";
 
 const refresh = (clubId?: string) => {
   revalidatePath("/fabric");
@@ -99,9 +99,16 @@ export const undoPick = safe(async function undoPick(clubId: string, memberId: s
   return noted(text);
 });
 
-export const markMemberPaid = safe(async function markMemberPaid(clubId: string, memberId: string, month: string) {
+export const markMemberPaid = safe(async function markMemberPaid(clubId: string, memberId: string, month: string, formData: FormData) {
   const user = await requireUser();
-  const text = await markPaidFor(user, clubId, memberId, month);
+  const text = await markPaidFor(user, clubId, memberId, month, formData);
+  refresh(clubId);
+  return noted(text);
+});
+
+export const takeBackMemberPaid = safe(async function takeBackMemberPaid(clubId: string, memberId: string, month: string) {
+  const user = await requireUser();
+  const text = await takeBackPaidFor(user, clubId, memberId, month);
   refresh(clubId);
   return noted(text);
 });

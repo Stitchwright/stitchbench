@@ -392,6 +392,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     if (!done.count) throw new UserError("That sale is already void.");
     // Vacuums sold go back in stock; trade-ins taken come back out (Vac Shop).
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
+    // A club month paid here: the payment is voided with the sale and the member's paid month goes back.
+    await unpayClubSale(tx, shopId, sale.id, at);
     for (const l of sale.lines) {
       if (l.enrollmentId || l.appointmentId) await unsettleBooking(tx, shopId, l);
       if (l.partId) {
@@ -430,10 +432,23 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
   });
 }
 
+type Tx = Prisma.TransactionClient;
+
+/** Inside a void: the club payments this sale posted are voided, and a member whose paid month it was goes back to the one before. */
+async function unpayClubSale(tx: Tx, shopId: string, saleId: string, at: Date) {
+  const pays = await tx.clubPayment.findMany({ where: { shopId, saleId, voidedAt: null } });
+  for (const p of pays) {
+    await tx.clubPayment.update({ where: { id: p.id }, data: { voidedAt: at } });
+    const m = await tx.clubMember.findFirst({ where: { id: p.memberId, shopId }, select: { id: true, paidMonth: true } });
+    if (!m || m.paidMonth !== p.month) continue;
+    const prev = await tx.clubPayment.findFirst({ where: { shopId, memberId: m.id, voidedAt: null, id: { not: p.id }, month: { lt: p.month } }, orderBy: [{ month: "desc" }, { createdAt: "desc" }] });
+    await tx.clubMember.update({ where: { id: m.id }, data: { paidMonth: prev?.month ?? null, lastPaidAt: prev?.createdAt ?? null } });
+  }
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Class seats and appointments at the register (design 12.3)
 
-type Tx = Prisma.TransactionClient;
 type Bookings = { enrollments: Map<string, Prisma.EnrollmentGetPayload<{ include: { shopClass: true } }>>; appointments: Map<string, Prisma.AppointmentGetPayload<object>> };
 
 /** The bookings a sale names, this shop's only, each once. */
