@@ -3,7 +3,8 @@
 // checks and hashes it, PUTs it to R2 itself and downloads from R2 itself. Offer, approve through the hub's admin API,
 // sync, download.
 //
-// Needs what manual-repository.spec.ts needs, with the app under test running WITHOUT LIBRARY_DIR (a hosted-style server).
+// Needs what manual-repository.spec.ts needs, with the app under test running WITHOUT LIBRARY_DIR (a hosted-style server) and
+// FETCH_ALLOW_HOSTS=<the R2 mock's host:port> (the server accepts a PUT address only on R2's own host, or one named there).
 // R2's CORS rule for the app's origin (INSTALL.md) is stood in for here by routing the browser's calls to the R2 mock
 // (R2_MOCK_URL, the mock the hub's R2_ENDPOINT points at) and answering the preflight, as the bucket's CORS policy does.
 //   HUB_URL=... HUB_JOIN_KEY=... HUB_ADMIN_TOKEN=... HUB_DATABASE_URL=... R2_MOCK_URL=http://127.0.0.1:PORT npx playwright test manual-repository-hosted
@@ -91,7 +92,7 @@ test("hosted manual repository: offer from the browser's folder, approve, downlo
   fs.writeFileSync(path.join(folder, fileName), bytes);
   await page.goto("/manuals");
   await page.locator("#pick-folder").setInputFiles(folder);
-  await expect(page.getByText(/1 PDFs indexed|PDFs · indexed/)).toBeVisible();
+  await expect(page.getByText(/^1 PDFs · indexed/)).toBeVisible();
   await page.getByLabel("Find a manual").fill(brand);
   const row = page.locator("li", { hasText: fileName });
   await expect(row).toBeVisible();
