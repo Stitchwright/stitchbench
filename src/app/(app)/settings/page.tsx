@@ -12,6 +12,7 @@ import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
 import { saveFabricSettings } from "@/actions/fabric";
+import { INSIGHT_FIELDS } from "@/lib/fabric-insight-math";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
@@ -369,6 +370,15 @@ export default async function SettingsPage() {
                   {label}
                 </label>
                 <input id={k} name={k} defaultValue={v} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <h3 className="sm:col-span-2 mt-2 text-sm font-semibold">What sells, slow fabric and markdowns</h3>
+            {INSIGHT_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={f.kind === "cents" ? String(shop[f.key] / 100) : String(shop[f.key])} inputMode="decimal" className="input num" />
               </div>
             ))}
             <div className="sm:col-span-2">
