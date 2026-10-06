@@ -11,6 +11,7 @@ import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODU
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
+import { saveFabricSettings } from "@/actions/fabric";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
@@ -347,6 +348,31 @@ export default async function SettingsPage() {
             ))}
             <div className="sm:col-span-2">
               <Submit>Save shop</Submit>
+            </div>
+          </ActionForm>
+        </Section>
+      )}
+
+      {admin && shop.sellsRetail && (
+        <Section title="Fabric">
+          <ActionForm action={saveFabricSettings} success="Saved" className="grid-form">
+            {(
+              [
+                ["fatQuarterMarkupPct", "Fat quarter markup over a quarter of the yard price (%)", String(shop.fatQuarterMarkupPct)],
+                ["halfYardMarkupPct", "Half yard markup over half the yard price (%)", String(shop.halfYardMarkupPct)],
+                ["remnantPricePct", "Remnant price as a percent of the yard price (never under cost + 5%)", String(shop.remnantPricePct)],
+                ["boltEndYards", "A bolt end is this many yards or fewer", String(shop.boltEndYards)],
+              ] as const
+            ).map(([k, label, v]) => (
+              <div key={k} className="field">
+                <label htmlFor={k} className="label">
+                  {label}
+                </label>
+                <input id={k} name={k} defaultValue={v} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save fabric settings</Submit>
             </div>
           </ActionForm>
         </Section>

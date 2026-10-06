@@ -31,6 +31,13 @@ model Shop {
   laborRateCents      Int       @default(9800)
   taxRatePct          Float     @default(0)
   partsMarkupPct      Float     @default(30)
+  // Fabric (fabric-smarts-design.md section 9): fat quarter price = yard price / 4 x (1 + this %), a half yard =
+  // yard price / 2 x (1 + this %), a remnant sells at this % of the yard price (never under cost x 1.05), and a bolt
+  // end is this many yards or fewer.
+  fatQuarterMarkupPct Float     @default(15)
+  halfYardMarkupPct   Float     @default(10)
+  remnantPricePct     Float     @default(50)
+  boltEndYards        Float     @default(1)
   warrantyDays        Int       @default(90)
   abandonedAfterDays  Int       @default(60)
   storageFeeCents     Int       @default(4500)
@@ -655,6 +662,17 @@ model Part {
   online          Boolean       @default(false)
   onlineTitle     String?
   onlineText      String?
+  // Fabric smarts (fabric-smarts-design.md section 6): the collection and designer, color tags, the yards on a full
+  // bolt, whether the maker still prints it, and the items its cuts feed. The links are plain ids (no foreign key, so a
+  // company file imports in any order); fabric.ts checks the target is this shop's own before using it.
+  collection      String?
+  designer        String?
+  colorTags       String[]
+  boltYards       Float         @default(15)
+  inPrint         InPrint       @default(UNKNOWN)
+  fatQuarterId    String?
+  halfYardId      String?
+  remnantId       String?
 
   moves     StockMove[]
   photos    PartPhoto[]
@@ -667,6 +685,12 @@ model Part {
   // in migration 20260930220000_round3_tail2_part_number_ci. Writes catch its P2002 (partNumberClash in lib/parts.ts).
   @@unique([shopId, partNumber])
   @@index([numberKeys], type: Gin)
+}
+
+enum InPrint {
+  YES
+  NO
+  UNKNOWN
 }
 
 enum PartKind {
@@ -713,21 +737,24 @@ enum MoveReason {
   ADJUSTED
   SOLD // over the counter (register) or to a partner shop
   CONSIGNED // sent to, or taken back from, a partner shop's consignment shelf
+  CUT // fabric cut into fat quarters, half yards or a remnant: one move out of the bolt, one into the item it feeds
 }
 
 model StockMove {
-  id        String     @id @default(cuid())
-  shopId    String
-  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  partId    String
-  part      Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
-  qty       Float // + in, - out
-  reason    MoveReason
-  ticketId  String?
-  note      String?
-  userId    String?
-  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt DateTime   @default(now())
+  id          String     @id @default(cuid())
+  shopId      String
+  shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId      String
+  part        Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
+  qty         Float // + in, - out
+  reason      MoveReason
+  ticketId    String?
+  note        String?
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // A CUT move: the item on the other side of the cut (the bolt for the move in, the target for the move out)
+  otherPartId String?
+  createdAt   DateTime   @default(now())
 
   @@index([partId, createdAt])
   @@index([shopId, createdAt])
