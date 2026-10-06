@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser, sessionUser } from "@/lib/session";
 import { endEverySession } from "@/lib/sign-in";
+import { rememberThisDevice } from "@/lib/known-device";
 import { db } from "@/lib/db";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEFAULT_TIME_ZONE } from "@/lib/time-zone";
@@ -123,7 +124,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // Every device signed in as this login signs out too (sessionVersion + 1), so a copy of the cookie stops
               // working as well (round 3 L42).
               const me = await sessionUser();
-              if (me) await endEverySession(me.id);
+              if (me) {
+                await endEverySession(me.id);
+                // The bump also ends this browser's known-device standing (its mac carries the sessionVersion); this browser just
+                // signed out on purpose, so it is known again at the new version (other devices stay unknown).
+                await rememberThisDevice(me.id);
+              }
               await signOut({ redirectTo: "/login" });
             }}
           >

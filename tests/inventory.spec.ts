@@ -57,6 +57,9 @@ test("labels, scanner and most-used parts", async ({ page }) => {
   await page.getByRole("button", { name: "Save counts" }).click();
   await expect(page.getByText("Saved 1 count")).toBeVisible();
   await page.getByRole("tab", { name: "Use on ticket" }).click();
+  // The newest open ticket is the default; other specs leave a vacuum ticket (its module off) at the top, which is read-only. Pick a repair ticket.
+  const bench = await page.locator("#scan-ticket option", { hasText: "Janome MC6700P" }).first().getAttribute("value");
+  await page.locator("#scan-ticket").selectOption(bench!);
   await page.locator("#scan-qty").fill("1");
   await box.fill(pn);
   await box.press("Enter");

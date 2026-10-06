@@ -167,14 +167,14 @@ test("the same email in two companies: straight in with one password, a chooser 
     await db(`UPDATE "User" SET "passwordHash" = $1 WHERE id = $2`, [await hash("twin-pass-A-1234"), b.id]);
     await page.goto("/login");
     await fillIn(page, { email, password: "twin-pass-A-1234" });
-    await expect(page.getByRole("heading", { name: "Choose a company" })).toBeVisible();
+    await expect(page.getByText("Choose a company", { exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/login\?choose=/);
     const chooser = page.url();
     // From another browser (no cookie) the step is not accepted, and shows no company.
     const other = await browser.newContext();
     const p2 = await other.newPage();
     await p2.goto(chooser);
-    await expect(p2.getByRole("heading", { name: "Choose a company" })).toHaveCount(0);
+    await expect(p2.getByText("Choose a company", { exact: true })).toHaveCount(0);
     await expect(p2.getByText("can't be used")).toBeVisible();
     await other.close();
     const buttons = page.locator("form button[name=userId]");
@@ -184,7 +184,7 @@ test("the same email in two companies: straight in with one password, a chooser 
     // The chooser's address is used up: going back to it signs in nothing.
     await page.context().clearCookies();
     await page.goto(chooser);
-    await expect(page.getByRole("heading", { name: "Choose a company" })).toHaveCount(0);
+    await expect(page.getByText("Choose a company", { exact: true })).toHaveCount(0);
   } finally {
     await remove("User", a.id);
     await remove("User", b.id);
