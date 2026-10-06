@@ -28,6 +28,7 @@ const REASON: Record<string, string> = {
   ADJUSTED: "Count corrected",
   SOLD: "Sold",
   CONSIGNED: "Consignment",
+  CUT: "Cut",
 };
 
 export default async function PartPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ existing?: string }> }) {
@@ -49,6 +50,9 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   const tno = new Map(tickets.map((t) => [t.id, t.number]));
   const consignedBy = p.consignLinkId ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: p.consignLinkId } } }) : null;
   const shopFlags = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, shopOn: true } });
+  // The items this fabric's cuts feed (fat quarters, half yards, remnant): only this shop's own.
+  const cutIds = [p.fatQuarterId, p.halfYardId, p.remnantId].filter((x): x is string => !!x);
+  const cutItems = cutIds.length ? await db.part.findMany({ where: { id: { in: cutIds }, shopId: user.shopId }, select: { id: true, partNumber: true, description: true, qtyOnHand: true, unit: true } }) : [];
 
   return (
     <div className="space-y-6">
@@ -293,6 +297,21 @@ export default async function PartPage({ params, searchParams }: { params: Promi
             )}
           </Section>
 
+          {cutItems.length > 0 && (
+            <Section title="Cut into">
+              <ul className="divide-y divide-line text-sm">
+                {cutItems.map((c) => (
+                  <li key={c.id} className="flex justify-between gap-2 py-2">
+                    <Link href={`/parts/${c.id}`} className="link">
+                      <span className="mono">{c.partNumber}</span> {c.description}
+                    </Link>
+                    <span className="num">{qtyText(c.qtyOnHand, c.unit)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
           <Section title="History">
             <ul className="divide-y divide-line text-sm">
               {p.moves.map((m) => (
@@ -318,7 +337,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
         </div>
         <Section title="Details">
           <ActionForm action={updatePart.bind(null, p.id)} success="Saved" className="grid-form">
-            <PartFields part={p} lockMoney={user.role === "TECH"} />
+            <PartFields part={p} lockMoney={user.role === "TECH"} fabric={shopFlags.sellsRetail} />
             <div className="sm:col-span-2">
               <Submit>Save</Submit>
             </div>

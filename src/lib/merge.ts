@@ -10,6 +10,7 @@ import type { Customer, Machine, Prisma, VacCare } from "@/generated/prisma/clie
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { CLOSING_STATUSES, OPEN_STATUSES } from "@/lib/constants";
+import { cancelCardMembershipsFor, cardMembershipsOf } from "@/lib/clubs";
 import { fmtDate, fmtDateTime, money, ticketNo } from "@/lib/format";
 import { sameText } from "@/lib/input";
 import { recordConsent } from "@/lib/messaging/consent";
@@ -44,6 +45,9 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "InboundText", field: "customerId", label: ["text reply", "text replies"] },
   { model: "EstimateLink", field: "customerId", label: ["estimate link", "estimate links"] },
   { model: "PartnerLink", field: "accountId", label: ["partnership using this account", "partnerships using this account"] },
+  { model: "KitSeriesMember", field: "customerId", label: ["Block of the Month sign-up", "Block of the Month sign-ups"] },
+  { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
+  { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -234,6 +238,17 @@ export async function mergeCustomersFor(user: CurrentUser, fromId: string, intoI
     const into = await tx.customer.findUniqueOrThrow({ where: { id: intoId } });
     requireTyped(typed, from.name);
     if (from.kind !== into.kind) throw new UserError(KIND_MISMATCH);
+    // A club or series both have: the kept record's membership stands and the duplicate's goes (a card subscription still
+    // running on the one that goes would be left charging, so that is refused).
+    const theirClubs = new Set((await tx.clubMember.findMany({ where: { shopId, customerId: into.id }, select: { clubId: true } })).map((x) => x.clubId));
+    const clash = (await tx.clubMember.findMany({ where: { shopId, customerId: from.id }, select: { id: true, clubId: true, status: true, stripeSubscriptionId: true } })).filter((x) => theirClubs.has(x.clubId));
+    if (clash.some((x) => x.status !== "CANCELLED" && x.stripeSubscriptionId)) {
+      throw new UserError(`${from.name} still pays for a club by card, and ${into.name} is in that club too. Cancel ${from.name}'s membership on the club's page first (it stops the subscription), then merge.`);
+    }
+    if (clash.length) await tx.clubMember.deleteMany({ where: { shopId, id: { in: clash.map((x) => x.id) } } });
+    const theirSeries = new Set((await tx.kitSeriesMember.findMany({ where: { shopId, customerId: into.id }, select: { seriesId: true } })).map((x) => x.seriesId));
+    const seriesClash = (await tx.kitSeriesMember.findMany({ where: { shopId, customerId: from.id }, select: { id: true, seriesId: true } })).filter((x) => theirSeries.has(x.seriesId));
+    if (seriesClash.length) await tx.kitSeriesMember.deleteMany({ where: { shopId, id: { in: seriesClash.map((x) => x.id) } } });
     for (const r of CUSTOMER_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await replaceInLists(tx, shopId, from.id, into.id);
     await tx.customer.update({ where: { id: into.id }, data: customerFill(from, into, date).data });
@@ -284,6 +299,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
     orderBy: { startsAt: "asc" },
   })) {
     out.push(`Their ${a.title || "appointment"} on ${fmtDateTime(a.startsAt, tz)} is still booked. Cancel it first.`);
+  }
+  for (const q of await tx.longarmOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["RECEIVED", "ON_FRAME", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Quilting work order #${q.number} isn't collected yet. Finish or cancel it first.`);
   }
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
@@ -344,6 +362,11 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["PartnerLink.accountId"], ["ended partnership", "ended partnerships"], "no longer name this account");
   const lists = await db.campaign.count({ where: { shopId, members: { array_contains: [c.id] } } });
   add(lists, ["campaign list", "campaign lists"], "no longer name them");
+  const clubsIn = await db.clubMember.count({ where: { shopId, customerId: c.id } });
+  const cards = (await cardMembershipsOf(shopId, c.id)).length;
+  add(clubsIn, ["club membership", "club memberships"], `deleted${cards ? `; ${cards === 1 ? "their card subscription is" : "their card subscriptions are"} stopped at Stripe first (if that fails, nothing is deleted)` : ""}; the club payments already in the register's books stay`);
+  add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
+  add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
@@ -354,6 +377,15 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
   const shopId = user.shopId;
   const tz = await shopTimeZone(shopId);
   const now = new Date();
+  // Their card subscriptions to a club are stopped at Stripe first (a deleted member would be charged with nobody to say
+  // who it is); if that can't be done, nothing is deleted. Only after the same checks the delete itself makes.
+  const pre = await db.customer.findFirst({ where: { id: customerId, shopId } });
+  if (pre && (await cardMembershipsOf(shopId, customerId)).length) {
+    requireTyped(typed, pre.name);
+    const open = await customerBlockers(db, shopId, pre, now, tz);
+    if (open.length) throw new UserError(`${pre.name} can't be deleted yet. ${open.slice(0, 3).join(" ")}${open.length > 3 ? ` (and ${open.length - 3} more)` : ""}`);
+    await cancelCardMembershipsFor(shopId, customerId);
+  }
   await db.$transaction(async (tx) => {
     const found = await lockRows(tx, "Customer", [customerId], shopId);
     if (!found.size) throw new UserError("Customer not found.");
@@ -372,6 +404,7 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.webOrder.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null, email: null, notify: "", note: null, linkSealed: null } });
     await tx.enrollment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, attendee: null, note: null } });
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
+    await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });

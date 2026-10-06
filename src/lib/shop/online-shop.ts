@@ -9,6 +9,7 @@ import "server-only";
 import crypto from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
+import { handleClubEvent } from "@/lib/clubs";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { money, str } from "@/lib/format";
@@ -907,6 +908,11 @@ export async function handleWebhook(who: string, rawBody: string, signature: str
   if (!secret) return { status: 404, body: "No such endpoint." };
   const ev = verifyWebhook(rawBody, signature, secret, now);
   if (!ev) return { status: 400, body: "Bad signature." };
+  // Fabric clubs (package F7): subscription, invoice and club-checkout events on a shop's own endpoint.
+  if (shopId) {
+    const club = await handleClubEvent(shopId, ev, now);
+    if (club) return club;
+  }
   const obj = ev.data.object;
   if (obj.object !== "checkout.session" || typeof obj.id !== "string") return { status: 200, body: "ignored" };
   const sessionId = obj.id;

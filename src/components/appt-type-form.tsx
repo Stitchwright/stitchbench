@@ -8,6 +8,8 @@ export type ApptTypeDraft = {
   name: string;
   minutes: number;
   feeCents: number;
+  hourlyCents?: number | null;
+  needsCert?: boolean;
   taxable: boolean;
   capacity: number;
   resource: string | null;
@@ -45,6 +47,9 @@ export function ApptTypeForm({ action, draft }: { action: (fd: FormData) => Prom
         <Field id={`${p}fee`} label="Fee">
           <input id={`${p}fee`} name="fee" className="input num" inputMode="decimal" defaultValue={draft ? (draft.feeCents / 100).toFixed(2) : "0.00"} />
         </Field>
+        <Field id={`${p}hourly`} label="By the hour (optional)" hint="A rental: dollars an hour. The fee is this x the hours booked, and the fee above is ignored.">
+          <input id={`${p}hourly`} name="hourly" className="input num" inputMode="decimal" defaultValue={draft?.hourlyCents ? (draft.hourlyCents / 100).toFixed(2) : ""} placeholder="25.00" />
+        </Field>
         <Field id={`${p}capacity`} label="How many at once" hint="Two longarms: 2.">
           <input id={`${p}capacity`} name="capacity" className="input num" inputMode="numeric" defaultValue={String(draft?.capacity ?? 1)} />
         </Field>
@@ -74,6 +79,9 @@ export function ApptTypeForm({ action, draft }: { action: (fd: FormData) => Prom
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" name="taxable" className="check" defaultChecked={draft?.taxable ?? false} /> Taxable
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="needsCert" className="check" defaultChecked={draft?.needsCert ?? false} /> Certified customers only (not bookable online)
         </label>
         <label className="flex items-center gap-2">
           <input type="hidden" name="active" value="off" />

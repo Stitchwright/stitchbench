@@ -72,6 +72,21 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "TicketSite", key: '"ticketId"' }, // -> Ticket (one row per ticket)
   { t: "PartWait", key: "id" }, // -> Ticket, Part
   { t: "StockMove", key: "id" }, // -> Part, User
+  { t: "FabricMarkdown", key: "id" }, // -> Part
+  { t: "FabricSupplier", key: "id" },
+  { t: "PurchaseOrder", key: "id" }, // -> FabricSupplier
+  { t: "PurchaseOrderLine", key: "id" }, // -> PurchaseOrder, Part
+  { t: "KitSeries", key: "id" },
+  { t: "Kit", key: "id" }, // -> KitSeries, Part
+  { t: "KitLine", key: "id" }, // -> Kit, Part
+  { t: "KitSeriesMember", key: "id" }, // -> KitSeries, Customer
+  { t: "Club", key: "id" }, // -> KitSeries
+  { t: "ClubMember", key: "id" }, // -> Club, Customer
+  { t: "ClubMonth", key: "id" }, // -> Club
+  { t: "ClubPick", key: "id" }, // -> Club, ClubMember
+  { t: "LongarmOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale)
+  { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
+  { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
   { t: "SharedPost", key: "id" }, // -> User

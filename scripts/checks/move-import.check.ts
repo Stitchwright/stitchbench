@@ -146,6 +146,21 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.ticketSite.create({ data: { ticketId: ticket.id, shopId, address: "1 Main St", startsAt: new Date(now + day) } });
   await db.partWait.create({ data: { shopId, ticketId: ticket.id, partId: part.id, description: "Hook" } });
   await db.stockMove.create({ data: { shopId, partId: part.id, qty: 3, reason: "RECEIVED", userId: a.user.id } });
+  await db.fabricMarkdown.create({ data: { shopId, partId: part.id, step: 1, pct: 20, regularCents: 1400, oldCents: 1400, newCents: 1120, reason: "Slow fabric", userId: a.user.id, userName: "Check" } });
+  const supplier = await db.fabricSupplier.create({ data: { shopId, name: "Check Fabrics", leadDays: 10, minOrderCents: 10000, orderEmail: "orders@check.test", connector: "file", accountNumber: "ACCT-1", catalogMap: { itemNumber: "SKU" }, orderLayout: [{ header: "SKU", field: "itemNumber" }] } });
+  const order = await db.purchaseOrder.create({ data: { shopId, number: 1, supplierId: supplier.id, supplierName: supplier.name } });
+  await db.purchaseOrderLine.create({ data: { shopId, orderId: order.id, partId: part.id, itemNumber: part.partNumber, description: "Hook", unit: "BOLT", qty: 1, costCents: 700 } });
+  const kitSeries = await db.kitSeries.create({ data: { shopId, name: "Check BOM", months: 3 } });
+  const kit = await db.kit.create({ data: { shopId, name: "Check kit", priceCents: 5000, partId: part.id, seriesId: kitSeries.id, seriesMonth: 1 } });
+  await db.kitLine.create({ data: { shopId, kitId: kit.id, partId: part.id, qty: 2 } });
+  await db.kitSeriesMember.create({ data: { shopId, seriesId: kitSeries.id, customerId: cust.id } });
+  const club = await db.club.create({ data: { shopId, name: "Check club", kind: "BOM", monthlyCents: 2500, seriesId: kitSeries.id } });
+  const clubMember = await db.clubMember.create({ data: { shopId, clubId: club.id, customerId: cust.id, billing: "STRIPE", stripeCustomerId: "cus_check", stripeSubscriptionId: "sub_check", paidMonth: "2026-10" } });
+  await db.clubPayment.create({ data: { shopId, memberId: clubMember.id, month: "2026-10", amountCents: 2500, method: "CARD", invoiceId: "in_check", saleId: "sale_check_plain_id" } });
+  await db.clubMonth.create({ data: { shopId, clubId: club.id, month: "2026-10", what: "Block 1" } });
+  await db.clubPick.create({ data: { shopId, clubId: club.id, memberId: clubMember.id, month: "2026-10", doneAt: new Date(), doneFulfil: "PICKUP" } });
+  const quilt = await db.longarmOrder.create({ data: { shopId, number: 1, customerId: cust.id, name: "Check quilter", widthIn: 60, lengthIn: 80, rateTenthCents: 25, quiltCents: 12000, totalCents: 12000, saleId: "sale_check_plain_id" } });
+  await db.longarmPhoto.create({ data: { shopId, orderId: quilt.id, mime: "image/jpeg", data: crypto.randomBytes(500) } });
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, ticketId: ticket.id, mime: "image/jpeg", data: crypto.randomBytes(3000) } });
   // A photo bigger than one upload part, so the hosted door's file is two parts.
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, mime: "image/jpeg", data: new Uint8Array(bigPhoto) } });

@@ -11,7 +11,7 @@ import { str } from "@/lib/format";
 import { MAX_STOCK, centsField, costField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
 import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
-import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
+import type { InPrint, PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 
@@ -21,6 +21,29 @@ function qtyValue(v: FormDataEntryValue | null, byYard = true) {
   if (!Number.isFinite(n)) return 0;
   if (n > MAX_STOCK) throw new UserError(`${MAX_STOCK.toLocaleString("en-US")} is the most it can be.`);
   return Math.max(0, byYard ? Math.round(n * 1000) / 1000 : Math.round(n));
+}
+
+/**
+ * The fabric fields (collection, designer, color tags, bolt size, in print). A form that doesn't send them (an older tab,
+ * a non-fabric item) leaves them as they are: nothing is returned for a field that wasn't there.
+ */
+function fabricData(formData: FormData) {
+  const out: { collection?: string | null; designer?: string | null; colorTags?: string[]; boltYards?: number; inPrint?: InPrint } = {};
+  if (formData.has("collection")) out.collection = str(formData.get("collection"));
+  if (formData.has("designer")) out.designer = str(formData.get("designer"));
+  if (formData.has("colorTags")) out.colorTags = [...new Set(splitList(str(formData.get("colorTags"))).map((t) => t.toLowerCase()))];
+  if (formData.has("boltYards")) {
+    const raw = str(formData.get("boltYards"));
+    const n = raw ? Number(raw) : 15;
+    if (!Number.isFinite(n) || n <= 0 || n > 100) throw new UserError("Yards on a full bolt: a number from 1/8 to 100 (15 is usual).");
+    out.boltYards = Math.round(n * 8) / 8;
+  }
+  const inPrint = str(formData.get("inPrint"));
+  if (inPrint) {
+    if (inPrint !== "YES" && inPrint !== "NO" && inPrint !== "UNKNOWN") throw new UserError("Pick whether it is still in print.");
+    out.inPrint = inPrint;
+  }
+  return out;
 }
 
 /** What the form says about the item. The part number is null when left blank: the shop gives such an item a number. */
@@ -47,6 +70,7 @@ function partData(formData: FormData) {
     location: str(formData.get("location")),
     reorderAt: qtyValue(formData.get("reorderAt")),
     unit: str(formData.get("unit")) === "yd" ? "yd" : null,
+    ...fabricData(formData),
     // Whether partner shops see it in their catalog isn't a field of this form: it is chosen with "Offer this part" on
     // the part's page (HANDOFF item 9), and a Save here keeps it as it is.
     wholesaleCents: centsField(formData.get("wholesale"), "Partner price"),

@@ -35,7 +35,7 @@ export type StripeSession = {
   line_items?: { data: SessionLine[] } | null;
 };
 
-async function call<T>(key: string, method: "GET" | "POST", path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
+async function call<T>(key: string, method: "GET" | "POST" | "DELETE", path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
   const headers: Record<string, string> = { authorization: `Bearer ${key}`, "stripe-version": "2024-06-20" };
   if (body) headers["content-type"] = "application/x-www-form-urlencoded";
   if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
@@ -131,7 +131,7 @@ export async function refundPayment(key: string, paymentIntent: string, amountCe
   );
 }
 
-export type WebhookEvent = { id: string; type: string; data: { object: Record<string, unknown> } };
+export type WebhookEvent = { id: string; type: string; created?: number; data: { object: Record<string, unknown> } };
 
 /**
  * Checks a webhook's Stripe-Signature (t=...,v1=...: HMAC-SHA256 of "t.body" with the endpoint secret, within five
@@ -170,3 +170,53 @@ export function signWebhook(rawBody: string, secret: string, now = new Date()): 
 
 export const looksLikeSecretKey = (s: string) => /^(sk|rk)_(test|live)_[A-Za-z0-9]{8,}$/.test(s);
 export const looksLikeWebhookSecret = (s: string) => /^whsec_[A-Za-z0-9]{8,}$/.test(s);
+
+// ---------------------------------------------------------------------------------------------------------------
+// Clubs (fabric-smarts-design.md section 4a, package F7): a Stripe Customer and a monthly Subscription per member, on the
+// shop's own keys. The card is collected on Stripe's hosted page (Checkout in subscription mode), which makes the
+// Subscription; the webhook says paid, failed or cancelled.
+// ---------------------------------------------------------------------------------------------------------------
+
+export type StripeCustomer = { id: string };
+
+export async function createCustomer(key: string, a: { name: string; email: string | null; metadata: Record<string, string> }, idempotencyKey: string): Promise<StripeCustomer> {
+  return call<StripeCustomer>(key, "POST", "/v1/customers", { name: a.name.slice(0, 250), email: a.email || undefined, metadata: a.metadata }, idempotencyKey);
+}
+
+/**
+ * A Checkout Session in subscription mode for an existing Customer: one line at the club's monthly price, billed every
+ * month. `anchor` (a Unix time) fixes the bill date: the first period up to it is prorated, then the full price on that day.
+ */
+export async function createSubscriptionCheckout(
+  key: string,
+  a: { customer: string; name: string; monthlyCents: number; successUrl: string; cancelUrl: string; reference: string; metadata: Record<string, string>; anchor?: number | null; idempotencyKey: string },
+): Promise<StripeSession> {
+  return call<StripeSession>(
+    key,
+    "POST",
+    "/v1/checkout/sessions",
+    {
+      mode: "subscription",
+      customer: a.customer,
+      success_url: a.successUrl,
+      cancel_url: a.cancelUrl,
+      client_reference_id: a.reference,
+      metadata: a.metadata,
+      line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: a.monthlyCents, recurring: { interval: "month" }, product_data: { name: a.name.slice(0, 250) } } }],
+      subscription_data: { metadata: a.metadata, ...(a.anchor ? { billing_cycle_anchor: a.anchor } : {}) },
+    },
+    a.idempotencyKey,
+  );
+}
+
+export type StripeSubscription = { id: string; status: string };
+
+/** Pauses billing (nothing is charged or invoiced while paused) or resumes it. */
+export async function setSubscriptionPaused(key: string, id: string, paused: boolean, idempotencyKey: string): Promise<StripeSubscription> {
+  return call<StripeSubscription>(key, "POST", `/v1/subscriptions/${encodeURIComponent(id)}`, { pause_collection: paused ? { behavior: "void" } : "" }, idempotencyKey);
+}
+
+/** Cancels the subscription now (Stripe sends customer.subscription.deleted). */
+export async function cancelSubscription(key: string, id: string): Promise<StripeSubscription> {
+  return call<StripeSubscription>(key, "DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`);
+}

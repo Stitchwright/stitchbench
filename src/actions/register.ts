@@ -12,7 +12,7 @@ import { sameText } from "@/lib/input";
 import { lineNet } from "@/lib/register-math";
 import { splitForReturn } from "@/lib/sale-return";
 import { registerUnitHits } from "@/lib/vac/sale-units";
-import { viewItem, type RegisterItem } from "@/lib/register-item";
+import { FIRST_PHOTO, viewItem, type RegisterItem } from "@/lib/register-item";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs, type SaleInput } from "@/lib/register-sale";
 import { refuseVoidOfOnlineSale } from "@/lib/shop/online-shop";
@@ -36,6 +36,7 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   const matches = await db.part.findMany({
     where: { shopId: user.shopId, OR: [{ partNumber: sameText(c) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
     take: 20,
+    include: FIRST_PHOTO,
   });
   const lc = c.toLowerCase();
   const exact = (p: { partNumber: string }) => p.partNumber.toLowerCase() === lc;
@@ -64,6 +65,7 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
     },
     orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
     take: 25,
+    include: FIRST_PHOTO,
   });
   // Vacuums in stock whose brand or model matches come after the parts (Vac Shop).
   return [...parts.map(view), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];

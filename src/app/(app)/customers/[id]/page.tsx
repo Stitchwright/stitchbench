@@ -16,6 +16,9 @@ import { gateFor } from "@/lib/module-gate";
 import { saveCustomer } from "@/actions/records";
 import { CustomerMergePanel, type MergeParams } from "@/components/merge-panel";
 import { firstValues } from "@/lib/search-params";
+import { ordersOfCustomer } from "@/lib/longarm";
+import { STATUS_LABEL as LONGARM_STATUS } from "@/lib/longarm-math";
+import { CertifyButton } from "@/components/longarm-forms";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -43,6 +46,8 @@ export default async function CustomerPage({ params, searchParams }: { params: P
     orderBy: [{ createdAt: "desc" }, { number: "desc" }],
     select: { id: true, number: true, status: true, fulfil: true, totalCents: true, createdAt: true },
   });
+  const quilts = await ordersOfCustomer(user.shopId, c.id);
+  const shopRow = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true } });
   const tickets = c.kind === "TRADE" ? c.viaTickets : c.tickets;
   const owed = tickets.reduce((s, t) => s + Math.max(0, ticketTotals(t.lines, t.payments, t.taxRatePct).balance), 0);
   const commission =
@@ -136,6 +141,37 @@ export default async function CustomerPage({ params, searchParams }: { params: P
                 );
               })}
             </ul>
+          </Section>
+        )}
+        {(quilts.length > 0 || (shopRow.sellsRetail && c.kind === "RETAIL")) && (
+          <Section title="Longarm">
+            {shopRow.sellsRetail && c.kind === "RETAIL" && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                {c.longarmCertifiedAt ? <span className="pill tone-ready">Certified to rent since {fmtDate(c.longarmCertifiedAt, tz)}</span> : <span className="pill tone-neutral">Not certified to rent the longarm</span>}
+                {user.role !== "TECH" && <CertifyButton customerId={c.id} certified={!!c.longarmCertifiedAt} />}
+              </div>
+            )}
+            {quilts.length === 0 ? (
+              <Empty>No quilting work orders.</Empty>
+            ) : (
+              <ul className="divide-y divide-line text-sm">
+                {quilts.map((q) => (
+                  <li key={q.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <span className="flex items-center gap-2">
+                      <Link href={`/longarm/${q.id}`} className="link mono">
+                        #{q.number}
+                      </Link>
+                      {q.widthIn} x {q.lengthIn} in
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="num">{money(q.totalCents)}</span>
+                      <span className="num muted">{q.dueAt ? `due ${fmtDate(q.dueAt, tz)}` : fmtDate(q.receivedAt, tz)}</span>
+                      <span className="pill">{LONGARM_STATUS[q.status]}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Section>
         )}
         <CustomerClassesSlot customerId={c.id} user={user} />
