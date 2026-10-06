@@ -29,7 +29,7 @@ export async function assistantAvailable(shopId: string, o: { module?: boolean; 
   if (o.module !== false && !(await hasModule(shopId, "assistant"))) return { ok: false, why: "module", message: "The Assistant isn't turned on for this company." };
   if (o.group) {
     const s = await db.assistantSettings.findUnique({ where: { shopId } });
-    const on = !s ? true : o.group === "draft" ? s.draftOn : o.group === "causes" ? s.causesOn : s.plateOn;
+    const on = !s ? true : o.group === "draft" ? s.draftOn : o.group === "causes" ? s.causesOn : o.group === "manuals" ? s.manualsOn : s.plateOn;
     if (!on) return { ok: false, why: "feature", message: "This part of the Assistant is switched off in Settings → Assistant." };
   }
   if (!(await hubJoined())) return { ok: false, why: "no-hub", message: OFFLINE_MESSAGE };

@@ -170,6 +170,8 @@ model Shop {
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
+  manualPages       ManualPage[]
+  manualIndexDocs   ManualIndexDoc[]
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -2104,6 +2106,7 @@ model AssistantSettings {
   draftOn         Boolean  @default(true)
   causesOn        Boolean  @default(true)
   plateOn         Boolean  @default(true)
+  manualsOn       Boolean  @default(true)
   offerFirstNames Boolean  @default(false)
   voice           String?
   updatedAt       DateTime @updatedAt
@@ -2135,4 +2138,37 @@ model AssistantCall {
 
   @@index([shopId, createdAt])
   @@index([shopId, ticketId])
+}
+
+// Text pulled out of a library PDF so a company can search its manuals (Assistant: Ask the manuals). One row per page that
+// has text, per company: the company chose to index (a button), and the text stays in this database; only the few
+// matching pages of a question go to the model. A page with no text (a scan) has no row. `docId` is LibraryDoc.id (no
+// relation: the library is this PC's, rebuilt on its own). Search is Postgres full text (a GIN index on
+// to_tsvector('english', text), made in the migration: Prisma can't express it). Rebuildable, so it stays on the install.
+model ManualPage {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  docId  String
+  page   Int
+  text   String
+
+  @@unique([shopId, docId, page])
+  @@index([shopId, docId])
+}
+
+// Where indexing stands for one library file of one company: the resume point (donePages) and what couldn't be read.
+model ManualIndexDoc {
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  docId      String
+  totalPages Int      @default(0)
+  donePages  Int      @default(0)
+  blankPages Int      @default(0) // pages with no text (scans): not searchable yet
+  status     String   @default("queued") // queued | running | paused | done | failed
+  error      String?
+  updatedAt  DateTime @updatedAt
+
+  @@id([shopId, docId])
+  @@index([shopId, status])
 }

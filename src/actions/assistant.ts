@@ -5,9 +5,11 @@
 // never changes a record: "Use this" fills a field on the page and the form still has to be saved. Not in WHILE_LAPSED:
 // while the program itself is read-only, the Assistant waits too.
 import { revalidatePath } from "next/cache";
-import { safe, shownOnce } from "@/lib/action";
+import { noted, safe, shownOnce } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { draftText, likelyCauses, markCall, plateRead, saveSettings } from "@/lib/assistant/bodies";
+import { askManuals, searchManualText } from "@/lib/assistant/manuals";
+import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
 export const draftTicketText = safe(async (ticketId: string, kind: string, shorthand: string, instruction: string) => {
@@ -43,8 +45,46 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
     draftOn: fd.get("draftOn") === "on",
     causesOn: fd.get("causesOn") === "on",
     plateOn: fd.get("plateOn") === "on",
+    manualsOn: fd.get("manualsOn") === "on",
     offerFirstNames: fd.get("offerFirstNames") === "on",
     voice: String(fd.get("voice") ?? "").trim() || null,
   });
   revalidatePath("/settings/assistant");
+});
+
+/** "Ask the manuals" on a model page or ticket: the answer with its cited pages goes back to the card (nothing is stored but the log). */
+export const askTheManuals = safe(async (brand: string, model: string, question: string, ticketId: string | null) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await askManuals(user, { brand, model, question, ticketId })));
+});
+
+/** The manuals page's search box: pages of this company's indexed manuals containing the words. No model, no allowance. */
+export const searchTheManuals = safe(async (query: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await searchManualText(user, query)));
+});
+
+/** "Index these manuals" (a model's files: anyone) or "Index my whole library" (owner or admin): starts the background indexer. */
+export const indexManuals = safe(async (brand: string | null, model: string | null) => {
+  const user = brand && model ? await requireUser() : await requireAdmin();
+  const n = await startIndexing(user, brand && model ? { brand, model } : { all: true });
+  revalidatePath("/manuals");
+  revalidatePath("/models", "layout");
+  return noted(`Indexing ${n} manual${n === 1 ? "" : "s"} in the background. You can keep working.`);
+});
+
+/** Stop the indexer; the pages read so far stay and "Continue" picks up from them. */
+export const stopManualIndexing = safe(async () => {
+  const user = await requireUser();
+  await stopIndexing(user);
+  revalidatePath("/manuals");
+  revalidatePath("/models", "layout");
+});
+
+/** Delete this company's search index (owner or admin); the manuals themselves are not touched. */
+export const clearManualIndex = safe(async () => {
+  const user = await requireAdmin();
+  await clearIndex(user);
+  revalidatePath("/manuals");
+  revalidatePath("/models", "layout");
 });

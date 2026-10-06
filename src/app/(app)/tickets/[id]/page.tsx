@@ -29,6 +29,7 @@ import { TicketEstimateSlot } from "@/components/slots/ticket-estimate";
 import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
+import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { UnitBadge } from "@/components/vac/unit-badge";
 import { addLine, addPayment, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
@@ -315,6 +316,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </Section>
 
           <TicketAssistantSlot ticketId={t.id} user={user} canWork={canWork} partnerJob={job?.side === "repair"} />
+          <ManualsAsk user={user} brand={m.brand} model={m.model} ticketId={t.id} />
 
           <Section title={isSite ? "Install checklist" : "Service checklist"}>
             <fieldset disabled={!canWork} className="min-w-0">

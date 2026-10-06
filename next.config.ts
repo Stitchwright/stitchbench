@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // pdf.js (the Assistant's manual indexer, src/lib/assistant/manuals-index.ts) is loaded from node_modules at run time, not bundled: it starts its own worker.
+  serverExternalPackages: ["pdfjs-dist"],
   // The Windows program runs a self-contained copy of the app: STANDALONE=1 npm run build (see desktop/).
   ...(process.env.STANDALONE ? { output: "standalone" as const } : {}),
   // Machine intake and marketplace listings send their photos with the form (shrunk in the browser first). Every page

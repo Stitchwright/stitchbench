@@ -117,6 +117,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */
 export const PER_INSTALL: Readonly<Record<string, string>> = {
   ManualDownload: "a queue into this PC's manual library: finished rows describe files that stay here, queued ones a library the new install hasn't got",
+  ManualPage: "the Assistant's search index of this PC's manual library (text read from the PDFs here): rebuildable, so the new install indexes again if the company chooses to",
+  ManualIndexDoc: "where that indexing stands per library file of this PC: meaningless on another install",
   Listing: "the hub's copy of this company's marketplace listings; the hub sends them again after the move",
   MarketOrder: "the hub's copy of this company's marketplace orders; the hub sends them again after the move",
   CompanyMove: "this copy's own move record",
