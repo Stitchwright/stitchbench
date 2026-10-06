@@ -124,7 +124,11 @@ export const deletePhoto = safe(async function deletePhoto(photoId: string) {
   const p = await db.machinePhoto.findFirst({ where: { id: photoId, shopId: user.shopId }, select: { id: true, machineId: true, ticketId: true } });
   if (!p) throw new UserError("Photo not found.");
   await requirePhotoWork(user, p);
-  await db.machinePhoto.delete({ where: { id: photoId } });
+  const mach = await db.machine.findFirst({ where: { id: p.machineId, shopId: user.shopId }, select: { brand: true, model: true } });
+  await db.$transaction(async (tx) => {
+    await tx.machinePhoto.delete({ where: { id: photoId } });
+    await audit(tx, actorOf(user), { action: "photo.delete", subjectType: "Machine", subjectId: p.machineId, subjectLabel: `Photo of ${mach ? `${mach.brand} ${mach.model}` : "a machine"}` });
+  });
   revalidatePath(`/machines/${p.machineId}`);
   if (p.ticketId) revalidatePath(`/tickets/${p.ticketId}`);
 });
@@ -257,6 +261,9 @@ export const deleteNote = safe(async function deleteNote(noteId: string) {
   const n = await db.modelNote.findFirst({ where: { id: noteId, shopId: user.shopId } });
   if (!n) throw new UserError("Note not found.");
   if (user.role === "TECH" && n.authorId !== user.id) throw new UserError("Only the author or an admin can delete this note.");
-  await db.modelNote.delete({ where: { id: noteId } });
+  await db.$transaction(async (tx) => {
+    await tx.modelNote.delete({ where: { id: noteId } });
+    await audit(tx, actorOf(user), { action: "note.delete", subjectType: "ModelNote", subjectId: noteId, subjectLabel: `Note on ${n.modelLabel}: ${n.body.slice(0, 60)}` });
+  });
   revalidatePath("/", "layout");
 });
