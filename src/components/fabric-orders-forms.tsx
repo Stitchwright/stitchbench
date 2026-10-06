@@ -204,11 +204,17 @@ export function ReceiveForm({ orderId, lines, partly }: { orderId: string; lines
   );
 }
 
-export function SendButton({ orderId }: { orderId: string }) {
+/** Send uses the supplier's connector; "Mark sent by hand" only records it (the shop emails, prints or phones it itself). */
+export function SendButton({ orderId, label }: { orderId: string; label: string }) {
   return (
-    <ActionButton action={sendOrder.bind(null, orderId)} className="btn btn-primary">
-      Send order
-    </ActionButton>
+    <>
+      <ActionButton action={sendOrder.bind(null, orderId, false)} className="btn btn-primary">
+        {label}
+      </ActionButton>
+      <ActionButton action={sendOrder.bind(null, orderId, true)} className="btn" confirm="Tap again: mark it sent without sending">
+        Mark sent by hand
+      </ActionButton>
+    </>
   );
 }
 

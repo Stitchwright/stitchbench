@@ -11,7 +11,7 @@ import { str } from "@/lib/format";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { ORDER_FIELDS, ORDER_SELECT, type OrderSettings } from "@/lib/fabric-orders-math";
-import { addLineFor, addToDraftFor, cancelOrderFor, closeOrderFor, createOrderFor, receiveOrderFor, saveOrderFor, saveSupplierFor, sendOrderFor } from "@/lib/fabric-orders";
+import { addLineFor, addToDraftFor, cancelOrderFor, closeOrderFor, createOrderFor, receiveOrderFor, saveConnectorFor, saveOrderFor, saveSupplierFor, sendOrderFor } from "@/lib/fabric-orders";
 
 const refresh = (id?: string) => {
   revalidatePath("/fabric");
@@ -49,6 +49,13 @@ export const saveSupplier = safe(async function saveSupplier(formData: FormData)
   return noted(text);
 });
 
+export const saveConnector = safe(async function saveConnector(formData: FormData) {
+  const user = await requireUser();
+  const text = await saveConnectorFor(user, formData);
+  refresh();
+  return noted(text);
+});
+
 export const addOrderLine = safe(async function addOrderLine(orderId: string, formData: FormData) {
   const user = await requireUser();
   const text = await addLineFor(user, orderId, formData);
@@ -62,9 +69,10 @@ export const saveOrder = safe(async function saveOrder(orderId: string, formData
   refresh(orderId);
 });
 
-export const sendOrder = safe(async function sendOrder(orderId: string) {
+/** Send uses the supplier's connector (email from the shop's own mail account, or the cart-upload file); `manual`: marked sent, the shop does the sending. */
+export const sendOrder = safe(async function sendOrder(orderId: string, manual?: boolean) {
   const user = await requireUser();
-  const text = await sendOrderFor(user, orderId);
+  const text = await sendOrderFor(user, orderId, manual ? "manual" : "connector");
   refresh(orderId);
   return noted(text);
 });

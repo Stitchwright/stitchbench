@@ -9,6 +9,7 @@ import { mailtoFor, orderFor, type OrderView } from "@/lib/fabric-orders";
 import { PO_STATUS_LABEL, lineCostTotal, lineYards, outstandingYards } from "@/lib/fabric-orders-math";
 import { yards } from "@/lib/register-math";
 import { fmtDate } from "@/lib/format";
+import { connectorFor } from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/ui";
 import { AddLineForm, CancelOrderButton, OrderEditForm, ReceiveForm, SendButton } from "@/components/fabric-orders-forms";
 
@@ -25,6 +26,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   if (!o) notFound();
   const draft = o.status === "DRAFT";
   const receiving = o.status === "SENT" || o.status === "PARTLY_RECEIVED";
+  const conn = connectorFor(o.supplier.connector);
+  const sendLabel = conn.channel === "file" ? "Send order (prepare the upload file)" : o.supplier.orderEmail ? `Send order by email to ${o.supplier.orderEmail}` : "Send order";
   const under = o.supplier.minOrderCents > 0 && o.totalCents > 0 && o.totalCents < o.supplier.minOrderCents;
   return (
     <div className="space-y-4">
@@ -100,26 +103,40 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       </div>
       {draft ? (
         <div className="card card-pad flex flex-wrap items-center gap-2">
-          <SendButton orderId={o.id} />
+          <SendButton orderId={o.id} label={sendLabel} />
           <CancelOrderButton orderId={o.id} />
-          <span className="muted text-sm">Sending marks the order sent (its yards count as on order). Email text, a print page and a spreadsheet appear here after.</span>
+          <span className="muted text-sm">
+            {conn.channel === "file"
+              ? `Sending marks the order sent (its yards count as on order) and readies the spreadsheet to upload on ${o.supplier.name}'s site.`
+              : "Sending emails it from your own mail account when Settings -> Messages has one (otherwise it opens your mail program below); either way its yards count as on order."}
+          </span>
         </div>
       ) : (
         o.status !== "CANCELLED" && (
           <div className="card card-pad space-y-2">
             <h2 className="text-sm font-semibold">Send it to {o.supplier.name}</h2>
+            {o.sentVia === "smtp" && <p className="text-sm">Emailed to {o.supplier.orderEmail} from your mail account, with the spreadsheet attached.</p>}
             <div className="flex flex-wrap gap-2">
+              {conn.channel === "file" && (
+                <a className="btn btn-primary" href={`/api/fabric/orders/${o.id}/csv`}>
+                  Download the upload spreadsheet (CSV)
+                </a>
+              )}
               <a className="btn" href={mailtoFor(o)}>
-                Email it{o.supplier.orderEmail ? ` to ${o.supplier.orderEmail}` : ""}
+                Email it{o.supplier.orderEmail ? ` to ${o.supplier.orderEmail}` : ""} from my mail program
               </a>
               <Link className="btn" href={`/fabric/orders/${o.id}/print`} target="_blank">
                 Print page
               </Link>
-              <a className="btn" href={`/api/fabric/orders/${o.id}/csv`}>
-                Download spreadsheet (CSV)
-              </a>
+              {conn.channel !== "file" && (
+                <a className="btn" href={`/api/fabric/orders/${o.id}/csv`}>
+                  Download spreadsheet (CSV)
+                </a>
+              )}
             </div>
-            <p className="muted text-xs">Email opens your own mail program with the order filled in; nothing is sent from StitchShop.</p>
+            <p className="muted text-xs">
+              {conn.channel === "file" ? `Upload the spreadsheet on ${o.supplier.name}'s site (cart upload or quick order). This program never logs in to a wholesaler's site.` : "The mail-program link opens your own mail program with the order filled in; attach the spreadsheet if the order is long."}
+            </p>
           </div>
         )
       )}

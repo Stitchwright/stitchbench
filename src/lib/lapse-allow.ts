@@ -103,6 +103,8 @@ export const HAND_ALLOWED = [
   "bookingsDue",
   "findStockedParts",
   "findFabricItems",
+  "readCatalogSheet",
+  "previewCatalog",
   "openClassSeats",
   "barcodeDetails",
   "manualLinkHistory",
