@@ -6,6 +6,7 @@ import { fmtDate, money, ticketNo } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { acceptedBoth, CUSTOMERS_PAY_LABEL, normalizeTerms, type Accepted } from "@/lib/partner-terms";
 import { monthPeriod, statementFor } from "@/lib/partners";
+import { fingerprint } from "@/lib/partner-signing";
 import { PageHeader, Section, Empty, KV, JobStatusPill, OrderStatusPill } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { endPartner } from "@/actions/partners";
@@ -23,6 +24,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
   const repairSide = link.side === "repair";
   const tz = await shopTimeZone(user.shopId);
   const { from, to, month } = monthPeriod(null, tz);
+  const myKey = await db.partnerKey.findUnique({ where: { shopId: user.shopId }, select: { publicKey: true } });
   const [jobs, orders, consign, st] = await Promise.all([
     db.repairJob.findMany({ where: { shopId: user.shopId, linkId: id }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.partnerOrder.findMany({ where: { shopId: user.shopId, linkId: id }, orderBy: { createdAt: "desc" }, take: 30 }),
@@ -62,6 +64,36 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
           </>
         }
       />
+
+      <section className="card card-pad space-y-1 text-sm" aria-label="Message signing" data-testid="partner-signing">
+        {link.partnerKey ? (
+          <>
+            <p>
+              <strong>Messages from {link.partnerName} are signed</strong> and checked here, so the hub can&apos;t make one up. Their key:{" "}
+              <span className="mono" data-testid="partner-key-fp">{fingerprint(link.partnerKey)}</span>
+              {myKey ? (
+                <>
+                  {" "}
+                  · yours: <span className="mono">{fingerprint(myKey.publicKey)}</span>
+                </>
+              ) : null}
+            </p>
+            <p className="muted">
+              {link.partnerKeyHow === "code-checked"
+                ? "It matched the code you entered."
+                : link.partnerKeyHow === "first-message" || link.partnerKeyHow === "invite-unrecorded"
+                  ? "It was trusted the first time it showed up. Read the two keys to each other on the phone to be sure."
+                  : "Read the two keys to each other on the phone to be sure (a short code carries no key to check)."}{" "}
+              If {link.partnerName} reinstalls and its messages stop arriving, make a new partner code.
+            </p>
+          </>
+        ) : (
+          <p>
+            <strong>Not signed yet.</strong> {link.partnerName}&apos;s program is an older one that doesn&apos;t sign its messages
+            {link.unsignedIn > 0 ? ` (${link.unsignedIn} taken so far, marked unverified)` : ""}. They are still accepted for now; ask them to update StitchBench or StitchShop.
+          </p>
+        )}
+      </section>
 
       {link.status === "ENDED" && link.endNote && (
         <p className="card card-pad text-sm" role="status">

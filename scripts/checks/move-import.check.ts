@@ -28,6 +28,7 @@ import { importJob, type ImportJob } from "@/lib/move/import-jobs";
 import { discardUpload, finishUpload, IMPORT_NOT_FOUND, putChunk, recentImports, startUpload, uploadView } from "@/lib/move/upload";
 import { DOOR_SHUT, moveToken, pcImportOpen, startPcImport, takeMoveToken } from "@/lib/move/local";
 import type { CurrentUser } from "@/lib/session";
+import { ownKey } from "@/lib/partner-keys";
 import { checkShop, cleanup, linkPair, messagingFor, withMock, withSink, type CheckShop } from "./lib";
 import { removeCompany, RUN } from "./tenant";
 
@@ -160,6 +161,7 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.stockUnit.create({ data: { shopId, machineId: stockMachine.id, priceCents: 29900, events: [{ at: new Date(now).toISOString(), note: "in" }] } });
   await db.vacCare.create({ data: { machineId: machine.id, shopId, contactNote: "Called" } });
   const linkId = await linkPair(shopId, b.shopId);
+  await ownKey(shopId); // the company's partner signing key (its private half stays behind in a move)
   await db.partnerOutbox.create({ data: { shopId, linkId, type: "job.update", data: { status: "ON_BENCH" } } });
   await db.repairJob.create({
     data: {
@@ -329,6 +331,7 @@ async function main() {
     // What the import changes on purpose (design 3 and 4); everything else is the original, id for id.
     const expect = structuredClone(before);
     Object.assign(expect.Shop[0], { shopOn: false });
+    Object.assign(expect.PartnerKey[0], { privateSealed: null }); // the sealed private key is left out of the file
     const ms = after.MessagingSettings[0];
     assert.ok(typeof ms.marketingHoldAt === "string" && Date.parse(ms.marketingHoldAt) >= t0 - 1000, "marketing is held");
     Object.assign(expect.MessagingSettings[0], { emailOn: false, smsOn: false, marketingHoldAt: ms.marketingHoldAt, inboundAt: null, inboundIncomplete: 0 });
@@ -351,6 +354,8 @@ async function main() {
     assert.equal(shop.movingAt, null);
     const msRow = await db.messagingSettings.findUniqueOrThrow({ where: { shopId: a.shopId } });
     assert.equal(msRow.smtpPassSealed, null);
+    assert.equal((await db.partnerKey.findUniqueOrThrow({ where: { shopId: a.shopId } })).privateSealed, null, "the partner signing key's private half stays behind");
+    assert.ok((await ownKey(a.shopId)).privateKey, "and the company makes a new key when it next needs one");
     assert.equal(msRow.twilioTokenSealed, null);
     assert.equal(msRow.emailOn, false);
     assert.equal(msRow.smsOn, false);

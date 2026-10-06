@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { safe, UserError, isUserError } from "@/lib/action";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
@@ -35,7 +36,7 @@ function refresh() {
   revalidatePath("/repairs", "layout");
 }
 
-export type InviteResult = { code: string; long: string; expiresAt: string } | { error: string };
+export type InviteResult = { code: string; long: string; expiresAt: string; fingerprint: string } | { error: string };
 
 /** A code for the shop this one wants to partner with, carrying the terms offered. */
 export async function makePartnerCode(formData: FormData): Promise<InviteResult> {
@@ -46,7 +47,7 @@ export async function makePartnerCode(formData: FormData): Promise<InviteResult>
     const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
     const side = str(formData.get("side")) === "retail" ? "retail" : "repair";
     const r = await createPartnerInvite(shop.id, shop.name, side, termsFromForm(formData));
-    return { code: r.code, long: r.long, expiresAt: r.expiresAt };
+    return { code: r.code, long: r.long, expiresAt: r.expiresAt, fingerprint: r.fingerprint };
   } catch (e) {
     if (isUserError(e)) return { error: e.message };
     throw e;
@@ -189,7 +190,7 @@ export const resendPartnerMessage = safe(async function resendPartnerMessage(out
   const admin = await requireAdmin();
   const m = await db.partnerOutbox.findFirst({ where: { id: outboxId, shopId: admin.shopId, sentAt: null } });
   if (!m) throw new UserError("That message isn't waiting any more.");
-  await db.partnerOutbox.update({ where: { id: m.id }, data: { deadAt: null, nextTryAt: null, tries: 0 } });
+  await db.partnerOutbox.update({ where: { id: m.id }, data: { deadAt: null, nextTryAt: null, tries: 0, sig: Prisma.DbNull } });
   kickPartnerSync();
   refresh();
 });

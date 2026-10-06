@@ -127,6 +127,7 @@ model Shop {
   sharedPosts     SharedPost[]
   sales           Sale[]
   partnerLinks    PartnerLink[]
+  partnerKey      PartnerKey?
   repairJobs      RepairJob[]
   partnerOrders   PartnerOrder[]
   consignItems    ConsignItem[]
@@ -1170,11 +1171,37 @@ model PartnerLink {
   // The note typed when the partnership was ended, and which side ended it (repair | retail; the hub sends both)
   endNote        String?
   endedBy        String?
+  // Signing (docs/round3 W2): the partner company's public key, pinned when the partnership was made (partnerKeyHow:
+  // "code" and "code-checked" (the long code's fingerprint matched) for the redeemer, "invite" for the inviter, "first-message"
+  // for a partnership older than signing, trusted on first use). Null while the partner's program doesn't sign.
+  partnerKey     String?
+  partnerKeyHow  String?
+  partnerKeyAt   DateTime?
+  // The highest sequence number taken from the partner's signed messages, and the one last used to sign our own
+  // (milliseconds since 1970, so it keeps rising even after a restored backup)
+  sigSeqIn       BigInt    @default(0)
+  sigSeqOut      BigInt    @default(0)
+  // Unsigned messages taken from the partner while it had no key pinned (an older program), and the last time
+  unsignedIn     Int       @default(0)
+  lastUnsignedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@id([shopId, id])
   @@index([shopId])
+}
+
+// A company's signing key for partner messages and invites (src/lib/partner-keys.ts): one row per company. The private
+// key is sealed (secrets.ts) and never sent; a move leaves it out, so the company makes a new key on the new install.
+model PartnerKey {
+  shopId        String   @id
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  publicKey     String // Ed25519, base64 of the SPKI DER
+  privateSealed String?
+  // Partner codes this company made that nobody has redeemed yet: [{ side, codeHash, expiresAt }]. A link.created is taken
+  // only against one of these (or, for 15 days after the key was made, from an invite made before there was a record).
+  invites       Json     @default("[]")
+  createdAt     DateTime @default(now())
 }
 
 // Messages waiting to go to a partner through the hub (sent on the next partner sync).
@@ -1193,6 +1220,8 @@ model PartnerOutbox {
   nextTryAt DateTime?
   // The hub refused it for good (bad data, unknown link): kept and shown, never retried
   deadAt    DateTime?
+  // The company's signature over it, made the first time it is sent and sent again with every retry
+  sig       Json?
 
   @@index([sentAt, createdAt])
   @@index([shopId, linkId, sentAt])
