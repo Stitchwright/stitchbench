@@ -259,6 +259,15 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
+        <Section title="Reports">
+          <p className="muted mb-2 text-sm">Sales by day, week or month, by category and how it was paid, tickets, top customers, the gift card liability and the sales tax report.</p>
+          <Link href="/reports" className="btn btn-sm">
+            Open Reports
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Audit log">
           <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
           <Link href="/settings/audit" className="btn btn-sm">

@@ -19,6 +19,7 @@ import { actorOf, audit } from "@/lib/audit";
 import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type CardLine, type Issued } from "@/lib/gift-cards";
 import { fmtWhen } from "@/lib/zoned";
 import { exemptCertificate } from "@/lib/tax-exempt";
+import { saleLineKind } from "@/lib/sale-kind";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -340,7 +341,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
+          const kind = saleLineKind({ ...row, giftCardId: input.lines[i].giftCard ? "pending" : null, tradeInUnitId: tradeIn ? "pending" : null, partKind: row.partId ? parts.get(row.partId)?.kind : null });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });

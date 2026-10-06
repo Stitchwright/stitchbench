@@ -1145,6 +1145,8 @@ model SaleLine {
   appointmentId  String?
   // A gift card sold, loaded or paid out on this line (plain id)
   giftCardId     String?
+  // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
+  kind           String?
 
   @@index([saleId])
   @@index([stockUnitId])
