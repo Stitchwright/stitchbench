@@ -80,6 +80,10 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Kit", key: "id" }, // -> KitSeries, Part
   { t: "KitLine", key: "id" }, // -> Kit, Part
   { t: "KitSeriesMember", key: "id" }, // -> KitSeries, Customer
+  { t: "Club", key: "id" }, // -> KitSeries
+  { t: "ClubMember", key: "id" }, // -> Club, Customer
+  { t: "ClubMonth", key: "id" }, // -> Club
+  { t: "ClubPick", key: "id" }, // -> Club, ClubMember
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
   { t: "SharedPost", key: "id" }, // -> User
