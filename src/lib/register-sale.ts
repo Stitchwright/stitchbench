@@ -18,6 +18,7 @@ import { classLine } from "@/lib/classes";
 import { actorOf, audit } from "@/lib/audit";
 import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type CardLine, type Issued } from "@/lib/gift-cards";
 import { fmtWhen } from "@/lib/zoned";
+import { exemptCertificate } from "@/lib/tax-exempt";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -57,6 +58,8 @@ export type SaleInput = {
   clientKey?: string | null;
   /** The online shop with Stripe Tax: the tax as the processor worked it out, recorded in place of the shop's rate (owner's calls only). */
   taxCents?: number | null;
+  /** The customer is tax exempt but the cashier says charge tax anyway (no certificate is recorded then). */
+  chargeTax?: boolean;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -281,7 +284,14 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // A tax amount the processor worked out (Stripe Tax) stands in for the rate; the rate recorded is the effective one,
     // so a return mirrors the sale's tax as closely as a rate can.
     const givenTax = input.taxCents != null && user.role !== "TECH" ? Math.max(0, Math.round(Number(input.taxCents))) : null;
-    const taxRatePct = givenTax != null ? effectiveRate(lines, givenTax) : shop.taxRatePct;
+    // A tax-exempt customer's sale charges no tax (their certificate number is kept on it), unless the cashier ticks
+    // "Charge tax anyway" (chargeTax). A processor's tax amount (online shop) is never overridden here.
+    const customerId = input.customerId || firstBookingCustomer(lines, bookings);
+    const exemptId =
+      givenTax == null && customerId && input.chargeTax !== true
+        ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
+        : null;
+    const taxRatePct = givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
     const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
@@ -299,7 +309,6 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // Each line's part of the whole-sale discount, adding up to it exactly (what a consigned item really sold for).
     const orderShares = orderDiscountShares(lines, totals.orderDiscount);
 
-    const customerId = input.customerId || firstBookingCustomer(lines, bookings);
     const at = new Date();
     const result = await db
       .$transaction(async (tx) => {
@@ -318,6 +327,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
             taxCents: totals.tax,
             totalCents: totals.total,
             taxRatePct,
+            taxExemptId: exemptId,
             // The card number typed for a gift card or store credit isn't kept here; the card itself is (below).
             tenders: tenders.map(({ cardNumber, ...t }) => (void cardNumber, t)) as Prisma.InputJsonValue,
             changeCents: totals.change,

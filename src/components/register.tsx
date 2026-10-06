@@ -8,6 +8,7 @@ import { Camera, CameraOff, CalendarDays, Gift, Trash2, Undo2, Wrench, Plus } fr
 import {
   bookingsDue,
   completeSale,
+  customerTaxExempt,
   findCustomers,
   findItems,
   itemByCode,
@@ -91,6 +92,24 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const [returnMode, setReturnMode] = useState(false);
   const [results, setResults] = useState<RegisterItem[]>([]);
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
+  // A tax-exempt customer's sale charges no tax unless the cashier ticks "Charge tax anyway".
+  const [chargeTax, setChargeTax] = useState(false);
+  const customerId = customer?.id ?? null;
+  const exemptKnown = customer ? customer.taxExemptId !== undefined : true;
+  // A customer handed over without the answer (a booking, a sale found for a return): ask the server once.
+  useEffect(() => {
+    if (!customerId || exemptKnown) return;
+    let live = true;
+    customerTaxExempt(customerId).then((cert) => {
+      if (live) setCustomer((c) => (c && c.id === customerId ? { ...c, taxExemptId: cert } : c));
+    });
+    return () => {
+      live = false;
+    };
+  }, [customerId, exemptKnown]);
+  const exemptCert = customer?.taxExemptId ?? null;
+  const exemptOn = Boolean(exemptCert) && !chargeTax;
+  const ratePct = exemptOn ? 0 : taxRatePct;
   const [custQ, setCustQ] = useState("");
   const [custHits, setCustHits] = useState<CustomerHit[]>([]);
   // The "New customer" form: open with its fields, or closed.
@@ -122,7 +141,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
-  const t = saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
+  const t = saleTotals(lines, orderDiscountCents, ratePct, tenders);
   const refund = t.total < 0;
   // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
   const problem = tenderProblem(t, tenders);
@@ -510,6 +529,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     setDone(null);
     const sale = {
       customerId: customer?.id ?? null,
+      chargeTax: Boolean(exemptCert) && chargeTax,
       lines: lines.map((l) => ({
         giftCard: l.giftCard ?? null,
         partId: l.partId ?? null,
@@ -547,6 +567,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       setGcPanel(null);
       setOrderDisc({ kind: "%", value: "" });
       setCustomer(null);
+      setChargeTax(false);
       setReturnMode(false);
       setJobs(null);
       setBookings(null);
@@ -962,12 +983,20 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             <label htmlFor="register-customer" className="label">
               Customer (optional)
             </label>
+            {exemptCert && (
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={chargeTax} onChange={(e) => setChargeTax(e.target.checked)} />
+                <span>
+                  Tax exempt, certificate <strong>{exemptCert}</strong>. Charge tax anyway
+                </span>
+              </label>
+            )}
             {customer ? (
               <div className="flex items-center justify-between gap-2 text-sm">
                 <span>
                   {customer.name} {customer.phone && <span className="muted">{customer.phone}</span>}
                 </span>
-                <button type="button" className="link text-xs" onClick={() => setCustomer(null)}>
+                <button type="button" className="link text-xs" onClick={() => { setCustomer(null); setChargeTax(false); }}>
                   change
                 </button>
               </div>
@@ -1072,7 +1101,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             </span>
           </div>
           {t.orderDiscount > 0 && <Row k="" v={`-${money(t.orderDiscount)}`} />}
-          <Row k={`Tax (${taxRatePct}%)`} v={money(t.tax)} />
+          <Row k={exemptOn ? `Tax exempt (certificate ${exemptCert})` : `Tax (${taxRatePct}%)`} v={money(t.tax)} />
           <div className="flex justify-between border-t border-line pt-1 text-lg font-bold">
             <span>{t.total < 0 ? "Refund" : "Total"}</span>
             <span className="num" data-testid="sale-total">

@@ -79,7 +79,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
         <div className="my-2 border-t border-dashed border-line" />
         <Line k="Subtotal" v={money(sale.subtotalCents)} />
         {sale.discountCents > 0 && <Line k="Discount" v={`-${money(sale.discountCents)}`} />}
-        <Line k={`Tax ${sale.taxRatePct}%`} v={money(sale.taxCents)} />
+        <Line k={sale.taxExemptId ? `Tax exempt (certificate ${sale.taxExemptId})` : `Tax ${sale.taxRatePct}%`} v={money(sale.taxCents)} />
         <div className="flex justify-between text-base font-bold">
           <span>{sale.totalCents < 0 ? "REFUND" : "TOTAL"}</span>
           <span>{money(Math.abs(sale.totalCents))}</span>

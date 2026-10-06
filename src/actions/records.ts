@@ -11,6 +11,8 @@ import { assertId } from "@/lib/input";
 import { PHOTO_KINDS } from "@/lib/constants";
 import { requireModule } from "@/lib/modules";
 import { recordConsent } from "@/lib/messaging/consent";
+import { actorOf, audit } from "@/lib/audit";
+import { parseExemptUntil } from "@/lib/tax-exempt";
 import { isNotifyBy } from "@/components/notify-by-field";
 import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
 import { withArticle } from "@/lib/equipment/types";
@@ -168,6 +170,16 @@ export const saveCustomer = safe(async function saveCustomer(customerId: string 
     routeDay: kind === "TRADE" ? str(formData.get("routeDay")) : null,
     notes: str(formData.get("notes")),
   };
+  // Tax exempt: a certificate number (and the last day it is good, if it has one). Only the form that carries the field writes it.
+  if (formData.has("taxExemptId") && user.role === "TECH") throw new UserError("Only an owner or admin can mark a customer tax exempt.");
+  const exempt = formData.has("taxExemptId")
+    ? (() => {
+        const until = parseExemptUntil(str(formData.get("taxExemptUntil")));
+        if ("error" in until) throw new UserError(until.error);
+        const id = str(formData.get("taxExemptId"))?.slice(0, 60) ?? null;
+        return { taxExemptId: id, taxExemptUntil: id ? until.date : null };
+      })()
+    : null;
   // "How should we tell them": written only when the form carried the field (the field is hidden while Marketing was
   // never on); a change is a consent record. No consent field (smsConsent*) is ever written here.
   let notifyBy: string | null = null;
@@ -182,7 +194,16 @@ export const saveCustomer = safe(async function saveCustomer(customerId: string 
     if (!c) throw new UserError("Customer not found.");
     const changed = notifyBy != null && notifyBy !== c.notifyBy;
     await db.$transaction(async (tx) => {
-      await tx.customer.update({ where: { id: customerId }, data: { ...data, ...(changed ? { notifyBy: notifyBy! } : {}) } });
+      await tx.customer.update({ where: { id: customerId }, data: { ...data, ...(exempt ?? {}), ...(changed ? { notifyBy: notifyBy! } : {}) } });
+      if (exempt && (exempt.taxExemptId !== (c.taxExemptId ?? null) || (exempt.taxExemptUntil?.getTime() ?? null) !== (c.taxExemptUntil?.getTime() ?? null))) {
+        await audit(tx, actorOf(user), {
+          action: "customer.taxexempt",
+          subjectType: "Customer",
+          subjectId: c.id,
+          subjectLabel: c.name,
+          changes: { taxExemptId: [c.taxExemptId, exempt.taxExemptId], taxExemptUntil: [c.taxExemptUntil?.toISOString().slice(0, 10) ?? null, exempt.taxExemptUntil?.toISOString().slice(0, 10) ?? null] },
+        });
+      }
       if (changed) await recordConsent(tx, pref(customerId, notifyBy!));
     });
     revalidatePath(`/customers/${customerId}`);
@@ -190,7 +211,10 @@ export const saveCustomer = safe(async function saveCustomer(customerId: string 
     return;
   }
   const c = await db.$transaction(async (tx) => {
-    const made = await tx.customer.create({ data: { ...data, shopId: user.shopId, notifyBy: notifyBy ?? "" } });
+    const made = await tx.customer.create({ data: { ...data, ...(exempt ?? {}), shopId: user.shopId, notifyBy: notifyBy ?? "" } });
+    if (exempt?.taxExemptId) {
+      await audit(tx, actorOf(user), { action: "customer.taxexempt", subjectType: "Customer", subjectId: made.id, subjectLabel: made.name, changes: { taxExemptId: [null, exempt.taxExemptId] } });
+    }
     if (notifyBy) await recordConsent(tx, pref(made.id, notifyBy));
     return made;
   });

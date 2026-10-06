@@ -278,6 +278,9 @@ model Customer {
   smsConsentText   String?
   // Review requests: when we last asked (at most one every Settings -> Messages "reviewEveryDays")
   lastReviewAskAt  DateTime?
+  // Tax exempt (a resale or exemption certificate): sales and tickets for them charge no tax, with the number recorded
+  taxExemptId      String?
+  taxExemptUntil   DateTime?
   createdAt        DateTime     @default(now())
 
   machines      Machine[]
@@ -513,6 +516,8 @@ model Ticket {
   // Timing / adjustment readings: { "<factory setting id>": { "found": 2.4, "left": 3.1 } }
   measurements        Json         @default("{}")
   taxRatePct          Float        @default(0)
+  // The exemption certificate when this ticket was opened (or tax switched off for it); taxRatePct is then 0
+  taxExemptId         String?
   intakeAt            DateTime     @default(now())
   readyAt             DateTime?
   // Since when it has been waiting on the pickup shelf: set on every move into READY_FOR_PICKUP, cleared on leaving it
@@ -1089,6 +1094,8 @@ model Sale {
   taxCents      Int
   totalCents    Int
   taxRatePct    Float
+  // The certificate number when the sale was tax exempt (taxRatePct is then 0)
+  taxExemptId   String?
   // [{ method: CASH | CARD | CHECK | GIFT | OTHER, amountCents, note }]; cards are run on the shop's own terminal
   tenders       Json      @default("[]")
   changeCents   Int       @default(0)

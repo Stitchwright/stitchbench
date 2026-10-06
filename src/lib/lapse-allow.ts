@@ -102,6 +102,7 @@ export const HAND_ALLOWED = [
   "pickupJobByTag",
   "saleForReturn",
   "findCustomers",
+  "customerTaxExempt",
   "bookingsDue",
   "findStockedParts",
   "openClassSeats",
