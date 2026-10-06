@@ -169,6 +169,10 @@ model Shop {
   kitLines        KitLine[]
   kitSeries       KitSeries[]
   kitMembers      KitSeriesMember[]
+  clubs           Club[]
+  clubMembers     ClubMember[]
+  clubMonths      ClubMonth[]
+  clubPicks       ClubPick[]
   notes           ModelNote[]
   serviceItems    ServiceItem[]
   photos          MachinePhoto[]
@@ -299,6 +303,7 @@ enum CustomerKind {
 
 model Customer {
   kitSeries        KitSeriesMember[]
+  clubMembers      ClubMember[]
   id               String            @id @default(cuid())
   shopId           String
   shop             Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -2293,6 +2298,7 @@ model KitSeries {
 
   kits    Kit[]
   members KitSeriesMember[]
+  clubs   Club[]
 
   @@index([shopId])
 }
@@ -2310,4 +2316,115 @@ model KitSeriesMember {
 
   @@unique([seriesId, customerId])
   @@index([shopId])
+}
+
+// Clubs (fabric-smarts-design.md section 4a, package F7): a fat quarter club, a fabric club or a Block of the Month
+// (linked to a KitSeries) with a monthly price. A member is a customer with a status (active, paused, cancelled), ship
+// or pick up, and how they pay: a card on the shop's own Stripe (a Stripe Customer and a monthly Subscription made with
+// the shop's keys; webhooks say paid, failed or cancelled) or "pay at pickup", marked by hand each month. A month's
+// pick list is who gets what, shipped or picked up, marked done. paidMonth is the last month paid ("2026-10").
+enum ClubKind {
+  FAT_QUARTER
+  FABRIC
+  BOM
+  OTHER
+}
+
+enum ClubMemberStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+}
+
+enum ClubFulfil {
+  PICKUP
+  SHIP
+}
+
+enum ClubBilling {
+  STRIPE
+  PAY_AT_PICKUP
+}
+
+model Club {
+  id           String     @id @default(cuid())
+  shopId       String
+  shop         Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  kind         ClubKind   @default(FAT_QUARTER)
+  monthlyCents Int
+  fulfil       ClubFulfil @default(PICKUP)
+  billDay      Int?
+  seriesId     String?
+  series       KitSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  note         String?
+  closedAt     DateTime?
+  createdAt    DateTime   @default(now())
+
+  members ClubMember[]
+  months  ClubMonth[]
+  picks   ClubPick[]
+
+  @@index([shopId])
+}
+
+model ClubMember {
+  id                   String           @id @default(cuid())
+  shopId               String
+  shop                 Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  clubId               String
+  club                 Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  customerId           String
+  customer             Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status               ClubMemberStatus @default(ACTIVE)
+  fulfil               ClubFulfil       @default(PICKUP)
+  billing              ClubBilling      @default(PAY_AT_PICKUP)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  paidMonth            String?
+  lastPaidAt           DateTime?
+  payFailedAt          DateTime?
+  note                 String?
+  joinedAt             DateTime         @default(now())
+  pausedAt             DateTime?
+  cancelledAt          DateTime?
+
+  picks ClubPick[]
+
+  @@unique([clubId, customerId])
+  @@index([shopId, clubId, status])
+  @@index([shopId, stripeSubscriptionId])
+}
+
+// What the club gives this month (month = "2026-10"), and optionally the kit it is.
+model ClubMonth {
+  id     String  @id @default(cuid())
+  shopId String
+  shop   Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  clubId String
+  club   Club    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  month  String
+  what   String
+  kitId  String?
+
+  @@unique([clubId, month])
+  @@index([shopId])
+}
+
+// One member's share of a month: made when the pick list is opened, done when handed over or shipped.
+model ClubPick {
+  id         String      @id @default(cuid())
+  shopId     String
+  shop       Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  clubId     String
+  club       Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  memberId   String
+  member     ClubMember  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  month      String
+  doneAt     DateTime?
+  doneFulfil ClubFulfil?
+  tracking   String?
+
+  @@unique([memberId, month])
+  @@index([shopId, clubId, month])
 }

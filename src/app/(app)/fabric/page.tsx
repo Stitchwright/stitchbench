@@ -15,20 +15,23 @@ import { FabricMarkdown } from "@/components/fabric-markdown";
 import { Swatch } from "@/components/fabric-swatch";
 import { ReorderTab } from "./reorder-tab";
 import { KitsTab } from "./kits-tab";
+import { ClubsTab } from "./clubs-tab";
 
-type Tab = "bolt" | "sells" | "slow" | "reorder" | "kits";
+type Tab = "bolt" | "sells" | "slow" | "reorder" | "kits" | "clubs";
 
 export default async function FabricPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true } });
   if (!shop.sellsRetail) notFound();
   const { tab: raw } = await searchParams;
-  const tab: Tab = raw === "sells" || raw === "slow" || raw === "reorder" || raw === "kits" ? raw : "bolt";
-  const [bolt, insight] = await Promise.all([tab === "bolt" ? boltEndsFor(user.shopId) : null, tab === "bolt" || tab === "reorder" || tab === "kits" ? null : insightFor(user.shopId)]);
+  const tab: Tab = raw === "sells" || raw === "slow" || raw === "reorder" || raw === "kits" || raw === "clubs" ? raw : "bolt";
+  const [bolt, insight] = await Promise.all([tab === "bolt" ? boltEndsFor(user.shopId) : null, tab === "bolt" || tab === "reorder" || tab === "kits" || tab === "clubs" ? null : insightFor(user.shopId)]);
   const sub =
     tab === "bolt" && bolt
       ? `Bolt ends: ${qtyText(bolt.limit, "yd")} or less left, none on order. Cut them into fat quarters before they sit.`
-      : tab === "kits"
+      : tab === "clubs"
+        ? "Clubs: monthly fabric clubs and Block of the Month, billed on your own Stripe or paid at pickup."
+        : tab === "kits"
         ? "Kits: fabric, pattern and notions in one box with one price."
         : tab === "reorder"
         ? "Fabric worth reordering while it is still in print, and your purchase orders."
@@ -41,6 +44,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
     { tab: "slow", label: tab === "slow" && insight ? `Slow fabric (${insight.slow.length})` : "Slow fabric" },
     { tab: "reorder", label: "Reorder" },
     { tab: "kits", label: "Kits" },
+    { tab: "clubs", label: "Clubs" },
   ];
   return (
     <div className="space-y-4">
@@ -78,6 +82,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
       {tab === "slow" && insight && <SlowFabric insight={insight} />}
       {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
       {tab === "kits" && <KitsTab shopId={user.shopId} />}
+      {tab === "clubs" && <ClubsTab shopId={user.shopId} />}
     </div>
   );
 }
