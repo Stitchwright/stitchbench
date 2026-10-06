@@ -2152,16 +2152,25 @@ model FabricMarkdown {
 // learnedDays is worked out from received orders (sent to first received) and is what the reorder math uses once
 // learnedOrders is more than 0. minOrderCents is a warning on the order, not a block.
 model FabricSupplier {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   shopId        String
-  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name          String
   leadDays      Int?
   learnedDays   Int?
-  learnedOrders Int      @default(0)
-  minOrderCents Int      @default(0)
+  learnedOrders Int       @default(0)
+  minOrderCents Int       @default(0)
   orderEmail    String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
+  // Connectors (fabric-smarts-design.md section 5a, package F6): how an order goes to this supplier (email | file |
+  // notions-marketing), the column mapping the catalog spreadsheet is read with, the column layout the cart-upload CSV
+  // is written in, and the shop's own account number there. Never a login or password for the wholesaler's site.
+  connector     String    @default("email")
+  catalogMap    Json?
+  orderLayout   Json?
+  accountNumber String?
+  catalogAt     DateTime?
+  catalogNote   String?
 
   orders PurchaseOrder[]
 
@@ -2196,6 +2205,9 @@ model PurchaseOrder {
   firstReceivedAt DateTime?
   receivedAt      DateTime?
   cancelledAt     DateTime?
+  // How it went to the supplier: smtp (sent from the shop's own mail account), mailto (the shop's mail program), file
+  // (the cart-upload spreadsheet), none (printed or by phone).
+  sentVia         String?
 
   lines PurchaseOrderLine[]
 

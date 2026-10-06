@@ -11,6 +11,9 @@ import { Empty } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { addReorderToDrafts } from "@/actions/fabric-orders";
 import { NewOrderForm, SupplierForm } from "@/components/fabric-orders-forms";
+import { CatalogImport, ConnectorForm } from "@/components/connector-forms";
+import { connectorFor, connectorList } from "@/lib/connectors/registry";
+import { DEFAULT_ORDER_LAYOUT, layoutText } from "@/lib/connectors/layout";
 import { Swatch } from "@/components/fabric-swatch";
 import { db } from "@/lib/db";
 
@@ -35,6 +38,7 @@ export async function ReorderTab({ shopId }: { shopId: string }) {
     ordersListFor(shopId),
     db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true, fabLeadDays: true } }),
   ]);
+  const choices = connectorList().map((c) => ({ id: c.id, label: c.label, blurb: c.blurb, placeholder: !!c.placeholder }));
   const open = orders.filter((o) => o.status === "DRAFT" || o.status === "SENT" || o.status === "PARTLY_RECEIVED");
   return (
     <div className="space-y-4">
@@ -161,6 +165,20 @@ export async function ReorderTab({ shopId }: { shopId: string }) {
                   </span>
                 </div>
                 <SupplierForm name={s.name} leadDays={s.leadDays} minOrder={s.minOrderCents ? (s.minOrderCents / 100).toFixed(2) : ""} orderEmail={s.orderEmail} placeholderLead={shop.fabLeadDays} />
+                <details className="text-sm">
+                  <summary className="cursor-pointer">
+                    How orders go ({connectorFor(s.connector).label}) and catalog import
+                    {s.catalogAt ? <span className="muted text-xs"> · catalog imported {fmtDate(s.catalogAt, shop.timeZone)}: {s.catalogNote}</span> : null}
+                  </summary>
+                  <div className="space-y-4 pt-3">
+                    <ConnectorForm name={s.name} connector={s.connector} accountNumber={s.accountNumber} layout={s.orderLayout ? layoutText(s.orderLayout) : ""} choices={choices} defaultLayout={layoutText(DEFAULT_ORDER_LAYOUT)} />
+                    {s.id ? (
+                      <CatalogImport supplierId={s.id} supplierName={s.name} placeholder={!!connectorFor(s.connector).placeholder} />
+                    ) : (
+                      <p className="muted text-xs">To import this supplier&apos;s catalog, save how orders go above first.</p>
+                    )}
+                  </div>
+                </details>
               </li>
             ))}
           </ul>

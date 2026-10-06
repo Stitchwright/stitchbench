@@ -16,7 +16,6 @@ import {
   isUrgent,
   leadDaysOf,
   learnLead,
-  lineCostTotal,
   lineYards,
   orderTotal,
   outstandingYards,
@@ -26,7 +25,10 @@ import {
   type ReorderOut,
 } from "@/lib/fabric-orders-math";
 import type { CurrentUser } from "@/lib/session";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
+import { cleanLayout, cleanMap, orderRows, parseLayoutText } from "@/lib/connectors/layout";
+import { connectorFor, isConnectorId } from "@/lib/connectors/registry";
+import type { ColumnMap, ConnectorContext, OrderLayout, OrderVia } from "@/lib/connectors/types";
 
 export const MAX_ORDER_LINES = 300;
 const MAX_QTY_LINE = 100_000;
@@ -45,6 +47,13 @@ export type SupplierView = {
   learnedOrders: number;
   minOrderCents: number;
   orderEmail: string | null;
+  /** Connectors (package F6): how orders go, the shop's account number there, and the last catalog import. */
+  connector: string;
+  accountNumber: string | null;
+  catalogMap: ColumnMap | null;
+  orderLayout: OrderLayout | null;
+  catalogAt: Date | null;
+  catalogNote: string | null;
   /** The lead time in use, and where it comes from. */
   lead: { days: number; from: "learned" | "supplier" | "shop" };
   fabrics: number;
@@ -70,6 +79,12 @@ export async function suppliersFor(shopId: string): Promise<SupplierView[]> {
       learnedOrders: s.learnedOrders,
       minOrderCents: s.minOrderCents,
       orderEmail: s.orderEmail,
+      connector: connectorFor(s.connector).id,
+      accountNumber: s.accountNumber,
+      catalogMap: s.catalogMap ? cleanMap(s.catalogMap) : null,
+      orderLayout: s.orderLayout ? cleanLayout(s.orderLayout) : null,
+      catalogAt: s.catalogAt,
+      catalogNote: s.catalogNote,
       lead: leadDaysOf(s, shop.fabLeadDays),
       fabrics: 0,
       openOrders: openBy.get(s.id) ?? 0,
@@ -81,7 +96,7 @@ export async function suppliersFor(shopId: string): Promise<SupplierView[]> {
     const k = supplierKey(name);
     const cur = byKey.get(k);
     if (cur) cur.fabrics += g._count._all;
-    else byKey.set(k, { id: null, name, leadDays: null, learnedDays: null, learnedOrders: 0, minOrderCents: 0, orderEmail: null, lead: leadDaysOf(null, shop.fabLeadDays), fabrics: g._count._all, openOrders: 0 });
+    else byKey.set(k, { id: null, name, leadDays: null, learnedDays: null, learnedOrders: 0, minOrderCents: 0, orderEmail: null, connector: "email", accountNumber: null, catalogMap: null, orderLayout: null, catalogAt: null, catalogNote: null, lead: leadDaysOf(null, shop.fabLeadDays), fabrics: g._count._all, openOrders: 0 });
   }
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -113,6 +128,26 @@ export async function saveSupplierFor(user: CurrentUser, fd: FormData): Promise<
     await tx.fabricSupplier.update({ where: { id: s.id }, data: { leadDays, minOrderCents, orderEmail: email } });
   });
   return `Saved ${name}.`;
+}
+
+/**
+ * Saves how orders go to one supplier (package F6): the connector, the shop's account number there (never a login or
+ * password) and the column layout of the cart-upload spreadsheet, one "Heading = field" line a column (blank: the plain layout).
+ */
+export async function saveConnectorFor(user: CurrentUser, fd: FormData): Promise<string> {
+  const name = str(fd.get("name"));
+  if (!name) throw new UserError("Which supplier?");
+  const connector = str(fd.get("connector")) ?? "email";
+  if (!isConnectorId(connector)) throw new UserError("Pick one of the ways to send orders.");
+  const account = str(fd.get("accountNumber"));
+  if (account && account.length > 60) throw new UserError("Account number: 60 characters at most.");
+  const layoutText = String(fd.get("layout") ?? "");
+  const layout = layoutText.trim() ? parseLayoutText(layoutText) : null;
+  await db.$transaction(async (tx) => {
+    const s = await supplierNamed(tx, user.shopId, name);
+    await tx.fabricSupplier.update({ where: { id: s.id }, data: { connector, accountNumber: account, orderLayout: layout && layout.length ? layout : Prisma.DbNull } });
+  });
+  return `Saved how orders go to ${name}.`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -290,7 +325,9 @@ export type OrderLineView = { id: string; partId: string | null; itemNumber: str
 export type OrderView = {
   id: string;
   number: number;
-  supplier: { id: string; name: string; orderEmail: string | null; minOrderCents: number; lead: { days: number; from: "learned" | "supplier" | "shop" } };
+  supplier: { id: string; name: string; orderEmail: string | null; minOrderCents: number; connector: string; accountNumber: string | null; layout: OrderLayout | null; lead: { days: number; from: "learned" | "supplier" | "shop" } };
+  /** How it went to the supplier (package F6): smtp, mailto, file or none; null while a draft. */
+  sentVia: OrderVia | null;
   status: "DRAFT" | "SENT" | "PARTLY_RECEIVED" | "RECEIVED" | "CANCELLED";
   note: string | null;
   createdAt: Date;
@@ -317,7 +354,8 @@ export async function orderFor(shopId: string, id: string): Promise<OrderView | 
   return {
     id: po.id,
     number: po.number,
-    supplier: { id: po.supplier.id, name: po.supplier.name, orderEmail: po.supplier.orderEmail, minOrderCents: po.supplier.minOrderCents, lead: leadDaysOf(po.supplier, shop.fabLeadDays) },
+    supplier: { id: po.supplier.id, name: po.supplier.name, orderEmail: po.supplier.orderEmail, minOrderCents: po.supplier.minOrderCents, connector: connectorFor(po.supplier.connector).id, accountNumber: po.supplier.accountNumber, layout: po.supplier.orderLayout ? cleanLayout(po.supplier.orderLayout) : null, lead: leadDaysOf(po.supplier, shop.fabLeadDays) },
+    sentVia: po.sentVia === "smtp" || po.sentVia === "mailto" || po.sentVia === "file" || po.sentVia === "none" ? po.sentVia : null,
     status: po.status,
     note: po.note,
     createdAt: po.createdAt,
@@ -412,19 +450,43 @@ export async function saveOrderFor(user: CurrentUser, orderId: string, fd: FormD
 }
 
 /** Marks the draft as sent (the shop emails or prints it from the order page): from then on it counts as on order. */
-export async function sendOrderFor(user: CurrentUser, orderId: string): Promise<string> {
+export async function sendOrderFor(user: CurrentUser, orderId: string, how: "connector" | "manual" = "connector"): Promise<string> {
   assertId(orderId);
-  return db.$transaction(async (tx) => {
+  // Claim the draft first (so a double click can't send twice), then let the supplier's connector send it. A connector that
+  // can't send puts the draft back and says why; "manual" skips the connector (the shop emails, prints or phones it itself).
+  const claimed = await db.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({ where: { id: orderId, shopId: user.shopId }, include: { lines: true } });
     if (!po) throw new UserError("Order not found.");
     if (po.status !== "DRAFT") throw new UserError(`Order #${po.number} was already sent.`);
     if (!po.lines.length) throw new UserError("Add at least one line before sending.");
     const noPart = po.lines.find((l) => !l.partId);
     if (noPart) throw new UserError(`${noPart.itemNumber} is no longer in inventory: remove it from the order.`);
-    const marked = await tx.purchaseOrder.updateMany({ where: { id: po.id, shopId: user.shopId, status: "DRAFT" }, data: { status: "SENT", sentAt: new Date() } });
+    const at = new Date();
+    const marked = await tx.purchaseOrder.updateMany({ where: { id: po.id, shopId: user.shopId, status: "DRAFT" }, data: { status: "SENT", sentAt: at } });
     if (marked.count !== 1) throw new UserError(`Order #${po.number} was already sent.`);
-    return `Order #${po.number} is marked sent. Email it, print it or download the spreadsheet below; its yards now count as on order.`;
+    return { number: po.number, at };
   });
+  const finish = (via: OrderVia) => db.purchaseOrder.updateMany({ where: { id: orderId, shopId: user.shopId }, data: { sentVia: via } });
+  if (how === "manual") {
+    await finish("none");
+    return `Order #${claimed.number} is marked sent. Its yards now count as on order.`;
+  }
+  const o = await orderFor(user.shopId, orderId);
+  if (!o) throw new UserError("Order not found.");
+  const conn = connectorFor(o.supplier.connector);
+  const ctx: ConnectorContext = {
+    shopId: user.shopId,
+    supplier: { id: o.supplier.id, name: o.supplier.name, orderEmail: o.supplier.orderEmail, accountNumber: o.supplier.accountNumber, catalogMap: null, orderLayout: o.supplier.layout },
+  };
+  try {
+    const out = conn.placeOrder ? await conn.placeOrder(ctx, o) : { via: "none" as const, note: `Order #${o.number} is marked sent. Print it or download the spreadsheet below.` };
+    await finish(out.via);
+    return out.note;
+  } catch (e) {
+    // Nothing went: back to a draft, so the shop can fix the cause and send again.
+    await db.purchaseOrder.updateMany({ where: { id: orderId, shopId: user.shopId, status: "SENT", sentAt: claimed.at, firstReceivedAt: null }, data: { status: "DRAFT", sentAt: null, sentVia: null } });
+    throw e;
+  }
 }
 
 /** Cancels an order that nothing has come against (a draft or a sent order). */
@@ -523,12 +585,9 @@ export async function receiveOrderFor(user: CurrentUser, orderId: string, fd: Fo
 
 const dollars = (c: number | null) => (c == null ? "" : (c / 100).toFixed(2));
 
-/** The order as a spreadsheet: maker's item number, description, amount, unit, yards, cost a yard, line total. */
+/** The order as a spreadsheet in the supplier's own column layout (package F6), or the plain one: maker's item number, description, amount, unit, yards, cost a yard, line total. */
 export function orderCsvRows(o: OrderView): unknown[][] {
-  return [
-    ["item_number", "description", "quantity", "unit", "yards", "cost_per_yard", "line_total"],
-    ...o.lines.map((l) => [l.itemNumber, l.description, l.qty, l.unit === "BOLT" ? "bolt" : "yd", lineYards(l), dollars(l.costCents), l.costCents == null ? "" : dollars(lineCostTotal(l))]),
-  ];
+  return orderRows(o, o.supplier.layout, o.supplier.accountNumber);
 }
 
 /** The mailto: link for the order (the shop's own mail program opens with it filled in; a long order points at the spreadsheet). */
