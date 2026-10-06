@@ -113,6 +113,11 @@ model Shop {
   // Made by StitchHub's "Start a hosted shop" (POST /api/platform/companies, package hosted-provisioning): the Companies
   // page says "Started from StitchHub"
   startedFromHubAt    DateTime?
+  // The Assistant add-on (ai-assistant-scope.md 2.3): this month's calls as the hub last counted them, in the company's
+  // zone ("2026-10"), and the month's limit with any top-ups; the hub's count is the authority, this one shows offline.
+  assistantMonth      String?
+  assistantCalls      Int       @default(0)
+  assistantLimit      Int       @default(300)
   createdAt           DateTime  @default(now())
 
   users           User[]
@@ -162,6 +167,9 @@ model Shop {
   appointments    Appointment[]
   shifts          Shift[]
   companyMoves    CompanyMove[]
+  // The Assistant add-on
+  assistantSettings AssistantSettings?
+  assistantCallLog  AssistantCall[]
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -2082,4 +2090,49 @@ model Shift {
 
   @@index([shopId, startsAt])
   @@index([userId, startsAt])
+}
+
+// ============================================================
+// The Assistant add-on (docs/plans/ai-assistant-scope.md). Nothing here is called on its own: a person presses a button.
+// ============================================================
+
+// A company's Assistant settings (Settings -> Assistant): a switch per feature group, the shop's voice sample, and the
+// consent switch for customers' first names in drafts (off: drafts carry {first_name}, filled in on this PC).
+model AssistantSettings {
+  shopId          String   @id
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  draftOn         Boolean  @default(true)
+  causesOn        Boolean  @default(true)
+  plateOn         Boolean  @default(true)
+  offerFirstNames Boolean  @default(false)
+  voice           String?
+  updatedAt       DateTime @updatedAt
+}
+
+// What the Assistant was asked and what it said, per company: the record a tech can check, and the month's count.
+model AssistantCall {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  feature        String // draft_work_done | draft_diagnosis | draft_partner_note | draft_estimate | draft_ready | likely_causes | read_plate
+  ticketId       String? // what it was about: at most one of these is set
+  repairJobId    String?
+  machineId      String?
+  partId         String?
+  byUserId       String?
+  model          String // the model id the hub used
+  request        Json // the redacted request exactly as sent: { system, messages, maxTokens } (a photo as its size and hash)
+  response       String // the model's text, or the structured JSON as text; a serial masked as [serial]
+  sources        Json     @default("[]") // [{ kind: ticket|gotcha|hubpost|spec|setting|servicemode|general, ref, label }]
+  inputTokens    Int      @default(0)
+  cacheTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  costMillicents Int      @default(0) // thousandths of a cent: money stays an integer, and a call is under a cent
+  ms             Int      @default(0)
+  accepted       Boolean? // "Use this" pressed, or "helped"; null for calls that only showed something
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([shopId, ticketId])
 }

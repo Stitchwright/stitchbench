@@ -95,6 +95,11 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
     href: "/messages",
     blurb: "Email and texts: reminders, ready-for-pickup notices, estimate links, service reminders, review requests and campaigns.",
   },
+  assistant: {
+    label: "Assistant",
+    href: "/settings/assistant",
+    blurb: "Drafts the invoice and customer messages from a tech's notes, suggests likely causes from your own tickets and the community's gotchas, and reads a rating plate from a photo.",
+  },
 };
 
 export const isModuleId = (s: unknown): s is ModuleId => typeof s === "string" && (MODULE_IDS as readonly string[]).includes(s);
