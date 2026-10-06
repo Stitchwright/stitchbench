@@ -42,6 +42,7 @@ export const AUDIT_ACTIONS = {
   // Deletes
   "ticketline.remove": { category: "deletes", label: "Ticket line removed" },
   // Settings
+  "books.settings": { category: "settings", label: "Bookkeeping names or choices changed" },
   "shop.details": { category: "settings", label: "Shop details changed" },
   // People
   "user.add": { category: "people", label: "Login added" },
@@ -52,6 +53,7 @@ export const AUDIT_ACTIONS = {
   "signin.ok": { category: "people", label: "Signed in" },
   "signin.fail": { category: "people", label: "Wrong password at sign-in" },
   // Data
+  "books.exported": { category: "data", label: "Bookkeeping export marked as sent" },
   "export.download": { category: "data", label: "CSV downloaded" },
   "import.customers": { category: "data", label: "Customers imported" },
   "import.items": { category: "data", label: "Items imported" },

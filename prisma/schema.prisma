@@ -129,6 +129,7 @@ model Shop {
   giftCards       GiftCard[]
   partnerLinks    PartnerLink[]
   partnerKey      PartnerKey?
+  books           BooksSettings?
   repairJobs      RepairJob[]
   partnerOrders   PartnerOrder[]
   consignItems    ConsignItem[]
@@ -1212,6 +1213,20 @@ model PartnerLink {
 
 // A company's signing key for partner messages and invites (src/lib/partner-keys.ts): one row per company. The private
 // key is sealed (secrets.ts) and never sent; a move leaves it out, so the company makes a new key on the new install.
+// The bookkeeping export's names and choices (later-round-1-design.md 3.4), one row per company: the bookkeeper's own
+// account names by key (blank keeps the default), one sales account or one per category, discounts netted into sales or
+// shown apart, a card clearing account, and the last day already exported.
+model BooksSettings {
+  shopId          String   @id
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  accounts        Json     @default("{}")
+  byCategory      Boolean  @default(false)
+  netDiscounts    Boolean  @default(false)
+  cardClearing    String   @default("")
+  exportedThrough String? // "YYYY-MM-DD", the shop's day
+  updatedAt       DateTime @updatedAt
+}
+
 model PartnerKey {
   shopId        String   @id
   shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
