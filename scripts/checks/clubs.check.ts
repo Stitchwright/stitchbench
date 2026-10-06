@@ -3,7 +3,8 @@
 // (a Stripe Customer, a subscription-mode checkout at the club's monthly price, the bill day) against the Stripe mock, the
 // webhook (checkout completed, invoice paid and failed, subscription paused and cancelled; replays; wrong secret; another
 // shop's secret), pause, resume and cancel (Stripe first, so a Stripe failure changes nothing here), the monthly pick list
-// (ship or pickup, done, undone, payment standing), and the tenant section.
+// (ship or pickup, done, undone, payment standing), club money posted to the register's books (pay at pickup by
+// method, take back, one sale per Stripe invoice, refunds void, deleting a customer stops the subscription), and the tenant section.
 //   npm run check scripts/checks/clubs.check.ts
 import "dotenv/config";
 import assert from "node:assert/strict";
@@ -12,6 +13,8 @@ import { isUserError } from "@/lib/action";
 import type { CurrentUser } from "@/lib/session";
 import { seal } from "@/lib/messaging/secrets";
 import { signWebhook } from "@/lib/shop/stripe";
+import { deleteCustomerFor, mergeCustomersFor } from "@/lib/merge";
+import { registerTakenCents } from "@/lib/register-day";
 import { handleWebhook } from "@/lib/shop/online-shop";
 import {
   addMemberFor,
@@ -31,6 +34,7 @@ import {
   saveClubFor,
   saveMemberFor,
   setMonthFor,
+  takeBackPaidFor,
   undoPickFor,
 } from "@/lib/clubs";
 import { startStripeMock } from "../test-mail/stripe-mock.mjs";
@@ -300,8 +304,108 @@ async function main() {
     assert.equal(await pickListFor(a.shopId, fq.id, "2026-13"), null);
     ok("pick list: ship or pickup per member, tracking on a shipment, done rows last, counts; a save without a note box keeps the note; billing changes only when allowed");
 
+    // 6b. Club money in the books: each paid month is a register sale; retries post nothing twice; a refund or "take back" voids it.
+    await db.shop.update({ where: { id: a.shopId }, data: { taxRatePct: 8 } });
+    const c5 = await mk(a.shopId, "Bea Books");
+    const c6 = await mk(a.shopId, "Cy Cardbooks");
+    const bk = (await saveClubFor(user(a), null, fd({ name: "Books Club", kind: "FABRIC", price: "40" }))).id;
+    const taken = () => registerTakenCents(a.shopId, new Date(Date.now() - 86_400_000), new Date(Date.now() + 86_400_000));
+    const saleOf = (id: string) => db.sale.findUniqueOrThrow({ where: { id }, include: { lines: true } });
+    const t0 = await taken();
+    await addMemberFor(user(a), bk, fd({ customerId: c5.id, billing: "PAY_AT_PICKUP" }));
+    const mb = await db.clubMember.findFirstOrThrow({ where: { clubId: bk, customerId: c5.id } });
+    await markPaidFor(user(a), bk, mb.id, month, fd({ method: "CHECK" }));
+    let pays = await db.clubPayment.findMany({ where: { memberId: mb.id }, orderBy: { createdAt: "asc" } });
+    assert.deepEqual(pays.map((p) => [p.month, p.amountCents, p.method, p.invoiceId, p.voidedAt]), [[month, 4000, "CHECK", null, null]]);
+    let sale = await saleOf(pays[0].saleId);
+    assert.deepEqual([sale.status, sale.totalCents, sale.subtotalCents, sale.taxCents, sale.customerId, sale.shopId], ["COMPLETED", 4000, 3704, 296, c5.id, a.shopId], "the price includes the 8% tax, backed out");
+    assert.deepEqual(sale.tenders, [{ method: "CHECK", amountCents: 4000, note: null }]);
+    assert.match(sale.lines[0].description, /^Books Club: /);
+    assert.equal((await taken()) - t0, 4000, "taken today includes it");
+    await expectError("already paid", () => markPaidFor(user(a), bk, mb.id, month, null), /already marked paid/);
+    assert.equal(await db.clubPayment.count({ where: { memberId: mb.id } }), 1, "a refused second mark posts nothing");
+    assert.match(await takeBackPaidFor(user(a), bk, mb.id, month), /unpaid again and its sale in the register is voided/);
+    assert.equal((await saleOf(pays[0].saleId)).status, "VOIDED");
+    assert.ok((await db.clubPayment.findUniqueOrThrow({ where: { id: pays[0].id } })).voidedAt);
+    assert.equal((await db.clubMember.findUniqueOrThrow({ where: { id: mb.id } })).paidMonth, null);
+    assert.equal((await taken()) - t0, 0, "voided: nothing taken");
+    await expectError("take back when unpaid", () => takeBackPaidFor(user(a), bk, mb.id, month), /isn't marked paid/);
+    await markPaidFor(user(a), bk, mb.id, month, null);
+    pays = await db.clubPayment.findMany({ where: { memberId: mb.id }, orderBy: { createdAt: "asc" } });
+    assert.deepEqual(pays.map((p) => [p.method, p.voidedAt === null]), [["CHECK", false], ["CASH", true]], "paid again: a new sale, cash by default");
+    assert.notEqual(pays[0].saleId, pays[1].saleId);
+    assert.equal((await taken()) - t0, 4000);
+    // Card, through Stripe: the checkout's invoice posts the first month; a replay and the invoice events post nothing more.
+    await addMemberFor(user(a), bk, fd({ customerId: c6.id, billing: "STRIPE" }));
+    const mc = await db.clubMember.findFirstOrThrow({ where: { clubId: bk, customerId: c6.id } });
+    await cardLinkFor(user(a), mc.id, new Date());
+    const sessC = [...mock.sessions.values()].find((s) => s.client_reference_id === mc.id)!;
+    const paidC = (await mock.pay(sessC.id))!;
+    const subC = paidC.subscription as string;
+    const invId = `in_bookscheck${Date.now()}`;
+    const invoicePaid = (type: string, id: string, extra: Record<string, unknown>, at = Date.now()) => mock.event(type, { object: "invoice", id, subscription: subC, customer: paidC.customer, amount_paid: 4000, created: Math.floor(at / 1000), ...extra });
+    const completedC = mock.event("checkout.session.completed", { ...paidC, invoice: invId, payment_intent: "pi_bookscheck1" });
+    await send(completedC);
+    await send(completedC);
+    await send(invoicePaid("invoice.paid", invId, { payment_intent: "pi_bookscheck1" }));
+    await send(invoicePaid("invoice.payment_succeeded", invId, { payment_intent: "pi_bookscheck1" }));
+    pays = await db.clubPayment.findMany({ where: { memberId: mc.id } });
+    assert.equal(pays.length, 1, "one invoice, one sale, however many events");
+    assert.deepEqual([pays[0].month, pays[0].amountCents, pays[0].method, pays[0].invoiceId, pays[0].paymentIntent], [month, 4000, "CARD", invId, "pi_bookscheck1"]);
+    sale = await saleOf(pays[0].saleId);
+    assert.deepEqual([sale.clientKey, sale.totalCents, sale.taxCents, sale.customerId, (sale.tenders as { method: string }[])[0].method], [`club-inv-${invId}`, 4000, 0, c6.id, "CARD"], "Stripe's own tax (none) stands in for the shop's rate");
+    assert.equal((await taken()) - t0, 8000);
+    // The next month's invoice posts its own sale (twice sent: once); one with tax reported by Stripe records that tax.
+    const nextInvId = `in_booksnext${Date.now()}`;
+    await send(invoicePaid("invoice.paid", nextInvId, {}, Date.now() + 33 * 86_400_000));
+    await send(invoicePaid("invoice.paid", nextInvId, {}, Date.now() + 33 * 86_400_000));
+    const taxInvId = `in_bookstax${Date.now()}`;
+    await send(invoicePaid("invoice.paid", taxInvId, { tax: 296 }, Date.now() + 64 * 86_400_000));
+    pays = await db.clubPayment.findMany({ where: { memberId: mc.id }, orderBy: { month: "asc" } });
+    assert.deepEqual(pays.map((p) => p.invoiceId), [invId, nextInvId, taxInvId]);
+    assert.equal(pays[1].month, next);
+    const taxSale = await saleOf(pays[2].saleId);
+    assert.deepEqual([taxSale.taxCents, taxSale.subtotalCents, taxSale.totalCents], [296, 3704, 4000]);
+    await send(mock.invoice(subC, "failed")!);
+    assert.equal(await db.clubPayment.count({ where: { memberId: mc.id } }), 3, "a failed payment posts nothing");
+    await expectError("take back for a card member", () => takeBackPaidFor(user(a), bk, mc.id, month), /pays by card/);
+    // A refund in Stripe: partial changes nothing; a full one voids the sale and rewinds the member's paid month.
+    const nextPay = pays[1];
+    const refund = (o: Record<string, unknown>) => mock.event("charge.refunded", { object: "charge", amount: 4000, ...o });
+    assert.equal((await db.clubMember.findUniqueOrThrow({ where: { id: mc.id } })).paidMonth, pays[2].month);
+    assert.deepEqual(await send(refund({ invoice: nextPay.invoiceId, refunded: false, amount_refunded: 1000 })), { status: 200, body: "partial refund" });
+    assert.equal((await saleOf(nextPay.saleId)).status, "COMPLETED");
+    assert.deepEqual(await send(refund({ invoice: nextPay.invoiceId, refunded: true, amount_refunded: 4000 })), { status: 200, body: "ok" });
+    assert.equal((await saleOf(nextPay.saleId)).status, "VOIDED");
+    assert.ok((await db.clubPayment.findUniqueOrThrow({ where: { id: nextPay.id } })).voidedAt);
+    assert.equal((await db.clubMember.findUniqueOrThrow({ where: { id: mc.id } })).paidMonth, pays[2].month, "paid further ahead: the later month stays");
+    assert.deepEqual(await send(refund({ payment_intent: "pi_bookscheck1", refunded: true, amount_refunded: 4000 })), { status: 200, body: "ok" }, "found by the payment intent too");
+    assert.equal((await saleOf(pays[0].saleId)).status, "VOIDED");
+    assert.equal((await send(refund({ payment_intent: "pi_bookscheck1", refunded: true, amount_refunded: 4000 }))).status, 200, "a replay is harmless");
+    assert.equal((await taken()) - t0, 8000, "the cash month and the taxed card month remain; the two refunded card months are out");
+    // Deleting the customer stops the card subscription first (nothing is deleted if Stripe can't be reached).
+    process.env.STRIPE_API_BASE = "http://127.0.0.1:1";
+    await expectError("delete with Stripe down", () => deleteCustomerFor(user(a), c6.id, "Cy Cardbooks"), /couldn't be stopped|Couldn't reach/);
+    process.env.STRIPE_API_BASE = goodBase;
+    assert.ok(await db.customer.findUnique({ where: { id: c6.id } }), "still there");
+    assert.equal((await db.clubMember.findUniqueOrThrow({ where: { id: mc.id } })).status, "ACTIVE");
+    await expectError("delete with the wrong name", () => deleteCustomerFor(user(a), c6.id, "someone"), /./);
+    assert.notEqual(mock.subscriptions.get(subC).status, "canceled", "a refused delete stopped nothing");
+    await deleteCustomerFor(user(a), c6.id, "Cy Cardbooks");
+    assert.equal(mock.subscriptions.get(subC).status, "canceled", "the subscription was cancelled at Stripe");
+    assert.equal(await db.customer.count({ where: { id: c6.id } }), 0);
+    assert.equal(await db.clubMember.count({ where: { id: mc.id } }), 0);
+    assert.equal((await db.sale.findUniqueOrThrow({ where: { id: taxSale.id } })).customerId, null, "the club sale stays in the books without the customer");
+    assert.equal((await taken()) - t0, 8000);
+    // Merging a customer who still pays a club by card is refused (the membership would be deleted with them).
+    const c7 = await mk(a.shopId, "Di Dup");
+    await addMemberFor(user(a), bk, fd({ customerId: c7.id, billing: "PAY_AT_PICKUP" }));
+    await db.clubMember.updateMany({ where: { clubId: bk, customerId: c7.id }, data: { stripeSubscriptionId: "sub_fake_dup" } });
+    await expectError("merge a card member", () => mergeCustomersFor(user(a), c7.id, c5.id, "Di Dup"), /still pays for a club by card/);
+    ok("club money in the books: paid months are register sales (tax backed out of the price, or Stripe's tax), in taken today; pay at pickup by method, take back voids; one sale per Stripe invoice across checkout and invoice events; failed posts nothing; a full refund voids and rewinds; deleting a customer stops the subscription first; merge refused for card members");
+
     // 7. Tenant: B with A's ids.
-    const tables = ["Club", "ClubMember", "ClubMonth", "ClubPick", "Customer", "KitSeriesMember", "Shop"];
+    const tables = ["Club", "ClubMember", "ClubMonth", "ClubPick", "ClubPayment", "Sale", "Customer", "KitSeriesMember", "Shop"];
     const snap = await snapshot(a.shopId, tables);
     const aClub = fq.id;
     const aMember = m3b.id;
@@ -322,6 +426,7 @@ async function main() {
     await expectNotFound("markPickDoneFor(B, own club, A's member)", () => markPickDoneFor(user(b), bClub.id, aMember, month, null));
     await expectNotFound("undoPickFor(B)", () => undoPickFor(user(b), aClub, aMember, month));
     await expectNotFound("markPaidFor(B)", () => markPaidFor(user(b), aClub, aMember, month));
+    await expectNotFound("takeBackPaidFor(B)", () => takeBackPaidFor(user(b), aClub, aMember, month));
     await expectNotFound("setMonthFor(B)", () => setMonthFor(user(b), aClub, month, fd({ what: "x" })));
     // Another shop's webhook secret can't touch A's members, and A's endpoint refuses B's secret.
     await db.shop.update({ where: { id: b.shopId }, data: { stripeKeySealed: seal(KEY, b.shopId, "stripeKey"), stripeWebhookSealed: seal(WHSEC_B, b.shopId, "stripeWebhook") } });

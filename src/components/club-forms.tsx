@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ActionButton, ActionForm, Submit, runAction } from "@/components/action-form";
 import { CustomerPicker } from "@/components/customer-picker";
-import { addClubMember, cancelMember, closeClub, markMemberPaid, markPickDone, pauseMember, resumeMember, saveClub, saveClubMember, setClubMonth, startCardLink, startClub, undoPick } from "@/actions/clubs";
+import { addClubMember, cancelMember, closeClub, markMemberPaid, markPickDone, takeBackMemberPaid, pauseMember, resumeMember, saveClub, saveClubMember, setClubMonth, startCardLink, startClub, undoPick } from "@/actions/clubs";
 
 type Kind = "FAT_QUARTER" | "FABRIC" | "BOM" | "OTHER";
 export type SeriesOption = { id: string; name: string };
@@ -239,20 +239,37 @@ export function MonthForm({ clubId, month, what, kitId, kits }: { clubId: string
 }
 
 export function PickControls({ clubId, month, r }: { clubId: string; month: string; r: { memberId: string; fulfil: "PICKUP" | "SHIP"; billing: "STRIPE" | "PAY_AT_PICKUP"; paid: boolean; doneAt: string | null } }) {
+  // Pay at pickup: marked paid with how it was paid (it goes into the register's sales), or taken back (the sale is voided).
+  const takeBack =
+    r.billing === "PAY_AT_PICKUP" && r.paid ? (
+      <ActionButton action={takeBackMemberPaid.bind(null, clubId, r.memberId, month)} className="btn btn-sm">
+        Take back paid
+      </ActionButton>
+    ) : null;
   if (r.doneAt) {
     return (
-      <ActionButton action={undoPick.bind(null, clubId, r.memberId, month)} className="btn btn-sm">
-        Undo
-      </ActionButton>
+      <div className="flex flex-wrap items-center gap-2">
+        {takeBack}
+        <ActionButton action={undoPick.bind(null, clubId, r.memberId, month)} className="btn btn-sm">
+          Undo
+        </ActionButton>
+      </div>
     );
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
       {r.billing === "PAY_AT_PICKUP" && !r.paid && (
-        <ActionButton action={markMemberPaid.bind(null, clubId, r.memberId, month)} className="btn btn-sm">
-          Mark paid
-        </ActionButton>
+        <ActionForm action={markMemberPaid.bind(null, clubId, r.memberId, month)} className="flex flex-wrap items-center gap-1">
+          <select name="method" aria-label="Paid by" defaultValue="CASH" className="input w-24">
+            <option value="CASH">Cash</option>
+            <option value="CARD">Card</option>
+            <option value="CHECK">Check</option>
+            <option value="OTHER">Other</option>
+          </select>
+          <Submit className="btn btn-sm">Mark paid</Submit>
+        </ActionForm>
       )}
+      {takeBack}
       <ActionForm action={markPickDone.bind(null, clubId, r.memberId, month)} className="flex flex-wrap items-center gap-1">
         {r.fulfil === "SHIP" && <input name="tracking" aria-label="Tracking number" placeholder="Tracking" className="input w-36" maxLength={100} />}
         <Submit className="btn btn-sm btn-primary">{r.fulfil === "SHIP" ? "Shipped" : "Picked up"}</Submit>

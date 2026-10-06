@@ -7,7 +7,8 @@ import "server-only";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { assertId } from "@/lib/input";
-import { str } from "@/lib/format";
+import { money, str } from "@/lib/format";
+import { clubTenderOf, postClubPayment, voidClubPaymentsFor, voidClubSale } from "@/lib/club-books";
 import { MAX_CENTS, centsField } from "@/lib/parts";
 import { unseal } from "@/lib/messaging/secrets";
 import { publicBaseUrl } from "@/lib/messaging/settings";
@@ -505,14 +506,34 @@ export async function undoPickFor(user: CurrentUser, clubId: string, memberId: s
 }
 
 /** Pay at pickup: marks the month paid by hand. A card member's payments come from Stripe, never from here. */
-export async function markPaidFor(user: CurrentUser, clubId: string, memberId: string, month: string): Promise<string> {
+export async function markPaidFor(user: CurrentUser, clubId: string, memberId: string, month: string, fd: FormData | null = null): Promise<string> {
   if (!isMonth(month)) throw new UserError("Pick the month.");
   const m = await activeMember(user.shopId, clubId, memberId);
   if (m.billing !== "PAY_AT_PICKUP") throw new UserError(`${m.customer.name} pays by card: the payment is marked when Stripe reports it.`);
   if (m.status === "CANCELLED") throw new UserError(`${m.customer.name} is cancelled.`);
   if (m.paidMonth && m.paidMonth >= month) throw new UserError(`${m.customer.name} is already marked paid through ${monthLabel(m.paidMonth)}.`);
-  await db.clubMember.update({ where: { id: m.id }, data: { paidMonth: month, lastPaidAt: new Date(), payFailedAt: null } });
-  return `${m.customer.name}: ${monthLabel(month)} marked paid.`;
+  const club = await db.club.findFirst({ where: { id: clubId, shopId: user.shopId }, select: { monthlyCents: true } });
+  if (!club) throw new UserError("Club not found.");
+  // The money goes in the register's books as a sale (tender as chosen, cash by default) unless this month's is already posted.
+  const posted = await db.clubPayment.count({ where: { shopId: user.shopId, memberId: m.id, month, voidedAt: null } });
+  const method = clubTenderOf(fd?.get("method") ?? null);
+  if (!posted) await postClubPayment(user.shopId, { memberId: m.id, month, label: monthLabel(month), amountCents: club.monthlyCents, method, by: user });
+  const r = await db.clubMember.updateMany({ where: { id: m.id, shopId: user.shopId, paidMonth: m.paidMonth }, data: { paidMonth: month, lastPaidAt: new Date(), payFailedAt: null } });
+  if (r.count !== 1) throw new UserError("The member changed while you were looking. Reload and try again.");
+  return `${m.customer.name}: ${monthLabel(month)} marked paid (${money(club.monthlyCents)} in the register).`;
+}
+
+/** Takes a hand-marked payment back (marked by mistake, or refunded at the counter): its sale is voided and the month is unpaid again. */
+export async function takeBackPaidFor(user: CurrentUser, clubId: string, memberId: string, month: string): Promise<string> {
+  if (!isMonth(month)) throw new UserError("Pick the month.");
+  const m = await activeMember(user.shopId, clubId, memberId);
+  if (m.billing !== "PAY_AT_PICKUP") throw new UserError(`${m.customer.name} pays by card: a refund is made in Stripe, and the payment is taken back when Stripe reports it.`);
+  const p = await db.clubPayment.findFirst({ where: { shopId: user.shopId, memberId: m.id, month, voidedAt: null }, orderBy: { createdAt: "desc" } });
+  if (p?.invoiceId) throw new UserError(`${monthLabel(month)} was paid by card through Stripe: refund it there and it is taken back here.`);
+  if (!p && m.paidMonth !== month) throw new UserError(`${m.customer.name} isn't marked paid for ${monthLabel(month)}.`);
+  if (p) await voidClubSale(user, user.shopId, p.saleId, "Club payment taken back");
+  else await db.clubMember.updateMany({ where: { id: m.id, shopId: user.shopId, paidMonth: month }, data: { paidMonth: null, lastPaidAt: null } }); // marked before payments were booked
+  return `${m.customer.name}: ${monthLabel(month)} is unpaid again${p ? " and its sale in the register is voided" : ""}.`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -550,6 +571,12 @@ export async function handleClubEvent(shopId: string, ev: WebhookEvent, now = ne
       where: { id: m.id },
       data: { stripeSubscriptionId: str1(obj.subscription) ?? m.stripeSubscriptionId, stripeCustomerId: str1(obj.customer) ?? m.stripeCustomerId, ...(paid ? { paidMonth: later(m.paidMonth, mo), lastPaidAt: now, payFailedAt: null } : {}) },
     });
+    // The first month's money goes in the books under the invoice that took it (the later invoice.paid for it posts nothing twice).
+    const invoice = str1(obj.invoice);
+    if (paid && invoice) {
+      const tax = (obj.total_details as { amount_tax?: unknown } | undefined)?.amount_tax;
+      await postClubPayment(shopId, { memberId: m.id, month: mo, label: monthLabel(mo), amountCents: Number(obj.amount_total) || 0, method: "CARD", invoiceId: invoice, paymentIntent: str1(obj.payment_intent), taxCents: typeof tax === "number" ? tax : null });
+    }
     return { status: 200, body: "ok" };
   }
   if (ev.type === "invoice.paid" || ev.type === "invoice.payment_succeeded" || ev.type === "invoice.payment_failed") {
@@ -561,8 +588,21 @@ export async function handleClubEvent(shopId: string, ev: WebhookEvent, now = ne
     } else {
       const mo = await month(obj.created);
       await db.clubMember.update({ where: { id: m.id }, data: { paidMonth: later(m.paidMonth, mo), lastPaidAt: now, payFailedAt: null } });
+      // The money goes in the register's books as a card sale, once per invoice (Stripe sends this event more than once).
+      await postClubPayment(shopId, { memberId: m.id, month: mo, label: monthLabel(mo), amountCents: Number(obj.amount_paid) || 0, method: "CARD", invoiceId: str1(obj.id), paymentIntent: str1(obj.payment_intent), taxCents: typeof obj.tax === "number" ? obj.tax : null });
     }
     return { status: 200, body: "ok" };
+  }
+  if (ev.type === "charge.refunded") {
+    if (obj.object !== "charge") return { status: 200, body: "ignored" };
+    // A full refund voids the sale (the money went back); a part of it is for the shop to sort out at the register with a return.
+    const full = obj.refunded === true || (typeof obj.amount === "number" && typeof obj.amount_refunded === "number" && obj.amount > 0 && obj.amount_refunded >= obj.amount);
+    const ref = { paymentIntent: str1(obj.payment_intent), invoiceId: str1(obj.invoice) };
+    if (!full) {
+      const part = ref.paymentIntent || ref.invoiceId ? await db.clubPayment.count({ where: { shopId, voidedAt: null, OR: [...(ref.paymentIntent ? [{ paymentIntent: ref.paymentIntent }] : []), ...(ref.invoiceId ? [{ invoiceId: ref.invoiceId }] : [])] } }) : 0;
+      return part ? { status: 200, body: "partial refund" } : null;
+    }
+    return (await voidClubPaymentsFor(shopId, ref, "Refunded in Stripe")) ? { status: 200, body: "ok" } : null;
   }
   if (ev.type === "customer.subscription.deleted" || ev.type === "customer.subscription.updated") {
     if (obj.object !== "subscription") return { status: 200, body: "ignored" };
@@ -585,3 +625,36 @@ export async function handleClubEvent(shopId: string, ev: WebhookEvent, now = ne
   return null;
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------
+// A customer leaving (deleting or merging a customer record)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The customer's club memberships that still bill a card: what deleting them would leave running at Stripe. */
+export function cardMembershipsOf(shopId: string, customerId: string) {
+  return db.clubMember.findMany({ where: { shopId, customerId, status: { not: "CANCELLED" }, stripeSubscriptionId: { not: null } }, select: { id: true, stripeSubscriptionId: true, club: { select: { name: true } } } });
+}
+
+/**
+ * Deleting a customer: their card subscriptions are cancelled at Stripe first (a deleted member would otherwise keep being
+ * charged with nobody to say who it is), then marked cancelled here. If Stripe can't be reached, nothing is deleted.
+ */
+export async function cancelCardMembershipsFor(shopId: string, customerId: string): Promise<void> {
+  const subs = await cardMembershipsOf(shopId, customerId);
+  if (!subs.length) return;
+  let key: string;
+  try {
+    key = await stripeKeyOf(shopId);
+  } catch {
+    throw new UserError(`This customer pays for ${subs[0].club.name} by card, and the shop's Stripe key isn't set, so the subscription can't be stopped from here. Cancel it in your Stripe dashboard, cancel the member on the club's page, then delete the customer.`);
+  }
+  for (const s of subs) {
+    try {
+      await cancelSubscription(key, s.stripeSubscriptionId!);
+    } catch (e) {
+      throw new UserError(`The card subscription for ${s.club.name} couldn't be stopped, so the customer wasn't deleted. ${e instanceof UserError ? e.message : "Try again, or cancel it in your Stripe dashboard first."}`);
+    }
+    await db.clubMember.updateMany({ where: { id: s.id, shopId, status: { not: "CANCELLED" } }, data: { status: "CANCELLED", cancelledAt: new Date(), payFailedAt: null } });
+    await db.clubPick.deleteMany({ where: { shopId, memberId: s.id, doneAt: null } });
+  }
+}

@@ -155,6 +155,7 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.kitSeriesMember.create({ data: { shopId, seriesId: kitSeries.id, customerId: cust.id } });
   const club = await db.club.create({ data: { shopId, name: "Check club", kind: "BOM", monthlyCents: 2500, seriesId: kitSeries.id } });
   const clubMember = await db.clubMember.create({ data: { shopId, clubId: club.id, customerId: cust.id, billing: "STRIPE", stripeCustomerId: "cus_check", stripeSubscriptionId: "sub_check", paidMonth: "2026-10" } });
+  await db.clubPayment.create({ data: { shopId, memberId: clubMember.id, month: "2026-10", amountCents: 2500, method: "CARD", invoiceId: "in_check", saleId: "sale_check_plain_id" } });
   await db.clubMonth.create({ data: { shopId, clubId: club.id, month: "2026-10", what: "Block 1" } });
   await db.clubPick.create({ data: { shopId, clubId: club.id, memberId: clubMember.id, month: "2026-10", doneAt: new Date(), doneFulfil: "PICKUP" } });
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, ticketId: ticket.id, mime: "image/jpeg", data: crypto.randomBytes(3000) } });
