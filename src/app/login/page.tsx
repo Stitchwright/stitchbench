@@ -29,29 +29,34 @@ function landingPath(value: unknown) {
   return path;
 }
 
+// Module level on purpose: the page's server actions below call these, and a server action can't close over a plain
+// function defined inside the component (Next would try to send it to the browser: "Functions cannot be passed directly
+// to Client Components"). tsc and the checks don't catch that; only a built app does.
+function back(to: string, extra = "error=1"): never {
+  redirect(`/login?${extra}${to === "/" ? "" : `&callbackUrl=${encodeURIComponent(to)}`}`);
+}
+
+/** Signs in with a ticket (src/lib/sign-in-ticket.ts) for one login; this browser is known for that login from then on. */
+async function enter(ticket: string | null, userId: string, to: string) {
+  try {
+    if (!ticket) throw new AuthError("no ticket");
+    await signIn("credentials", { ticket, userId, redirectTo: to, redirect: false });
+  } catch (e) {
+    // Back to the form with the same destination, so a second try still ends up on the page that was asked for.
+    if (e instanceof AuthError) back(to);
+    throw e;
+  }
+  // Signed in: this browser is known for that login from now on, so a flood of wrong passwords sent at the account
+  // from elsewhere can't queue it out (src/lib/known-device.ts).
+  await rememberThisDevice(userId);
+  (await cookies()).delete(choiceCookieName());
+  redirect(to);
+}
+
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; ended?: string; reset?: string; callbackUrl?: string; choose?: string }> }) {
   const { error, ended, reset, callbackUrl, choose } = await searchParams;
   const shopApp = appName() === "StitchShop";
   const next = landingPath(callbackUrl);
-
-  const back = (to: string, extra = "error=1") => redirect(`/login?${extra}${to === "/" ? "" : `&callbackUrl=${encodeURIComponent(to)}`}`);
-
-  /** Signs in with a ticket (src/lib/sign-in-ticket.ts) for one login; this browser is known for that login from then on. */
-  async function enter(ticket: string | null, userId: string, to: string) {
-    try {
-      if (!ticket) throw new AuthError("no ticket");
-      await signIn("credentials", { ticket, userId, redirectTo: to, redirect: false });
-    } catch (e) {
-      // Back to the form with the same destination, so a second try still ends up on the page that was asked for.
-      if (e instanceof AuthError) back(to);
-      throw e;
-    }
-    // Signed in: this browser is known for that login from now on, so a flood of wrong passwords sent at the account
-    // from elsewhere can't queue it out (src/lib/known-device.ts).
-    await rememberThisDevice(userId);
-    (await cookies()).delete(choiceCookieName());
-    redirect(to);
-  }
 
   async function login(formData: FormData) {
     "use server";
