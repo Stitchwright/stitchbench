@@ -72,7 +72,7 @@ online-shop, then two-servers and partner-runs with their extras below.
   `scripts/local-test/start_hub.bat` shows its environment) that this install has joined, and `HUB_URL=http://localhost:3200`.
 - **move** (the partner half, package move-hub): this install on the test hub (`HUB_URL`, as partners needs) and a
   third server on a database of its own that is on no hub (`E2E_THIRD_URL`), with `E2E_THIRD_EMAIL` / `E2E_THIRD_PASSWORD`
-  a login listed in its `PLATFORM_ADMIN_EMAILS`; without them that test skips. The first test needs `E2E_SECOND_URL`
+  a login listed in its `PLATFORM_ADMIN_EMAILS`, and `DEFAULT_HUB_URL=http://localhost:3200` set on that third server (a move file's hub is adopted only when it is the install's own default hub, 91a7cac), with `PARTNER_SYNC_SECONDS` left off the run; without them that test skips. The first test needs `E2E_SECOND_URL`
   as two-servers does. `scripts/checks/move-hub.check.ts` covers the same ground against a mock hub.
 - **online-shop**: needs the Stripe mock on :3403 with `STRIPE_MOCK_WEBHOOK_BASE` pointing at the server, and the
   server started with `STRIPE_API_BASE=http://127.0.0.1:3403`; the spec pays on the mock's own page.

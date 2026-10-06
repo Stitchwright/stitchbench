@@ -182,7 +182,7 @@ test("status changes set the dates, and a collected ticket's bill is locked for 
   await button("Remove line").click();
   await expectRefused(page, "The ticket is closed: only the owner or an admin can change its bill.");
   await page.locator('input[name="price"][aria-label="Amount"]').fill("5.00");
-  await page.getByRole("button", { name: "Add", exact: true }).first().click();
+  await page.locator("form").filter({ hasText: "Add fee or discount" }).getByRole("button", { name: /^(Add|Saving[.][.][.])$/ }).click(); // the fee form's own button: "Saving..." (disabled) while an earlier refused try settles
   await expectRefused(page, "The ticket is closed: only the owner or an admin can change its bill.");
   await page.getByLabel("Custom description").fill("After closing");
   await page.getByLabel("Price", { exact: true }).fill("10.00");
@@ -196,7 +196,7 @@ test("status changes set the dates, and a collected ticket's bill is locked for 
   expect(await dates()).toEqual({ readyAt: null, closedAt: null, warrantyUntil: null });
   // A tech may change the bill again.
   await page.locator('input[name="price"][aria-label="Amount"]').fill("5.00");
-  await page.getByRole("button", { name: "Add", exact: true }).first().click();
+  await page.locator("form").filter({ hasText: "Add fee or discount" }).getByRole("button", { name: /^(Add|Saving[.][.][.])$/ }).click(); // the fee form's own button: "Saving..." (disabled) while an earlier refused try settles
   await expect(page.locator("table tr").filter({ hasText: "Fee" }).filter({ hasText: "$5.00" })).toBeVisible();
   expect(await sql(`SELECT id FROM "TicketLine" WHERE "ticketId" = $1`, [ticketId])).toHaveLength(linesBefore.length + 1);
 });

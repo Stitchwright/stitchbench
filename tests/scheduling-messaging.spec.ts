@@ -184,8 +184,13 @@ test("both modules switched off: locks, read-only pages, a held message, the ros
   // A ready notice queued right before the switch: it is held, not lost.
   const heldEmail = `held-${RUN.toLowerCase()}@customer.test`;
   heldTicketId = await newTicket(page, `Hal Held ${RUN}`, heldEmail, "Ready - customer called");
+  // The notice is due after READY_NOTICE_DELAY_SECONDS (1 s here) and the worker ticks every few seconds, so on a slow PC
+  // it could go out before the two switches were done. Put it a few minutes ahead while they are made, then make it due
+  // again: it must stay queued once due, with Marketing off.
+  await sql(`UPDATE "OutMessage" SET "sendAfter" = now() + interval '10 minutes' WHERE "ticketId" = $1 AND status = 'QUEUED'`, [heldTicketId]);
   await setModule(admin, company, "Scheduling", false);
   await setModule(admin, company, "Marketing", false);
+  await sql(`UPDATE "OutMessage" SET "sendAfter" = now() WHERE "ticketId" = $1 AND status = 'QUEUED'`, [heldTicketId]);
 
   await page.goto("/classes");
   const nav = page.getByRole("navigation", { name: "Main" });
