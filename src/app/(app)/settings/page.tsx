@@ -268,6 +268,15 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
+        <Section title="Bookkeeping">
+          <p className="muted mb-2 text-sm">The account names your bookkeeper uses, for the daily journal export to QuickBooks (Reports, Bookkeeping).</p>
+          <Link href="/settings/books" className="btn btn-sm">
+            Bookkeeping names
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Audit log">
           <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
           <Link href="/settings/audit" className="btn btn-sm">

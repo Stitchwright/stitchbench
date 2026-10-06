@@ -10,6 +10,9 @@ import { ticketsReport, topCustomers } from "@/lib/reports/tickets";
 import { liabilityReport } from "@/lib/reports/giftcards";
 import { taxReport } from "@/lib/reports/tax";
 import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
+import { balanced, buildBooks, loadBooks } from "@/lib/books";
+import { markBooksExported } from "@/actions/books";
+import { ActionButton } from "@/components/action-form";
 
 const TABS = [
   { key: "sales", label: "Sales" },
@@ -17,6 +20,7 @@ const TABS = [
   { key: "customers", label: "Top customers" },
   { key: "gift-cards", label: "Gift cards" },
   { key: "tax", label: "Sales tax" },
+  { key: "books", label: "Bookkeeping" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -50,7 +54,10 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
   const tab: Tab = TABS.find((t) => t.key === sp.tab)?.key ?? "sales";
   const period: Period = (PERIODS as string[]).includes(sp.period ?? "") ? (sp.period as Period) : "day";
   const tz = await shopTimeZone(user.shopId);
-  const { start, end, fromStr, toStr } = monthRange(sp.from, sp.to, tz);
+  // Bookkeeping starts the day after the last export unless a range was asked for.
+  const books = tab === "books" ? await loadBooks(user.shopId) : null;
+  const nextDay = books?.exportedThrough ? new Date(new Date(`${books.exportedThrough}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10) : null;
+  const { start, end, fromStr, toStr } = monthRange(sp.from ?? (nextDay && nextDay <= todayIn(tz) ? nextDay : undefined), sp.to, tz);
   const q = (over: Partial<Sp>) => {
     const p = new URLSearchParams({ tab, from: fromStr, to: toStr, period, ...over } as Record<string, string>);
     return `?${p}`;
@@ -108,6 +115,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
       {tab === "customers" && <CustomersTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "gift-cards" && <GiftTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "tax" && <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} />}
+      {tab === "books" && books && <BooksTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} fromStr={fromStr} toStr={toStr} exportedThrough={books.exportedThrough} />}
     </div>
   );
 }
@@ -549,3 +557,67 @@ async function TaxTab({ shopId, tz, start, end, csv }: TabProps & { tz: string }
   );
 }
 
+async function BooksTab({ shopId, tz, start, end, fromStr, toStr, exportedThrough }: TabProps & { tz: string; fromStr: string; toStr: string; exportedThrough: string | null }) {
+  const cfg = await loadBooks(shopId);
+  const r = await buildBooks(shopId, tz, start, end, cfg);
+  const range = `from=${fromStr}&to=${toStr}`;
+  const already = exportedThrough != null && fromStr <= exportedThrough;
+  return (
+    <>
+      <Section title="Bookkeeping export">
+        <p className="mb-2 text-sm">
+          One summary journal entry a day for {fmtDay(fromStr)} to {fmtDay(toStr)}: money taken, sales by category, discounts, sales tax, repairs and gift cards. Account names are
+          set in{" "}
+          <Link href="/settings/books" className="link">
+            Settings, Bookkeeping
+          </Link>
+          .
+        </p>
+        <p className="mb-2 text-sm">{exportedThrough ? `Exported through ${fmtDay(exportedThrough)}.` : "Nothing has been marked as exported yet."}</p>
+        {already && <p className="mb-2 text-sm font-semibold">Some of these days were already exported (through {fmtDay(exportedThrough!)}). Download them again only if your bookkeeper asked.</p>}
+        {r.unbalancedSales > 0 && <p className="mb-2 text-sm font-semibold">{r.unbalancedSales} sale(s) did not add up to the cent; the difference went to the sales account.</p>}
+        <div className="no-print flex flex-wrap gap-2">
+          <a className="btn btn-sm" href={`/api/books/csv?${range}`}>
+            Download for QuickBooks Online (CSV)
+          </a>
+          <a className="btn btn-sm" href={`/api/books/iif?${range}`}>
+            Download for QuickBooks Desktop (IIF)
+          </a>
+          <ActionButton action={markBooksExported.bind(null, toStr)} className="btn btn-sm" confirm={`Mark every day through ${fmtDay(toStr)} as exported? The next export will start the day after.`}>
+            Mark exported through {fmtDay(toStr)}
+          </ActionButton>
+        </div>
+        <p className="muted mt-2 text-xs">
+          Repair Tickets Clearing holds deposits on machines still in and unpaid bills of collected ones: {money(r.repairClearingCents)} at the end of this range. Cost of goods and inventory
+          are left out; bookkeepers book inventory from counts.
+        </p>
+      </Section>
+      {r.days.length === 0 ? (
+        <Empty>Nothing to export in this range.</Empty>
+      ) : (
+        r.days.map((d) => (
+          <Section key={d.day} title={`${d.number}  ${fmtDay(d.day)}${balanced(d) ? "" : "  (does not balance)"}`}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <Th>Account</Th>
+                  <Th right>Debit</Th>
+                  <Th right>Credit</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.lines.map((l) => (
+                  <tr key={l.account}>
+                    <td>{l.account}</td>
+                    <Num>{l.debitCents ? money(l.debitCents) : ""}</Num>
+                    <Num>{l.creditCents ? money(l.creditCents) : ""}</Num>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Section>
+        ))
+      )}
+    </>
+  );
+}

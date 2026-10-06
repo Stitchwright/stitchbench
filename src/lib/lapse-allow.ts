@@ -25,6 +25,9 @@ export const WHILE_LAPSED = [
   // The hosted StitchBench administrator's switch and sharing mute (their own company's standing is beside the point)
   "setCompanyModule",
   "setHubWrites",
+  // Bookkeeping names and the "exported through" day: no business record changes
+  "saveBooksSettings",
+  "markBooksExported",
   // Payments, returns and voids
   "addPayment",
   "removePayment",
@@ -134,6 +137,7 @@ export const ALSO_ALLOWED = [
   "/api/export/*",
   "/api/sales",
   "/api/reports/*",
+  "/api/books/*",
   "/api/move/download/*",
   "/api/move/upload/*",
   "/api/move/local",

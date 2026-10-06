@@ -59,6 +59,7 @@ export type MoveTable = {
 export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
   { t: "User", key: "id" },
+  { t: "BooksSettings", key: '"shopId"' }, // the bookkeeping export's names (one row per company)
   { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
   { t: "Customer", key: "id" },
   { t: "GiftCard", key: "id" }, // -> Customer
