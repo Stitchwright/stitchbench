@@ -1,5 +1,5 @@
 // The Fabric page (fabric-smarts-design.md section 2), for companies that sell retail. Tabs: Bolt ends (F1), What sells and
-// Slow fabric (F2); Reorder and Kits join them in F3 and F4.
+// Slow fabric (F2), Reorder (F3); Kits joins them in F4.
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -12,26 +12,31 @@ import { qtyText } from "@/lib/register-math";
 import { Empty, PageHeader } from "@/components/ui";
 import { FabricCuts } from "@/components/fabric-cuts";
 import { FabricMarkdown } from "@/components/fabric-markdown";
+import { Swatch } from "@/components/fabric-swatch";
+import { ReorderTab } from "./reorder-tab";
 
-type Tab = "bolt" | "sells" | "slow";
+type Tab = "bolt" | "sells" | "slow" | "reorder";
 
 export default async function FabricPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true } });
   if (!shop.sellsRetail) notFound();
   const { tab: raw } = await searchParams;
-  const tab: Tab = raw === "sells" || raw === "slow" ? raw : "bolt";
-  const [bolt, insight] = await Promise.all([tab === "bolt" ? boltEndsFor(user.shopId) : null, tab === "bolt" ? null : insightFor(user.shopId)]);
+  const tab: Tab = raw === "sells" || raw === "slow" || raw === "reorder" ? raw : "bolt";
+  const [bolt, insight] = await Promise.all([tab === "bolt" ? boltEndsFor(user.shopId) : null, tab === "bolt" || tab === "reorder" ? null : insightFor(user.shopId)]);
   const sub =
     tab === "bolt" && bolt
       ? `Bolt ends: ${qtyText(bolt.limit, "yd")} or less left, none on order. Cut them into fat quarters before they sit.`
-      : tab === "sells"
+      : tab === "reorder"
+        ? "Fabric worth reordering while it is still in print, and your purchase orders."
+        : tab === "sells"
         ? "Yards a week, weeks of supply and margin for every fabric, from your own sales and stock moves."
         : "Fabric that has sat since it came in and is still mostly unsold: mark it down a step, or cut it into fat quarters.";
   const links: { tab: Tab; label: string }[] = [
     { tab: "bolt", label: tab === "bolt" && bolt ? `Bolt ends (${bolt.rows.length})` : "Bolt ends" },
     { tab: "sells", label: "What sells" },
     { tab: "slow", label: tab === "slow" && insight ? `Slow fabric (${insight.slow.length})` : "Slow fabric" },
+    { tab: "reorder", label: "Reorder" },
   ];
   return (
     <div className="space-y-4">
@@ -60,17 +65,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
       {tab === "bolt" && bolt && <BoltEnds shopId={user.shopId} rows={bolt.rows} limit={bolt.limit} />}
       {tab === "sells" && insight && <WhatSells insight={insight} />}
       {tab === "slow" && insight && <SlowFabric insight={insight} />}
-    </div>
-  );
-}
-
-function Swatch({ photoId, alt }: { photoId: string | null; alt: string }) {
-  return photoId ? (
-    // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
-    <img src={`/api/parts/photo/${photoId}`} alt={`${alt} swatch`} className="h-16 w-16 shrink-0 rounded border border-line object-cover" loading="lazy" />
-  ) : (
-    <div className="muted flex h-16 w-16 shrink-0 items-center justify-center rounded border border-dashed border-line text-xs" aria-hidden="true">
-      no photo
+      {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
     </div>
   );
 }

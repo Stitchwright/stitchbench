@@ -149,6 +149,8 @@ export type Velocity = {
   lumpy: boolean;
   /** The fabric's own rate: the trailing rate, or Croston's for a lumpy seller. */
   own: number;
+  /** Yards sold in each week it was in stock (oldest first), for the reorder math's safety stock. */
+  weekly: number[];
 };
 
 /**
@@ -180,7 +182,7 @@ export function velocityOf(o: { qNow: number; net: ReadonlyMap<number, number>; 
   }
   const zeroWeeks = weekly.filter((z) => z === 0).length;
   const lumpy = weekly.length >= 4 && zeroWeeks / weekly.length > LUMPY_ZERO_SHARE;
-  return { daysInStock, sold, trailing, lumpy, own: lumpy ? crostonSba(weekly) : trailing };
+  return { daysInStock, sold, trailing, lumpy, own: lumpy ? crostonSba(weekly) : trailing, weekly };
 }
 
 export const median = (xs: number[]): number | null => {

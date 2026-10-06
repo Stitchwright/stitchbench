@@ -35,6 +35,7 @@ import {
   type Lot,
   type SlowStage,
 } from "@/lib/fabric-insight-math";
+import { ORDER_SELECT, weeklySigma, type OrderSettings } from "@/lib/fabric-orders-math";
 import type { CurrentUser } from "@/lib/session";
 
 const YEAR = 365;
@@ -76,6 +77,15 @@ export type InsightItem = {
   // Aging
   aged: Aged | null;
   sinceFirst: number;
+  // Reordering (package F3)
+  inPrint: "YES" | "NO" | "UNKNOWN";
+  boltYards: number;
+  reorderAt: number;
+  /** Standard deviation of the weekly sales over the in-stock weeks. */
+  sigmaWeek: number;
+  /** Yards sold in the last `days` days (the Reorder now window) and the stock of that window: on hand at its start plus received since. */
+  urgentSold: number;
+  urgentLot: number;
 };
 
 export type GroupRow = { name: string; items: number; qty: number; perWeek: number; perItem: number; weeks: number | null; margin: number };
@@ -93,7 +103,7 @@ export type SlowRow = {
 };
 
 export type Insight = {
-  settings: InsightSettings;
+  settings: InsightSettings & OrderSettings;
   items: InsightItem[];
   groups: { maker: GroupRow[]; collection: GroupRow[]; designer: GroupRow[]; color: GroupRow[]; band: GroupRow[] };
   gmroi: { maker: GmroiRow[]; supplier: GmroiRow[]; windowDays: number };
@@ -107,15 +117,15 @@ type MoveRow = { partId: string; day: string; net: Num; recv: Num };
 type SaleRow = { partId: string; day: string; qty: Num; rev: Num; cost: Num; nocost: Num; lines: Num };
 
 export async function insightFor(shopId: string, now = new Date()): Promise<Insight> {
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true, ...INSIGHT_SELECT, fatQuarterMarkupPct: true, halfYardMarkupPct: true, remnantPricePct: true } });
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true, ...INSIGHT_SELECT, ...ORDER_SELECT, fatQuarterMarkupPct: true, halfYardMarkupPct: true, remnantPricePct: true } });
   const tz = shop.timeZone;
-  const s: InsightSettings = shop;
+  const s: InsightSettings & OrderSettings = shop;
   const today = dateIn(now, tz);
   const since = new Date(now.getTime() - (YEAR + 2) * 86_400_000);
   const [parts, moves, sales] = await Promise.all([
     db.part.findMany({
       where: { shopId, kind: "FABRIC", unit: "yd", consignLinkId: null },
-      select: { id: true, partNumber: true, description: true, brand: true, collection: true, designer: true, colorTags: true, supplier: true, qtyOnHand: true, priceCents: true, costCents: true, costTenThou: true, createdAt: true },
+      select: { id: true, partNumber: true, description: true, brand: true, collection: true, designer: true, colorTags: true, supplier: true, qtyOnHand: true, priceCents: true, costCents: true, costTenThou: true, createdAt: true, inPrint: true, boltYards: true, reorderAt: true },
     }),
     db.$queryRawUnsafe<MoveRow[]>(
       `SELECT m."partId", ((m."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE $2)::date::text AS day, SUM(m."qty")::float8 AS net,
@@ -200,6 +210,11 @@ export async function insightFor(shopId: string, now = new Date()): Promise<Insi
       for (let k = 0; k < windowDays; k++) if (k <= existsAgo) inv += Math.max(0, bal[k]) * yc;
     }
     const sinceFirst = existsAgo;
+    // The Reorder now window: sold in the last N days over what was on hand N days ago plus what came in since.
+    let urgentSold = 0;
+    for (const [ago, q] of sb?.qty ?? []) if (ago < s.fabUrgentDays) urgentSold += q;
+    const urgentRecv = (mv?.recv ?? []).filter((l) => l.ago < s.fabUrgentDays).reduce((a, l) => a + l.yards, 0);
+    const urgentBal = dayBalances(p.qtyOnHand, net, s.fabUrgentDays + 1)[s.fabUrgentDays];
     const it: InsightItem = {
       id: p.id,
       partNumber: p.partNumber,
@@ -224,6 +239,12 @@ export async function insightFor(shopId: string, now = new Date()): Promise<Insi
       grade: "unrated",
       aged,
       sinceFirst,
+      inPrint: p.inPrint,
+      boltYards: p.boltYards,
+      reorderAt: p.reorderAt,
+      sigmaWeek: weeklySigma(v.weekly),
+      urgentSold: Math.max(0, urgentSold),
+      urgentLot: Math.max(0, urgentBal) + urgentRecv,
     };
     work.push({ it, own: v.own, rateWeight: 1, marginWindow, invCents: inv / windowDays });
   }

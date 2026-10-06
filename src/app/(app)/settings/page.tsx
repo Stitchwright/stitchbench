@@ -12,6 +12,8 @@ import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
 import { saveFabricSettings } from "@/actions/fabric";
+import { saveOrderSettings } from "@/actions/fabric-orders";
+import { ORDER_FIELDS } from "@/lib/fabric-orders-math";
 import { INSIGHT_FIELDS } from "@/lib/fabric-insight-math";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
@@ -383,6 +385,20 @@ export default async function SettingsPage() {
             ))}
             <div className="sm:col-span-2">
               <Submit>Save fabric settings</Submit>
+            </div>
+          </ActionForm>
+          <ActionForm action={saveOrderSettings} success="Saved" className="grid-form mt-4">
+            <h3 className="sm:col-span-2 text-sm font-semibold">Reordering</h3>
+            {ORDER_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={String(shop[f.key])} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save reordering settings</Submit>
             </div>
           </ActionForm>
         </Section>

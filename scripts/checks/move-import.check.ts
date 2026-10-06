@@ -146,6 +146,9 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.partWait.create({ data: { shopId, ticketId: ticket.id, partId: part.id, description: "Hook" } });
   await db.stockMove.create({ data: { shopId, partId: part.id, qty: 3, reason: "RECEIVED", userId: a.user.id } });
   await db.fabricMarkdown.create({ data: { shopId, partId: part.id, step: 1, pct: 20, regularCents: 1400, oldCents: 1400, newCents: 1120, reason: "Slow fabric", userId: a.user.id, userName: "Check" } });
+  const supplier = await db.fabricSupplier.create({ data: { shopId, name: "Check Fabrics", leadDays: 10, minOrderCents: 10000, orderEmail: "orders@check.test" } });
+  const order = await db.purchaseOrder.create({ data: { shopId, number: 1, supplierId: supplier.id, supplierName: supplier.name } });
+  await db.purchaseOrderLine.create({ data: { shopId, orderId: order.id, partId: part.id, itemNumber: part.partNumber, description: "Hook", unit: "BOLT", qty: 1, costCents: 700 } });
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, ticketId: ticket.id, mime: "image/jpeg", data: crypto.randomBytes(3000) } });
   // A photo bigger than one upload part, so the hosted door's file is two parts.
   await db.machinePhoto.create({ data: { shopId, machineId: machine.id, mime: "image/jpeg", data: new Uint8Array(bigPhoto) } });
