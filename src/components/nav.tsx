@@ -31,6 +31,7 @@ import {
   Globe,
   type LucideIcon,
   Scissors,
+  Ruler,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
@@ -55,6 +56,7 @@ const items: Item[] = [
   { href: "/messages", label: "Messages", icon: Send, module: "marketing" },
   { href: "/parts", label: "Parts", icon: Package },
   { href: "/fabric", label: "Fabric", icon: Scissors, retail: true },
+  { href: "/longarm", label: "Longarm", icon: Ruler, retail: true },
   { href: "/partners", label: "Partner shops", icon: Handshake },
   { href: "/market", label: "Marketplace", icon: Store, repair: true },
   { href: "/specs", label: "Factory specs", icon: Gauge, repair: true },

@@ -89,6 +89,7 @@ model Shop {
   doesRepair           Boolean   @default(true)
   sellsRetail          Boolean   @default(false)
   nextSaleNumber       Int       @default(1001)
+  nextLongarmNumber    Int       @default(1)
   nextTagNumber        Int       @default(101)
   nextOrderNumber      Int       @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -174,6 +175,8 @@ model Shop {
   clubMonths      ClubMonth[]
   clubPicks       ClubPick[]
   clubPayments    ClubPayment[]
+  longarmOrders   LongarmOrder[]
+  longarmPhotos   LongarmPhoto[]
   notes           ModelNote[]
   serviceItems    ServiceItem[]
   photos          MachinePhoto[]
@@ -303,31 +306,34 @@ enum CustomerKind {
 }
 
 model Customer {
-  kitSeries        KitSeriesMember[]
-  clubMembers      ClubMember[]
-  id               String            @id @default(cuid())
-  shopId           String
-  shop             Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  kind             CustomerKind      @default(RETAIL)
-  name             String
-  phone            String?
-  email            String?
-  address          String?
+  kitSeries          KitSeriesMember[]
+  clubMembers        ClubMember[]
+  longarmOrders      LongarmOrder[]
+  id                 String            @id @default(cuid())
+  shopId             String
+  shop               Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind               CustomerKind      @default(RETAIL)
+  name               String
+  phone              String?
+  email              String?
+  address            String?
   // Trade accounts only
-  code             String? // short code printed on route sheets, e.g. QS1
-  commissionPct    Float?
-  routeDay         String?
-  notes            String?
+  code               String? // short code printed on route sheets, e.g. QS1
+  commissionPct      Float?
+  routeDay           String?
+  notes              String?
   // How they want reminders and "it's ready" notices: email | sms | both | none; "" = not asked yet (email if we have one)
-  notifyBy         String            @default("")
+  notifyBy           String            @default("")
   // Marketing texts (TCPA): they agreed in writing - when, for which number, how, and the words they agreed to
-  smsConsentAt     DateTime?
-  smsConsentPhone  String?
-  smsConsentSource String?
-  smsConsentText   String?
+  smsConsentAt       DateTime?
+  smsConsentPhone    String?
+  smsConsentSource   String?
+  smsConsentText     String?
   // Review requests: when we last asked (at most one every Settings -> Messages "reviewEveryDays")
-  lastReviewAskAt  DateTime?
-  createdAt        DateTime          @default(now())
+  lastReviewAskAt    DateTime?
+  // Longarm rental: since when the shop has certified them to rent a machine (null: not certified)
+  longarmCertifiedAt DateTime?
+  createdAt          DateTime          @default(now())
 
   machines      Machine[]
   tickets       Ticket[]       @relation("TicketCustomer")
@@ -2056,6 +2062,8 @@ model AppointmentType {
   minutes      Int           @default(60)
   feeCents     Int           @default(0)
   taxable      Boolean       @default(false)
+  hourlyCents  Int? // a rental by the hour: the fee is this x the hours booked (the fee above is then ignored)
+  needsCert    Boolean       @default(false) // only customers certified to rent (the longarm) can book it
   capacity     Int           @default(1) // bookings at the same time (two longarms: 2); shared by types with the same resource
   resource     String? // what it uses up, e.g. "Longarm": types naming the same resource share its capacity
   // When it can be booked: [{ day: 0-6 (Sunday 0), from: "10:00", to: "17:00" }]; empty = any time
@@ -2453,4 +2461,83 @@ model ClubPick {
 
   @@unique([memberId, month])
   @@index([shopId, clubId, month])
+}
+
+// Longarm quilting (fabric-smarts-design.md 4a, F7): a quilting work order. Its own table, not a repair ticket: a ticket is
+// a machine's repair (a machine row it can't exist without, the bench's statuses, tension readings and parts), and a quilt
+// is none of those. Statuses: received, on the frame, ready, collected (or cancelled). Size in whole inches; the quilting
+// price is size x rate (the rate in tenths of a cent per square inch: 2.5 cents is 25) or one flat price, plus thread,
+// batting and extras; all integer cents. saleId: the register sale that billed it at collection (a plain id).
+enum LongarmStatus {
+  RECEIVED
+  ON_FRAME
+  READY
+  COLLECTED
+  CANCELLED
+}
+
+enum LongarmPricing {
+  PER_SQIN
+  FLAT
+}
+
+enum LongarmDesign {
+  PANTOGRAPH
+  CUSTOM
+}
+
+model LongarmOrder {
+  id             String         @id @default(cuid())
+  shopId         String
+  shop           Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number         Int
+  customerId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name           String // who it is for, as taken in
+  status         LongarmStatus  @default(RECEIVED)
+  widthIn        Int
+  lengthIn       Int
+  pricing        LongarmPricing @default(PER_SQIN)
+  rateTenthCents Int            @default(0)
+  flatCents      Int            @default(0)
+  design         LongarmDesign  @default(PANTOGRAPH)
+  designName     String?
+  thread         String?
+  threadCents    Int            @default(0)
+  batting        String?
+  battingCents   Int            @default(0)
+  extraCents     Int            @default(0)
+  extraNote      String?
+  quiltCents     Int // the quilting itself: size x rate, or the flat price
+  totalCents     Int // quilting plus thread, batting and extras, before tax
+  taxable        Boolean        @default(true)
+  dueAt          DateTime?
+  note           String?
+  receivedAt     DateTime       @default(now())
+  onFrameAt      DateTime?
+  readyAt        DateTime?
+  collectedAt    DateTime?
+  saleId         String?
+  createdById    String?
+  createdAt      DateTime       @default(now())
+
+  photos LongarmPhoto[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status, dueAt])
+  @@index([shopId, customerId])
+}
+
+model LongarmPhoto {
+  id        String       @id @default(cuid())
+  shopId    String
+  shop      Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     LongarmOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  mime      String
+  data      Bytes
+  caption   String?
+  createdAt DateTime     @default(now())
+
+  @@index([shopId, orderId])
 }

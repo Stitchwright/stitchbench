@@ -47,6 +47,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "PartnerLink", field: "accountId", label: ["partnership using this account", "partnerships using this account"] },
   { model: "KitSeriesMember", field: "customerId", label: ["Block of the Month sign-up", "Block of the Month sign-ups"] },
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
+  { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -299,6 +300,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   })) {
     out.push(`Their ${a.title || "appointment"} on ${fmtDateTime(a.startsAt, tz)} is still booked. Cancel it first.`);
   }
+  for (const q of await tx.longarmOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["RECEIVED", "ON_FRAME", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Quilting work order #${q.number} isn't collected yet. Finish or cancel it first.`);
+  }
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
     select: { shopClass: { select: { title: true } } },
@@ -361,6 +365,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   const clubsIn = await db.clubMember.count({ where: { shopId, customerId: c.id } });
   const cards = (await cardMembershipsOf(shopId, c.id)).length;
   add(clubsIn, ["club membership", "club memberships"], `deleted${cards ? `; ${cards === 1 ? "their card subscription is" : "their card subscriptions are"} stopped at Stripe first (if that fails, nothing is deleted)` : ""}; the club payments already in the register's books stay`);
+  add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
@@ -399,6 +404,7 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.webOrder.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null, email: null, notify: "", note: null, linkSealed: null } });
     await tx.enrollment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, attendee: null, note: null } });
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
+    await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });

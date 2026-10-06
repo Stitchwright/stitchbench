@@ -10,6 +10,7 @@ import type { CurrentUser } from "@/lib/session";
 import { moduleOn, requireOn } from "@/lib/module-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { hoursFromForm, hoursOf, hoursText, overlapCount, poolKey, withinHours } from "@/lib/appointments";
+import { rentalFeeCents } from "@/lib/longarm-math";
 import { lockKeys } from "@/lib/lock";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView } from "@/lib/messaging/settings";
@@ -83,11 +84,18 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
   const capacity = Number(str(fd.get("capacity")) ?? "1");
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 20) throw new UserError("How many can be booked at the same time: 1 to 20.");
   let resource = limited(str(fd.get("resource")), 40, "What it uses up");
+  // A rental by the hour (the fee is the rate x the hours booked) and "certified customers only" (longarm rental).
+  const hourlyRaw = str(fd.get("hourly"))?.trim() ?? "";
+  const hourly = hourlyRaw ? toCents(hourlyRaw) : null;
+  if (hourlyRaw && (hourly == null || hourly <= 0 || hourly > 1_000_000)) throw new UserError("Check the hourly rate (dollars an hour).");
+  const needsCert = fd.get("needsCert") === "on";
   const sortOrder = Number(str(fd.get("sortOrder")) ?? "0");
   const data = {
     name,
     minutes,
     feeCents: fee,
+    hourlyCents: hourly,
+    needsCert,
     taxable: fd.get("taxable") === "on",
     capacity,
     resource,
@@ -194,11 +202,18 @@ export async function bookAs(user: CurrentUser, fd: FormData, now = new Date()):
   const outsideHours = fd.get("outsideHours") === "on" && user.role !== "TECH";
   const wantTell = fd.get("tell") === "on" && !block;
   const ms = await messagingView(shopId);
+  // An hourly rental costs the rate x the time booked; any other type its fee.
+  const feeCents = block ? 0 : type.hourlyCents != null ? rentalFeeCents(type.hourlyCents, Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000)) : type.feeCents;
   const id = await db.$transaction(async (tx) => {
     const customer = block ? null : await customerFromForm(tx, shopId, fd, user.id, "counter", "", { notifyRequired: wantTell }).catch((e) => {
       if (e instanceof UserError && /name and a phone/.test(e.message)) throw new UserError("Pick or add the customer.");
       throw e;
     });
+    // A type for certified customers only (the longarm): the customer's flag is checked here, in the booking's own transaction.
+    if (!block && type.needsCert) {
+      const cert = await tx.customer.findFirst({ where: { id: customer!.id, shopId }, select: { longarmCertifiedAt: true } });
+      if (!cert?.longarmCertifiedAt) throw new UserError(`${customer!.name} isn't certified to rent the ${type.resource?.trim() || type.name}. Certify them on their customer page first.`);
+    }
     await checkRoom(tx, { shopId, type, startsAt, endsAt, staffId, outsideHours, tz });
     const a = await tx.appointment.create({
       data: {
@@ -214,7 +229,7 @@ export async function bookAs(user: CurrentUser, fd: FormData, now = new Date()):
         staffId,
         ticketId: link.ticketId,
         repairJobId: link.repairJobId,
-        feeCents: block ? 0 : type.feeCents,
+        feeCents,
         taxable: block ? false : type.taxable,
         note,
         createdById: user.id,
@@ -223,7 +238,7 @@ export async function bookAs(user: CurrentUser, fd: FormData, now = new Date()):
     });
     if (wantTell && customer) {
       if (!(await moduleOn(shopId, "marketing"))) throw new UserError("Messages are off: Marketing isn't on. Untick 'tell them' and call them instead.");
-      const vars = await bookingVars(shopId, type, type.feeCents, startsAt, tz);
+      const vars = await bookingVars(shopId, type, feeCents, startsAt, tz);
       await queueToCustomer(tx, { shopId, customerId: customer.id, kind: "booking_notice", channels: "preferred", content: (ch) => renderKind(ms, "booking", ch, vars), dedupeKey: `appt:${a.id}:booked`, notAfter: endsAt, refType: "appointment", refId: a.id, byUserId: user.id, ms });
     }
     return a.id;
@@ -238,14 +253,17 @@ export async function rescheduleApptAs(user: CurrentUser, id: string, fd: FormDa
   const a = await ownAppt(shopId, id);
   if (a.status !== "BOOKED") throw new UserError("Only booked appointments can move.");
   const tz = await shopTimeZone(shopId);
-  const minutes = a.type?.minutes ?? Math.round((a.endsAt.getTime() - a.startsAt.getTime()) / 60_000);
+  const kept = Math.round((a.endsAt.getTime() - a.startsAt.getTime()) / 60_000);
+  const minutes = a.type?.hourlyCents != null ? kept : (a.type?.minutes ?? kept);
   const { startsAt, endsAt } = timesFrom(fd, minutes, tz);
   if (startsAt.getTime() < now.getTime() - DAY) throw new UserError("That time has passed.");
   const staffId = fd.has("staffId") ? await staffFrom(shopId, fd) : a.staffId;
   const outsideHours = fd.get("outsideHours") === "on" && user.role !== "TECH";
   await db.$transaction(async (tx) => {
     if (a.type) await checkRoom(tx, { shopId, type: a.type, startsAt, endsAt, staffId, outsideHours, exceptId: a.id, tz });
-    await tx.appointment.updateMany({ where: { id: a.id, shopId, status: "BOOKED" }, data: { startsAt, endsAt, staffId } });
+    // An hourly rental not yet paid is priced again for its new length.
+    const refee = a.type?.hourlyCents != null && !a.paidAt ? { feeCents: rentalFeeCents(a.type.hourlyCents, Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000)) } : {};
+    await tx.appointment.updateMany({ where: { id: a.id, shopId, status: "BOOKED" }, data: { startsAt, endsAt, staffId, ...refee } });
     if (fd.get("tell") === "on" && !a.blocked) {
       await tell(tx, user, a.customerId, `${a.title}: a new time`, `Your ${a.title} is now ${fmtWhen(startsAt, tz)}.`, `appt:${a.id}:moved:${startsAt.getTime()}`, endsAt);
     }

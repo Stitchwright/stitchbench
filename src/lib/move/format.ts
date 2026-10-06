@@ -84,6 +84,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ClubMember", key: "id" }, // -> Club, Customer
   { t: "ClubMonth", key: "id" }, // -> Club
   { t: "ClubPick", key: "id" }, // -> Club, ClubMember
+  { t: "LongarmOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale)
+  { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
   { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part

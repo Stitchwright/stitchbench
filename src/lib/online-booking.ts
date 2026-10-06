@@ -58,7 +58,7 @@ export async function publicShop(slug: string): Promise<PublicShop | null> {
 
 /** The types a customer may book online, in the shop's order. */
 export async function publicTypes(shopId: string): Promise<AppointmentType[]> {
-  return db.appointmentType.findMany({ where: { shopId, active: true, online: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+  return db.appointmentType.findMany({ where: { shopId, active: true, online: true, needsCert: false }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
 }
 
 export type PublicClass = { id: string; title: string; description: string | null; teacher: string | null; location: string | null; feeCents: number; seats: number; seatsLeft: number; waitlist: boolean; firstAt: Date | null; lastAt: Date | null; next: Date | null; meetings: number };
@@ -161,7 +161,7 @@ export type BookInput = { slug: string; typeId: string; startsAt: Date; customer
 export async function bookOnline(a: BookInput, now = new Date()): Promise<{ appointmentId: string; token: string }> {
   const shop = await publicShop(a.slug);
   if (!shop || !shop.open) throw new UserError("Online booking isn't available right now. Please call the shop.");
-  const type = await db.appointmentType.findFirst({ where: { id: a.typeId, shopId: shop.id, active: true, online: true } });
+  const type = await db.appointmentType.findFirst({ where: { id: a.typeId, shopId: shop.id, active: true, online: true, needsCert: false } });
   if (!type) throw new UserError("That appointment isn't offered online. Please call the shop.");
   const startsAt = a.startsAt;
   if (!(startsAt instanceof Date) || Number.isNaN(startsAt.getTime())) throw new UserError("Pick a time.");
@@ -177,7 +177,7 @@ export async function bookOnline(a: BookInput, now = new Date()): Promise<{ appo
     const taken = await overlapCount(tx, { shopId: shop.id, resource: type.resource, typeId: type.id }, startsAt, endsAt);
     if (taken >= type.capacity) throw new UserError("That time was just taken. Please pick another.");
     const appt = await tx.appointment.create({
-      data: { shopId: shop.id, typeId: type.id, resource: type.resource?.trim() || null, customerId: customer.id, name: customer.name, title: type.name, startsAt, endsAt, feeCents: type.feeCents, taxable: type.taxable, note, source: "online" },
+      data: { shopId: shop.id, typeId: type.id, resource: type.resource?.trim() || null, customerId: customer.id, name: customer.name, title: type.name, startsAt, endsAt, feeCents: type.hourlyCents != null ? Math.round((type.hourlyCents * type.minutes) / 60) : type.feeCents, taxable: type.taxable, note, source: "online" },
       select: { id: true },
     });
     const token = await makeLink(tx, { shopId: shop.id, appointmentId: appt.id, customerId: customer.id, until: endsAt });
