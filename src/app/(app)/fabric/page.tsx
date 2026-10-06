@@ -1,5 +1,5 @@
 // The Fabric page (fabric-smarts-design.md section 2), for companies that sell retail. Tabs: Bolt ends (F1), What sells and
-// Slow fabric (F2), Reorder (F3); Kits joins them in F4.
+// Slow fabric (F2), Reorder (F3), Kits (F4).
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -14,20 +14,23 @@ import { FabricCuts } from "@/components/fabric-cuts";
 import { FabricMarkdown } from "@/components/fabric-markdown";
 import { Swatch } from "@/components/fabric-swatch";
 import { ReorderTab } from "./reorder-tab";
+import { KitsTab } from "./kits-tab";
 
-type Tab = "bolt" | "sells" | "slow" | "reorder";
+type Tab = "bolt" | "sells" | "slow" | "reorder" | "kits";
 
 export default async function FabricPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true } });
   if (!shop.sellsRetail) notFound();
   const { tab: raw } = await searchParams;
-  const tab: Tab = raw === "sells" || raw === "slow" || raw === "reorder" ? raw : "bolt";
-  const [bolt, insight] = await Promise.all([tab === "bolt" ? boltEndsFor(user.shopId) : null, tab === "bolt" || tab === "reorder" ? null : insightFor(user.shopId)]);
+  const tab: Tab = raw === "sells" || raw === "slow" || raw === "reorder" || raw === "kits" ? raw : "bolt";
+  const [bolt, insight] = await Promise.all([tab === "bolt" ? boltEndsFor(user.shopId) : null, tab === "bolt" || tab === "reorder" || tab === "kits" ? null : insightFor(user.shopId)]);
   const sub =
     tab === "bolt" && bolt
       ? `Bolt ends: ${qtyText(bolt.limit, "yd")} or less left, none on order. Cut them into fat quarters before they sit.`
-      : tab === "reorder"
+      : tab === "kits"
+        ? "Kits: fabric, pattern and notions in one box with one price."
+        : tab === "reorder"
         ? "Fabric worth reordering while it is still in print, and your purchase orders."
         : tab === "sells"
         ? "Yards a week, weeks of supply and margin for every fabric, from your own sales and stock moves."
@@ -37,6 +40,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
     { tab: "sells", label: "What sells" },
     { tab: "slow", label: tab === "slow" && insight ? `Slow fabric (${insight.slow.length})` : "Slow fabric" },
     { tab: "reorder", label: "Reorder" },
+    { tab: "kits", label: "Kits" },
   ];
   return (
     <div className="space-y-4">
@@ -44,9 +48,16 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
         title="Fabric"
         sub={sub}
         actions={
-          <Link href="/fabric/collection" className="btn btn-primary">
-            Add a collection
-          </Link>
+          <>
+            {tab === "kits" && (
+              <Link href="/fabric/kits/new" className="btn btn-primary">
+                New kit
+              </Link>
+            )}
+            <Link href="/fabric/collection" className={tab === "kits" ? "btn" : "btn btn-primary"}>
+              Add a collection
+            </Link>
+          </>
         }
       />
       <nav className="flex flex-wrap gap-2" aria-label="Fabric tabs">
@@ -66,6 +77,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
       {tab === "sells" && insight && <WhatSells insight={insight} />}
       {tab === "slow" && insight && <SlowFabric insight={insight} />}
       {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
+      {tab === "kits" && <KitsTab shopId={user.shopId} />}
     </div>
   );
 }
@@ -106,6 +118,9 @@ async function BoltEnds({ shopId, rows, limit }: { shopId: string; rows: Awaited
                   <div className="flex flex-wrap gap-2">
                     <FabricCuts id={r.id} yards={r.qtyOnHand} hasPrice={r.priceCents != null} />
                     {l && <FabricMarkdown id={r.id} source="bolt" offer={l.offer} undo={l.undo} stopped={l.stopped} />}
+                    <Link href={`/fabric/kits/new?fabric=${r.id}`} className="btn btn-sm">
+                      Use in a kit
+                    </Link>
                   </div>
                 </div>
               </li>

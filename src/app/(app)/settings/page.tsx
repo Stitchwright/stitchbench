@@ -14,6 +14,8 @@ import { addStarterServices, addUser, changePassword, resetUserPassword, saveChe
 import { saveFabricSettings } from "@/actions/fabric";
 import { saveOrderSettings } from "@/actions/fabric-orders";
 import { ORDER_FIELDS } from "@/lib/fabric-orders-math";
+import { saveKitSettings } from "@/actions/kits";
+import { KIT_FIELDS } from "@/lib/kits-math";
 import { INSIGHT_FIELDS } from "@/lib/fabric-insight-math";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
 import { InviteInput } from "@/components/invite-input";
@@ -399,6 +401,20 @@ export default async function SettingsPage() {
             ))}
             <div className="sm:col-span-2">
               <Submit>Save reordering settings</Submit>
+            </div>
+          </ActionForm>
+          <ActionForm action={saveKitSettings} success="Saved" className="grid-form mt-4">
+            <h3 className="sm:col-span-2 text-sm font-semibold">Kits</h3>
+            {KIT_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={String(shop[f.key])} inputMode="numeric" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save kit settings</Submit>
             </div>
           </ActionForm>
         </Section>

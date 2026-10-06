@@ -76,6 +76,10 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "FabricSupplier", key: "id" },
   { t: "PurchaseOrder", key: "id" }, // -> FabricSupplier
   { t: "PurchaseOrderLine", key: "id" }, // -> PurchaseOrder, Part
+  { t: "KitSeries", key: "id" },
+  { t: "Kit", key: "id" }, // -> KitSeries, Part
+  { t: "KitLine", key: "id" }, // -> Kit, Part
+  { t: "KitSeriesMember", key: "id" }, // -> KitSeries, Customer
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
   { t: "SharedPost", key: "id" }, // -> User
