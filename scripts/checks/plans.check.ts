@@ -44,7 +44,7 @@ function person(role: "TECH" | "ADMIN" = "TECH") {
   return fd;
 }
 const add = (admin: CurrentUser, role: "TECH" | "ADMIN" = "TECH") => addPersonAs(admin, person(role));
-const idOf = async (fd: FormData) => (await db.user.findUniqueOrThrow({ where: { email: String(fd.get("email")) } })).id;
+const idOf = async (fd: FormData) => (await db.user.findFirstOrThrow({ where: { email: String(fd.get("email")) } })).id;
 
 async function refused(label: string, fn: () => Promise<unknown>) {
   try {

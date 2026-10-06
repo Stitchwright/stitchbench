@@ -8,8 +8,8 @@
 //      nobody else's; the reset actions on the lapse allow-list; /reset and the platform route never on the links address
 //   6. provisioning: POST /api/platform/companies off without a token of 32+ characters and on Windows, https only, a
 //      missing or wrong token 401, wrong tokens limited per address, a company and its owner made ("Started from
-//      StitchHub") with a 24-hour set-password link and no password, the hub's place answered, a taken or reserved
-//      email 409, nothing secret in the log
+//      StitchHub") with a 24-hour set-password link and no password, the hub's place answered, a reserved
+//      email 409 (an address that owns another company is fine), nothing secret in the log
 //   7. the hub's reset grant on the Windows program, with a mock hub and a throwaway key: not fetched until opted in (and
 //      the claim says so), refused when the signature, company, install, life or owner is wrong, refused outside the
 //      program's own window, allowed once in it (a new password shown once, sessionVersion + 1, the hub told), refused
@@ -340,18 +340,23 @@ async function main() {
       assert.ok(setupLife > 23.9 * 3600_000 && setupLife <= 24 * 3600_000, "24 hours");
       assert.deepEqual(out.hub, { url: mock.url, installId: "inst_win" }, "this install's place on the hub");
       await finishReset(ts, "Hosted-pass-1", "Hosted-pass-1");
-      assert.ok(await bcrypt.compare("Hosted-pass-1", (await db.user.findUniqueOrThrow({ where: { email: hostedEmail } })).passwordHash), "the owner chose a password");
+      assert.ok(await bcrypt.compare("Hosted-pass-1", (await db.user.findFirstOrThrow({ where: { email: hostedEmail } })).passwordHash), "the owner chose a password");
       const again = await handlePlatformCompanies(req({ token: TOKEN, body: { ...good, shopName: `Check ${RUN} Again` } }));
-      assert.equal(again.status, 409, "the email has a login already");
+      // Round 3 W1: an email is unique inside one company, so an owner address used by another company is no longer a 409
+      // (and no longer a way to find out which addresses exist elsewhere): it makes a second company with its own owner login.
+      assert.equal(again.status, 201, "an address that owns another company is fine: the new company is its own");
+      const firstShopId = (await db.user.findFirstOrThrow({ where: { email: hostedEmail }, orderBy: { createdAt: "asc" }, select: { shopId: true } })).shopId;
+      assert.equal(await db.user.count({ where: { email: hostedEmail } }), 2);
       const reserved = await handlePlatformCompanies(req({ token: TOKEN, body: { ...good, shopName: `Check ${RUN} Reserved`, ownerEmail: adminEmail } }));
       assert.equal(reserved.status, 409, "never the administrator's address");
-      assert.equal(await db.shop.count({ where: { name: { in: [`Check ${RUN} Again`, `Check ${RUN} Reserved`] } } }), 0);
+      assert.equal(await db.shop.count({ where: { name: `Check ${RUN} Reserved` } }), 0);
       // Wrong tokens from one address are limited (the right one too, from there, for the hour); other addresses carry on.
       process.env.TRUST_PROXY = "true";
       const from = (ip: string, token: string) => req({ token, body: good, headers: { "x-forwarded-for": ip } });
       for (let i = 0; i < 10; i++) assert.equal((await handlePlatformCompanies(from("203.0.113.7", "wrong-token"))).status, 401);
       assert.equal((await handlePlatformCompanies(from("203.0.113.7", TOKEN))).status, 429, "that address is held for the hour");
-      assert.equal((await handlePlatformCompanies(from("203.0.113.8", TOKEN))).status, 409, "another address isn't");
+      assert.equal((await handlePlatformCompanies(from("203.0.113.8", TOKEN))).status, 201, "another address isn't (a company again, now that an owner address can repeat)");
+      await db.shop.deleteMany({ where: { users: { some: { email: hostedEmail } }, id: { not: firstShopId } } });
       delete process.env.TRUST_PROXY;
       forgetWrongTokens();
       const text = logged.join("\n");
@@ -361,7 +366,7 @@ async function main() {
       release();
     }
     ok(
-      "provisioning: off without a token or on Windows, https only, 401 for a missing or wrong token (limited per address), a company and owner made with a 24-hour link and no password, 409 for a taken or reserved email, nothing secret logged",
+      "provisioning: off without a token or on Windows, https only, 401 for a missing or wrong token (limited per address), a company and owner made with a 24-hour link and no password, 409 for a reserved email (an owner address used elsewhere is fine), nothing secret logged",
     );
 
     // ---------- 7. the hub's reset grant on the Windows program ----------

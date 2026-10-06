@@ -64,7 +64,7 @@ export async function makeCompany(name: string, opts: { kind?: ShopKind; timeZon
   made += 1;
   const email = `check-${RUN}-${made}@stitchbench.test`;
   const shop = await createShopWithOwner({ shopName: name, name: `Check owner ${made}`, email, password: "check-pass-1234", kind: opts.kind, timeZone: opts.timeZone }, { allowReserved: true });
-  const u = await db.user.findUniqueOrThrow({ where: { email }, select: { id: true, shopId: true, role: true, name: true, email: true } });
+  const u = await db.user.findUniqueOrThrow({ where: { shopId_email: { shopId: shop.id, email } }, select: { id: true, shopId: true, role: true, name: true, email: true } });
   return { shopId: shop.id, user: { id: u.id, shopId: u.shopId, role: u.role, name: u.name, email: u.email } };
 }
 

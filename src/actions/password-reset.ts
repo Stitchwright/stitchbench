@@ -24,8 +24,8 @@ export const requestPasswordReset = safe.whileLapsed("requestPasswordReset")(asy
  * passwords (src/lib/known-device.ts, round 3 M44).
  */
 export const finishPasswordReset = safe.whileLapsed("finishPasswordReset")(async function finishPasswordReset(fd: FormData) {
-  const { email } = await finishReset(fd.get("t"), fd.get("password"), fd.get("again"));
-  await rememberThisDevice(email);
+  const { userId } = await finishReset(fd.get("t"), fd.get("password"), fd.get("again"));
+  await rememberThisDevice(userId);
   redirect("/login?reset=1");
 });
 

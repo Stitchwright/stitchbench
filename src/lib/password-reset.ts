@@ -79,10 +79,23 @@ export async function issueResetLink(userId: string, kind: "reset" | "setup" | "
   return { link: `${base}/reset?t=${token}`, expiresAt };
 }
 
+/** A company's name on one plain line (another company's admin chose it): no line breaks, control characters or web addresses, 80 characters at most. */
+const plain = (name: string) => name.replace(/(?:https?|ftp):\/\/\S*/gi, "").replace(/\p{C}|\p{Zl}|\p{Zp}/gu, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "(no name)";
+
+/** The reset mail's words: one login (the usual case), or one link per company when the address has logins in several. */
+export function resetMailText(app: string, email: string, items: { company: string; name: string; link: string }[]): string {
+  if (items.length === 1) {
+    const [i] = items;
+    return `Hello ${plain(i.name)},\n\nSomeone asked to reset the password of ${email} on ${app} (${plain(i.company)}). If that was you, choose a new one here; the link works once, for ${RESET_HOURS} hour:\n\n${i.link}\n\nIf it wasn't you, ignore this email: your password hasn't changed.\n\n${app}`;
+  }
+  const list = items.map((i) => `${plain(i.company)}\n${i.link}`).join("\n\n");
+  return `Hello,\n\nSomeone asked to reset the password of ${email} on ${app}. This address has a login in ${items.length} companies, each with its own password and its own link. Each link works once, for ${RESET_HOURS} hour, and changes only the login of the company named above it:\n\n${list}\n\nChoose only the link for the company you asked for. A company's name is chosen by that company, not by ${app}. If it wasn't you, ignore this email: no password has changed.\n\n${app}`;
+}
+
 /**
  * "Forgot your password?": the answer is the same whether or not the address has a login, and is given before anything
  * is looked up; `work` (the lookup, the link and the mail) carries on after it. Limits: 10 requests an hour from one
- * address (where the proxy reports it), 3 emails an hour to one login (more are dropped quietly: same answer), 300 an
+ * address (where the proxy reports it), 3 emails an hour to one address, however many logins it has (more are dropped quietly: same answer), 300 an
  * hour on the whole server.
  */
 export function requestResetFor(emailRaw: unknown, ip: string | null): { message: string; work: Promise<void> } {
@@ -100,16 +113,17 @@ export function requestResetFor(emailRaw: unknown, ip: string | null): { message
   if (!allow("pwreset:all", 300, HOUR)) throw new UserError("Too many reset requests on this server right now. Try again in an hour.");
   if (!allow(`pwreset:e:${email}`, 3, HOUR)) return { message: SAME_ANSWER, work: Promise.resolve() };
   const work = (async () => {
-    const user = await db.user.findUnique({ where: { email }, select: { id: true, name: true, active: true, shop: { select: { name: true } } } });
-    if (!user || !user.active) return;
-    const { link } = await issueResetLink(user.id, "reset", RESET_HOURS);
+    // An email can have a login in several companies (round 3 W1): one link per login, one mail naming each company. Each
+    // link resets only its own login, so no company's owner gets the power to change another company's login.
+    const users = await db.user.findMany({ where: { email, active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, shop: { select: { name: true } } } });
+    if (!users.length) return;
     const app = appName();
-    await sendPlatformMail({
-      to: email,
-      subject: `Reset your ${app} password`,
-      text: `Hello ${user.name},\n\nSomeone asked to reset the password of ${email} on ${app} (${user.shop.name}). If that was you, choose a new one here; the link works once, for ${RESET_HOURS} hour:\n\n${link}\n\nIf it wasn't you, ignore this email: your password hasn't changed.\n\n${app}`,
-    });
-    console.info(`[password] reset link mailed for login ${user.id}`);
+    const items: { company: string; name: string; link: string }[] = [];
+    for (const u of users) items.push({ company: u.shop.name, name: u.name, link: (await issueResetLink(u.id, "reset", RESET_HOURS)).link });
+    const one = items.length === 1;
+    const text = resetMailText(app, email, items);
+    await sendPlatformMail({ to: email, subject: `Reset your ${app} password`, text });
+    console.info(`[password] reset ${one ? "link" : `links (${items.length})`} mailed for ${users.map((u) => `login ${u.id}`).join(", ")}`);
   })().catch((e) => console.error(`[password] reset mail: ${e instanceof Error ? e.message : String(e)}`));
   return { message: SAME_ANSWER, work };
 }
@@ -133,7 +147,7 @@ export async function checkResetLink(token: unknown): Promise<LinkState> {
  * every other link it had stops working. The link is taken under the row's own update, so two tries at once can't both
  * use it.
  */
-export async function finishReset(token: unknown, password: unknown, again: unknown): Promise<{ email: string }> {
+export async function finishReset(token: unknown, password: unknown, again: unknown): Promise<{ email: string; userId: string }> {
   if (isDesktop()) throw new UserError(TRAY_WORDS);
   const pw = typeof password === "string" ? password : "";
   if (pw.length < 8) throw new UserError("Use at least 8 characters.");
@@ -151,7 +165,7 @@ export async function finishReset(token: unknown, password: unknown, again: unkn
     const user = await tx.user.update({ where: { id: row.userId }, data: { passwordHash: hash, sessionVersion: { increment: 1 } }, select: { id: true, email: true } });
     await tx.passwordReset.updateMany({ where: { userId: row.userId, kind: { in: LINK_KINDS }, usedAt: null }, data: { usedAt: now } });
     console.info(`[password] new password set from a link for login ${user.id}`);
-    return { email: user.email };
+    return { email: user.email, userId: user.id };
   });
 }
 

@@ -2,7 +2,7 @@
 // is exported with package 1's exportCompany, deleted, and imported again: every table's rows are the originals (ids,
 // values, Bytes) but for what the import changes on purpose (secrets null, email / texts / online shop off, marketing
 // held, the move marks). Then the refusals, each with nothing written: the company already here, not a move file, a
-// newer file version, this database behind the file, a login email already used here (named), a row of another
+// newer file version, this database behind the file, a row of another
 // company, a child without its parent, a column this version doesn't know (named), counts that don't match, no end
 // line, a cut file, lines after the end, rows out of order. The hosted door (8 MB parts, resume, out-of-step parts, the
 // import in the background, the booking address cleared on a clash, the spool file gone) and the Windows program's door
@@ -429,12 +429,16 @@ async function main() {
       edit((l) => (l[0] = JSON.stringify({ ...meta, lastMigration: "29991231235959_from_the_future" }))),
       /taken at database version 29991231235959_from_the_future, which this program doesn't have \(it is at \d{14}_\w+\)\. Update this program first/,
     );
-    const emailMsg = await refuse(
-      "login email used here",
-      edit((l) => change(l, "User", (r) => (r.email = b.user.email.toUpperCase()))),
-      /email address is already used on this install: .*Change it on the other install \(Settings → People\), make the move file again/,
-    );
-    assert.ok(emailMsg.includes(b.user.email), "the email is named");
+    // Round 3 W1: a login email is unique inside one company, so a file whose login has the address of a login in another
+    // company here imports, and the other company's login is untouched (people in both choose a company at sign-in).
+    const sameEmail = edit((l) => change(l, "User", (r) => (r.email = b.user.email)));
+    const bLoginBefore = await db.user.findUniqueOrThrow({ where: { id: b.user.id } });
+    const sameSummary = await importCompany(put(sameEmail), { by: "operator" });
+    assert.equal(sameSummary.shopId, a.shopId, "a login email used by another company no longer refuses the import");
+    assert.equal(await db.user.count({ where: { email: b.user.email } }), 2, "the address now has a login in two companies");
+    assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: b.user.id } }), bLoginBefore, "the other company's login is untouched");
+    await removeCompany(a.shopId);
+    n0 = await counts();
     // A login with a reserved (platform administrator) address would make an administrator on import: refused.
     const adminAddr = `move-admin-${RUN}@stitchbench.test`;
     process.env.PLATFORM_ADMIN_EMAILS = adminAddr;
@@ -513,7 +517,7 @@ async function main() {
       /HubState row, which isn't part of a company/,
     );
     ok(
-      "refused with nothing written: not a move file, a newer version, this database behind (named), a login email here (named), another company's row, a missing parent, unknown columns (named), wrong counts, no end, a cut file, lines after the end, out of order",
+      "refused with nothing written: not a move file, a newer version, this database behind (named), another company's row, a missing parent, unknown columns (named), wrong counts, no end, a cut file, lines after the end, out of order",
     );
 
     // ---------- 5. the hosted door: 8 MB parts, resume, the import in the background ----------
@@ -570,7 +574,7 @@ async function main() {
       assert.ok((await recentImports(asUser(b))).some((v) => v.id === v0.id && v.status === "done"));
 
       // A refused upload keeps its file for "Import again"; Discard deletes it.
-      const bad = edit((l) => change(l, "User", (r) => (r.email = b.user.email)));
+      const bad = edit(() => undefined); // the company is already here: refused
       const u = await startUpload(asUser(b), { name: "bad.stitchmove.ndjson.gz", size: bad.length });
       uploads.push(u.id);
       await putChunk(asUser(b), u.id, 0, bad.subarray(0, Math.min(UPLOAD_CHUNK, bad.length)));
@@ -578,7 +582,7 @@ async function main() {
       await finishUpload(asUser(b), u.id);
       const failed = await waitJob(u.id);
       assert.equal(failed.status, "failed");
-      assert.match(failed.error ?? "", /already on this install|already used on this install/);
+      assert.match(failed.error ?? "", /is already on this install/);
       const uv = await uploadView(asUser(b), u.id);
       assert.equal(uv.status, "failed");
       assert.equal(uv.canRetry, true, "the file is kept for another try");

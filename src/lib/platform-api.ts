@@ -106,7 +106,7 @@ export async function handlePlatformCompanies(req: Request): Promise<Response> {
     throw e;
   }
   await db.shop.update({ where: { id: shop.id }, data: { startedFromHubAt: new Date() } });
-  const owner = await db.user.findUniqueOrThrow({ where: { email: ownerEmail }, select: { id: true } });
+  const owner = await db.user.findUniqueOrThrow({ where: { shopId_email: { shopId: shop.id, email: ownerEmail } }, select: { id: true } });
   const { link, expiresAt } = await issueResetLink(owner.id, "setup", SETUP_HOURS);
   const s = await hubState();
   const account = text(b.hubAccountId, 64);

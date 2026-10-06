@@ -65,7 +65,7 @@ async function run() {
 
   try {
     // ---------- remove the old demo company ----------
-    const old = await db.user.findUnique({ where: { email: DEMO_EMAIL }, select: { shopId: true } });
+    const old = await db.user.findFirst({ where: { email: DEMO_EMAIL }, select: { shopId: true } });
     if (old) {
       // Tickets first: a ticket holds its machine (restrict), so the company's cascade can't start with the machines.
       await db.ticket.deleteMany({ where: { shopId: old.shopId } });

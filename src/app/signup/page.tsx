@@ -42,7 +42,6 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     const password = String(fd.get("password") ?? "");
     if (!shopName || !name || !email || password.length < 8) redirect(back("missing"));
     if (!isValidEmail(email)) redirect(back("email"));
-    if (await db.user.findUnique({ where: { email } })) redirect(back("taken"));
     // The StitchBench administrator's address: only the install's first company may take it (createShopWithOwner checks).
     if (isPlatformAdmin(email) && (await db.shop.count())) redirect(back("reserved"));
     const kind = (String(fd.get("kind") ?? "repair") || "repair") as ShopKind;
@@ -50,7 +49,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     try {
       shop = await createShopWithOwner({ shopName, name, email, password, kind, timeZone: String(fd.get("tz") ?? "") }, { firstOnly });
     } catch (e) {
-      // The first company already exists (this install's sign-up is closed), or the email was just taken.
+      // The first company already exists (this install's sign-up is closed),.
       if (isUserError(e)) redirect(firstOnly ? "/login" : back(e.message === RESERVED_EMAIL ? "reserved" : "taken"));
       throw e;
     }

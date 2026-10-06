@@ -119,19 +119,19 @@ async function main() {
 
       // 1. The cookie itself.
       const now = Date.now();
-      const v1 = withKnownDevice(null, ownerA, now)!;
+      const v1 = withKnownDevice(null, a.user.id, now)!;
       assert.match(v1, /^[0-9a-z]+\.[A-Za-z0-9_-]{22}$/);
       assert.ok(!v1.includes("@") && !v1.includes("check-"), "no email in the cookie");
-      assert.ok(knownDeviceFor(v1, ownerA, now));
-      assert.equal(knownDeviceFor(v1, ownerB, now), null, "an entry proves only its own login");
+      assert.ok(knownDeviceFor(v1, a.user.id, now));
+      assert.equal(knownDeviceFor(v1, b.user.id, now), null, "an entry proves only its own login");
       const tampered = v1.slice(0, -2) + (v1.endsWith("AA") ? "BB" : "AA");
-      assert.equal(knownDeviceFor(tampered, ownerA, now), null, "a changed mac");
+      assert.equal(knownDeviceFor(tampered, a.user.id, now), null, "a changed mac");
       const [t, m] = v1.split(".");
-      assert.equal(knownDeviceFor(`${(parseInt(t, 36) + 1).toString(36)}.${m}`, ownerA, now), null, "a changed time");
-      assert.equal(knownDeviceFor(withKnownDevice(null, ownerA, now - (KNOWN_DEVICE_DAYS + 1) * DAY), ownerA, now), null, "older than 180 days");
-      assert.ok(knownDeviceFor(withKnownDevice(null, ownerA, now - (KNOWN_DEVICE_DAYS - 1) * DAY), ownerA, now), "179 days old still counts");
-      assert.equal(knownDeviceFor(withKnownDevice(null, ownerA, now + DAY), ownerA, now), null, "from the future");
-      assert.equal(knownDeviceFor("junk~1.2~", ownerA, now), null);
+      assert.equal(knownDeviceFor(`${(parseInt(t, 36) + 1).toString(36)}.${m}`, a.user.id, now), null, "a changed time");
+      assert.equal(knownDeviceFor(withKnownDevice(null, a.user.id, now - (KNOWN_DEVICE_DAYS + 1) * DAY), a.user.id, now), null, "older than 180 days");
+      assert.ok(knownDeviceFor(withKnownDevice(null, a.user.id, now - (KNOWN_DEVICE_DAYS - 1) * DAY), a.user.id, now), "179 days old still counts");
+      assert.equal(knownDeviceFor(withKnownDevice(null, a.user.id, now + DAY), a.user.id, now), null, "from the future");
+      assert.equal(knownDeviceFor("junk~1.2~", a.user.id, now), null);
       // A shared tablet: one entry per login, the newest first, 10 at most; signing in again moves that login's entry up.
       let shared: string | null = null;
       for (let i = 0; i < 12; i++) shared = withKnownDevice(shared, `tablet${i}@shop`, now + i);
@@ -147,8 +147,8 @@ async function main() {
       await withEnv({ AUTH_COOKIE_PREFIX: "StitchShop" }, async () => assert.equal(knownDeviceCookieName(), "StitchShop.known-device"));
       assert.equal(knownDeviceCookieName(), "known-device");
       await withEnv({ AUTH_SECRET: undefined }, async () => {
-        assert.equal(withKnownDevice(null, ownerA), null);
-        assert.equal(knownDeviceFor(v1, ownerA), null);
+        assert.equal(withKnownDevice(null, a.user.id), null);
+        assert.equal(knownDeviceFor(v1, a.user.id), null);
       });
       ok("the known-device cookie: own login only, no email in it, tampered/expired/future refused, 10 entries, off without AUTH_SECRET");
 
@@ -163,7 +163,7 @@ async function main() {
       ok("sign-in: the right password, wrong, switched off, unknown and malformed");
 
       // 3. The lockout (M44). Owner A signed in on a browser before (the sign-in page set this cookie then).
-      const browserA = withKnownDevice(null, ownerA, Date.now() - 3 * DAY);
+      const browserA = withKnownDevice(null, a.user.id, Date.now() - 3 * DAY);
       for (let i = 0; i < FREE_TRIES; i++) assert.equal(await signIn(ownerA, `wrong-${i}`), null);
       const queued = flood(ownerA, QUEUE_CAP + 5);
       const settled = await Promise.all(queued.map((p) => within(p, 300)));
@@ -178,13 +178,13 @@ async function main() {
       assert.ok(known.value && known.value.id === a.user.id, "the known browser gets in during the flood");
       assert.ok(known.ms < 2000, `without waiting in the queue (${known.ms} ms)`);
       // Another login's entry doesn't make the browser known for this one.
-      await heldOut("another login's entry", signIn(ownerA, PASSWORD, { device: withKnownDevice(null, techC.email) }));
+      await heldOut("another login's entry", signIn(a.user.id, PASSWORD, { device: withKnownDevice(null, techC.id) }));
       // The owner's sign-in gives the guesser no fresh start: unknown browsers are still held back.
       await heldOut("an unknown browser after the owner signed in", signIn(ownerA, PASSWORD));
       ok("M44: a full queue refuses an unknown browser, the owner's known browser gets straight in");
 
       // The known browser's own count: 5 wrong (each answered at once), then it is paced like any other (here: the full queue).
-      const stolen = withKnownDevice(null, ownerA, Date.now() - 2 * DAY);
+      const stolen = withKnownDevice(null, a.user.id, Date.now() - 2 * DAY);
       for (let i = 0; i < PER_DEVICE; i++) {
         const r = await timed(signIn(ownerA, `guess-${i}`, { device: stolen }));
         assert.equal(r.value, null);
@@ -203,7 +203,7 @@ async function main() {
           for (let j = 0; j < FREE_TRIES; j++) tries.push(signIn(`nobody-${RUN}-${i}@stitchbench.test`, "wrong", { xff: here }));
         }
         assert.deepEqual(new Set(await Promise.all(tries)), new Set([null]));
-        const deviceC = withKnownDevice(null, techC.email);
+        const deviceC = withKnownDevice(null, techC.id);
         assert.equal(await signIn(techC.email, PASSWORD, { xff: here }), null, "the address is refused, right password or not");
         assert.equal(await signIn(techC.email, PASSWORD, { xff: "203.0.113.7" }), null, "the same address however the header starts");
         assert.equal(await signIn(techC.email, PASSWORD, { xff: here, device: deviceC }), null, "a known browser too");
@@ -221,18 +221,19 @@ async function main() {
       const floodB = await Promise.all(flood(ownerB, QUEUE_CAP + 2).map((p) => within(p, 300)));
       assert.equal(floodB.filter((s) => s === "pending").length, QUEUE_CAP);
       // A browser that signed in as B before the reset (at the old sessionVersion).
-      const oldBrowser = withKnownDevice(null, ownerB, Date.now(), svB);
-      assert.ok(knownDeviceFor(oldBrowser, ownerB, Date.now(), svB));
+      const oldBrowser = withKnownDevice(null, b.user.id, Date.now(), svB);
+      assert.ok(knownDeviceFor(oldBrowser, b.user.id, Date.now(), svB));
       const { link } = await issueResetLink(b.user.id, "reset", 1);
       const token = new URL(link).searchParams.get("t")!;
       const fresh = "a-new-password-5678";
-      const { email: resetEmail } = await finishReset(token, fresh, fresh);
+      const { email: resetEmail, userId: resetUserId } = await finishReset(token, fresh, fresh);
       assert.equal(resetEmail, ownerB);
+      assert.equal(resetUserId, b.user.id);
       assert.equal((await db.user.findUniqueOrThrow({ where: { id: b.user.id } })).sessionVersion, svB + 1, "the reset ends every session");
-      // What finishPasswordReset sets in the browser that used the link (rememberThisDevice(email)).
-      const resetBrowser = withKnownDevice(null, resetEmail, Date.now(), svB + 1);
-      assert.equal(knownDeviceFor(oldBrowser, ownerB, Date.now(), svB + 1), null, "a password change ends the standing of devices known before it");
-      assert.ok(knownDeviceFor(resetBrowser, ownerB, Date.now(), svB + 1));
+      // What finishPasswordReset sets in the browser that used the link (rememberThisDevice(userId)).
+      const resetBrowser = withKnownDevice(null, resetUserId, Date.now(), svB + 1);
+      assert.equal(knownDeviceFor(oldBrowser, b.user.id, Date.now(), svB + 1), null, "a password change ends the standing of devices known before it");
+      assert.ok(knownDeviceFor(resetBrowser, b.user.id, Date.now(), svB + 1));
       const after = await timed(signIn(ownerB, fresh, { device: resetBrowser }));
       assert.ok(after.value && after.value.id === b.user.id && after.value.sv === svB + 1, "in, with the new sessionVersion");
       assert.ok(after.ms < 2000, `not queued (${after.ms} ms)`);

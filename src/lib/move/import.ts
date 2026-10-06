@@ -378,15 +378,8 @@ async function checkFile(file: string, now: Date, onProgress?: (p: ImportProgres
   if (reserved.length) {
     throw new UserError(`The move file has a login whose email address is reserved on this StitchBench (${reserved.join(", ")}). Change it on the other install (Settings → People), make the move file again, then import.`);
   }
-  // Refusal 4: login emails are unique on an install (HANDOFF 2c L7/L31 not built).
-  if (emails.length) {
-    const taken = await db.$queryRawUnsafe<{ email: string }[]>(`SELECT email FROM "User" WHERE lower(email) = ANY($1::text[]) ORDER BY email`, [...new Set(emails.map((e) => e.toLowerCase()))]);
-    if (taken.length) {
-      throw new UserError(
-        `${taken.length === 1 ? "This login's email address is" : "These logins' email addresses are"} already used on this install: ${taken.map((r) => r.email).join(", ")}. Change ${taken.length === 1 ? "it" : "them"} on the other install (Settings → People), make the move file again, then import.`,
-      );
-    }
-  }
+  // (A login email used by another company here is fine since round 3 W1: an email is unique inside one company, and people who
+  // have a login in more than one company choose one at sign-in.)
   const slug = typeof shop.bookingSlug === "string" ? shop.bookingSlug : null;
   const slugTaken = !!slug && !!(await db.shop.findFirst({ where: { bookingSlug: slug }, select: { id: true } }));
   report(null);
@@ -559,7 +552,7 @@ export type ImportOpts = { by: Importer; now?: Date; onProgress?: (p: ImportProg
 /**
  * A company from a move file: the file on disk (a path), or a stream (spooled to the temp folder first, since the file
  * is read twice). Refused before any write, with the reason (design section 4): not a move file or a newer version; this
- * database behind the file's migration; the company already here; a login email already used here; a row of another
+ * database behind the file's migration; the company already here; a row of another
  * company, a child without its parent, a column this version doesn't know; no end line or counts that don't match;
  * on the Windows program, a company already here without platformAdminEmails; and anyone but the StitchBench
  * administrator (or the operator). Then one transaction in file order with every id kept.

@@ -26,8 +26,9 @@ export async function addPersonAs(admin: CurrentUser, formData: FormData): Promi
   const password = String(formData.get("password") ?? "");
   if (!email || !name || password.length < 8) throw new UserError("Enter a name, email and a temporary password of 8+ characters.");
   if (!isValidEmail(email)) throw new UserError(EMAIL_HELP);
-  const existing = await db.user.findUnique({ where: { email } });
-  if (existing?.shopId === admin.shopId && !existing.active) throw new UserError(`${existing.name} is already in People with access removed: use Restore access.`);
+  const existing = await db.user.findUnique({ where: { shopId_email: { shopId: admin.shopId, email } } });
+  if (existing && !existing.active) throw new UserError(`${existing.name} is already in People with access removed: use Restore access.`);
+  // Only inside this company: the same address may have a login in another one (round 3 W1).
   if (existing) throw new UserError("That email already has an account.");
   // The StitchBench administrator's address carries install-wide rights: nobody else may take it for a login.
   if (isPlatformAdmin(email) && !isPlatformAdmin(admin.email)) throw new UserError("That email is reserved on this StitchBench.");
