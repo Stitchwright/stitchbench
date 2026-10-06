@@ -17,7 +17,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { clientAddress } from "@/lib/client-ip";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
-import { knownDeviceCookie, knownDeviceFor } from "@/lib/known-device";
+import { knownDeviceCookie, knownDeviceFor, requestCookie } from "@/lib/known-device";
+import { choiceCookieName, readTicket, spendTicket } from "@/lib/sign-in-ticket";
 import type { Role } from "@/generated/prisma/enums";
 
 // The same email rule accounts are made with (lib/email): a stricter check here locked out logins like owner@myshop.
@@ -25,6 +26,8 @@ const credentialsSchema = z.object({
   email: z.string().transform(normalizeEmail).refine(isValidEmail),
   password: z.string().min(1),
 });
+// "Choose a company" (src/lib/sign-in-ticket.ts): the ticket a right password earned, and the login picked from it.
+const ticketSchema = z.object({ ticket: z.string().min(1), userId: z.string().min(1) });
 
 export const WINDOW = 15 * 60_000;
 export const FREE_TRIES = 5;
@@ -88,42 +91,71 @@ async function paced<T>(email: string, n: number, fn: () => Promise<T>): Promise
   }
 }
 
+// Compared against when there are fewer logins than this, so one login and three cost the same (a fourth adds a compare).
+const PAD_TO = 3;
 // Compared against when the email isn't known, so a wrong email takes as long as a wrong password.
 const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 10);
 
 export type SignedIn = { id: string; email: string; name: string; role: Role; shopId: string; sv: number };
+/** A login the password fit, with its company's name (only ever shown after a right password). */
+export type Matched = SignedIn & { shopName: string };
 
-async function passwordOk(email: string, password: string): Promise<SignedIn | null> {
-  const user = await db.user.findUnique({ where: { email } });
-  const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
-  if (!user || !user.active || !ok) return null;
-  return { id: user.id, email: user.email, name: user.name, role: user.role, shopId: user.shopId, sv: user.sessionVersion };
+type Login = Matched & { hash: string; active: boolean };
+
+/** Every login with this email (an email is unique inside one company, so there can be several). */
+async function loginsFor(email: string): Promise<Login[]> {
+  const rows = await db.user.findMany({ where: { email }, include: { shop: { select: { name: true } } }, orderBy: { createdAt: "asc" } });
+  return rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, shopId: u.shopId, sv: u.sessionVersion, shopName: u.shop.name, hash: u.passwordHash, active: u.active }));
 }
 
-/** Auth.js' authorize(): the login for these credentials, or null (wrong, unknown, switched off, or held back by a limit). */
-export async function checkSignIn(credentials: unknown, request: Request | undefined): Promise<SignedIn | null> {
+/** The active logins the password fits. Always at least PAD_TO bcrypt compares, so unknown, one and several cost the same. */
+async function passwordMatches(logins: Login[], password: string): Promise<Matched[]> {
+  const hashes = logins.map((l) => (l.active ? l.hash : DUMMY_HASH));
+  while (hashes.length < PAD_TO) hashes.push(DUMMY_HASH);
+  const out: Matched[] = [];
+  for (let i = 0; i < hashes.length; i++) {
+    const ok = await bcrypt.compare(password, hashes[i]);
+    const l = logins[i];
+    if (ok && l && l.active) out.push({ id: l.id, email: l.email, name: l.name, role: l.role, shopId: l.shopId, sv: l.sv, shopName: l.shopName });
+  }
+  return out;
+}
+
+/**
+ * The password check with its limits. The logins the password fits: none (null), one, or several (the page then asks
+ * which company: src/app/login/page.tsx). Limits are kept per email as before, however many logins it has; one try is one
+ * try, not one per login compared.
+ */
+export async function signInStep(credentials: unknown, request: Request | Headers | undefined): Promise<Matched[] | null> {
   const parsed = credentialsSchema.safeParse(credentials);
   if (!parsed.success) return null;
   const { email, password } = parsed.data;
   const ip = clientAddress(request);
   if (ip && count(`i:${ip}`) >= PER_ADDRESS) return null;
 
-  // A browser this login signed in on before: its own count, not the account's queue.
+  const logins = await loginsFor(email);
+  const run = async (): Promise<Matched[] | null> => {
+    const found = await passwordMatches(logins, password);
+    return found.length ? found : null;
+  };
+
+  // A browser one of these logins signed in on before: its own count, not the account's queue.
   const cookie = knownDeviceCookie(request);
-  const sv = cookie ? ((await db.user.findUnique({ where: { email }, select: { sessionVersion: true } }))?.sessionVersion ?? 0) : 0;
-  const device = knownDeviceFor(cookie, email, Date.now(), sv);
+  const now = Date.now();
+  let device: string | null = null;
+  if (cookie) for (const l of logins) device ??= knownDeviceFor(cookie, l.id, now, l.sv);
   if (device && count(`d:${device}`) < PER_DEVICE) {
     const keys = ip ? [`d:${device}`, `i:${ip}`] : [`d:${device}`];
     for (const k of keys) begin(k);
     try {
-      const user = await passwordOk(email, password);
-      if (!user) {
+      const found = await run();
+      if (!found) {
         for (const k of keys) fail(k);
         return null;
       }
       // The account's own count stays: whoever is guessing at it elsewhere gets no fresh start from the owner's sign-in.
       state.failures.delete(`d:${device}`);
-      return user;
+      return found;
     } finally {
       for (const k of keys) end(k);
     }
@@ -135,17 +167,47 @@ export async function checkSignIn(credentials: unknown, request: Request | undef
   for (const k of keys) begin(k);
   try {
     return await paced(email, n, async () => {
-      const user = await passwordOk(email, password);
-      if (!user) {
+      const found = await run();
+      if (!found) {
         for (const k of keys) fail(k);
         return null;
       }
       state.failures.delete(`e:${email}`);
-      return user;
+      return found;
     });
   } finally {
     for (const k of keys) end(k);
   }
+}
+
+/**
+ * A ticket a right password earned (src/lib/sign-in-ticket.ts) and the login picked from it: that login, only when the
+ * ticket is genuine, fresh, unused, this browser's, lists the login, and the login is still active at the same
+ * sessionVersion (a reset or sign-out since ends it). Used up even when the login fails the last checks.
+ */
+async function redeemTicket(credentials: unknown, request: Request | Headers | undefined): Promise<SignedIn | null> {
+  const parsed = ticketSchema.safeParse(credentials);
+  if (!parsed.success) return null;
+  const p = readTicket(parsed.data.ticket, requestCookie(request, choiceCookieName()));
+  const entry = p?.l.find((e) => e[0] === parsed.data.userId);
+  if (!p || !entry || !spendTicket(p)) return null;
+  const u = await db.user.findUnique({ where: { id: entry[0] } });
+  if (!u || !u.active || u.sessionVersion !== entry[1]) return null;
+  return { id: u.id, email: u.email, name: u.name, role: u.role, shopId: u.shopId, sv: u.sessionVersion };
+}
+
+/**
+ * Auth.js' authorize(): the login for these credentials, or null (wrong, unknown, switched off, held back by a limit, or
+ * the password fits more than one company: only the sign-in page's "Choose a company" step signs in then). Either
+ * { email, password }, which signs in only when exactly one login fits, or { ticket, userId }.
+ */
+export async function checkSignIn(credentials: unknown, request: Request | undefined): Promise<SignedIn | null> {
+  if (credentials && typeof credentials === "object" && "ticket" in credentials) return redeemTicket(credentials, request);
+  const found = await signInStep(credentials, request);
+  if (!found || found.length !== 1) return null;
+  const { shopName: _shop, ...login } = found[0];
+  void _shop;
+  return login;
 }
 
 /**

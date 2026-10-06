@@ -1,6 +1,7 @@
 # Email addresses unique per company (round 3 W1: L7 and L31)
 
-Status: design, 6 Oct 2026, not built. This is the billing design's later package `hub-email-identity`
+Status: BUILT 6 Oct 2026 (migration `20261006200000_email_per_company`; owner answered 6 Oct: all six recommended answers). Built as designed, plus: the chooser ticket is also bound to the browser (an httpOnly cookie holds a nonce, the ticket its hash), is single use, and a single match signs in through an unbound server-only ticket; the reset mail strips line breaks and web addresses from company names. Release text: after the first duplicate address exists, going back to an older build needs one login renamed (the old unique index on email would refuse). Check: `scripts/checks/email-per-company.check.ts`.
+Was: design, not built. This is the billing design's later package `hub-email-identity`
 (`docs/plans/hub-accounts-billing-design.md` section 7 item 6, owner question 11). The owner decided "yes" on 30 Sep.
 Build it after package 4 and batches C and E, because it edits the same sign-in files.
 

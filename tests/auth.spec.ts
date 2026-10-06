@@ -8,7 +8,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import bcrypt from "bcryptjs";
-import { disconnect, expectRefused, insert, login, one, OTHER, remove, shopOf, TECH } from "./helpers";
+import { disconnect, expectRefused, insert, login, one, OTHER, remove, shopOf, sql as db, TECH } from "./helpers";
 
 const owner = { email: process.env.E2E_EMAIL ?? "e2e@stitchbench.test", password: process.env.E2E_PASSWORD ?? "e2e-password-1" };
 const run = Date.now().toString(36);
@@ -139,6 +139,55 @@ test("repeated wrong passwords slow that account down, and the right password st
     await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
   } finally {
     await remove("User", id);
+  }
+});
+
+// Round 3 W1: an email is unique inside one company, so one address can have a login in two. The right password for one
+// signs in straight; a password that fits both asks "Choose a company"; the choice signs in only that login, and the step
+// can't be used again or from another browser. (E2E shop and the "other" shop, one throwaway login in each.)
+test("the same email in two companies: straight in with one password, a chooser when both fit", async ({ browser, page }) => {
+  test.setTimeout(120_000);
+  const email = `twin.${run}@stitchbench.test`;
+  const { shopId: shopA } = await shopOf(owner);
+  const { shopId: shopB } = await shopOf(OTHER);
+  const hash = (pw: string) => bcrypt.hash(pw, 10);
+  const a = await insert<{ id: string }>("User", { shopId: shopA, email, name: `Twin A ${run}`, role: "TECH", passwordHash: await hash("twin-pass-A-1234") });
+  const b = await insert<{ id: string }>("User", { shopId: shopB, email, name: `Twin B ${run}`, role: "TECH", passwordHash: await hash("twin-pass-B-1234") });
+  try {
+    // Different passwords: each goes straight in, no chooser.
+    await page.goto("/login");
+    await signIn(page, { email, password: "twin-pass-A-1234" });
+    await expect(page.getByText("Choose a company")).toHaveCount(0);
+    await page.context().clearCookies();
+    // A wrong password: the same message as for any other login.
+    await page.goto("/login");
+    await fillIn(page, { email, password: "not-the-password" });
+    await expect(page.getByText("Email or password is wrong")).toBeVisible();
+    // The same password for both: the chooser lists the companies, and the choice signs in that login only.
+    await db(`UPDATE "User" SET "passwordHash" = $1 WHERE id = $2`, [await hash("twin-pass-A-1234"), b.id]);
+    await page.goto("/login");
+    await fillIn(page, { email, password: "twin-pass-A-1234" });
+    await expect(page.getByRole("heading", { name: "Choose a company" })).toBeVisible();
+    await expect(page).toHaveURL(/\/login\?choose=/);
+    const chooser = page.url();
+    // From another browser (no cookie) the step is not accepted, and shows no company.
+    const other = await browser.newContext();
+    const p2 = await other.newPage();
+    await p2.goto(chooser);
+    await expect(p2.getByRole("heading", { name: "Choose a company" })).toHaveCount(0);
+    await expect(p2.getByText("can't be used")).toBeVisible();
+    await other.close();
+    const buttons = page.locator("form button[name=userId]");
+    await expect(buttons).toHaveCount(2);
+    await buttons.first().click();
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+    // The chooser's address is used up: going back to it signs in nothing.
+    await page.context().clearCookies();
+    await page.goto(chooser);
+    await expect(page.getByRole("heading", { name: "Choose a company" })).toHaveCount(0);
+  } finally {
+    await remove("User", a.id);
+    await remove("User", b.id);
   }
 });
 

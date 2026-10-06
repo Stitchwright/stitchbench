@@ -203,7 +203,7 @@ model User {
   id             String   @id @default(cuid())
   shopId         String
   shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  email          String   @unique
+  email          String
   name           String
   passwordHash   String
   role           Role     @default(TECH)
@@ -221,6 +221,10 @@ model User {
   shifts        Shift[]
   appointments  Appointment[]
   resets        PasswordReset[]
+
+  // An email is unique inside one company (round 3 W1): the same address may have a login in several companies.
+  @@unique([shopId, email])
+  @@index([email])
 }
 
 // A one-use password link or reset (hub-accounts-billing-design.md 4.3, package hosted-provisioning). Only the sha256 of
