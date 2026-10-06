@@ -562,6 +562,7 @@ async function main() {
       },
     });
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
+    await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
     await db.vacCare.createMany({
       data: [
         { machineId: md.id, shopId: A, contactedAt: new Date(2026, 8, 20), contactedBy: "Ann", stopped: true },

@@ -62,6 +62,7 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "StockUnit", field: "machineId", one: true, label: ["Vac Shop stock record", "Vac Shop stock records"] },
   { model: "VacCare", field: "machineId", one: true, label: ["bag reminder setting", "bag reminder settings"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
+  { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
 ];
 
 /** What a deleted customer's kept rows say instead of their name. */
