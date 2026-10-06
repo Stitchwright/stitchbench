@@ -259,6 +259,15 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
+        <Section title="Audit log">
+          <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
+          <Link href="/settings/audit" className="btn btn-sm">
+            Open the audit log
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Your data">
           <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
           <div className="flex flex-wrap gap-2">
@@ -310,6 +319,10 @@ export default async function SettingsPage() {
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/payments" className="btn btn-sm">
               Repair payments (all dates)
+            </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/audit" className="btn btn-sm">
+              Audit log
             </a>
           </div>
         </Section>

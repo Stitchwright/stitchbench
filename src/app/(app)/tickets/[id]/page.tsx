@@ -1,3 +1,4 @@
+import { HistoryLink } from "@/components/history-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Trash2, Printer } from "lucide-react";
@@ -109,6 +110,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><HistoryLink role={user.role} type="Ticket" id={t.id} /></div>
       <PageHeader
         back={{ href: "/tickets", label: "Tickets" }}
         title={

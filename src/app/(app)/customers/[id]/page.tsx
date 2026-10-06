@@ -1,3 +1,4 @@
+import { HistoryLink } from "@/components/history-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -52,6 +53,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><HistoryLink role={user.role} type="Customer" id={c.id} /></div>
       <PageHeader
         back={{ href: "/customers", label: "Customers" }}
         title={c.name}
