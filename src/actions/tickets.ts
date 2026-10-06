@@ -27,6 +27,7 @@ import { requireBaseWritable } from "@/lib/base-gate";
 import { checklistFor, kindOf, shopKinds } from "@/lib/equipment/shop";
 import { readAnswers } from "@/lib/equipment/form";
 import { saveIntakeFor, saveReadingsFor } from "@/lib/equipment/ticket-data";
+import { openingTax, setTicketTaxFor } from "@/lib/ticket-tax";
 import { takeTicketNumber, typedTicketNumber } from "@/lib/ticket-number";
 import { INSTALL_CHECKLIST } from "@/lib/vac/installs";
 
@@ -221,6 +222,8 @@ export const createTicket = safe(async function createTicket(formData: FormData)
       ).id;
     }
 
+    // A tax-exempt customer (or the trade account the machine came through) opens the ticket untaxed, certificate kept.
+    const tax = await openingTax(tx, shopId, shop.taxRatePct, customerId, viaAccountId);
     return tx.ticket.create({
       data: {
         shopId,
@@ -234,7 +237,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
         preApprovedCents,
         accessories,
         intake,
-        taxRatePct: shop.taxRatePct,
+        ...tax,
         openedById: user.id,
         techId: user.id,
         lines: serviceItem
@@ -555,6 +558,20 @@ function removedLine(line: { id: string; ticketId: string; description: string; 
     changes: { qty: [line.qty, 0] as [unknown, unknown] },
   };
 }
+
+/**
+ * Tax on a ticket switched off for the customer's exemption certificate (charge = false), or back on at the shop's rate
+ * (charge = true). The certificate must be on file; the change is on the audit log.
+ */
+export const setTicketTax = safe(async function setTicketTax(ticketId: string, charge: boolean) {
+  const user = await requireUser();
+  const t = await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId }, include: { machine: { select: { equipment: true } } } });
+  if (!t) throw new UserError("Ticket not found.");
+  await requireEquipment(user, t.machine.equipment, { ticket: t, closing: true });
+  assertBillOpen(t, user);
+  await setTicketTaxFor(user, t, charge);
+  revalidatePath(`/tickets/${t.id}`);
+});
 
 export const removeLine = safe(async function removeLine(lineId: string) {
   const user = await requireUser();

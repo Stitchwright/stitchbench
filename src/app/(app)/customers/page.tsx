@@ -80,7 +80,7 @@ export default async function Customers({ searchParams }: { searchParams: Promis
         )}
       </div>
       <Section title="Add a customer or shop account">
-        <CustomerForm action={saveCustomer.bind(null, null)} submitLabel="Add" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
+        <CustomerForm action={saveCustomer.bind(null, null)} submitLabel="Add" taxFields={user.role !== "TECH"} marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
       </Section>
     </div>
   );

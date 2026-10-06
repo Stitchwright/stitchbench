@@ -30,6 +30,8 @@ export const AUDIT_ACTIONS = {
   "giftcard.adjust": { category: "money", label: "Gift card balance adjusted" },
   "giftcard.move": { category: "money", label: "Gift card moved to a new number" },
   "giftcard.cashout": { category: "money", label: "Gift card balance paid out in cash" },
+  "ticket.tax": { category: "money", label: "Tax switched off or on for a ticket" },
+  "customer.taxexempt": { category: "money", label: "Customer's tax-exempt certificate changed" },
   "credit.issue": { category: "money", label: "Store credit given" },
   // Prices
   "part.price": { category: "prices", label: "Item price or cost changed" },

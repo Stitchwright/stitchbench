@@ -145,7 +145,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         <CustomerClassesSlot customerId={c.id} user={user} />
         <CustomerAppointmentsSlot customerId={c.id} user={user} />
         <Section title="Details">
-          <CustomerForm action={saveCustomer.bind(null, c.id)} customer={c} submitLabel="Save" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
+          <CustomerForm action={saveCustomer.bind(null, c.id)} customer={{ ...c, taxExemptUntil: c.taxExemptUntil?.toISOString().slice(0, 10) ?? null }} taxFields={user.role !== "TECH"} submitLabel="Save" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
         </Section>
         <CustomerMessages customerId={c.id} user={user} />
         <CustomerMergePanel user={user} customer={{ id: c.id, name: c.name }} sp={sp} />
