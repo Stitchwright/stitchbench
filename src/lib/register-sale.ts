@@ -394,6 +394,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.
     await unpayClubSale(tx, shopId, sale.id, at);
+    // A quilt collected on this sale is back on the shelf (ready, not collected).
+    await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
     for (const l of sale.lines) {
       if (l.enrollmentId || l.appointmentId) await unsettleBooking(tx, shopId, l);
       if (l.partId) {
