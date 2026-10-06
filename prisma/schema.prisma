@@ -88,6 +88,9 @@ model Shop {
   bagReminderDays     Int       @default(180)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff        Boolean   @default(false)
+  // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
+  techsOfferManuals   Boolean   @default(false)
+  manualOffers        ManualOffer[]
   // This company's StitchHub account and standing, as the hub last told it (hub-accounts-billing-design.md 2.4, 5.2):
   // shown on Settings → Account. Only the hub's signed key (a License row with source "hub") changes what the program allows.
   hubAccountEmail     String?
@@ -782,9 +785,17 @@ model LibraryDoc {
   linkId       String?
   sourceUrl    String?
   downloadedAt DateTime?
+  // Hashes of the bytes (downloads and offers: sha256; the Python index: sha1), so a file held under another name is not fetched again.
+  sha256       String?
+  sha1         String?
+  // The repository took this manual down (copyright notice, or withdrawn by the hub's owner): the model page says so and offers "Delete my copy".
+  withdrawnAt  DateTime?
+  withdrawnWhy String?
 
   @@index([brand])
   @@index([linkId])
+  @@index([sha256])
+  @@index([sha1])
 }
 
 // A hub link queued to be downloaded into this install's library ("Download everything" for a model, a brand, or every
@@ -806,10 +817,45 @@ model ManualDownload {
   path       String? // where it was saved, relative to the library root (backslashes)
   filed      Boolean   @default(false) // true: under Category\Brand with a LibraryDoc row; false: _inbox
   error      String? // why it failed, in the user's words
+  retryAfter DateTime? // the hub said "later" (a 429 on a repository file): not taken before this
 
   @@index([shopId, jobId])
   @@index([status, queuedAt])
   @@index([linkId])
+}
+
+// A manual this company chose to offer to the hub's repository (manual-repository-design.md 3 and 6.2): one row per file,
+// made only by the offer action. It is the company's list of offers and where they stand on the hub (refreshed at each
+// sync). Stays on the install in a company move: it points at this PC's library and this install's uploads on the hub.
+model ManualOffer {
+  id               String   @id @default(cuid())
+  shopId           String
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId           String? // who offered it (no relation: people come and go)
+  byName           String
+  path             String? // in the library (backslashes); null when offered from the browser's own folder (hosted)
+  fileName         String
+  sha256           String
+  sizeBytes        Int
+  category         String
+  brand            String
+  models           String // as written: "PR650, PR655"
+  docType          String
+  year             Int?
+  language         String   @default("English")
+  title            String?
+  statementVersion String
+  statementAt      DateTime
+  hubUploadId      String?
+  hubManualId      String? // the repository's id for the manual once the hub says (duplicate, published)
+  state            String   @default("SENDING") // SENDING | WAITING | PUBLISHED | NOT_ACCEPTED | DUPLICATE | BLOCKED | REMOVED | FAILED
+  reason           String?
+  tries            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([shopId, createdAt])
+  @@index([hubUploadId])
 }
 
 // A picture of the machine, cut from its own manual (cover or front pages).
@@ -901,6 +947,15 @@ model ManualLink {
   httpStatus Int?
   checkedAt  DateTime?
   updatedAt  DateTime
+  // "link" (a web link shared by a shop) or "repository" (a file in the hub's manual repository: id repo_<manual id>, url
+  // stitchhub:repository/<id>, never opened as a web link). The rest is what the repository's feed says about the file.
+  origin     String    @default("link")
+  sizeBytes  Int?
+  sha256     String?
+  sha1       String?
+  year       Int?
+  language   String?
+  pages      Int?
 
   @@index([modelKeys], type: Gin)
   @@index([brand])
@@ -971,6 +1026,11 @@ model HubState {
   formerUrl        String?
   formerInstallId  String?
   formerInstallKey String?
+  // The manual repository (manual-repository-design.md 5.1): its own feed cursor, and whether the hub takes offers
+  // ("open", or "soon" while REPO_UPLOADS is off there; null: not asked yet) and when that was last asked.
+  repoCursor       String?
+  repoUploads      String?
+  repoProbeAt      DateTime?
 }
 
 // The community parts cross-reference (synced copy): one physical part, every number it goes by, what it fits.
