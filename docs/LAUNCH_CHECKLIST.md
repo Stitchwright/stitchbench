@@ -13,6 +13,7 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
       certificate through SSL.com (about $130 to $250 a year plus eSigner cloud signing or your own YubiKey 5 FIPS).
       Until it's done, test shops use the hosted version; an unsigned installer needs "More info", "Run anyway", and
       Smart App Control blocks it outright.
+      Steps and the repo variables: `docs/CODE_SIGNING.md` (the workflow is ready, off until `SIGNING_ENABLED`).
 - [ ] **A lawyer** for the terms and privacy drafts (`docs/legal/`, with the questions marked `[LAWYER: ...]`). Book
       the review now; the manual-repository questions can come later.
 
