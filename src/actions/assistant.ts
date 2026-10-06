@@ -10,6 +10,7 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { draftText, likelyCauses, markCall, plateRead, saveSettings } from "@/lib/assistant/bodies";
 import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
+import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
 export const draftTicketText = safe(async (ticketId: string, kind: string, shorthand: string, instruction: string) => {
@@ -46,6 +47,7 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
     causesOn: fd.get("causesOn") === "on",
     plateOn: fd.get("plateOn") === "on",
     manualsOn: fd.get("manualsOn") === "on",
+    partsOn: fd.get("partsOn") === "on",
     offerFirstNames: fd.get("offerFirstNames") === "on",
     voice: String(fd.get("voice") ?? "").trim() || null,
   });
@@ -87,4 +89,22 @@ export const clearManualIndex = safe(async () => {
   await clearIndex(user);
   revalidatePath("/manuals");
   revalidatePath("/models", "layout");
+});
+
+/** "Looks like" on a part page: likely equivalent parts from this company's stock and the shared cross-reference (links only; nothing is changed). */
+export const askLooksLike = safe(async (partId: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await looksLike(user, { partId })));
+});
+
+/** "Parts this job usually needs" on a ticket: from this shop's past jobs on the model and the parts the cross-reference says fit it. */
+export const askPartsForJob = safe(async (ticketId: string, instruction: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await partsForJob(user, { ticketId, instruction })));
+});
+
+/** "Match the columns" on the inventory import: the headings and three sample rows in, a proposed field-to-column map out. */
+export const askMatchColumns = safe(async (fields: { key: string; label: string }[], headers: string[], sample: string[][]) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await matchColumns(user, { fields, headers, sample })));
 });

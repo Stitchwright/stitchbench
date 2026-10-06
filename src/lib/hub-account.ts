@@ -132,6 +132,7 @@ export async function startHubAccountFor(user: CurrentUser, fd: FormData): Promi
     message: st.message,
     key: st.key ?? answer.key ?? null,
     revokeKeyIds: st.revokeKeyIds ?? answer.revokeKeyIds ?? [],
+    moduleKeys: st.moduleKeys ?? answer.moduleKeys ?? null,
   });
   // Every company claims itself on the new connection; nobody waits for it.
   syncHub().catch(() => undefined);

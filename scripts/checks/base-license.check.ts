@@ -540,6 +540,35 @@ async function main() {
     assertUnchanged("company A", snapA, await snapshot(a.shopId, ["Shop", "License", "Sale"]));
     ok("tenant: B's calls learn and change nothing of A's");
 
+    // ---------- 6. the Assistant's key from the hub (moduleKeys) ----------
+    // The hub sells the Assistant as its own subscription and sends its key beside the program's: kept as a hub row of
+    // its own, replaced by the hub's next one, never taken away by the base key's arrival (nor taking it away), and only
+    // for this company and for the module.
+    const modKey = (modules: string[], until: number, shop = b.shopId) => devLicenseKey({ shopId: shop, modules, from: today(), until: addDaysYmd(today(), until), plan: "m" });
+    const idOf = (k: string) => payloadOf(k).id;
+    const hubKeyIds = async () => (await db.license.findMany({ where: { shopId: b.shopId, source: "hub" }, select: { keyId: true } })).map((r) => r.keyId).sort();
+    const baseK1 = modKey(["base"], 30);
+    const asK1 = modKey(["assistant"], 30);
+    await applyStanding(b.shopId, { standing: "active", key: baseK1, moduleKeys: [asK1] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK1), idOf(asK1)].sort(), "the program's key and the Assistant's, both hub rows");
+    assert.equal((await loadModules(b.shopId)).states.assistant.active, true, "the Assistant is on from the hub's key");
+    const asK2 = modKey(["assistant"], 60);
+    await applyStanding(b.shopId, { standing: "active", key: baseK1, moduleKeys: [asK2] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK1), idOf(asK2)].sort(), "the hub's next Assistant key replaces the old one");
+    const baseK2 = modKey(["base"], 45);
+    await applyStanding(b.shopId, { standing: "active", key: baseK2 });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK2)].sort(), "a new base key replaces the base key only; no moduleKeys leaves the Assistant's");
+    await applyStanding(b.shopId, { standing: "active", moduleKeys: [] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK2)].sort(), "an empty list takes nothing away: an ended key runs out on its own");
+    await applyStanding(b.shopId, { standing: "active", moduleKeys: [modKey(["assistant"], 90, a.shopId), baseK1, "garbage"] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK2)].sort(), "another company's key, a base key in the list and garbage are ignored");
+    const pastedAs = await grantDevLicense(b.shopId, ["assistant"], { from: today(), until: addDaysYmd(today(), 100), plan: "m" });
+    await applyStanding(b.shopId, { standing: "active", moduleKeys: [modKey(["assistant"], 75)] });
+    assert.equal(await db.license.count({ where: { shopId: b.shopId, keyId: idOf(pastedAs) } }), 1, "a key pasted by hand is never replaced by the hub's");
+    await applyStanding(b.shopId, { standing: "active", revokeKeyIds: [idOf(asK2)] });
+    assert.equal(await db.license.count({ where: { shopId: b.shopId, keyId: idOf(asK2) } }), 0, "the hub can take back an Assistant key it issued (a refund)");
+    ok("moduleKeys: the Assistant's key kept apart from the program's, replaced by the next, checked for company and module, never over a pasted key");
+
     if (savedAdmins === undefined) delete process.env.PLATFORM_ADMIN_EMAILS;
     else process.env.PLATFORM_ADMIN_EMAILS = savedAdmins;
     console.log(`base-license.check: ${steps} steps passed (run ${RUN}; mock hub ${mock.url})`);
