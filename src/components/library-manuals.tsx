@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Copy, ExternalLink, FileText } from "lucide-react";
+import { ActionButton } from "@/components/action-form";
+import { deleteWithdrawnCopy } from "@/actions/manual-repository";
 import { findByPath, findManuals, loadIndex, openLocal, serverLibrary, SERVER_PREFIX, type LibraryIndex } from "@/lib/local-manuals";
 
-type Doc = { path: string; file: string; docType: string | null; pages: number | null; sizeBytes: number | null };
+type Doc = { path: string; file: string; docType: string | null; pages: number | null; sizeBytes: number | null; withdrawnWhy?: string | null };
 
 async function copy(text: string) {
   try {
@@ -65,6 +67,16 @@ export function LibraryManuals({ docs, root, brand, model }: { docs: Doc[]; root
                       {d.docType && <span className="pill tone-neutral">{d.docType.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>}
                     </div>
                     <div className="muted text-xs">{[d.pages ? `${d.pages} pages` : "", size(d.sizeBytes)].filter(Boolean).join(" · ")}</div>
+                    {d.withdrawnWhy && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="pill tone-bad">{d.withdrawnWhy === "copyright" ? "Removed from the repository after a copyright notice" : "Withdrawn from the repository"}</span>
+                        {shop && (
+                          <ActionButton action={deleteWithdrawnCopy.bind(null, d.path)} className="btn btn-sm btn-danger" confirm="Delete this copy from the library?" success="Copy deleted">
+                            Delete my copy
+                          </ActionButton>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-1 flex items-center gap-1">
                       <code className="mono min-w-0 flex-1 truncate rounded bg-surface-2 px-1.5 py-0.5 text-xs" title={full}>
                         {full}

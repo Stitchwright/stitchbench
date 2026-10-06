@@ -1,5 +1,6 @@
 import "server-only";
 import dns from "node:dns";
+import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -104,4 +105,43 @@ export async function fetchPublic(url: string, init: { headers?: Record<string, 
     return { response: { ok: r.status >= 200 && r.status < 300, status: r.status }, body: r.body };
   }
   throw new Error("Too many redirects.");
+}
+
+/**
+ * Where the manual repository's presigned URLs may point (manual-repository-design.md 3 and 6.4): https on Cloudflare R2's
+ * own host, or a host in FETCH_ALLOW_HOSTS (the end-to-end tests' mock). Checked before every PUT and every GET, so a hub
+ * can't aim a shop's file, or the shop's download, at the shop's own network or at a web page.
+ */
+export function storageUrlOk(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.username || u.password) return false;
+  if (allowedHost(u)) return u.protocol === "https:" || u.protocol === "http:";
+  return u.protocol === "https:" && /\.r2\.cloudflarestorage\.com$/i.test(u.hostname);
+}
+
+/**
+ * PUT a file from disk to a presigned storage URL (storageUrlOk first), streamed, no redirect followed, the connection
+ * resolved through the same public-only lookup as fetchPublic. `headers` are the ones the hub signed (Content-Type and
+ * Content-Length): they are sent as given.
+ */
+export function putFile(url: string, init: { headers: Record<string, string>; file: string; timeoutMs: number }): Promise<{ status: number }> {
+  return new Promise((resolve, reject) => {
+    if (!storageUrlOk(url)) return reject(new Error("The hub's upload address isn't one this program will send a file to."));
+    const u = new URL(url);
+    const lib = u.protocol === "https:" ? https : http;
+    const req = lib.request(u, { method: "PUT", headers: init.headers, signal: AbortSignal.timeout(init.timeoutMs), ...(allowedHost(u) ? {} : { lookup: publicLookup }) }, (res) => {
+      res.resume();
+      res.on("end", () => resolve({ status: res.statusCode ?? 0 }));
+      res.on("error", reject);
+    });
+    req.on("error", (e: NodeJS.ErrnoException) => reject(e.code === "EPRIVATE" || e.message === PRIVATE ? new Error(PRIVATE) : e));
+    const src = fs.createReadStream(init.file);
+    src.on("error", (e) => req.destroy(e));
+    src.pipe(req);
+  });
 }

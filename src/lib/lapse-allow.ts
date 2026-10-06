@@ -85,6 +85,11 @@ export const BY_HAND = [
   "importItems",
   "sendCampaignTest",
   "sendBagReminders",
+  // The manual repository on a hosted install (the browser reads, hashes and sends the file): an offer or a download is new work
+  "startHostedOffer",
+  "finishHostedOffer",
+  "failHostedOffer",
+  "repositoryDownloadInfo",
 ] as const;
 
 /**
