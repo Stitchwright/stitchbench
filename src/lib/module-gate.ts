@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { hasModule, navGates, requireModule, shopsWithModule } from "@/lib/modules";
 
-export type ModuleKey = "scheduling" | "marketing";
+export type ModuleKey = "scheduling" | "marketing" | "assistant";
 export type Gate = "on" | "readonly" | "hidden";
 
 export async function moduleOn(shopId: string, key: ModuleKey): Promise<boolean> {
@@ -31,6 +31,9 @@ async function hasRecords(shopId: string, key: ModuleKey): Promise<boolean> {
       db.partnerRun.findFirst({ where: { shopId }, select: { id: true } }),
     ]);
     found = !!(a || b || c || d || e);
+  } else if (key === "assistant") {
+    // Its only records are the log of what was asked: it stays readable after the module ends.
+    found = !!(await db.assistantCall.findFirst({ where: { shopId }, select: { id: true } }));
   } else {
     const [a, b, c] = await Promise.all([
       db.messagingSettings.findFirst({ where: { shopId }, select: { shopId: true } }),
@@ -53,8 +56,8 @@ export async function gateFor(shopId: string, key: ModuleKey): Promise<Gate> {
 }
 
 export async function gates(shopId: string): Promise<Record<ModuleKey, Gate>> {
-  const [scheduling, marketing] = await Promise.all([gateFor(shopId, "scheduling"), gateFor(shopId, "marketing")]);
-  return { scheduling, marketing };
+  const [scheduling, marketing, assistant] = await Promise.all([gateFor(shopId, "scheduling"), gateFor(shopId, "marketing"), gateFor(shopId, "assistant")]);
+  return { scheduling, marketing, assistant };
 }
 
 /** Throws the modules package's UserError unless new work is allowed. */

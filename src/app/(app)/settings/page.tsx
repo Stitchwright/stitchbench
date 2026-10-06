@@ -236,6 +236,13 @@ export default async function SettingsPage() {
               Online booking (Scheduling)
             </Link>
           </div>
+          {modules.states.assistant.status !== "off" && (
+            <div>
+              <Link href="/settings/assistant" className="link">
+                Assistant: switches, voice and what was sent
+              </Link>
+            </div>
+          )}
           {shop.sellsRetail && (
             <div>
               <Link href="/settings/shop" className="link">
