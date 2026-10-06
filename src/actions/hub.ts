@@ -68,6 +68,11 @@ function linkFields(formData: FormData) {
 
 // Each change names the person and the company making it (byWhom): the hub's history shows the company, not the install.
 // requireHubWrites refuses a company whose sharing the StitchBench administrator switched off, and names the writer.
+/** A repository manual isn't a web link: its details are the hub owner's, so nobody edits, rolls back or removes it from here. */
+function repoLinkGuard(linkId: string) {
+  if (linkId.startsWith("repo_")) throw new UserError("That manual is in the hub's repository. Only the hub's owner changes or removes it.");
+}
+
 export const addManualLink = safe(async function addManualLink(formData: FormData) {
   const user = await requireUser();
   const byName = await requireHubWrites(user);
@@ -77,6 +82,7 @@ export const addManualLink = safe(async function addManualLink(formData: FormDat
 });
 
 export const editManualLink = safe(async function editManualLink(linkId: string, formData: FormData) {
+  repoLinkGuard(linkId);
   const user = await requireUser();
   const byName = await requireHubWrites(user);
   const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "PUT", json: { ...linkFields(formData), ...(await byWhom(user)), byName } })).json()) as HubLink;
@@ -85,6 +91,7 @@ export const editManualLink = safe(async function editManualLink(linkId: string,
 });
 
 export const revertManualLink = safe(async function revertManualLink(linkId: string, revisionId: string) {
+  repoLinkGuard(linkId);
   const user = await requireUser();
   const byName = await requireHubWrites(user);
   const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}/revert`, { method: "POST", json: { revisionId, ...(await byWhom(user)), byName } })).json()) as HubLink;
@@ -93,6 +100,7 @@ export const revertManualLink = safe(async function revertManualLink(linkId: str
 });
 
 export const removeManualLink = safe(async function removeManualLink(linkId: string) {
+  repoLinkGuard(linkId);
   const user = await requireUser();
   const byName = await requireHubWrites(user);
   const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "DELETE", json: { ...(await byWhom(user)), byName } })).json()) as HubLink;

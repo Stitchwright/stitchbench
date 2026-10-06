@@ -4,6 +4,7 @@ import "server-only";
 // (ManualLink, HubPost, HubPhoto, HubFigure). Pictures are fetched the first time someone looks at them.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { actingCompany, asCompany } from "@/lib/acting-company";
+import { libraryDir } from "@/lib/library-dir";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { applyMovedOut, applyStanding, movedAnswer, type StandingAnswer } from "@/lib/hub-standing";
@@ -393,6 +394,7 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
     installKey: j.installKey,
     joinedAt: new Date(),
     cursor: "0",
+    repoCursor: null, repoUploads: null, repoProbeAt: null,
     orderCursor: null,
     partnerCursor: null,
     lastError: null,
@@ -453,6 +455,7 @@ export async function adoptInstall(a: { url: string; hubName: string | null; ins
     installKey: a.installKey,
     joinedAt: new Date(),
     cursor: "0",
+    repoCursor: null, repoUploads: null, repoProbeAt: null,
     orderCursor: null,
     partnerCursor: "0",
     lastError: null,
@@ -512,6 +515,7 @@ export async function leaveHub() {
       installId: null,
       installKey: null,
       cursor: null,
+      repoCursor: null, repoUploads: null, repoProbeAt: null,
       orderCursor: null,
       discordUrl: null,
       scope: "member",
@@ -1071,6 +1075,10 @@ async function doSync(): Promise<SyncResult> {
       if (!(await writeState(run, { cursor: since }))) return { skipped: true };
       if (!ch.more) break;
     }
+    // The manual repository's feed (its own cursor) and the company's offers. A hub without one, or a failure here, never stops the rest.
+    await import("@/lib/manual-repository")
+      .then((m) => m.pullRepository(run, libraryDir()))
+      .catch((e) => console.error("community hub: manual repository:", e instanceof Error ? e.message : e));
     if (!(await pullOrders(s.orderCursor, run))) return { skipped: true };
     // A refused usage report mustn't stop the sync, but it's shown with the sync status rather than lost; an older hub
     // without usage at all (404) isn't worth reporting every time.

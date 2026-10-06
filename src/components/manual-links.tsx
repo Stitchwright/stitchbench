@@ -4,6 +4,7 @@
 // wiring), lists the links grouped by kind, and can queue every link for the model or the brand into the library.
 import Link from "next/link";
 import { Download, ExternalLink, Trash2 } from "lucide-react";
+import { sessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { fmtDate, modelKey } from "@/lib/format";
 import { DOC_TYPES } from "@/lib/constants";
@@ -11,6 +12,9 @@ import { brandMatches, libraryFor } from "@/lib/model-info";
 import { hubJoined } from "@/lib/hub";
 import { libraryDir } from "@/lib/library-dir";
 import { coverage, type Coverage } from "@/lib/manual-downloads";
+import { canOfferNow, sizeWords } from "@/lib/manual-repository";
+import { OfferForm } from "@/components/manual-offer";
+import { RepoDownloadButton } from "@/components/hosted-offer";
 import { Section, Empty } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { LinkHistory } from "@/components/link-history";
@@ -79,7 +83,40 @@ function LinkFields({ l, brand, models }: { l?: LinkRow; brand?: string; models?
   );
 }
 
+/** A manual in the hub's repository: a file, not a web link (nothing to open, fix, roll back or remove here). */
+function RepositoryItem({ l, canDownload, showModel }: { l: LinkRow; canDownload: boolean; showModel?: boolean }) {
+  return (
+    <li className="py-3">
+      <div className="min-w-0">
+        <div className="font-semibold break-words">{l.title}</div>
+        <div className="muted mt-0.5 flex flex-wrap items-center gap-2 text-xs">
+          <span className="pill tone-neutral">{docLabel(l.docType)}</span>
+          <span className="pill tone-ready">In the repository</span>
+          {showModel && (
+            <span>
+              {l.brand} {l.models}
+            </span>
+          )}
+          {l.year && <span>{l.year}</span>}
+          {l.pages ? <span>{l.pages} pages</span> : null}
+          {l.sizeBytes ? <span>{sizeWords(l.sizeBytes)}</span> : null}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-start gap-2">
+        {canDownload ? (
+          <ActionButton action={downloadManualLink.bind(null, l.id)} className="btn btn-sm" success="Saved to the manual library">
+            <Download size={12} aria-hidden /> Download to library
+          </ActionButton>
+        ) : (
+          <RepoDownloadButton linkId={l.id} />
+        )}
+      </div>
+    </li>
+  );
+}
+
 export function ManualLinkItem({ l, canDownload, showModel, timeZone }: { l: LinkRow; canDownload: boolean; showModel?: boolean; timeZone: string }) {
+  if (l.origin === "repository") return <RepositoryItem l={l} canDownload={canDownload} showModel={showModel} />;
   const st = STATUS[l.status] ?? STATUS.unchecked;
   return (
     <li className="py-3">
@@ -138,6 +175,7 @@ export async function linksFor(brand: string, model: string) {
 
 const COVER_TONE: Record<Coverage["state"], { tone: string; words: (c: Coverage) => string }> = {
   have: { tone: "tone-ready", words: (c) => (c.have === 1 ? "in the library" : `${c.have} in the library`) },
+  repo: { tone: "tone-wait", words: (c) => (c.repo === 1 ? "in the repository, not downloaded" : `${c.repo} in the repository, not downloaded`) },
   link: { tone: "tone-wait", words: (c) => (c.links === 1 ? "link only, not downloaded" : `${c.links} links, none downloaded`) },
   missing: { tone: "tone-bad", words: (c) => (c.dead ? `missing (${c.dead} dead link${c.dead === 1 ? "" : "s"})` : "missing: nothing to download") },
 };
@@ -156,7 +194,7 @@ export function DocCoverage({ cover, model }: { cover: Coverage[]; model: string
       </ul>
       {missing.length > 0 && (
         <p className="muted mt-1 text-xs">
-          Nobody has shared a {missing.join(", ")} for the {model} yet. If you find one, add the link below so every shop can get it.
+          Nobody has shared a link or a file for the {missing.join(", ")} for the {model} yet. If you find one, add the link below so every shop can get it.
         </p>
       )}
     </div>
@@ -177,7 +215,7 @@ export async function ManualLinks({ shopId, brand, model, timeZone }: { shopId?:
       </Section>
     );
   }
-  const [links, docs] = await Promise.all([linksFor(brand, model), libraryFor(brand, model)]);
+  const [links, docs, user] = await Promise.all([linksFor(brand, model), libraryFor(brand, model), sessionUser()]);
   const canDownload = libraryDir() != null;
   const dead = links.filter((l) => l.status === "dead").length;
   const cover = coverage(docs, links);
@@ -189,6 +227,9 @@ export async function ManualLinks({ shopId, brand, model, timeZone }: { shopId?:
     groups.set(k, [...(groups.get(k) ?? []), l]);
   }
   const toGet = links.filter((l) => l.status !== "dead").length;
+  // Offering a library file to the hub's repository: the shop PC's library, a person allowed to, and not a file that came from the repository.
+  const offerable = canDownload && user && (await canOfferNow(user)) ? docs.filter((d) => !d.linkId?.startsWith("repo_") && !d.withdrawnAt) : [];
+  const categories = offerable.length ? (await db.libraryDoc.findMany({ distinct: ["category"], select: { category: true }, orderBy: { category: "asc" } })).map((c) => c.category) : [];
   return (
     <Section
       title={`Manual links (${links.length})`}
@@ -236,6 +277,20 @@ export async function ManualLinks({ shopId, brand, model, timeZone }: { shopId?:
             </div>
           ))}
         </div>
+      )}
+      {offerable.length > 0 && (
+        <details className="mt-3 border-t border-line pt-3">
+          <summary className="link cursor-pointer text-sm">Offer one of your manuals to the repository</summary>
+          <p className="muted mt-1 text-xs">Each file is offered on its own, with your statement for it. Nothing is sent unless you press Offer.</p>
+          <ul className="mt-2 divide-y divide-line">
+            {offerable.map((d) => (
+              <li key={d.path} className="flex flex-wrap items-start justify-between gap-2 py-2">
+                <span className="min-w-0 text-sm break-all">{d.file}</span>
+                <OfferForm path={d.path} fileName={d.file} doc={d} categories={categories} />
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {shopId && canDownload && (
         <div className="mt-3">

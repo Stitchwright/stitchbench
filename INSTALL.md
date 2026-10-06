@@ -251,6 +251,28 @@ The server can't see your PCs. Each tech connects their manuals folder once in t
 Connect folder**, in Chrome or Edge), and StitchBench opens manuals from that PC. Manual figures come from the
 community hub, or are drawn from the tech's own copy.
 
+**The manual repository on the hosted version** (the hub's community library; see the hub's README). A tech can
+download a repository manual and offer one of their own files straight from the browser: the page reads the file from
+the connected folder, checks and hashes it, and sends it to the hub's R2 storage on a short-lived address the hub
+gives it, so the file never passes through this server and the install key never reaches the browser. That needs
+**CORS on the hub's R2 bucket** (Cloudflare dashboard, the bucket's Settings, CORS policy), allowing this site's own
+address (and the other hosted address, if there is one):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://<this app's address>", "https://<the other hosted app's address>"],
+    "AllowedMethods": ["GET", "PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Without it the browser can't read a download or send an offer; the buttons then say the storage couldn't be reached.
+On the Windows program none of this is needed (the program itself sends and fetches). Offers stay off until the hub's
+owner switches `REPO_UPLOADS` on; until then the program says "The manual repository opens soon."
+
 ### Backups
 Turn on database backups for the Postgres service in the Railway dashboard (on plans that include them). For your
 own copies, give the database a public address (Postgres service → **Settings → Networking → TCP Proxy**), then
@@ -366,6 +388,17 @@ code is public at https://github.com/bwattendorf/stitchhub.
 In StitchBench, go to **Settings → Community hub**, paste the invite code (or open the `.stitchhub` invite file),
 and press **Join**. StitchBench then syncs every 10 minutes. **Community chat** in the menu opens the community's
 Discord.
+
+The hub also holds a **manual repository**: manuals other shops offered, which show with the manual links (**Manual
+links**, and each model page) with a **Download** button that files the PDF in your library under its usual name
+(`Category\Brand\Brand_Model_DocType_Year.pdf`), checked against the hub's checksum. **Download everything** includes the
+repository and says how many files and how many GB first; it stops when less than 5 GB is free on the library's disk.
+To offer one of your own manuals (owner or admin; techs only when the owner turns on **Techs may offer manuals** in
+Settings → Community hub): open the model page, **Manual links → Offer one of your manuals to the repository**, or
+use an `_inbox` file under **Manual links → Manual repository**. Each file is its own offer with its own ticked
+statement; nothing is ever offered automatically. The hub's owner reviews each file before other shops can download it.
+If a copyright notice removes a manual you downloaded, the model page marks your copy and offers **Delete my copy**;
+the program never deletes it for you.
 
 ---
 
