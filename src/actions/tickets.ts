@@ -9,11 +9,12 @@ import { numberKey } from "@/lib/parts";
 import { withDisclosure } from "@/lib/part-labels";
 import { sameText } from "@/lib/input";
 import { lineTotal } from "@/lib/ticket-math";
-import { modelKey, money, str, toCents } from "@/lib/format";
-import { removePaymentFor } from "@/lib/payments";
+import { modelKey, money, str, ticketNo, toCents } from "@/lib/format";
+import { addPaymentFor, removePaymentFor } from "@/lib/payments";
+import { actorOf, audit } from "@/lib/audit";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { CLOSING_STATUSES, PAYMENT_LABEL, SITE_STATUS_ORDER, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
+import { CLOSING_STATUSES, SITE_STATUS_ORDER, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { kickPartnerSync } from "@/lib/partners";
 import { requireModule } from "@/lib/modules";
 import { changeTicketStatus } from "@/lib/ticket-status";
@@ -543,11 +544,23 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
   refresh(ticketId);
 });
 
+/** The audit entry for a ticket line taken off (design 4.1, Deletes). */
+function removedLine(line: { id: string; ticketId: string; description: string; qty: number; unitPriceCents: number; ticket: { number: number } }) {
+  return {
+    action: "ticketline.remove" as const,
+    subjectType: "Ticket",
+    subjectId: line.ticketId,
+    subjectLabel: `Ticket #${ticketNo(line.ticket.number)}: ${line.description}`,
+    amountCents: lineTotal(line),
+    changes: { qty: [line.qty, 0] as [unknown, unknown] },
+  };
+}
+
 export const removeLine = safe(async function removeLine(lineId: string) {
   const user = await requireUser();
   const line = await db.ticketLine.findFirst({
     where: { id: lineId, ticket: { shopId: user.shopId } },
-    include: { ticket: { select: { closedAt: true, intakeAt: true, status: true, machine: { select: { equipment: true } } } } },
+    include: { ticket: { select: { number: true, closedAt: true, intakeAt: true, status: true, machine: { select: { equipment: true } } } } },
   });
   if (!line) throw new UserError("Line not found.");
   // Taking a line off is work on the ticket (the same gate as adding one).
@@ -555,15 +568,19 @@ export const removeLine = safe(async function removeLine(lineId: string) {
   assertBillOpen(line.ticket, user);
   if (line.kind === "PART" && line.partId) {
     const qty = line.qty;
-    await db.$transaction([
-      db.ticketLine.delete({ where: { id: lineId } }),
-      db.part.update({ where: { id: line.partId }, data: { qtyOnHand: { increment: qty } } }),
-      db.stockMove.create({
-        data: { shopId: user.shopId, partId: line.partId, qty, reason: "RETURNED", ticketId: line.ticketId, userId: user.id, note: "Removed from ticket" },
-      }),
-    ]);
+    await db.$transaction(async (tx) => {
+      await tx.ticketLine.delete({ where: { id: lineId } });
+      await tx.part.update({ where: { id: line.partId! }, data: { qtyOnHand: { increment: qty } } });
+      await tx.stockMove.create({
+        data: { shopId: user.shopId, partId: line.partId!, qty, reason: "RETURNED", ticketId: line.ticketId, userId: user.id, note: "Removed from ticket" },
+      });
+      await audit(tx, actorOf(user), removedLine(line));
+    });
   } else {
-    await db.ticketLine.delete({ where: { id: lineId } });
+    await db.$transaction(async (tx) => {
+      await tx.ticketLine.delete({ where: { id: lineId } });
+      await audit(tx, actorOf(user), removedLine(line));
+    });
   }
   refresh(line.ticketId);
 });
@@ -572,22 +589,10 @@ export const removeLine = safe(async function removeLine(lineId: string) {
 
 export const addPayment = safe.whileLapsed("addPayment")(async function addPayment(ticketId: string, formData: FormData) {
   const user = await requireUser();
-  // Taking payment closes work out: allowed whatever the module's state.
-  await ownTicket(user.shopId, ticketId, "close", user.role);
-  const amount = toCents(formData.get("amount"));
-  if (amount == null || amount === 0) throw new UserError("Enter the amount paid.");
-  if (Math.abs(amount) > MAX_MONEY) throw new UserError("That's more than $100,000. Check the amount.");
-  // Money back (a minus amount) cancels what was taken, like removing a payment: the owner's or an admin's call.
-  if (amount < 0 && user.role === "TECH") throw new UserError("Only the shop owner or an admin can record a refund.");
-  const method = (str(formData.get("method")) ?? "CARD") as PaymentMethod;
-  if (!Object.hasOwn(PAYMENT_LABEL, method)) throw new UserError("Pick how it was paid.");
-  await db.payment.create({
-    data: {
-      ticketId,
-      method,
-      amountCents: amount,
-      note: fits(str(formData.get("note")), "Note"),
-    },
+  await addPaymentFor(user, ticketId, {
+    amountCents: toCents(formData.get("amount")),
+    method: (str(formData.get("method")) ?? "CARD") as PaymentMethod,
+    note: fits(str(formData.get("note")), "Note"),
   });
   refresh(ticketId);
   revalidatePath("/sales");

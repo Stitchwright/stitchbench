@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { fmtDateTime, money } from "@/lib/format";
 import { barcodeSvg } from "@/lib/barcode";
 import { lineNet, qtyText, TENDER_LABEL, type Tender } from "@/lib/register-math";
+import { HistoryLink } from "@/components/history-link";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
@@ -27,7 +28,12 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
 
   return (
     <div className="space-y-4">
-      <PageHeader back={{ href: "/register/sales", label: "Sales" }} title={`Sale #${sale.number}`} actions={<PrintButton />} />
+      <PageHeader back={{ href: "/register/sales", label: "Sales" }} title={`Sale #${sale.number}`} actions={
+          <>
+            <HistoryLink role={user.role} type="Sale" id={sale.id} />
+            <PrintButton />
+          </>
+        } />
       {sale.status === "VOIDED" && (
         <p className="pill tone-bad" role="status">
           Void{sale.voidedAt ? ` since ${when(sale.voidedAt)}` : ""}

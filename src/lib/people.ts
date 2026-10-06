@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
 import { str } from "@/lib/format";
 import { withLoginRoom } from "@/lib/plan";
+import { actorOf, audit } from "@/lib/audit";
 import type { CurrentUser } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/shops";
 import { UserError } from "@/lib/user-error";
@@ -36,8 +37,8 @@ export async function addPersonAs(admin: CurrentUser, formData: FormData): Promi
   if (role !== "ADMIN" && role !== "TECH") throw new UserError("Pick admin or tech.");
   const data = { shopId: admin.shopId, email, name, role, passwordHash: await bcrypt.hash(password, 10) };
   // The administrator's own login isn't one of the shop's people: it never needs room.
-  if (isPlatformAdmin(email)) await db.user.create({ data });
-  else await withLoginRoom(admin.shopId, (tx) => tx.user.create({ data }));
+  const created = isPlatformAdmin(email) ? await db.user.create({ data }) : await withLoginRoom(admin.shopId, (tx) => tx.user.create({ data }));
+  await audit(db, actorOf(admin), { action: "user.add", subjectType: "User", subjectId: created.id, subjectLabel: `${name} (${email})`, changes: { role: [null, role] } });
 }
 
 /** "Remove access" / "Restore access". Restoring counts as adding a login on Solo. */
@@ -50,4 +51,5 @@ export async function setPersonActiveAs(admin: CurrentUser, userId: string, acti
   const data = { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) };
   if (active && !u.active && !isPlatformAdmin(u.email)) await withLoginRoom(admin.shopId, (tx) => tx.user.update({ where: { id: userId }, data }));
   else await db.user.update({ where: { id: userId }, data });
+  if (u.active !== active) await audit(db, actorOf(admin), { action: "user.active", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})`, changes: { active: [u.active, active] } });
 }

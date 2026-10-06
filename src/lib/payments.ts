@@ -2,8 +2,40 @@ import "server-only";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { PAYMENT_LABEL } from "@/lib/constants";
-import { money } from "@/lib/format";
+import { money, ticketNo } from "@/lib/format";
+import { actorOf, audit } from "@/lib/audit";
 import type { CurrentUser } from "@/lib/session";
+import type { PaymentMethod } from "@/generated/prisma/enums";
+
+// $100,000 in cents: far above any real payment, and well inside what the books' whole numbers hold.
+const MAX_MONEY = 10_000_000;
+
+/**
+ * Takes a payment on a ticket (the Payments box on the ticket page). Taking payment closes work out, so it is allowed
+ * whatever the module's state; money back (a minus amount) is the owner's or an admin's call. The payment and its audit
+ * entry commit together.
+ */
+export async function addPaymentFor(user: CurrentUser, ticketId: string, input: { amountCents: number | null; method: PaymentMethod; note: string | null }): Promise<void> {
+  const ticket = await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId }, select: { id: true, number: true } });
+  if (!ticket) throw new UserError("Ticket not found.");
+  const amount = input.amountCents;
+  if (amount == null || amount === 0) throw new UserError("Enter the amount paid.");
+  if (Math.abs(amount) > MAX_MONEY) throw new UserError("That's more than $100,000. Check the amount.");
+  if (amount < 0 && user.role === "TECH") throw new UserError("Only the shop owner or an admin can record a refund.");
+  if (!Object.hasOwn(PAYMENT_LABEL, input.method)) throw new UserError("Pick how it was paid.");
+  await db.$transaction(async (tx) => {
+    const p = await tx.payment.create({ data: { ticketId, method: input.method, amountCents: amount, note: input.note } });
+    await audit(tx, actorOf(user), {
+      action: "payment.add",
+      subjectType: "Ticket",
+      subjectId: ticketId,
+      subjectLabel: `Ticket #${ticketNo(ticket.number)}`,
+      amountCents: amount,
+      changes: { method: [null, input.method], payment: [null, p.id] },
+      reason: input.note,
+    });
+  });
+}
 
 /**
  * Takes a payment off a ticket without deleting it: a negative payment of the same method, dated now, points back at it
@@ -13,13 +45,23 @@ import type { CurrentUser } from "@/lib/session";
  */
 export async function removePaymentFor(user: CurrentUser, paymentId: string): Promise<string> {
   if (user.role === "TECH") throw new UserError("Only the shop owner or an admin can change this.");
-  const p = await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } } });
+  const p = await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } }, include: { ticket: { select: { number: true } } } });
   if (!p) throw new UserError("Payment not found.");
   if (p.reversesId) throw new UserError("That line is itself a removal; it can't be removed.");
   const label = `${PAYMENT_LABEL[p.method]} payment of ${money(p.amountCents)}`;
   try {
-    await db.payment.create({
-      data: { ticketId: p.ticketId, method: p.method, amountCents: -p.amountCents, paidAt: new Date(), reversesId: p.id, note: `Removed: the ${label}${p.note ? ` (${p.note})` : ""}`.slice(0, 500) },
+    await db.$transaction(async (tx) => {
+      await tx.payment.create({
+        data: { ticketId: p.ticketId, method: p.method, amountCents: -p.amountCents, paidAt: new Date(), reversesId: p.id, note: `Removed: the ${label}${p.note ? ` (${p.note})` : ""}`.slice(0, 500) },
+      });
+      await audit(tx, actorOf(user), {
+        action: "payment.remove",
+        subjectType: "Ticket",
+        subjectId: p.ticketId,
+        subjectLabel: `Ticket #${ticketNo(p.ticket.number)}`,
+        amountCents: p.amountCents,
+        changes: { method: [p.method, null], payment: [p.id, null] },
+      });
     });
   } catch (e) {
     if ((e as { code?: string }).code === "P2002") throw new UserError("That payment was already removed.");

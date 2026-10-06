@@ -288,6 +288,15 @@ async function restoreNow(pool, dir, flavor) {
     if (here.includes("HubState")) {
       await client.query(`UPDATE "HubState" SET cursor = '0', "orderCursor" = '0', "partnerCursor" = CASE WHEN "partnerCursor" IS NULL THEN NULL ELSE '0' END`);
     }
+    // The audit log says it happened (later-round-1-design.md 4.1): one entry for every company the restore left, written
+    // here because the restored log itself is the backup's. Triggers are off in this transaction (replica role).
+    if (here.includes("AuditEntry")) {
+      await client.query(
+        `INSERT INTO "AuditEntry" (id, "shopId", "at", "userName", actor, category, action, "subjectType", "subjectLabel")
+           SELECT 'rst' || replace(gen_random_uuid()::text, '-', ''), id, now(), 'StitchBench', 'system', 'data', 'backup.restore', 'Backup', $1 FROM "Shop"`,
+        [`Restored from the backup made ${manifest.created ?? "earlier"}`],
+      );
+    }
     await client.query("COMMIT");
     return manifest;
   } catch (e) {

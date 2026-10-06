@@ -44,6 +44,9 @@ export async function deleteMovedCompany(by: Remover, shopId: unknown, typedName
   if (typeof typedName !== "string" || typedName.trim() !== shop.name.trim()) throw new UserError(`Type the company's name exactly as it is (${shop.name}) to delete it.`);
   const id = shop.id;
   await db.$transaction([
+    // The audit log has no foreign key either, and refuses deletes unless the transaction says it is pruning.
+    db.$executeRaw`SELECT set_config('stitchbench.audit_prune', 'on', true)`,
+    db.auditEntry.deleteMany({ where: { shopId: id } }),
     // No foreign key to Shop on these two (package move-import's finding): they would outlive the company.
     db.partnerSeen.deleteMany({ where: { shopId: id } }),
     db.partnerFailure.deleteMany({ where: { shopId: id } }),

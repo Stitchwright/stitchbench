@@ -2,6 +2,7 @@ import "server-only";
 // Parts, their numbers, and the community cross-reference (synced XPart rows).
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
+import { audit } from "@/lib/audit";
 import { modelKey, parseCost, str, tenThouToCents, toCents } from "@/lib/format";
 import { sameText } from "@/lib/input";
 import { brandMatches } from "@/lib/model-info";
@@ -154,6 +155,17 @@ export async function countStock(shopId: string, partId: string, counted: number
     if (change === 0) return 0;
     await tx.part.update({ where: { id: partId }, data: { qtyOnHand: counted } });
     await tx.stockMove.create({ data: { shopId, partId, qty: change, reason: "ADJUSTED", userId, note } });
+    // Who changed the count and from what to what (audit log, design 4.1 Stock), in the same transaction.
+    const who = await tx.user.findFirst({ where: { id: userId, shopId }, select: { id: true, name: true, role: true } });
+    const part = await tx.part.findFirst({ where: { id: partId, shopId }, select: { partNumber: true } });
+    await audit(tx, { shopId, id: who?.id ?? null, name: who?.name ?? "StitchBench", role: who?.role ?? null, kind: who ? "user" : "system" }, {
+      action: "stock.count",
+      subjectType: "Part",
+      subjectId: partId,
+      subjectLabel: part?.partNumber ?? null,
+      changes: { qtyOnHand: [rows[0].qtyOnHand, counted] },
+      reason: note,
+    });
     return change;
   });
 }

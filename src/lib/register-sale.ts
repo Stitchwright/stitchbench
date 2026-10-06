@@ -15,6 +15,7 @@ import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/vac/sale-u
 import type { TradeInInput } from "@/lib/vac/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
+import { actorOf, audit } from "@/lib/audit";
 import { fmtWhen } from "@/lib/zoned";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
@@ -361,6 +362,31 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
             if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx, false);
           }
         }
+        // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
+        const actor = actorOf(user);
+        const label = `Sale #${number}`;
+        if (lines.some((l) => l.qty < 0)) {
+          await audit(tx, actor, { action: "sale.return", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, amountCents: totals.total, reason: input.note?.slice(0, 200) || null });
+        }
+        const lineDiscounts = lines.reduce((a, l) => a + (l.discountCents > 0 ? l.discountCents : 0), 0);
+        if (lineDiscounts > 0 || totals.orderDiscount > 0) {
+          await audit(tx, actor, {
+            action: "sale.discount",
+            subjectType: "Sale",
+            subjectId: sale.id,
+            subjectLabel: label,
+            amountCents: lineDiscounts + totals.orderDiscount,
+            changes: { lineDiscountCents: [0, lineDiscounts], saleDiscountCents: [0, totals.orderDiscount] },
+          });
+        }
+        const overrides: Record<string, [unknown, unknown]> = {};
+        for (const l of lines) {
+          const part = l.partId ? parts.get(l.partId) : null;
+          if (part && part.priceCents != null && l.unitPriceCents !== part.priceCents && l.qty > 0) overrides[part.partNumber] = [part.priceCents, l.unitPriceCents];
+        }
+        if (Object.keys(overrides).length) {
+          await audit(tx, actor, { action: "sale.price_override", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, changes: overrides });
+        }
         return sale;
       })
       .catch(async (e: unknown) => {
@@ -390,6 +416,15 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       data: { status: "VOIDED", voidedAt: at, note: [sale.note, `Void: ${reason || "no reason given"} (${user.name})`].filter(Boolean).join("\n") },
     });
     if (!done.count) throw new UserError("That sale is already void.");
+    await audit(tx, actorOf(user), {
+      action: "sale.void",
+      subjectType: "Sale",
+      subjectId: sale.id,
+      subjectLabel: `Sale #${sale.number}`,
+      amountCents: sale.totalCents,
+      changes: { status: ["COMPLETED", "VOIDED"] },
+      reason: reason || null,
+    });
     // Vacuums sold go back in stock; trade-ins taken come back out (Vac Shop).
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
     for (const l of sale.lines) {

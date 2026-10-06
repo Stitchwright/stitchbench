@@ -2083,3 +2083,33 @@ model Shift {
   @@index([shopId, startsAt])
   @@index([userId, startsAt])
 }
+
+// ============================================================
+// Audit log (later-round-1-design.md section 4): who did what to money, stock, prices and people. Append-only: the
+// database refuses UPDATE and DELETE (migration trigger) except in a transaction that says it is pruning
+// (src/lib/audit.ts). No foreign keys: an entry outlives the login or record it names, with the name and label as they
+// were.
+// ============================================================
+model AuditEntry {
+  id           String   @id @default(cuid())
+  shopId       String
+  at           DateTime @default(now())
+  userId       String?
+  userName     String
+  role         String?
+  // user | platform-admin | customer | system
+  actor        String   @default("user")
+  category     String // money | prices | stock | deletes | settings | people | data
+  action       String // "sale.void"
+  subjectType  String
+  subjectId    String?
+  subjectLabel String?
+  // { field: [before, after] }
+  changes      Json?
+  amountCents  Int?
+  reason       String?
+  ip           String?
+
+  @@index([shopId, at])
+  @@index([shopId, subjectType, subjectId])
+}
