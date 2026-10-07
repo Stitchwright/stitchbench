@@ -126,7 +126,8 @@ function leftOut(s: SaleForReturn): string {
   const booking = s.skippedBookingLines ? " A class or appointment on it was left out: refund it with Classes & appointments while returning." : "";
   const unit = s.skippedUnitLines ? " A machine, service plan or trade-in on it was left out: take a machine back with Return a machine; void the sale to undo a trade-in." : "";
   const layaway = s.skippedLayawayLines ? " A layaway payment on it was left out: settle it on the layaway's page." : "";
-  return booking + unit + layaway;
+  const held = s.skippedHeldLines ? " A deposit, rent or loaner charge on it was left out: give it back on the special order, loaner or rental." : "";
+  return booking + unit + layaway + held;
 }
 
 /** A machine, or the last of an item, also listed elsewhere: ticked "taken down" before the sale (9.7). */
@@ -581,7 +582,7 @@ export function Register({
           ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.`
           : sale.skippedCardLines
             ? `Sale #${sale.number} only sold or paid out a gift card. Void the sale to take a card sale back.`
-            : sale.skippedBookingLines || sale.skippedUnitLines || sale.skippedLayawayLines
+            : sale.skippedBookingLines || sale.skippedUnitLines || sale.skippedLayawayLines || sale.skippedHeldLines
               ? `Sale #${sale.number} has nothing to return from the receipt.${leftOut(sale)}`
               : `Sale #${sale.number} has nothing to return.`,
       );
