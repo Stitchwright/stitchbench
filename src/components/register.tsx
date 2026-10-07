@@ -30,6 +30,7 @@ import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
 import { RegisterGiftLists, type GiftListPick } from "@/components/register-gift-lists";
+import { RegisterCardReader, type ReaderSetup } from "@/components/register-card-reader";
 import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
 import { SoftwareLineFields } from "@/components/software-line";
 import type { SoftwareLineInput } from "@/lib/software";
@@ -127,6 +128,7 @@ export function Register({
   sellers = [],
   me = "",
   houseAccounts = false,
+  cardReader = null,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -148,10 +150,13 @@ export function Register({
   me?: string;
   /** House accounts are on (9.4): "On account" is offered once a customer is picked (the server checks her account). */
   houseAccounts?: boolean;
+  /** The shop's card readers (4.8), when the card reader is on: Card reader sends the amount to one. */
+  cardReader?: ReaderSetup | null;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [soldBy, setSoldBy] = useState(me);
+
   const [returnMode, setReturnMode] = useState(false);
   // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the same).
   const [returnOf, setReturnOf] = useState<{ id: string; taxRatePct: number } | null>(null);
@@ -667,7 +672,15 @@ export function Register({
     code.current?.focus();
   }
 
-  async function finish() {
+  /** The card reader approved a payment (4.8): on the sale, which finishes itself once nothing is left to pay. */
+  function readerApproved(p: { amountCents: number; stripeIntent: string; last4: string | null }) {
+    const next: Tender[] = [...tenders, { method: "CARD", amountCents: p.amountCents, stripeIntent: p.stripeIntent, ...(p.last4 ? { last4: p.last4 } : {}) }];
+    setTenders(next);
+    setTenderAmt("");
+    if (!tenderProblem(saleTotals(priced, orderDiscountCents, receiptRate ?? ratePct, next), next) && !busy) finish(next);
+  }
+
+  async function finish(withTenders?: Tender[]) {
     setBusy(true);
     setDone(null);
     const sale = {
@@ -697,7 +710,7 @@ export function Register({
       })),
       soldById: soldBy || null,
       orderDiscountCents,
-      tenders,
+      tenders: withTenders ?? tenders,
     };
     const sent = JSON.stringify(sale);
     if (pending.current?.sent !== sent) pending.current = { key: saleKey(), sent };
@@ -1356,6 +1369,14 @@ export function Register({
                 {TENDER_LABEL[m]}
               </button>
             ))}
+            {cardReader && !refund && (
+              <RegisterCardReader
+                setup={cardReader}
+                amountCents={toCents(tenderAmt) ?? t.due}
+                disabled={!lines.length}
+                onApproved={readerApproved}
+              />
+            )}
             {houseAccounts && customer && (
               <button type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender("ACCOUNT")}>
                 {TENDER_LABEL.ACCOUNT}
@@ -1426,7 +1447,7 @@ export function Register({
             type="button"
             className="btn btn-primary w-full"
             disabled={busy || !lines.length || Boolean(problem) || lines.some((l) => mustDelist(l) && !l.delisted)}
-            onClick={finish}
+            onClick={() => finish()}
           >
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}
           </button>

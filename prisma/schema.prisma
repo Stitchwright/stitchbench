@@ -109,6 +109,10 @@ model Shop {
   appraiserCredential     String?
   // House charge accounts (9.4): off until the owner turns them on
   houseAccountsOn         Boolean       @default(false)
+  // The card reader at the counter (4.8): Stripe Terminal on the shop's own Stripe account (its key is stripeKeySealed),
+  // off until turned on; the Terminal location the readers are registered to
+  cardReaderOn            Boolean       @default(false)
+  terminalLocationId      String?
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -273,6 +277,8 @@ model Shop {
   registryItems     RegistryItem[]
   houseAccounts     HouseAccount[]
   accountEntries    AccountEntry[]
+  cardReaders       CardReader[]
+  cardPayments      CardPayment[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -3637,4 +3643,40 @@ model AccountEntry {
   @@index([accountId, at])
   @@index([shopId, at])
   @@index([saleId])
+}
+
+// A Stripe Terminal card reader paired to the shop (shop-features-round-2-design.md 4.8, package card-reader): Stripe's
+// reader id (tmr_...), the shop's name for it, and its kind (a simulated reader in test mode).
+model CardReader {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  readerId   String
+  label      String
+  deviceType String?
+  createdAt  DateTime @default(now())
+
+  @@unique([shopId, readerId])
+}
+
+// A card payment taken on the reader (4.8): the PaymentIntent (pi_...), how much, where it stands (PENDING | SUCCEEDED |
+// FAILED | CANCELLED), the card's last four, the sale it paid (saleId, plain; null while on no sale yet), and what has
+// been refunded to the card since.
+model CardPayment {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  intentId      String   @unique
+  readerId      String?
+  amountCents   Int
+  status        String   @default("PENDING")
+  last4         String?
+  brand         String?
+  saleId        String?
+  refundedCents Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shopId, saleId])
+  @@index([shopId, status])
 }

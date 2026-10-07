@@ -10,7 +10,8 @@ export type TenderMethod = "CASH" | "CARD" | "CHECK" | "GIFT" | "CREDIT" | "OTHE
  * FINANCED (tax-machine-sales-layaway-design.md section 5): a lender pays the shop (`lenderId`, its name kept as
  * `lender`, the approval number as `note`); the register offers it once the shop lists a lender in Settings.
  */
-export type Tender = { method: TenderMethod; amountCents: number; note?: string | null; cardNumber?: string | null; cardId?: string; last4?: string; leftCents?: number; lenderId?: string; lender?: string };
+/** stripeIntent: a Card payment taken on the shop's card reader (shop-features-round-2-design.md 4.8), checked with Stripe when the sale is saved. */
+export type Tender = { method: TenderMethod; amountCents: number; note?: string | null; cardNumber?: string | null; cardId?: string; last4?: string; leftCents?: number; lenderId?: string; lender?: string; stripeIntent?: string };
 /** What the counter takes. ONLINE is only ever written by the online shop at payment (online-and-parts-design.md section 3). */
 export const TENDER_METHODS: TenderMethod[] = ["CASH", "CARD", "CHECK", "GIFT", "CREDIT", "OTHER"];
 /** ACCOUNT: on the customer's house charge account (shop-features-round-2-design.md 9.4), offered while house accounts are on. */
