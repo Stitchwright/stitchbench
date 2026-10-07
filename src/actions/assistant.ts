@@ -12,6 +12,8 @@ import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
 import { askShop } from "@/lib/assistant/ask";
+import { quiltPick } from "@/lib/assistant/quilt";
+import { UserError } from "@/lib/user-error";
 import { draftArrivals, draftClassBlurb, draftProductText, draftSocialPost } from "@/lib/assistant/marketing";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
@@ -158,4 +160,13 @@ export const draftItemText = safe(async (partId: string, instruction: string) =>
 export const draftPostText = safe(async (about: string, id: string | null, days: number, instruction: string) => {
   const user = await requireUser();
   return shownOnce(JSON.stringify({ text: await draftSocialPost(user, { about, id, days, instruction }) }));
+});
+
+/** "Suggest coordinates" in the quilt planner: picks from this company's shelf for the parts still empty; nothing is chosen until she does. */
+export const suggestCoordinates = safe(async (focusId: string | null, photoData: string | null, mediaType: string, roles: { role: string; yards: number }[]) => {
+  const user = await requireUser();
+  const data = String(photoData ?? "").replace(/^data:[^,]*,/, "");
+  if (photoData && !/^[A-Za-z0-9+/=]{100,}$/.test(data)) throw new UserError("Take the photo again: it didn't come through.");
+  const photo = photoData ? ({ mediaType: mediaType === "image/png" || mediaType === "image/webp" ? mediaType : "image/jpeg", data } as const) : null;
+  return shownOnce(JSON.stringify(await quiltPick(user, { focusId, photo, roles })));
 });

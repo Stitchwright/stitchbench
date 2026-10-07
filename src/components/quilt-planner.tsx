@@ -1,13 +1,16 @@
 "use client";
 // The quilt planner (shop-features-round-2-design.md 5.3): what are we making (a pattern and size, or a plain quilt by
 // size and block), the yards for each part worked out by the program, a fabric from the shelf for each part, and the pull
-// list with Add all to the sale, Print the list and Make it a kit.
+// list with Add all to the sale, Print the list and Make it a kit. With the Assistant, "Suggest coordinates" fills the
+// empty parts from the shelf (package quilt-from-stock); "Thread to match" needs no Assistant.
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PLAIN_DEFAULTS, plainQuiltPlan, plainQuiltProblem, QUILT_SIZES, type QuiltRole } from "@/lib/fabric-math";
 import { money } from "@/lib/format";
 import { yards } from "@/lib/register-math";
 import type { PlannerFabric, PlannerPattern } from "@/lib/quilt";
+import type { ThreadHit } from "@/lib/quilt-thread";
+import { SuggestCoordinates, ThreadToMatch } from "@/components/quilt-assist";
 
 export type Picks = Record<string, string>;
 
@@ -30,10 +33,13 @@ export function QuiltPlanner({
   patterns,
   fabrics,
   startPattern,
+  ai,
 }: {
   patterns: PlannerPattern[];
   fabrics: PlannerFabric[];
   startPattern?: string | null;
+  /** The Assistant's "Suggest coordinates": shown when its quilt switch is on (unavailable: the plain reason it can't ask now). */
+  ai?: { unavailable?: string } | null;
 }) {
   const first = patterns.find((p) => p.id === startPattern) ?? null;
   const [mode, setMode] = useState<"pattern" | "plain">(first || (patterns.length && !startPattern) ? "pattern" : "plain");
@@ -43,6 +49,9 @@ export function QuiltPlanner({
   const [plain, setPlain] = useState({ sizeKey: "throw", width: String(PLAIN_DEFAULTS.widthIn), length: String(PLAIN_DEFAULTS.lengthIn), block: String(PLAIN_DEFAULTS.blockIn), fabrics: String(PLAIN_DEFAULTS.fabrics), bg: String(PLAIN_DEFAULTS.backgroundPct), border: String(PLAIN_DEFAULTS.borderIn) });
   const [picks, setPicks] = useState<Picks>({});
   const [find, setFind] = useState("");
+  // The Assistant's reason for a pick (kept while that pick stands), and the threads ticked to go with the fabric.
+  const [why, setWhy] = useState<Record<string, { id: string; why: string }>>({});
+  const [threads, setThreads] = useState<Record<string, ThreadHit>>({});
   const setPick = (role: string, id: string) => setPicks((p) => ({ ...p, [role]: id }));
 
   const plainQ = { widthIn: num(plain.width), lengthIn: num(plain.length), blockIn: num(plain.block), fabrics: Math.round(num(plain.fabrics)), backgroundPct: num(plain.bg || "0"), borderIn: num(plain.border || "0") };
@@ -63,9 +72,11 @@ export function QuiltPlanner({
   const merged = new Map<string, number>();
   for (const r of ready) merged.set(r.fabric!.id, (merged.get(r.fabric!.id) ?? 0) + r.yards);
   const short = [...merged].filter(([id, y]) => (byId.get(id)?.yards ?? 0) < y).map(([id]) => byId.get(id)!.name);
-  const total = ready.reduce((a, r) => a + Math.round(r.yards * (r.fabric!.priceCents ?? 0)), 0) + (mode === "pattern" && pattern?.priceCents ? pattern.priceCents : 0);
-  const itemsParam = [...[...merged].map(([id, y]) => `${id}:${y}`), ...(mode === "pattern" && pattern ? [`${pattern.id}:1`] : [])].join(",");
-  const kitParams = new URLSearchParams({ lines: [...merged].map(([id, y]) => `${id}:${y}`).join(","), ...(mode === "pattern" && pattern ? { pattern: pattern.id, name: `${pattern.name} (${size})` } : { name: `Quilt kit ${plan ? `${plan.finishedWidth} x ${plan.finishedLength}` : ""}`.trim() }) });
+  const threadList = Object.values(threads);
+  const total =
+    ready.reduce((a, r) => a + Math.round(r.yards * (r.fabric!.priceCents ?? 0)), 0) + (mode === "pattern" && pattern?.priceCents ? pattern.priceCents : 0) + threadList.reduce((a, t) => a + (t.priceCents ?? 0), 0);
+  const itemsParam = [...[...merged].map(([id, y]) => `${id}:${y}`), ...(mode === "pattern" && pattern ? [`${pattern.id}:1`] : []), ...threadList.map((t) => `${t.id}:1`)].join(",");
+  const kitParams = new URLSearchParams({ lines: [...[...merged].map(([id, y]) => `${id}:${y}`), ...threadList.map((t) => `${t.id}:1`)].join(","), ...(mode === "pattern" && pattern ? { pattern: pattern.id, name: `${pattern.name} (${size})` } : { name: `Quilt kit ${plan ? `${plan.finishedWidth} x ${plan.finishedLength}` : ""}`.trim() }) });
 
   return (
     <div className="space-y-4">
@@ -222,6 +233,18 @@ export function QuiltPlanner({
             <p className="text-sm">No fabric by the yard is in stock. Receive some fabric first.</p>
           ) : (
             <>
+              {ai && (
+                <SuggestCoordinates
+                  roles={roles}
+                  picks={picks}
+                  byId={byId}
+                  unavailable={ai.unavailable}
+                  onPicks={(ps) => {
+                    setPicks((p) => ({ ...p, ...Object.fromEntries(ps.map((x) => [x.role, x.id])) }));
+                    setWhy((w) => ({ ...w, ...Object.fromEntries(ps.map((x) => [x.role, { id: x.id, why: x.why }])) }));
+                  }}
+                />
+              )}
               <div className="field max-w-md">
                 <label htmlFor="q-find" className="label">
                   Find a fabric (name, number, collection or color)
@@ -247,6 +270,7 @@ export function QuiltPlanner({
                             </option>
                           ))}
                         </select>
+                        {why[r.role] && why[r.role].id === chosen?.id && why[r.role].why && <p className="muted mt-1 text-xs">Suggested: {why[r.role].why}</p>}
                       </div>
                     </li>
                   );
@@ -297,6 +321,15 @@ export function QuiltPlanner({
                     <td className="num text-right">{pattern.priceCents != null ? money(pattern.priceCents) : "-"}</td>
                   </tr>
                 )}
+                {threadList.map((t) => (
+                  <tr key={t.id}>
+                    <td>Thread</td>
+                    <td>{t.name}</td>
+                    <td className="num text-right">1</td>
+                    <td />
+                    <td className="num text-right">{t.priceCents != null ? money(t.priceCents) : "-"}</td>
+                  </tr>
+                ))}
                 <tr>
                   <td colSpan={4} className="text-right font-semibold">
                     Total before tax
@@ -308,6 +341,18 @@ export function QuiltPlanner({
           </div>
           {ready.length < roles.length && <p className="muted text-sm">{roles.length - ready.length} part(s) still need a fabric.</p>}
           {short.length > 0 && <p className="text-sm" role="alert">Not enough on the bolt for two parts at once: {short.join(", ")}. Pick another fabric for one of them.</p>}
+          <ThreadToMatch
+            picked={[...new Map(ready.map((r) => [r.fabric!.id, r.fabric!])).values()]}
+            chosen={threads}
+            onChoose={(t, on) =>
+              setThreads((cur) => {
+                const next = { ...cur };
+                if (on) next[t.id] = t;
+                else delete next[t.id];
+                return next;
+              })
+            }
+          />
           <div className="no-print flex flex-wrap gap-2">
             <Link href={`/register?items=${encodeURIComponent(itemsParam)}`} className={`btn btn-primary ${short.length ? "pointer-events-none opacity-50" : ""}`} aria-disabled={short.length > 0}>
               Add all to the sale
