@@ -280,6 +280,13 @@ export default async function SettingsPage() {
               </Link>
             </div>
           )}
+          {shop.sellsRetail && admin && (
+            <div>
+              <Link href="/settings/shipping" className="link">
+                Shipping labels (Shippo)
+              </Link>
+            </div>
+          )}
         </div>
       </Section>
 

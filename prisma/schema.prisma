@@ -113,6 +113,12 @@ model Shop {
   // off until turned on; the Terminal location the readers are registered to
   cardReaderOn            Boolean       @default(false)
   terminalLocationId      String?
+  // Shipping labels through Shippo (9.5): off until turned on; the shop's own Shippo API key (sealed), where parcels ship
+  // from { name, street1, city, state, zip, phone } and the usual box { lengthIn, widthIn, heightIn, weightOz }
+  shippoOn                Boolean       @default(false)
+  shippoKeySealed         String?
+  shipFrom                Json          @default("{}")
+  shipParcel              Json          @default("{}")
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -1999,6 +2005,12 @@ model WebOrder {
   linkSealed      String? // the order page's link (it carries the token), sealed, for the mail
   saleId          String?
   tracking        String?
+  // A label bought through Shippo (shop-features-round-2-design.md 9.5): where to print it, the carrier and service,
+  // what it cost the shop, and Shippo's transaction id
+  labelUrl        String?
+  labelCarrier    String?
+  labelCents      Int?
+  shippoTxId      String?
   note            String?
   staffNote       String?
   createdAt       DateTime  @default(now())
