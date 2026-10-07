@@ -1231,6 +1231,14 @@ accounts and billing: design first).
    request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
    ten owner questions in its section 7: **all answered as recommended (7 Oct); building on branch `sales-features`**.
 
+25. **Everything in the shop research** (owner, 7 Oct 2026: "I want it all"): every recommendation in
+   `docs/research/shop-retail-features-and-ai.md` except the two it says not to build, plus selling thread, accessories
+   and software. Design: `docs/plans/shop-features-round-2-design.md` (being written), built in phases on their own
+   branches after `sales-features`, after the test month for the test shops.
+26. **Ease of use first** (owner, 7 Oct 2026): "like Apple, very intuitive"; most shop staff are older women. Principles
+   and an audit with ranked fixes: `docs/plans/ease-of-use.md`, `docs/plans/ease-of-use-audit.md` (being written).
+   Every new screen follows them.
+
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
    or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per
    company, W2 signed partner invites: short designs first), the real-partnership rule (item 22) if the owner says
