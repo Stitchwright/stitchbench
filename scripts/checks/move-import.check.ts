@@ -321,6 +321,15 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.eventDraw.create({ data: { shopId, classId: cls.id, enrollmentId: enrollment.id, name: "Mona Mover", prize: "Fat quarter bundle" } });
   const hop = await db.shopHop.create({ data: { shopId, hubHopId: `hop-${RUN}`, name: "Spring hop", startsOn: "2027-04-01", endsOn: "2027-04-10", shopsCount: 6 } });
   await db.hopStampLocal.create({ data: { shopId, hopId: hop.id, passportRef: "HOP-ABCD-EFGH", byUserId: a.user.id, stampNo: 1, stampsOf: 6 } });
+  // Phase 1 (shop-features-round-2-design.md 1.2 to 1.9): a price group a customer is in, a yard break, a special order,
+  // a want list line, a loaner out, a trade-up credit used.
+  const group = await db.priceGroup.create({ data: { shopId, name: "Guild", pctOff: 10, kinds: ["FABRIC"] } });
+  await db.customer.update({ where: { id: cust.id }, data: { priceGroupId: group.id, priceGroupUntil: "2027-10-01" } });
+  await db.yardBreak.create({ data: { shopId, minYards: 10, pctOff: 10 } });
+  await db.specialOrder.create({ data: { shopId, number: 1001, customerId: cust.id, partId: part.id, description: "Hook", priceCents: 4500, depositCents: 1000, expectedOn: "2026-11-01" } });
+  await db.wantItem.create({ data: { shopId, customerId: cust.id, words: "Tula Pink" } });
+  await db.unitLoan.create({ data: { shopId, unitId: "unit_check_plain_id", customerId: cust.id, ticketId: ticket.id, dueOn: "2026-11-01", depositCents: 5000 } });
+  await db.tradeUpOffer.create({ data: { shopId, customerId: cust.id, ticketId: ticket.id, amountCents: 4500, until: "2026-11-30", usedLineId: "line_check_plain_id" } });
   await db.shop.update({
     where: { id: shopId },
     data: {
