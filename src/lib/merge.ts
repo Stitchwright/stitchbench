@@ -53,6 +53,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
   { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
+  { model: "GiftRegistry", field: "customerId", label: ["gift list", "gift lists"] },
   { model: "Appraisal", field: "customerId", label: ["quilt appraisal", "quilt appraisals"] },
   { model: "StockUnit", field: "consignorId", label: ["machine on consignment", "machines on consignment"] },
   { model: "ConsignPayout", field: "customerId", label: ["consignment payout", "consignment payouts"] },
@@ -401,6 +402,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["GiftRegistry.customerId"], ["gift list", "gift lists"], "deleted (its link stops working)");
   add(n["Appraisal.customerId"], ["quilt appraisal", "quilt appraisals"], `kept in the books as "${DELETED_NAME}" (their photos deleted)`);
   add(n["StockUnit.consignorId"], ["machine once on consignment", "machines once on consignment"], "kept, without the customer");
   add(n["ConsignPayout.customerId"], ["consignment payout", "consignment payouts"], "kept in the books, without the customer");
@@ -444,6 +446,8 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
+    // Gift lists (9.9): hers, so they go (lines already bought keep their sales).
+    await tx.giftRegistry.deleteMany({ where: { shopId, customerId: c.id } });
     // Quilt appraisals (9.8): kept as the fee's record, without her name or the quilt's photos.
     await tx.appraisalPhoto.deleteMany({ where: { shopId, appraisal: { customerId: c.id } } });
     await tx.appraisal.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME } });

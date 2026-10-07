@@ -1374,3 +1374,23 @@ Decisions made while building:
 - An issued certificate can't change (a new appraisal replaces it); voiding the fee's sale makes it a draft again.
 - The value is what the appraiser writes; a tech can do appraisals but not change the fee.
 - Deleting the customer keeps the appraisal (the fee's record) without her name or the photos.
+
+**`gift-registry` (9.9, 7 Oct 2026).** Migration `20261024600000_gift_registry` (`GiftRegistry`, `RegistryItem`,
+`SaleLine.registryItemId`; carried by the company file, the merges and the customer delete). Code:
+`src/lib/gift-registry.ts`, `src/actions/gift-registry.ts`; **Wish lists** on the customer's page ("Start a wish list or
+gift registry she can share with family": its name and day), the list's page (`/gift-lists/[id]`: what she would like,
+how many, "n of m bought" for staff, the link to send with Copy, Stop sharing / Share it again, add from stock with the
+part box or in words), the register's **Gift lists** button (`src/components/register-gift-lists.tsx`: find her list by
+name, what is still wanted, Add puts the item on the sale as a "gift: <list>" line), and the public page
+`/shop/[slug]/wish/[token]` (what is still wanted, linked to the online shop's item pages; nothing about buyers or
+prices). Check: `scripts/checks/gift-registry.check.ts` (4 groups); `base-license` (`findGiftLists` is a read),
+`customer-merge`, `move-export`, `register-bookings` still pass. Spec: `tests/gift-registry.spec.ts`.
+Decisions made while building:
+- Built on its own list (`GiftRegistry`), not on want lists (1.4, phase 1, built on another branch): when `want-lists`
+  merges, its `WantItem` can be shared through the same page and the register line, or its rows folded into these.
+- What was bought is counted from the sales that stand (a void puts it back by itself); a return of a gift is an
+  ordinary return and doesn't put it back on her list.
+- The link lives on the shop's public address (`/shop/<slug>/...`, already public and on the links address), so a
+  shop needs its page address (Settings → Online shop) to share lists; the token is random and changes when the list
+  is shared again. Online purchases don't tick the list off yet (the cart has no list line); the public page tells
+  buyers to say so at the counter.

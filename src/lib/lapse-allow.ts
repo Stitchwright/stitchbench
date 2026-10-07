@@ -137,6 +137,8 @@ export const HAND_ALLOWED = [
   "softwareChoices",
   // The register's starter bundles for a machine being sold (6.1): a lookup
   "starterBundlesNow",
+  // The register's gift lists (shop-features-round-2-design.md 9.9): a lookup
+  "findGiftLists",
   "readCatalogSheet",
   "previewCatalog",
   "openClassSeats",

@@ -29,6 +29,7 @@ import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-cam
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
+import { RegisterGiftLists, type GiftListPick } from "@/components/register-gift-lists";
 import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
 import { SoftwareLineFields } from "@/components/software-line";
 import type { SoftwareLineInput } from "@/lib/software";
@@ -85,6 +86,9 @@ type CartLine = {
   /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7), and whether the cashier ticked it taken down. */
   listedOn?: string[];
   delisted?: boolean;
+  /** From a customer's gift list (9.9): the list item it ticks off, and the list's name for the line. */
+  registryItemId?: string;
+  listName?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -258,7 +262,7 @@ export function Register({
     setCart((c) => {
       // The same item scanned again adds one more (not for fabric: each cut is its own line; not across vacuums: a
       // supply bought for another vacuum is its own line).
-      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId);
+      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId && !l.registryItemId);
       if (i >= 0) return c.map((l, j) => (j === i ? { ...l, qty: l.qty + sign } : l));
       return [
         ...c,
@@ -284,6 +288,16 @@ export function Register({
       ];
     });
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
+  }
+
+  /** A gift bought from a customer's list (9.9): its own line, naming the list item. */
+  function addGiftListLine(p: GiftListPick) {
+    if (cart.some((l) => l.registryItemId === p.registryItemId)) {
+      toast.warning("That one is already on this sale. Change its quantity on the line.");
+      return;
+    }
+    setDone(null);
+    setCart((c) => [...c, { key: newKey(), partId: p.partId, registryItemId: p.registryItemId, listName: p.listName, description: p.description, partNumber: p.partNumber ?? undefined, unit: null, qty: 1, unitPriceCents: p.priceCents ?? 0, priced: p.priceCents != null, onHand: p.inStock, discountPct: 0, taxable: true }]);
   }
 
   /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
@@ -676,6 +690,7 @@ export function Register({
         appointmentId: l.appointmentId ?? null,
         software: l.software ?? null,
         delisted: l.delisted ?? false,
+        registryItemId: l.registryItemId ?? null,
       })),
       soldById: soldBy || null,
       orderDiscountCents,
@@ -770,6 +785,7 @@ export function Register({
             <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
+          <RegisterGiftLists returnMode={returnMode} onAdd={addGiftListLine} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
           {layaway && !returnMode && (
@@ -1071,6 +1087,7 @@ export function Register({
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                    {l.listName && <span className="pill tone-ready ml-1">gift: {l.listName}</span>}
                     {mustDelist(l) && (
                       <label className="ml-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold">
                         <input type="checkbox" className="check" checked={l.delisted === true} onChange={(e) => setLine(l.key, { delisted: e.target.checked })} /> Take it down on {l.listedOn!.join(", ")} first: done

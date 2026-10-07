@@ -139,7 +139,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerFitsSection shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && <CustomerSoftware shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
         {c.kind === "RETAIL" && <CustomerCertifications shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} tz={tz} />}
-        <CustomerPaperwork shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />
+        <CustomerPaperwork shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} retail={c.kind === "RETAIL"} />
         {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}
         {orders.length > 0 && (
           <Section title="Online orders">
