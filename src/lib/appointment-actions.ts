@@ -19,6 +19,7 @@ import { messagingView } from "@/lib/messaging/settings";
 import { plainText, renderKind } from "@/lib/messaging/templates";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { fmtWhen, parseHm, parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
+import { currentStoreId } from "@/lib/stores";
 
 type Tx = Prisma.TransactionClient;
 const DAY = 86_400_000;
@@ -125,7 +126,8 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
     await db.appointmentType.updateMany({ where: { id: t.id, shopId }, data });
     return t.id;
   }
-  const made = await db.appointmentType.create({ data: { shopId, ...data }, select: { id: true } });
+  // Booked at the store that set it up (7.1).
+  const made = await db.appointmentType.create({ data: { shopId, ...data, locationId: await currentStoreId(user) }, select: { id: true } });
   return made.id;
 }
 

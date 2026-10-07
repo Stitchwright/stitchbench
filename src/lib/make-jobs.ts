@@ -40,6 +40,7 @@ import {
 } from "@/lib/make-jobs-math";
 import type { CurrentUser } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
+import { currentStoreId } from "@/lib/stores";
 
 const DAY = 86_400_000;
 const MAX_CENTS = 10_000_000;
@@ -191,12 +192,14 @@ export async function createJobFor(user: CurrentUser, fd: FormData): Promise<{ i
   const shopId = user.shopId;
   const data = await fieldsFrom(user, fd);
   const file = await fileFrom(fd);
+  // Taken in at this store (7.1): made on its machines.
+  const here = await currentStoreId(user);
   return db.$transaction(async (tx) => {
     const customer = await customerFromForm(tx, shopId, fd, user.id, "counter");
     const sh = await tx.shop.update({ where: { id: shopId }, data: { nextMakeJobNumber: { increment: 1 } }, select: { nextMakeJobNumber: true } });
     const number = sh.nextMakeJobNumber - 1;
     const j = await tx.makeJob.create({
-      data: { shopId, number, customerId: customer.id, name: customer.name, createdById: user.id, ...data, ...(file ? { fileName: file.name, fileMime: file.mime, fileData: file.data } : {}) },
+      data: { shopId, locationId: here, number, customerId: customer.id, name: customer.name, createdById: user.id, ...data, ...(file ? { fileName: file.name, fileMime: file.mime, fileData: file.data } : {}) },
       select: { id: true },
     });
     return { id: j.id, number };

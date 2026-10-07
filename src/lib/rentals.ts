@@ -19,6 +19,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { addDays, addMonths, ymdOf } from "@/lib/zoned";
 import { pushEvent, unitDescription } from "@/lib/units/units";
 import { makePayLinkFor } from "@/lib/pay-links";
+import { currentStoreId } from "@/lib/stores";
 
 export const RATE_PERS = ["day", "week", "month"] as const;
 export type RatePer = (typeof RATE_PERS)[number];
@@ -145,10 +146,12 @@ export async function rentOutFor(user: CurrentUser, input: RentInput): Promise<{
   const ownMonths = input.ownMonths == null ? 3 : Math.round(Number(input.ownMonths));
   if (!Number.isFinite(ownMonths) || ownMonths < 0 || ownMonths > 36) throw new UserError("Rent-to-own for: 0 to 36 months.");
   const today = ymdOf(new Date(), await shopTimeZone(shopId));
+  // Rented from this store (7.1).
+  const here = await currentStoreId(user);
   const loan = await db.$transaction(async (tx) => {
     if (await tx.unitLoan.count({ where: { shopId, unitId: unit.id, backAt: null } })) throw new UserError(`${unitDescription(unit)} is out already.`);
     const made = await tx.unitLoan.create({
-      data: { shopId, unitId: unit.id, kind: "RENTAL", customerId: customer.id, rateCents: rate, ratePer: input.ratePer, ownPct, ownUntil: ownPct && ownMonths ? addMonths(today, ownMonths) : null, dueOn: periodsAfter(today, input.ratePer as RatePer, periods), conditionOut: "Good", createdById: user.id },
+      data: { shopId, locationId: here, unitId: unit.id, kind: "RENTAL", customerId: customer.id, rateCents: rate, ratePer: input.ratePer, ownPct, ownUntil: ownPct && ownMonths ? addMonths(today, ownMonths) : null, dueOn: periodsAfter(today, input.ratePer as RatePer, periods), conditionOut: "Good", createdById: user.id },
     });
     await tx.stockUnit.update({ where: { id: unit.id }, data: { events: pushEvent(unit.events, { at: new Date().toISOString(), note: `Rented out at ${money(rate)} a ${input.ratePer} (${user.name})` }) } });
     return made;

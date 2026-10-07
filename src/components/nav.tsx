@@ -37,14 +37,19 @@ import {
   Tag,
   Printer,
   FileCheck,
+  Sun,
+  ArrowLeftRight,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
 // module: a paid module's item, shown while the module is on (or read-only with a lock once it has ended), hidden otherwise.
-type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean; hop?: boolean };
+// stores: only with more than one store (shop-features-round-2-design.md section 7).
+type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean; hop?: boolean; stores?: boolean };
 
 // repair: shown to repair benches; retail: to shops with a counter; partners: to shops with partner shops. Unmarked: everyone.
 const items: Item[] = [
+  // Every store's day on one page, made for the owner's phone (7.5).
+  { href: "/today", label: "Today", icon: Sun, stores: true },
   { href: "/register", label: "Register", icon: ShoppingCart, retail: true },
   { href: "/", label: "Dashboard", icon: LayoutDashboard, repair: true },
   { href: "/tickets", label: "Tickets", icon: ClipboardList, repair: true },
@@ -64,6 +69,8 @@ const items: Item[] = [
   // Marketing: the outbox (Campaigns is its tab), with a badge of customer replies nobody has looked at.
   { href: "/messages", label: "Messages", icon: Send, module: "marketing" },
   { href: "/parts", label: "Parts", icon: Package },
+  // Stock sent between stores and asked for (7.2, 7.7).
+  { href: "/parts/transfers", label: "Between stores", icon: ArrowLeftRight, stores: true },
   { href: "/fabric", label: "Fabric", icon: Scissors, retail: true },
   { href: "/longarm", label: "Longarm", icon: Ruler, retail: true },
   { href: "/partners", label: "Partner shops", icon: Handshake },
@@ -97,6 +104,7 @@ export function Nav({
   badges,
   pausePill,
   hopOn = false,
+  multiStore = false,
 }: {
   platformAdmin?: boolean;
   chatUrl?: string | null;
@@ -112,12 +120,15 @@ export function Nav({
   pausePill?: string | null;
   /** Shop hops are on (Settings, Selling). */
   hopOn?: boolean;
+  /** The company has more than one open store. */
+  multiStore?: boolean;
 }) {
   const path = usePathname();
   const shown = items
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
     .filter((i) => !i.admin || showReports)
     .filter((i) => !i.hop || hopOn)
+    .filter((i) => !i.stores || multiStore)
     .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
     // A shop that sells (retail, or retail and repair) calls its stock Inventory; a repair-only shop calls it Parts.
     .map((i) => (i.href === "/parts" && sellsRetail ? { ...i, label: "Inventory" } : i));

@@ -24,14 +24,18 @@ import { PartnerTodo } from "@/components/partner-todo";
 import { TodaySlot } from "@/components/slots/today";
 import { EstimatesTodoSlot } from "@/components/slots/estimates-todo";
 import { TodoLinesSlot } from "@/components/slots/todo-lines";
+import { activeStores, currentStore, storeDetails } from "@/lib/stores";
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ booking?: string; items?: string }> }) {
   const user = await requireUser();
   const { booking, items } = await searchParams;
-  const [shop, partners] = await Promise.all([
+  const [shopRow, partners] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true, houseAccountsOn: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
+  // More than one store (7.1, 7.5): this store's tax rate, name and limits; with one store nothing changes.
+  const here = (await activeStores(user.shopId)).length > 1 ? await currentStore(user) : null;
+  const shop = storeDetails(shopRow, here);
   if (!shop.sellsRetail) {
     return (
       <div className="space-y-4">
@@ -126,7 +130,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} tradeInLessPct={(await tradeUpSettings(user.shopId)).lessPct} preload={preload} preloadItems={preloadItems} tradeNote={tradeNote} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} cardReader={cardReader} threadPhoto={threadPhoto} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} tradeInLessPct={(await tradeUpSettings(user.shopId)).lessPct} preload={preload} preloadItems={preloadItems} tradeNote={tradeNote} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} cardReader={cardReader} threadPhoto={threadPhoto} store={here ? { name: here.name, limits: { refundCents: here.approveRefundCents, discountPct: here.approveDiscountPct } } : null} />
     </div>
   );
 }

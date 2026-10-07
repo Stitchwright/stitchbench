@@ -19,6 +19,7 @@ import { cleanText, plainText, renderKind } from "@/lib/messaging/templates";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { classCreditsFor } from "@/lib/units/units";
 import { fmtDay, fmtWhen, rangeFromForm, wall, ymdOf, zonedTime } from "@/lib/zoned";
+import { currentStoreId } from "@/lib/stores";
 
 type Tx = Prisma.TransactionClient;
 
@@ -195,8 +196,10 @@ export async function saveClassAs(user: CurrentUser, classId: string | null, fd:
   const days = meetingDays(ymdOf(startsAt, tz), repeat, count);
   const startMin = minutesOf(startsAt, tz);
   const endMin = minutesOf(endsAt, tz);
+  const here = await currentStoreId(user);
   const made = await db.$transaction(async (tx) => {
-    const c = await tx.shopClass.create({ data: { shopId, ...data, createdById: user.id }, select: { id: true } });
+    // Held at the store that set it up (7.1).
+    const c = await tx.shopClass.create({ data: { shopId, ...data, createdById: user.id, locationId: here }, select: { id: true } });
     await tx.classMeeting.createMany({ data: days.map((d) => ({ shopId, classId: c.id, startsAt: zoned(d, startMin, tz), endsAt: zoned(d, endMin, tz) })) });
     await syncClassDates(tx, c.id);
     return c;

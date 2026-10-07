@@ -25,6 +25,7 @@ import { ymdOf } from "@/lib/zoned";
 import { fmtYmdLong } from "@/lib/units/units";
 import { applyPayment, ORDER_INCLUDE, orderUrl, sha256, stripeKeyFor, TOKEN_RE, type OrderItem } from "@/lib/shop/online-shop";
 import { createCheckoutSession, retrieveSession } from "@/lib/shop/stripe";
+import { currentStore, storeDetails } from "@/lib/stores";
 
 const MAX_MONEY = 10_000_000;
 export const PAY_LINK_DAYS = 14;
@@ -122,7 +123,9 @@ export async function makePayLinkFor(user: CurrentUser, input: PayLinkInput, o: 
       ...(l.loanId ? { loanId: l.loanId } : {}),
     };
   });
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true, shopPayVia: true, timeZone: true, name: true, phone: true } });
+  // Made at this store (7.1): its tax rate, and the sale is its when she pays.
+  const here = await currentStore(user);
+  const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true, shopPayVia: true, timeZone: true, name: true, phone: true } }), here);
   const exempt = exemptCertificate(customer);
   const t = saleTotals(
     items.map((i) => ({ qty: i.qty, unitPriceCents: i.unitPriceCents, taxable: !!i.taxable })),
@@ -149,6 +152,7 @@ export async function makePayLinkFor(user: CurrentUser, input: PayLinkInput, o: 
         number: sh.nextWebOrderNumber - 1,
         status: "PENDING",
         source: "staff",
+        locationId: here?.id ?? null,
         customerId: customer.id,
         name: customer.name.slice(0, 120),
         phone: customer.phone,

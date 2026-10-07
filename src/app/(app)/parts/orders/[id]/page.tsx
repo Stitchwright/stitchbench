@@ -16,6 +16,7 @@ import { fmtYmdLong } from "@/lib/units/units";
 import { AddLineForm, CancelOrderButton, OrderEditForm, ReceiveForm, SendButton } from "@/components/fabric-orders-forms";
 import { entryFor } from "@/lib/assistant/ui";
 import { SlipReader } from "@/components/slip-reader";
+import { OrderStores } from "@/components/order-stores";
 
 const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
 
@@ -174,6 +175,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           {o.status === "SENT" && <CancelOrderButton orderId={o.id} />}
         </div>
       )}
+      {/* More than one store (7.3): each store's share, and sending it on once the box is here. */}
+      <OrderStores user={user} order={o} />
       {receiving && slip.show && (
         <details className="card card-pad">
           <summary className="link cursor-pointer text-base">Receive from a photo of the packing slip</summary>

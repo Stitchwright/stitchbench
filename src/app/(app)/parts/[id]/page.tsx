@@ -37,6 +37,9 @@ import { ItemMembership } from "@/components/item-membership";
 import { ItemYardBreak } from "@/components/item-yard-break";
 import { OrderMoreForm } from "@/components/fabric-orders-forms";
 import { eachSuggestion } from "@/lib/fabric-orders-math";
+import { ItemStores } from "@/components/item-stores";
+import { currentStore, storesOf } from "@/lib/stores";
+import { elsewhereWords, storeStockFor } from "@/lib/stock";
 
 const REASON: Record<string, string> = {
   RECEIVED: "Received",
@@ -46,6 +49,8 @@ const REASON: Record<string, string> = {
   SOLD: "Sold",
   CONSIGNED: "Consignment",
   CUT: "Cut",
+  HELD: "Held",
+  TRANSFER: "Between stores",
 };
 
 export default async function PartPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ existing?: string }> }) {
@@ -74,6 +79,10 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   const marketingEntry = shopFlags.sellsRetail ? await entryFor(user.shopId, "marketing") : null;
   // The items this fabric's cuts feed (fat quarters, half yards, remnant): only this shop's own.
   const cutIds = [p.fatQuarterId, p.halfYardId, p.remnantId].filter((x): x is string => !!x);
+  // More than one store: this store's stock in the header, the total under Stock (7.2).
+  const here = await currentStore(user);
+  const stock = (await storeStockFor(user.shopId, [p], here))?.get(p.id) ?? null;
+  const storeNames = new Map((await storesOf(user.shopId)).map((s) => [s.id, s.name]));
   const cutItems = cutIds.length ? await db.part.findMany({ where: { id: { in: cutIds }, shopId: user.shopId }, select: { id: true, partNumber: true, description: true, qtyOnHand: true, unit: true } }) : [];
 
   return (
@@ -93,7 +102,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 {t}
               </span>
             ))}
-            {`${p.kind !== "PART" ? `${typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {`${p.kind !== "PART" ? `${typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]} · ` : ""}${stock ? `${qtyText(stock.here, p.unit)} in this store${stock.others.length ? ` · ${elsewhereWords(stock)}` : ""}` : `${qtyText(p.qtyOnHand, p.unit)} on hand`}${p.location && !stock ? ` · bin ${p.location}` : ""}${!stock && p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
             {detailsLine(p) && (
               <span className="mt-1 flex items-center gap-2 text-base text-ink">
                 <ColorDot hex={p.colorHex} size="lg" />
@@ -130,7 +139,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
         <div className="space-y-6">
           <Section title="Stock">
             <div className="mb-4 grid grid-cols-3 gap-3">
-              <KV k="On hand" v={<span className="num text-xl font-semibold">{qtyText(p.qtyOnHand, p.unit)}</span>} />
+              <KV k={stock ? "In all stores" : "On hand"} v={<span className="num text-xl font-semibold">{qtyText(p.qtyOnHand, p.unit)}</span>} />
               <KV k="Cost" v={moneyCost(p.costCents, p.costTenThou)} />
               <KV k="Price" v={money(p.priceCents)} />
             </div>
@@ -174,6 +183,8 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 </div>
               </div>
             )}
+            {/* More than one store (7.2, 7.7): each store's stock, sending and asking. Nothing with one store. */}
+            <ItemStores user={user} part={p} />
           </Section>
           {swatchPhoto && tagEntry?.show && (
             <Section title="Color and theme tags">
@@ -388,6 +399,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 <li key={m.id} className="flex justify-between gap-2 py-2">
                   <span>
                     {fmtDate(m.createdAt, tz)} · {REASON[m.reason]}
+                    {stock && <span className="muted"> · {storeNames.get(m.locationId ?? "") ?? storeNames.get([...storeNames.keys()][0]) ?? ""}</span>}
                     {m.ticketId && tno.has(m.ticketId) && (
                       <>
                         {" "}

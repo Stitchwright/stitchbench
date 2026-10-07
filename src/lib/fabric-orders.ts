@@ -315,8 +315,22 @@ async function nextNumber(tx: Prisma.TransactionClient, shopId: string): Promise
 const isUnique = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 
 /** Makes a draft for the supplier (retrying when another order took the number at the same moment). */
-async function newDraft(tx: Prisma.TransactionClient, shopId: string, supplier: { id: string; name: string }) {
-  return tx.purchaseOrder.create({ data: { shopId, number: await nextNumber(tx, shopId), supplierId: supplier.id, supplierName: supplier.name } });
+async function newDraft(tx: Prisma.TransactionClient, shopId: string, supplier: { id: string; name: string }, locationId: string | null = null) {
+  // The store that starts it (7.3): the box comes to it unless the supplier ships each store its share.
+  return tx.purchaseOrder.create({ data: { shopId, locationId, number: await nextNumber(tx, shopId), supplierId: supplier.id, supplierName: supplier.name } });
+}
+
+/** A line's split across stores (7.3): { storeId: qty } of positive amounts, never more than the line in all. */
+export function cleanSplit(v: unknown, qty: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const [k, n] of Object.entries(v as Record<string, unknown>)) {
+    const q = Math.round(Number(n) * 1000) / 1000;
+    if (typeof k === "string" && k.length <= 40 && Number.isFinite(q) && q > 0) out[k] = q;
+  }
+  const sum = Object.values(out).reduce((a, b) => a + b, 0);
+  if (sum > qty + 1e-9) throw new UserError("The stores' shares add up to more than the line.");
+  return out;
 }
 
 async function inTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
@@ -371,7 +385,8 @@ export async function addToDraftFor(user: CurrentUser, picks: { partId: string; 
  * set, not doubled). `qty` is bolts for fabric sold by the yard and pieces for anything else (shop-features-round-2-design.md
  * 1.1). An item with no supplier is refused by name. `fabricOnly`: the Fabric page's Reorder tab, which sends fabric only.
  */
-export async function addItemsToDraftFor(user: CurrentUser, picks: { partId: string; qty: number }[], o: { fabricOnly?: boolean } = {}): Promise<string> {
+export async function addItemsToDraftFor(user: CurrentUser, picks: { partId: string; qty: number; split?: Record<string, number> }[], o: { fabricOnly?: boolean } = {}): Promise<string> {
+  const here = await currentStoreId(user);
   if (!picks.length) throw new UserError(o.fabricOnly ? "Tick the fabrics to order." : "Tick the items to order.");
   if (picks.length > MAX_ORDER_LINES) throw new UserError(`${MAX_ORDER_LINES} lines at most at a time.`);
   for (const p of picks) assertId(p.partId);
@@ -391,9 +406,10 @@ export async function addItemsToDraftFor(user: CurrentUser, picks: { partId: str
       const part = byId.get(pick.partId)!;
       const sup = await supplierNamed(tx, user.shopId, part.supplier!);
       let po = await tx.purchaseOrder.findFirst({ where: { shopId: user.shopId, supplierId: sup.id, status: "DRAFT" }, orderBy: { number: "desc" } });
-      if (!po) po = await newDraft(tx, user.shopId, sup);
+      if (!po) po = await newDraft(tx, user.shopId, sup, here);
       const unit: PoUnitName = byYard(part) ? "BOLT" : "EACH";
-      const data = { unit, qty: pick.qty, boltYards: part.boltYards, costCents: yardCostCents(part), itemNumber: part.partNumber, description: part.description };
+      // A combined order for every store keeps each store's share (7.3).
+      const data = { unit, qty: pick.qty, boltYards: part.boltYards, costCents: yardCostCents(part), itemNumber: part.partNumber, description: part.description, ...(pick.split ? { split: cleanSplit(pick.split, pick.qty) } : {}) };
       const have = await tx.purchaseOrderLine.findFirst({ where: { shopId: user.shopId, orderId: po.id, partId: part.id } });
       if (have) await tx.purchaseOrderLine.update({ where: { id: have.id }, data });
       else {
@@ -416,15 +432,17 @@ export async function createOrderFor(user: CurrentUser, supplierName: string): P
   if (!name) throw new UserError("Enter the supplier's name.");
   return inTx(async (tx) => {
     const sup = await supplierNamed(tx, user.shopId, name);
-    const po = await newDraft(tx, user.shopId, sup);
+    const po = await newDraft(tx, user.shopId, sup, await currentStoreId(user));
     return po.id;
   });
 }
 
-export type OrderLineView = { id: string; partId: string | null; itemNumber: string; description: string; unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number; photoId: string | null; machine?: boolean; backorderedOn?: Date | null; expectedOn?: string | null };
+export type OrderLineView = { id: string; partId: string | null; itemNumber: string; description: string; unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number; photoId: string | null; machine?: boolean; backorderedOn?: Date | null; expectedOn?: string | null; split?: Record<string, number> };
 export type OrderView = {
   id: string;
   number: number;
+  /** The store that started it (null: the main store). */
+  locationId?: string | null;
   supplier: { id: string; name: string; orderEmail: string | null; minOrderCents: number; connector: string; accountNumber: string | null; layout: OrderLayout | null; lead: { days: number; from: "learned" | "supplier" | "shop" } };
   /** How it went to the supplier (package F6): smtp, mailto, file or none; null while a draft. */
   sentVia: OrderVia | null;
@@ -453,10 +471,11 @@ export async function orderFor(shopId: string, id: string): Promise<OrderView | 
     db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true, timeZone: true, fabLeadDays: true } }),
   ]);
   if (!po) return null;
-  const lines: OrderLineView[] = po.lines.map((l) => ({ id: l.id, partId: l.partId, itemNumber: l.itemNumber, description: l.description, unit: l.unit, qty: l.qty, boltYards: l.boltYards, costCents: l.costCents, receivedYards: l.receivedYards, photoId: l.part?.photos[0]?.id ?? null, machine: l.part?.kind === "MACHINE", backorderedOn: l.backorderedOn, expectedOn: l.expectedOn }));
+  const lines: OrderLineView[] = po.lines.map((l) => ({ id: l.id, partId: l.partId, itemNumber: l.itemNumber, description: l.description, unit: l.unit, qty: l.qty, boltYards: l.boltYards, costCents: l.costCents, receivedYards: l.receivedYards, photoId: l.part?.photos[0]?.id ?? null, machine: l.part?.kind === "MACHINE", backorderedOn: l.backorderedOn, expectedOn: l.expectedOn, split: cleanSplit(l.split, Number.MAX_SAFE_INTEGER) }));
   return {
     id: po.id,
     number: po.number,
+    locationId: po.locationId,
     supplier: { id: po.supplier.id, name: po.supplier.name, orderEmail: po.supplier.orderEmail, minOrderCents: po.supplier.minOrderCents, connector: connectorFor(po.supplier.connector).id, accountNumber: po.supplier.accountNumber, layout: po.supplier.orderLayout ? cleanLayout(po.supplier.orderLayout) : null, lead: leadDaysOf(po.supplier, shop.fabLeadDays) },
     sentVia: po.sentVia === "smtp" || po.sentVia === "mailto" || po.sentVia === "file" || po.sentVia === "none" ? po.sentVia : null,
     status: po.status,
@@ -556,7 +575,16 @@ export async function saveOrderFor(user: CurrentUser, orderId: string, fd: FormD
       checkQty(unit, qty, l.itemNumber);
       // A tech's save keeps each line's cost as it was (the form doesn't let them change it).
       const cost = user.role === "TECH" ? l.costCents : centsField(str(fd.get(`cost.${l.id}`)), `${l.itemNumber} cost`);
-      await tx.purchaseOrderLine.update({ where: { id: l.id }, data: { unit, qty, costCents: cost } });
+      // With more than one store: how many are for each other store (fields split.<lineId>.<storeId>; the rest is this order's store's).
+      const typed: Record<string, number> = {};
+      let anySplit = false;
+      for (const [k, v] of fd.entries()) {
+        if (!k.startsWith(`split.${l.id}.`) || typeof v !== "string") continue;
+        anySplit = true;
+        if (v.trim()) typed[k.slice(`split.${l.id}.`.length)] = Number(v.trim());
+      }
+      const split = anySplit ? cleanSplit(typed, qty) : undefined;
+      await tx.purchaseOrderLine.update({ where: { id: l.id }, data: { unit, qty, costCents: cost, ...(split ? { split } : {}) } });
     }
     const note = str(fd.get("note"));
     await tx.purchaseOrder.update({ where: { id: po.id }, data: { note: note ? note.slice(0, 1000) : null } });

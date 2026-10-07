@@ -7,7 +7,7 @@ import "server-only";
 // Every write to stock goes through here with the store it happens at (null = the main store).
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { isMainStoreId } from "@/lib/stores";
+import { activeStores, isMainStoreId } from "@/lib/stores";
 import { UserError } from "@/lib/user-error";
 
 type Tx = Prisma.TransactionClient;
@@ -152,4 +152,31 @@ export async function withStoreQty<T extends { id: string; qtyOnHand: number }>(
   const levels = await otherStoreLevels(shopId, items.map((i) => i.id));
   if (!levels.size && store.main) return items.map((i) => ({ ...i, totalQty: i.qtyOnHand }));
   return items.map((i) => ({ ...i, totalQty: i.qtyOnHand, qtyOnHand: qtyAt(i.qtyOnHand, levels.get(i.id), store) }));
+}
+
+export type StoreStock = { here: number; hereName: string; others: { id: string; name: string; qty: number }[] };
+
+/**
+ * "In this store: 2 · At Florida store: 5" for each item asked about (7.2): this store's stock and every other open
+ * store's that has some. Null for a company with one store (nothing extra shows).
+ */
+export async function storeStockFor(shopId: string, items: { id: string; qtyOnHand: number }[], here: { id: string; main: boolean; name: string } | null): Promise<Map<string, StoreStock> | null> {
+  const stores = (await activeStores(shopId)).filter(Boolean);
+  if (stores.length <= 1 || !here) return null;
+  const levels = await otherStoreLevels(shopId, items.map((i) => i.id));
+  const out = new Map<string, StoreStock>();
+  for (const it of items) {
+    const l = levels.get(it.id);
+    out.set(it.id, {
+      here: qtyAt(it.qtyOnHand, l, here),
+      hereName: here.name,
+      others: stores.filter((s) => s.id !== here.id).map((s) => ({ id: s.id, name: s.name, qty: qtyAt(it.qtyOnHand, l, s) })).filter((o) => o.qty > 0),
+    });
+  }
+  return out;
+}
+
+/** "At Florida: 5 · At Main store: 2" (the stores other than this one that have some), or "" when none. */
+export function elsewhereWords(s: StoreStock | null | undefined): string {
+  return s?.others.map((o) => `At ${o.name}: ${o.qty}`).join(" · ") ?? "";
 }

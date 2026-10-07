@@ -37,6 +37,11 @@ export type RegisterItem = {
   breakPriceCents?: number | null;
   /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7): the places, to take down before selling it. */
   listedOn?: string[];
+  /**
+   * More than one store (7.2): the other stores that have some ("At Florida: 5"; qtyOnHand is then this store's). A
+   * machine for sale at another store: that store, qty 1.
+   */
+  elsewhere?: { id: string; name: string; qty: number }[];
 };
 
 export const viewItem = (p: {

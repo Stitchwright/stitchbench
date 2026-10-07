@@ -16,11 +16,19 @@ import { CatalogImport } from "@/components/connector-forms";
 import { connectorFor } from "@/lib/connectors/registry";
 import { waitingToOrder } from "@/lib/special-orders";
 import { orderSpecialOrders } from "@/actions/special-orders";
+import { hereForPage, reorderByStore } from "@/lib/store-orders";
+import { activeStores } from "@/lib/stores";
 
 const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
 
-export default async function SupplierOrdersPage() {
+export default async function SupplierOrdersPage({ searchParams }: { searchParams: Promise<{ stores?: string }> }) {
   const user = await requireUser();
+  const sp = await searchParams;
+  // More than one store (7.3): "This store" or "All stores" (a combined order keeps each store's share).
+  const here = await hereForPage(user);
+  const mode = here && sp.stores === "all" ? "all" : "here";
+  const storeRows = here ? await reorderByStore(user.shopId, here, mode) : null;
+  const storeNames = new Map((await activeStores(user.shopId)).map((s) => [s.id, s.name]));
   const [rows, orders, suppliers, shop] = await Promise.all([
     reorderEachFor(user.shopId),
     ordersListFor(user.shopId),
@@ -77,8 +85,59 @@ export default async function SupplierOrdersPage() {
               </>
             ) : null}
           </p>
+          {here && (
+            <div className="flex flex-wrap gap-2 pt-2" role="group" aria-label="Which stores">
+              <Link href="/parts/orders" className={`btn btn-sm ${mode === "here" ? "btn-primary" : ""}`} aria-current={mode === "here" ? "page" : undefined}>
+                {here.name}
+              </Link>
+              <Link href="/parts/orders?stores=all" className={`btn btn-sm ${mode === "all" ? "btn-primary" : ""}`} aria-current={mode === "all" ? "page" : undefined}>
+                All stores
+              </Link>
+            </div>
+          )}
         </div>
-        {rows.length === 0 ? (
+        {storeRows ? (
+          storeRows.length === 0 ? (
+            <div className="card-pad">
+              <Empty>Nothing is running low {mode === "all" ? "at any store" : `at ${here!.name}`}. Each store&apos;s reorder point is on the item&apos;s page, under Bin and reorder point at each store.</Empty>
+            </div>
+          ) : (
+            <ActionForm action={addItemsToOrders} success="Added to draft orders">
+              <ul className="divide-y divide-line" aria-label="Running low">
+                {storeRows.map((r) => (
+                  <li key={r.id} className="card-pad flex flex-wrap items-center gap-3">
+                    <div className="min-w-[12rem] flex-1">
+                      <Link href={`/parts/${r.id}`} className="link mono">
+                        {r.partNumber}
+                      </Link>{" "}
+                      {r.description}
+                      <div className="muted text-sm">{r.supplier ?? "no supplier yet"}</div>
+                      <div className="text-sm">
+                        {r.qty} on hand{mode === "all" ? " at all stores" : ""}, reorder at {r.reorderAt}
+                        {Object.keys(r.split).length > 0 && <span className="muted"> · {Object.entries(r.split).map(([id, q]) => `${q} for ${storeNames.get(id) ?? "another store"}`).join(", ")}</span>}
+                      </div>
+                    </div>
+                    {r.supplier ? (
+                      <label className="flex min-h-11 items-center gap-2 text-base">
+                        <input type="checkbox" name={`pick.${r.id}`} className="check" aria-label={`Order ${r.partNumber}`} />
+                        <span>Order</span>
+                        <input name={`qty.${r.id}`} defaultValue={r.suggest} inputMode="numeric" className="input num w-20" aria-label={`How many of ${r.partNumber}`} />
+                        {Object.keys(r.split).length > 0 && <input type="hidden" name={`split.${r.id}`} value={JSON.stringify(r.split)} />}
+                      </label>
+                    ) : (
+                      <Link href={`/parts/${r.id}`} className="link text-sm">
+                        Give it a supplier to order it
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="card-pad">
+                <Submit>Add ticked items to draft orders</Submit>
+              </div>
+            </ActionForm>
+          )
+        ) : rows.length === 0 ? (
           <div className="card-pad">
             <Empty>Nothing is running low. An item shows up here when its stock reaches the &quot;Reorder when at or below&quot; number on its page.</Empty>
           </div>

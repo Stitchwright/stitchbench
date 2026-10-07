@@ -24,6 +24,7 @@ import { saveCompanyMode } from "@/actions/partners";
 import { messagingView } from "@/lib/messaging/settings";
 import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
 import { MoveSection } from "./move-section";
+import { activeStores } from "@/lib/stores";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -169,6 +170,7 @@ export default async function SettingsPage() {
     db.stockUnit.count({ where: { shopId: user.shopId } }),
   ]);
   const checklist = shop.checklistItems?.length ? shop.checklistItems : DEFAULT_CHECKLIST;
+  const openStores = await activeStores(user.shopId);
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
   // The paid modules; the program's own key is Settings → Account's.
   const moduleLines = PAID_MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
@@ -233,6 +235,16 @@ export default async function SettingsPage() {
               <Submit>Save</Submit>
             </ActionForm>
           </Section>
+          <div className="mt-6">
+            <Section title="Stores" id="stores">
+              <p className="text-sm">
+                {openStores.length > 1 ? `${openStores.length} stores: ${openStores.map((s) => s.name).join(", ")}.` : "One store."}{" "}
+                <Link href="/settings/stores" className="link">
+                  {openStores.length > 1 ? "Stores, who works where, limits" : "Opening another store? Add it here"}
+                </Link>
+              </p>
+            </Section>
+          </div>
           <div className="mt-6">
             <MoveSection user={user} timeZone={shop.timeZone} />
           </div>

@@ -15,6 +15,7 @@ import { seal, unseal } from "@/lib/messaging/secrets";
 import { looksLikeSecretKey, stripeCall } from "@/lib/shop/stripe";
 import type { CurrentUser } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
+import { currentStoreId } from "@/lib/stores";
 
 type Tx = Prisma.TransactionClient;
 type Intent = {
@@ -79,7 +80,7 @@ export async function pairReaderFor(user: CurrentUser, fd: FormData): Promise<st
     await db.shop.update({ where: { id: user.shopId }, data: { terminalLocationId: location } });
   }
   const r = await stripeCall<Reader>(key, "POST", "/v1/terminal/readers", { registration_code: code, label, location });
-  await db.cardReader.upsert({ where: { shopId_readerId: { shopId: user.shopId, readerId: r.id } }, create: { shopId: user.shopId, readerId: r.id, label, deviceType: r.device_type ?? null }, update: { label, deviceType: r.device_type ?? null } });
+  await db.cardReader.upsert({ where: { shopId_readerId: { shopId: user.shopId, readerId: r.id } }, create: { shopId: user.shopId, locationId: await currentStoreId(user), readerId: r.id, label, deviceType: r.device_type ?? null }, update: { label, deviceType: r.device_type ?? null } });
   return `Paired: ${label}.`;
 }
 
