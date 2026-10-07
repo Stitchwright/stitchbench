@@ -78,6 +78,9 @@ async function main() {
     assert.deepEqual(cutPlan("HALF", 1.375), { count: 2, usedYards: 1, leftYards: 0.375 });
     assert.deepEqual(cutPlan("HALF", 0.375), { count: 0, usedYards: 0, leftYards: 0.375 });
     assert.deepEqual(cutPlan("REMNANT", 0.625), { count: 0.625, usedYards: 0.625, leftYards: 0 });
+    // A non-eighth amount on the bolt: a remnant takes exactly it, a fat quarter never more than is there.
+    assert.deepEqual(cutPlan("REMNANT", 1.3), { count: 1.3, usedYards: 1.3, leftYards: 0 });
+    assert.deepEqual(cutPlan("FQ", 1.24), { count: 4, usedYards: 1, leftYards: 0.24 });
     assert.equal(cutWords("FQ", 1.375), "1 3/8 yd makes 5 fat quarters, with 1/8 yd left.");
     assert.equal(cutWords("FQ", 1), "1 yd makes 4 fat quarters.");
     assert.equal(cutWords("FQ", 0.25), "1/4 yd makes 1 fat quarter.");
