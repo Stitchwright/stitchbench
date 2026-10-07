@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { money, ticketNo } from "@/lib/format";
+import { fmtDate, money, ticketNo } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { fmtDay, monthRange, todayIn } from "@/lib/time-zone";
 import { PageHeader, Section, Empty } from "@/components/ui";
@@ -10,6 +10,8 @@ import { ticketsReport, topCustomers } from "@/lib/reports/tickets";
 import { liabilityReport } from "@/lib/reports/giftcards";
 import { depositsHeld, listLayaways } from "@/lib/layaway";
 import { coveredWork } from "@/lib/units/plans";
+import { financedReport } from "@/lib/financing";
+import { markFinancedPaid } from "@/actions/financing";
 import { taxReport } from "@/lib/reports/tax";
 import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
 import { balanced, buildBooks, loadBooks } from "@/lib/books";
@@ -22,6 +24,7 @@ const TABS = [
   { key: "customers", label: "Top customers" },
   { key: "gift-cards", label: "Gift cards" },
   { key: "layaways", label: "Layaways and plans" },
+  { key: "financing", label: "Financing" },
   { key: "tax", label: "Sales tax" },
   { key: "books", label: "Bookkeeping" },
 ] as const;
@@ -118,6 +121,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
       {tab === "customers" && <CustomersTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "gift-cards" && <GiftTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "layaways" && <LayawayTab shopId={user.shopId} start={start} end={end} csv={csv} />}
+      {tab === "financing" && <FinancingTab shopId={user.shopId} tz={tz} start={start} end={end} />}
       {tab === "tax" && <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} />}
       {tab === "books" && books && <BooksTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} fromStr={fromStr} toStr={toStr} exportedThrough={books.exportedThrough} />}
     </div>
@@ -479,6 +483,94 @@ async function LayawayTab({ shopId, start, end }: TabProps) {
                 </tr>
               ))}
             </tbody>
+          </table>
+        )}
+      </Section>
+    </>
+  );
+}
+
+/** Financing (tax-machine-sales-layaway-design.md section 5): financed sales by lender, and the ones a lender hasn't paid yet. */
+async function FinancingTab({ shopId, tz, start, end }: { shopId: string; tz: string; start: Date; end: Date }) {
+  const r = await financedReport(shopId, start, end);
+  const row = (f: (typeof r.unpaid)[number], paid: boolean) => (
+    <tr key={f.id}>
+      <td>
+        <Link href={`/register/sales/${f.saleId}`} className="link">
+          #{f.saleNumber}
+        </Link>
+      </td>
+      <td>{fmtDate(f.at, tz)}</td>
+      <td>{f.customer ?? ""}</td>
+      <td>
+        {f.lender}
+        {f.approval ? <span className="muted"> · {f.approval}</span> : null}
+      </td>
+      <Num>{money(f.amountCents)}</Num>
+      <td className="no-print text-right">
+        <ActionButton action={markFinancedPaid.bind(null, f.id, !paid)} className="btn btn-sm" success={paid ? "Marked not paid" : "Marked paid"}>
+          {paid ? "Not paid after all" : "Lender paid"}
+        </ActionButton>
+      </td>
+    </tr>
+  );
+  const head = (
+    <thead>
+      <tr>
+        <Th>Sale</Th>
+        <Th>Day</Th>
+        <Th>Customer</Th>
+        <Th>Lender</Th>
+        <Th right>Amount</Th>
+        <th className="no-print" />
+      </tr>
+    </thead>
+  );
+  return (
+    <>
+      <Section title="By lender">
+        {r.byLender.length === 0 ? (
+          <Empty>No financed sales. Add your lenders under Settings → Selling to take financed payments.</Empty>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <Th>Lender</Th>
+                <Th right>Sales in this range</Th>
+                <Th right>Amount</Th>
+                <Th right>Not paid yet (all time)</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.byLender.map((x) => (
+                <tr key={x.lender}>
+                  <td>{x.lender}</td>
+                  <Num>{x.count}</Num>
+                  <Num>{money(x.cents)}</Num>
+                  <Num bold={x.unpaidCents > 0}>{money(x.unpaidCents)}</Num>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+      <Section title={`Not paid by the lender yet (${r.unpaid.length})`}>
+        {r.unpaid.length === 0 ? (
+          <Empty>Every financed sale has been paid.</Empty>
+        ) : (
+          <table className="table">
+            {head}
+            <tbody>{r.unpaid.map((f) => row(f, false))}</tbody>
+          </table>
+        )}
+      </Section>
+      <Section title="Paid in this range">
+        {r.inRange.filter((f) => f.paidAt).length === 0 ? (
+          <Empty>None.</Empty>
+        ) : (
+          <table className="table">
+            {head}
+            <tbody>{r.inRange.filter((f) => f.paidAt).map((f) => row(f, true))}</tbody>
           </table>
         )}
       </Section>

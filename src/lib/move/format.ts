@@ -103,6 +103,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ServicePlan", key: "id" }, // the shop's own service plans
   { t: "MakerWarranty", key: "id" }, // each maker's warranty as the shop typed it
   { t: "TaxHoliday", key: "id" }, // the shop's sales tax holidays
+  { t: "Lender", key: "id" }, // the lenders the shop offers financing through
+  { t: "FinancedSale", key: "id" }, // -> Lender (its sale id is plain)
   { t: "MachinePlan", key: "id" }, // -> Machine (its sale line and unit ids are plain)
   { t: "Layaway", key: "id" }, // -> Customer (its sale id is plain)
   { t: "LayawayLine", key: "id", via: { column: "layawayId", parent: "Layaway" } }, // its part and unit ids are plain

@@ -51,6 +51,8 @@ function tenderKey(method: string, cfg: BooksConfig): { account: string } {
       return { account: accountName(cfg, "receivable") };
     case "SHOP_COLLECTED":
       return { account: accountName(cfg, "dueFromPartners") };
+    case "FINANCED":
+      return { account: accountName(cfg, "lenderReceivable") };
     default:
       return { account: accountName(cfg, "undeposited") };
   }
@@ -150,6 +152,14 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
       post(led, kinds.get(e.cardId) === "credit" ? acct("creditLiability") : acct("giftLiability"), -e.amountCents);
       post(led, acct("giftAdjust"), e.amountCents);
     }
+  }
+
+  // ----- a lender paying a financed sale: the money in, what it owed off (marked paid on that day) -----
+  const lenderPaid = await db.financedSale.findMany({ where: { shopId, voidedAt: null, paidAt: { gte: start, lt: end } }, select: { amountCents: true, paidAt: true } });
+  for (const f of lenderPaid) {
+    const led = dayLedger(f.paidAt!);
+    post(led, acct("undeposited"), f.amountCents);
+    post(led, acct("lenderReceivable"), -f.amountCents);
   }
 
   const out: DayEntry[] = [...days.entries()]

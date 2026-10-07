@@ -24,6 +24,7 @@ import { fmtWhen, ymdOf } from "@/lib/zoned";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { saleLineKind } from "@/lib/sale-kind";
 import { holidaysOn } from "@/lib/tax-holidays";
+import { prepareFinanced, recordFinanced, voidFinanced } from "@/lib/financing";
 import { holidayCovers } from "@/lib/tax-holiday-math";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
@@ -337,9 +338,12 @@ export async function completeSaleAs(
         amountCents: Math.round(Number(t?.amountCents) || 0),
         note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
         cardNumber: typeof t?.cardNumber === "string" ? t.cardNumber.slice(0, 40) : null,
+        ...(t?.method === "FINANCED" ? { lenderId: typeof t.lenderId === "string" ? t.lenderId : "" } : {}),
       }))
       .filter((t) => t.amountCents !== 0);
     if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
+    // A Financing payment names one of this shop's lenders and its approval number (the lender's name is kept with it).
+    await prepareFinanced(shopId, tenders);
     const orderDiscountCents = Math.max(0, Math.round(Number(input.orderDiscountCents) || 0));
     if (user.role === "TECH" && orderDiscountCents) throw new UserError("Only an owner or admin can give a discount.");
     // A tax amount the processor worked out (Stripe Tax) stands in for the rate; the rate recorded is the effective one,
@@ -551,6 +555,8 @@ export async function completeSaleAs(
           }
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
+        // What each lender now owes the shop (Financing payments).
+        await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
         // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
         const label = `Sale #${number}`;
@@ -617,6 +623,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     // Gift cards and store credit the sale used come back; a card it sold goes void, unless it has been spent since
     // (then the void is refused and nothing changes).
     await reverseSale(tx, actorOf(user), sale.id, sale.number);
+    // Financing on it is voided too (refused once the lender has paid).
+    await voidFinanced(tx, { shopId, saleId: sale.id, at });
     // Machines sold go back in stock (their plans end); trade-ins taken come back out.
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at, saleAt: sale.createdAt });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.

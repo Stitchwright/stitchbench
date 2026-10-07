@@ -250,3 +250,21 @@ Decisions made while building:
 - Browser test needed: Settings → Selling's holidays (the Massachusetts button, the form), the register on a holiday
   (the banner, "Tax holiday" on lines, "Charge tax anyway"), the receipt's "(tax holiday)" and its line, Reports →
   Sales tax's holiday list.
+
+**Section 5, financing (7 Oct 2026).** Migration `20261019300000_financing` (`Lender`, `FinancedSale`). Code:
+`src/lib/financing.ts`, `src/actions/financing.ts`; the register's "Financing" payment button (shown once the shop lists
+a lender), Settings → Selling → Financing, Reports → Financing (by lender, not paid yet, "Lender paid"), the receipt
+("Financing by Synchrony, approval ..."; a machine's receipt prints the lenders' apply pages), the online shop's home
+page ("Financing available: apply with ..."). Check: `scripts/checks/financing.check.ts` (6 groups); `books-export`,
+`reports`, `store-credit`, `move-export`, `online-shop`, `layaway` still pass. No house accounts (answer 8).
+Decisions made while building:
+- FINANCED is a payment method on the sale's tenders (the lender's id and name and the approval number kept with it);
+  each one also makes a `FinancedSale` row, which is what the lender owes. The books post it to a new "Due from
+  Lenders" account; marking it paid posts the money in on that day. It is left out of the day's "money taken".
+- A sale whose lender already paid can't be voided until an owner marks it not paid (the lender has the money to sort
+  out). A refund can be paid back as a negative Financing payment (the lender's reversal).
+- The approval number is required. A lender can be unticked (no new payments) but not deleted.
+- Online shop: the design's "machine pages" don't exist (the online shop sells stock items), so the apply links are on
+  the shop's home page.
+- Browser test needed: Settings → Selling → Financing, the register's Financing button (lender, approval number),
+  the receipt, Reports → Financing ("Lender paid", "Not paid after all"), the online shop's financing line.

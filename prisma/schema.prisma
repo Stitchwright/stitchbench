@@ -229,6 +229,8 @@ model Shop {
   makerWarranties   MakerWarranty[]
   layaways          Layaway[]
   taxHolidays       TaxHoliday[]
+  lenders           Lender[]
+  financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
   vacCares          VacCare[]
@@ -3069,4 +3071,41 @@ model TaxHoliday {
   createdAt    DateTime @default(now())
 
   @@index([shopId, firstDay])
+}
+
+// Financing (tax-machine-sales-layaway-design.md section 5, owner's answer 7: record only): a lender the shop offers
+// (Synchrony, Affirm...), with its "apply now" page. Taken at the register as the Financing payment method.
+model Lender {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  applyUrl  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  financed FinancedSale[]
+
+  @@index([shopId])
+}
+
+// One Financing payment on a register sale: the lender owes the shop this much until the shop marks it paid (the books
+// carry it as owed by lenders). A refund through the lender is a negative one. Voided with its sale.
+model FinancedSale {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleId      String // plain id of the Sale
+  lenderId    String
+  lender      Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  amountCents Int
+  approval    String?
+  at          DateTime  @default(now())
+  paidAt      DateTime?
+  paidById    String?
+  voidedAt    DateTime?
+
+  @@index([shopId, paidAt])
+  @@index([saleId])
+  @@index([lenderId])
 }

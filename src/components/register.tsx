@@ -101,6 +101,7 @@ export function Register({
   unitKinds,
   layaway,
   holiday,
+  lenders = [],
   preload,
 }: {
   taxRatePct: number;
@@ -113,6 +114,8 @@ export function Register({
   layaway?: LayawayDefaults;
   /** The sales tax holiday in force today, if any: the lines it covers carry no tax. */
   holiday?: Holiday | null;
+  /** The lenders the shop offers financing through: the Financing payment button shows when there are any. */
+  lenders?: { id: string; name: string }[];
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -151,6 +154,8 @@ export function Register({
   const [tenderAmt, setTenderAmt] = useState("");
   // The gift card or store credit number for the next Gift card / Store credit payment, and the card last scanned.
   const [tenderCard, setTenderCard] = useState("");
+  // The Financing payment's lender and approval number, while it is being filled in.
+  const [fin, setFin] = useState<{ lenderId: string; approval: string } | null>(null);
   const [gcInfo, setGcInfo] = useState<GiftCardInfo | null>(null);
   const [gcPanel, setGcPanel] = useState<{ mode: "new" | "printed" | "load" | "cashout"; number: string; amount: string } | null>(null);
   const [misc, setMisc] = useState<{ description: string; price: string; taxable: boolean } | null>(null);
@@ -550,6 +555,22 @@ export function Register({
     setTenderCard("");
     setGcInfo(null);
     // Ready for the next scan (a scanner's Enter on this button would take the payment again).
+    code.current?.focus();
+  }
+
+  /** A Financing payment: the lender pays the shop; the approval number is kept with it. */
+  function addFinanced() {
+    if (!fin) return;
+    const lender = lenders.find((l) => l.id === fin.lenderId);
+    if (!lender) return toast.error("Pick the lender.");
+    if (!fin.approval.trim()) return toast.error(`Type ${lender.name}'s approval number.`);
+    const typed = toCents(tenderAmt);
+    if (tenderAmt.trim() && typed == null) return toast.error("Type the amount like 12.50, or leave it blank.");
+    const amount = typed != null ? (refund ? -Math.abs(typed) : typed) : refund ? -refundLeft : t.due;
+    if (!amount) return;
+    setTenders((x) => [...x, { method: "FINANCED", amountCents: amount, lenderId: lender.id, lender: lender.name, note: fin.approval.trim() }]);
+    setTenderAmt("");
+    setFin(null);
     code.current?.focus();
   }
 
@@ -1233,13 +1254,45 @@ export function Register({
                 {TENDER_LABEL[m]}
               </button>
             ))}
+            {lenders.length > 0 && (
+              <button type="button" className={`btn btn-sm ${fin ? "btn-primary" : ""}`} disabled={!lines.length} aria-expanded={!!fin} onClick={() => setFin(fin ? null : { lenderId: lenders.length === 1 ? lenders[0].id : "", approval: "" })}>
+                {TENDER_LABEL.FINANCED}
+              </button>
+            )}
           </div>
+          {fin && (
+            <div className="flex flex-wrap items-end gap-2 rounded border border-line p-2" aria-label="Financing">
+              <div className="field">
+                <label htmlFor="fin-lender" className="label">
+                  Lender
+                </label>
+                <select id="fin-lender" className="select" value={fin.lenderId} onChange={(e) => setFin({ ...fin, lenderId: e.target.value })}>
+                  <option value="">-</option>
+                  {lenders.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="fin-approval" className="label">
+                  Approval number
+                </label>
+                <input id="fin-approval" className="input mono" autoComplete="off" value={fin.approval} onChange={(e) => setFin({ ...fin, approval: e.target.value })} />
+              </div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={addFinanced}>
+                Add {money(Math.abs(toCents(tenderAmt) ?? (refund ? refundLeft : t.due)))}
+              </button>
+            </div>
+          )}
           {tenders.length > 0 && (
             <ul className="text-sm">
               {tenders.map((x, i) => (
                 <li key={i} className="flex justify-between">
                   <span>
                     {TENDER_LABEL[x.method]}
+                    {x.lender ? ` (${x.lender})` : ""}
                     {x.last4 ? ` ending ${x.last4}` : ""}{" "}
                     <button type="button" className="link text-xs" onClick={() => setTenders((ts) => ts.filter((_, j) => j !== i))}>
                       remove
