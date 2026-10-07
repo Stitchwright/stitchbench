@@ -61,6 +61,16 @@ export type SaleLineInput = {
   taxAnyway?: boolean;
   /** Layaway money (src/lib/layaway.ts only, with opts.layaway): a payment or the payments used up / given back, or its cancel fee. */
   layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
+  /**
+   * Special orders (shop-features-round-2-design.md 1.2), from the program only (opts.internal), never the browser: a
+   * deposit or balance paid toward one (DEPOSIT, money held for the customer), the deposits used up at pick-up or given
+   * back (DEPOSIT, qty -1), or a kept non-refundable deposit (DEPOSIT_KEPT, income).
+   */
+  specialOrderId?: string | null;
+  depositKind?: "DEPOSIT" | "DEPOSIT_KEPT" | null;
+  /** Rentals (1.8), from the program only: rent paid on a machine out on rental (RENT, income). */
+  unitLoanId?: string | null;
+  rentKind?: "RENT" | null;
 };
 
 export type SaleInput = {
@@ -107,13 +117,15 @@ function saleByKey(shopId: string, clientKey: string | null) {
 export async function completeSaleAs(
   user: CurrentUser,
   input: SaleInput,
-  opts: { paidOnline?: boolean; layaway?: LayawayHook } = {},
+  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean } = {},
 ): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
     // Layaway money and its held items come only from src/lib/layaway.ts; the items' prices were settled when it began.
     const lay = opts.layaway ?? null;
     if (!lay && input.lines.some((l) => l.layawayKind)) throw new UserError("A line can only be one thing.");
+    // Deposits and rent are written by the program (special orders, pay links, rentals), never sent from a browser.
+    if (!opts.internal && input.lines.some((l) => l.depositKind || l.rentKind)) throw new UserError("A line can only be one thing.");
     const priceRole: CurrentUser["role"] = lay ? "OWNER" : user.role;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
