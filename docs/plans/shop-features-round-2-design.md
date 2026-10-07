@@ -1357,3 +1357,20 @@ Decisions made while building:
 - A machine asks for the tick whenever it is listed; an item only when the sale takes its last one (the listing can
   stay up while there are more). A machine's listings are cleared when it sells (voiding the sale doesn't put them back).
 - Listings are recorded by anyone; the rules by owners and admins.
+
+**`appraisals` (9.8, 7 Oct 2026).** Migration `20261024500000_appraisals` (`Appraisal`, `AppraisalPhoto`;
+`Shop.nextAppraisalNumber`, `appraisalFeeCents` $75, `appraiserName`, `appraiserCredential`; carried by the company
+file, the merges and the customer delete). Code: `src/lib/appraisals.ts`, `src/lib/appraisals-words.ts`,
+`src/actions/appraisals.ts`, `src/components/appraisal-fields.tsx`; **Quilt appraisals** (`/appraisals`, from the
+Longarm page's header and the customer's page: the list, "New appraisal" with a new or existing customer, the shop's
+appraiser and fee), each appraisal's page (photos, "Issue the certificate" with how the fee was paid, the draft's
+details) and its printable **certificate** (`/appraisals/[id]/certificate`: number, date, shop, owner, the first photo,
+the quilt, the value and what it is for, the appraiser's signature line and credential); photos at
+`/api/appraisal-photos/[id]`. Check: `scripts/checks/appraisals.check.ts` (3 groups); `customer-merge`, `move-export`
+still pass. Spec: `tests/appraisals.spec.ts`.
+Decisions made while building:
+- Issuing rings the fee up as its own register sale (like a print job's pickup), untaxed: an appraisal is a service.
+  A shop in a state that taxes it can ring it up by hand instead (fee 0 on the appraisal).
+- An issued certificate can't change (a new appraisal replaces it); voiding the fee's sale makes it a draft again.
+- The value is what the appraiser writes; a tech can do appraisals but not change the fee.
+- Deleting the customer keeps the appraisal (the fee's record) without her name or the photos.

@@ -3,12 +3,35 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { owedToConsignor } from "@/lib/consign-machines";
+import { appraisalsFor } from "@/lib/appraisals";
+import { money } from "@/lib/format";
 import { Section } from "@/components/ui";
 import { PayoutLine } from "@/components/paperwork/consign-parts";
 
 export async function CustomerPaperwork({ shopId, customerId, admin }: { shopId: string; customerId: string; admin: boolean }) {
-  const [owed, consigned] = await Promise.all([owedToConsignor(shopId, customerId), db.stockUnit.count({ where: { shopId, consignorId: customerId } })]);
-  if (!owed.length && !consigned) return null;
+  const [owed, consigned, appraisals] = await Promise.all([owedToConsignor(shopId, customerId), db.stockUnit.count({ where: { shopId, consignorId: customerId } }), appraisalsFor(shopId, customerId)]);
+  return (
+    <>
+      {(owed.length > 0 || consigned > 0) && <Consigned customerId={customerId} owed={owed} admin={admin} />}
+      {appraisals.length > 0 && (
+        <Section title="Quilt appraisals">
+          <ul className="divide-y divide-line">
+            {appraisals.map((a) => (
+              <li key={a.id} className="flex justify-between gap-2 py-2 text-base">
+                <Link href={`/appraisals/${a.id}`} className="link">
+                  #{a.number} {a.title}
+                </Link>
+                <span className="num">{money(a.valueCents)}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+    </>
+  );
+}
+
+function Consigned({ customerId, owed, admin }: { customerId: string; owed: Awaited<ReturnType<typeof owedToConsignor>>; admin: boolean }) {
   return (
     <Section
       title="Her machines on consignment"
