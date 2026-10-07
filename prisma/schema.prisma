@@ -789,6 +789,17 @@ model Part {
   fatQuarterId    String?
   halfYardId      String?
   remnantId       String?
+  // Item details (shop-features-round-2-design.md 2.1 and 6.2): the maker's own color number (Isacord 0015), its name, a
+  // swatch color (#rrggbb), the material (thread's fibre, filament's PLA, resin's type, vinyl's kind, laser stock's
+  // material), what it is (itemType: thread | filament | resin | blade | mat | vinyl | laser-material | die, null for
+  // anything else) and the rest in specs (weight and put-up for thread, diameter and spool grams for filament, volume
+  // for resin, size, thickness, shape). The three the counter search reads are columns; src/lib/item-details.ts.
+  colorNumber     String?
+  colorName       String?
+  colorHex        String?
+  material        String?
+  itemType        String?
+  specs           Json?
 
   moves     StockMove[]
   markdowns FabricMarkdown[]
@@ -805,6 +816,7 @@ model Part {
   // in migration 20260930220000_round3_tail2_part_number_ci. Writes catch its P2002 (partNumberClash in lib/parts.ts).
   @@unique([shopId, partNumber])
   @@index([numberKeys], type: Gin)
+  @@index([shopId, itemType])
 }
 
 enum InPrint {

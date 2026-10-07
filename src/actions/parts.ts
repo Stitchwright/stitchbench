@@ -12,9 +12,9 @@ import { str } from "@/lib/format";
 import { MAX_STOCK, centsField, costField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
 import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
-import type { InPrint, PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
-
-const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
+import type { InPrint, PartCondition, PartOrigin } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
+import { detailsFrom, parseKindChoice, type ItemType } from "@/lib/item-details";
 
 /** Whole numbers for most things; fabric by the yard to the eighth (`byYard`). Never below 0 or above what a partner accepts. */
 function qtyValue(v: FormDataEntryValue | null, byYard = true) {
@@ -47,13 +47,23 @@ function fabricData(formData: FormData) {
   return out;
 }
 
+/**
+ * The item details (shop-features-round-2-design.md 2.1, 6.2): what it is and its color number, name, swatch, material
+ * and specs. A form that doesn't carry them (no "details" field: an older tab, another form) leaves them as they are.
+ */
+function itemDetailsData(formData: FormData, itemType: ItemType | null) {
+  if (!formData.has("details")) return {};
+  const d = detailsFrom(itemType, (name) => str(formData.get(name)));
+  return { itemType, colorNumber: d.colorNumber, colorName: d.colorName, colorHex: d.colorHex, material: d.material, specs: Object.keys(d.specs).length ? d.specs : Prisma.DbNull };
+}
+
 /** What the form says about the item. The part number is null when left blank: the shop gives such an item a number. */
 function partData(formData: FormData) {
   const partNumber = str(formData.get("partNumber"));
   const description = str(formData.get("description"));
   if (!description) throw new UserError("Enter a description.");
-  const kind = (str(formData.get("kind")) ?? "PART") as PartKind;
-  if (!KINDS.includes(kind)) throw new UserError("Pick what kind of item it is.");
+  // "What is it?": a kind, or a kind with a type of supply ("SUPPLY:filament").
+  const { kind, itemType } = parseKindChoice(str(formData.get("kind")));
   // A form from before these were added doesn't send them: a new item is New + Genuine, a saved one stays as it is.
   const condition = str(formData.get("condition")) as PartCondition | null;
   if (condition && !CONDITIONS.includes(condition)) throw new UserError("Pick new, used or refurbished.");
@@ -79,6 +89,7 @@ function partData(formData: FormData) {
     priceCents: centsField(formData.get("price"), "Price"),
     supplier: str(formData.get("supplier")),
     notes: str(formData.get("notes")),
+    ...itemDetailsData(formData, itemType),
   };
 }
 
