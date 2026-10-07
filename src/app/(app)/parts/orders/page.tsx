@@ -1,0 +1,150 @@
+// Orders to suppliers for every item (shop-features-round-2-design.md 1.1, package po-any-item): what is at or below its
+// own reorder point with a suggestion, ticked onto a draft order per supplier, and the company's orders. Fabric by the
+// yard has its own suggestions (the Fabric page's Reorder tab); its orders are listed here too.
+import Link from "next/link";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { fmtDate, money } from "@/lib/format";
+import { ordersListFor, reorderEachFor, suppliersFor } from "@/lib/fabric-orders";
+import { PO_STATUS_LABEL } from "@/lib/fabric-orders-math";
+import { KIND_LABEL } from "@/lib/parts";
+import { Empty, PageHeader } from "@/components/ui";
+import { ActionForm, Submit } from "@/components/action-form";
+import { addItemsToOrders } from "@/actions/fabric-orders";
+import { NewOrderForm } from "@/components/fabric-orders-forms";
+
+const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
+
+export default async function SupplierOrdersPage() {
+  const user = await requireUser();
+  const [rows, orders, suppliers, shop] = await Promise.all([
+    reorderEachFor(user.shopId),
+    ordersListFor(user.shopId),
+    suppliersFor(user.shopId),
+    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true, sellsRetail: true, doesRepair: true } }),
+  ]);
+  const open = orders.filter((o) => o.status === "DRAFT" || o.status === "SENT" || o.status === "PARTLY_RECEIVED");
+  const orderable = rows.filter((r) => r.supplier).length;
+  return (
+    <div className="max-w-5xl space-y-6">
+      <PageHeader
+        back={{ href: "/parts", label: shop.doesRepair ? "Parts" : "Inventory" }}
+        title="Orders to suppliers"
+        sub={open.length ? `${open.length} open ${open.length === 1 ? "order" : "orders"}. Tick what's running low to add it to a draft order; nothing is ordered until you send it.` : "Tick what's running low to add it to a draft order; nothing is ordered until you send it."}
+      />
+
+      <section className="card" aria-labelledby="low-h">
+        <div className="card-pad space-y-1 border-b border-line">
+          <h2 id="low-h" className="h2">
+            Running low
+          </h2>
+          <p className="muted text-sm">
+            Items at or below the reorder point you set on each one (what&apos;s on a sent order counts). The amount brings it back up to twice that point; change it before you add it.
+            {shop.sellsRetail ? (
+              <>
+                {" "}
+                Fabric by the yard is suggested on the{" "}
+                <Link href="/fabric?tab=reorder" className="link">
+                  Fabric page&apos;s Reorder tab
+                </Link>
+                .
+              </>
+            ) : null}
+          </p>
+        </div>
+        {rows.length === 0 ? (
+          <div className="card-pad">
+            <Empty>Nothing is running low. An item shows up here when its stock reaches the &quot;Reorder when at or below&quot; number on its page.</Empty>
+          </div>
+        ) : (
+          <ActionForm action={addItemsToOrders} success="Added to draft orders">
+            <ul className="divide-y divide-line" aria-label="Running low">
+              {rows.map((r) => (
+                <li key={r.id} className="card-pad flex flex-wrap items-center gap-3">
+                  <div className="min-w-[12rem] flex-1">
+                    <Link href={`/parts/${r.id}`} className="link mono">
+                      {r.partNumber}
+                    </Link>{" "}
+                    {r.description}
+                    <div className="muted text-sm">
+                      {[KIND_LABEL[r.kind] ?? r.kind, r.brand, r.supplier ?? "no supplier yet", r.location ? `bin ${r.location}` : null].filter(Boolean).join(" · ")}
+                    </div>
+                    <div className="text-sm">
+                      {r.qtyOnHand} on hand, reorder at {r.reorderAt}
+                      {r.onOrder > 0 ? `, ${r.onOrder} coming` : ""}
+                      {r.inDraft > 0 && <span className="pill tone-wait ml-2">{r.inDraft} on a draft order</span>}
+                    </div>
+                  </div>
+                  {r.supplier ? (
+                    <label className="flex min-h-11 items-center gap-2 text-base">
+                      <input type="checkbox" name={`pick.${r.id}`} className="check" aria-label={`Order ${r.partNumber}`} />
+                      <span>Order</span>
+                      <input name={`qty.${r.id}`} defaultValue={r.suggest} inputMode="numeric" className="input num w-20" aria-label={`How many of ${r.partNumber}`} />
+                    </label>
+                  ) : (
+                    <Link href={`/parts/${r.id}`} className="link text-sm">
+                      Give it a supplier to order it
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {orderable > 0 && (
+              <div className="card-pad">
+                <Submit>Add ticked items to draft orders</Submit>
+              </div>
+            )}
+          </ActionForm>
+        )}
+      </section>
+
+      <section className="card card-pad space-y-3" aria-labelledby="orders-h">
+        <h2 id="orders-h" className="h2">
+          Orders
+        </h2>
+        {orders.length === 0 ? (
+          <Empty>No orders yet. Tick items above, or start one by hand below.</Empty>
+        ) : (
+          <div className="scroll-x">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Supplier</th>
+                  <th>Where it stands</th>
+                  <th className="text-right">Lines</th>
+                  <th className="text-right">At cost</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id}>
+                    <td>
+                      <Link href={`/parts/orders/${o.id}`} className="link">
+                        #{o.number}
+                      </Link>
+                    </td>
+                    <td>{o.supplierName}</td>
+                    <td>
+                      <span className={`pill ${TONE[o.status]}`}>{PO_STATUS_LABEL[o.status]}</span>
+                    </td>
+                    <td className="num text-right">{o.lines}</td>
+                    <td className="num text-right">{o.totalCents ? money(o.totalCents) : "-"}</td>
+                    <td>{fmtDate(o.sentAt ?? o.createdAt, shop.timeZone)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <details>
+          <summary className="link cursor-pointer text-sm">Start an order by hand</summary>
+          <div className="pt-3">
+            <NewOrderForm suppliers={suppliers.map((s) => s.name)} />
+          </div>
+        </details>
+      </section>
+    </div>
+  );
+}
