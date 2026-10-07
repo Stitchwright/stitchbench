@@ -196,6 +196,7 @@ async function main() {
     const credit = await db.giftCard.findFirstOrThrow({ where: { shopId: a.shopId, customerId: jane.id, kind: "credit" } });
     assert.equal(credit.balanceCents, 6300);
     assert.equal((await db.part.findUniqueOrThrow({ where: { id: charm.id } })).qtyOnHand, 2, "back on the shelf");
+    await expectError("a tech undoing a cancel that moved money", () => undoCancelFor(tech, t1.id), /owner or admin/);
     await undoCancelFor(a.user, t1.id);
     v = (await specialOrderView(a.shopId, t1.id))!;
     assert.ok(v.status === "HERE" && v.heldQty === 2 && v.paidCents === 6300);
