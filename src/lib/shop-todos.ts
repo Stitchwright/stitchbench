@@ -5,6 +5,7 @@ import "server-only";
 // src/components/slots/todo-lines.tsx.
 import { db } from "@/lib/db";
 import { specialOrderCounts } from "@/lib/special-orders";
+import { wantsHereUntold } from "@/lib/want-lists";
 
 export type TodoLine = { key: string; href: string; text: string };
 
@@ -15,5 +16,7 @@ export async function shopTodos(shopId: string, now = new Date()): Promise<TodoL
     if (c.call) out.push({ key: "so-call", href: "/special-orders?tab=here", text: `${c.call} special ${c.call === 1 ? "order is" : "orders are"} here and the customer hasn't been told: call ${c.call === 1 ? "her" : "them"}` });
     if (c.late) out.push({ key: "so-late", href: "/special-orders?tab=here", text: `${c.late} special ${c.late === 1 ? "order hasn't" : "orders haven't"} been picked up after ${c.days} days` });
   }
+  const wants = await wantsHereUntold(shopId);
+  if (wants) out.push({ key: "want-here", href: "/want-lists", text: `${wants} want list ${wants === 1 ? "item is" : "items are"} here now: let ${wants === 1 ? "her" : "them"} know` });
   return out;
 }

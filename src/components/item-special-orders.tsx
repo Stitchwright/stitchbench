@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { fmtYmdLong } from "@/lib/units/units";
 import { specialOrdersFor } from "@/lib/special-orders";
+import { wantersOf } from "@/lib/want-lists";
 import { askForPreorderBalances, saveComingSoon } from "@/actions/special-orders";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
@@ -11,6 +12,8 @@ import { Section } from "@/components/ui";
 export async function ItemSpecialOrders({ shopId, part, admin }: { shopId: string; part: { id: string; comingSoonOn: string | null; depositKept: boolean }; admin: boolean }) {
   const orders = (await specialOrdersFor(shopId, { partId: part.id })).filter((o) => ["WAITING", "ORDERED", "HERE"].includes(o.status));
   const pre = orders.filter((o) => o.kind === "PREORDER");
+  // Want lists (1.4): "4 customers want this" (a good reason to order it).
+  const wanters = await wantersOf(shopId, part.id);
   return (
     <Section title="Special orders and coming soon">
       <div className="space-y-3 text-base">
@@ -23,6 +26,15 @@ export async function ItemSpecialOrders({ shopId, part, admin }: { shopId: strin
           </p>
         ) : (
           <p className="muted text-sm">No special orders for this item.</p>
+        )}
+        {wanters.length > 0 && (
+          <p>
+            <Link href="/want-lists?all=1" className="link">
+              {wanters.length} {wanters.length === 1 ? "customer wants" : "customers want"} this
+            </Link>{" "}
+            (on {wanters.length === 1 ? "her" : "their"} want {wanters.length === 1 ? "list" : "lists"}): {wanters.slice(0, 5).map((w) => w.name).join(", ")}
+            {wanters.length > 5 ? " and more" : ""}.
+          </p>
         )}
         {part.comingSoonOn && <p><span className="pill tone-wait">Coming soon {fmtYmdLong(part.comingSoonOn)}</span> The register takes pre-orders for it.</p>}
         {admin && pre.length > 0 && (

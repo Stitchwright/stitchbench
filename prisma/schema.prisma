@@ -240,6 +240,7 @@ model Shop {
   makerWarranties   MakerWarranty[]
   layaways          Layaway[]
   specialOrders     SpecialOrder[]
+  wantItems         WantItem[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
@@ -402,6 +403,7 @@ model Customer {
   giftCards     GiftCard[]
   layaways      Layaway[]
   specialOrders SpecialOrder[]
+  wantItems     WantItem[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -3246,5 +3248,29 @@ model SpecialOrder {
   @@unique([shopId, number])
   @@index([shopId, status])
   @@index([shopId, partId])
+  @@index([customerId])
+}
+
+// Want lists (shop-features-round-2-design.md 1.4): what a customer wants the shop to tell her about, an item of the
+// shop's or words to watch for ("Tula Pink"). When an item that matches arrives (received, imported from a supplier's
+// list, added) the line shows "Here now" (matchedPartId, plain id); the shop chooses to tell her (toldAt, the order_in
+// message), nothing goes by itself. doneAt: taken off the list.
+model WantItem {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  partId        String? // plain id
+  words         String?
+  note          String?
+  matchedPartId String?
+  matchedAt     DateTime?
+  toldAt        DateTime?
+  doneAt        DateTime?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([shopId, doneAt])
   @@index([customerId])
 }

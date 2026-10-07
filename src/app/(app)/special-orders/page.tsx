@@ -30,6 +30,11 @@ export default async function SpecialOrders({ searchParams }: { searchParams: Pr
         title="Special orders"
         sub="Things customers asked for that aren't on the shelf, and pre-orders of coming-soon items. Take one at the register: Special order."
         back={{ href: "/register", label: "Register" }}
+        actions={
+          <Link href="/want-lists" className="btn min-h-11">
+            Want lists
+          </Link>
+        }
       />
       <p className="text-base">
         Deposits held for customers: <span className="num font-semibold">{money(held)}</span>
