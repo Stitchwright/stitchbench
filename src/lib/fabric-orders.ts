@@ -419,7 +419,7 @@ export async function createOrderFor(user: CurrentUser, supplierName: string): P
   });
 }
 
-export type OrderLineView = { id: string; partId: string | null; itemNumber: string; description: string; unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number; photoId: string | null; machine?: boolean };
+export type OrderLineView = { id: string; partId: string | null; itemNumber: string; description: string; unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number; photoId: string | null; machine?: boolean; backorderedOn?: Date | null; expectedOn?: string | null };
 export type OrderView = {
   id: string;
   number: number;
@@ -451,7 +451,7 @@ export async function orderFor(shopId: string, id: string): Promise<OrderView | 
     db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true, timeZone: true, fabLeadDays: true } }),
   ]);
   if (!po) return null;
-  const lines: OrderLineView[] = po.lines.map((l) => ({ id: l.id, partId: l.partId, itemNumber: l.itemNumber, description: l.description, unit: l.unit, qty: l.qty, boltYards: l.boltYards, costCents: l.costCents, receivedYards: l.receivedYards, photoId: l.part?.photos[0]?.id ?? null, machine: l.part?.kind === "MACHINE" }));
+  const lines: OrderLineView[] = po.lines.map((l) => ({ id: l.id, partId: l.partId, itemNumber: l.itemNumber, description: l.description, unit: l.unit, qty: l.qty, boltYards: l.boltYards, costCents: l.costCents, receivedYards: l.receivedYards, photoId: l.part?.photos[0]?.id ?? null, machine: l.part?.kind === "MACHINE", backorderedOn: l.backorderedOn, expectedOn: l.expectedOn }));
   return {
     id: po.id,
     number: po.number,

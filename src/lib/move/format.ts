@@ -105,6 +105,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "TaxHoliday", key: "id" }, // the shop's sales tax holidays
   { t: "Lender", key: "id" }, // the lenders the shop offers financing through
   { t: "Promotion", key: "id" }, // the shop's planned sales
+  { t: "PriceChange", key: "id" }, // "Raise prices" with the old prices kept for Undo (shop-features-round-2-design.md 4.4; part ids are plain)
   { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
   { t: "FinancedSale", key: "id" }, // -> Lender (its sale id is plain)
   { t: "MachinePlan", key: "id" }, // -> Machine (its sale line and unit ids are plain)

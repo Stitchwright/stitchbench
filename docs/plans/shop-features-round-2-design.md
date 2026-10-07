@@ -1166,3 +1166,29 @@ Decisions made while building:
 - Not built: leaving out items priced under the maker's minimum advertised price (9.3 `map-prices` has no MAP field yet;
   add the rule to `leftOutReason` when it lands). The Merchant Center steps are words, not screenshots.
 - Browser test needed: `tests/product-feeds.spec.ts`.
+
+**`repricing` (4.4, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023100000_repricing` (`PriceChange`, carried
+by the company file; `Shop.marginFloor` JSON; `PurchaseOrderLine.backorderedOn`, `expectedOn`). Code:
+`src/lib/repricing-math.ts` (pure: rounding up to .99 / 25 / 50 cents / the cent, margins, floors per kind),
+`src/lib/repricing.ts` (choices, preview, raise, undo, floors), `src/lib/backorders.ts` (mark, clear, Coming in, Let them
+know), `src/actions/repricing.ts`; pages **Raise prices** (`/parts/raise-prices`, from Inventory's header and the floor
+notice: whose, by how much, rounding, old and new with the margin before and after, "Raise them", the raises with Undo
+for a day) and **Coming in** (`/parts/coming-in`, from Orders to suppliers); a sent order's line has **Back ordered**
+(the expected day, Change, "It came off back order", `src/components/backorder-control.tsx`); Settings → Selling →
+**Margin floor** (`src/components/margin-floor-settings.tsx`, per kind under More choices); "N items are under your
+margin floor" with **Raise prices** on Inventory and the repair dashboard (`src/components/margin-floor-notice.tsx`,
+owners and admins); message wording `order_delay`. Check: `scripts/checks/repricing.check.ts` (6 groups). Spec:
+`tests/repricing.spec.ts`.
+Decisions made while building:
+- New prices are always rounded **up** (a raise never comes out lower than asked); a percent group raise never lowers a
+  price. "Under your margin floor" raises each item to its floor (cost / (1 - floor)), rounded the same way.
+- Whose: a supplier, a maker, a kind or a collection, matched in any case; machine models and partner stock left out;
+  at most 2,000 items at once. Owners and admins only (a tech sees the page and the preview).
+- Undo works for 24 hours and puts back only items still at the raised price; one changed since is left and counted.
+- Back orders: only a line on a sent (or partly received) order with something still to come. "Who's waiting" is the
+  repair tickets waiting for that part (`PartWait`); special orders (1.2) and live-sale claims add their customers when
+  phase 1 is merged. "Let them know" needs the expected day, moves each ticket's expected day, sends `order_delay` once
+  per line, customer and day (Marketing on, as pay links), with refType `po_line`.
+- The invoice reader (1.10) setting a back order, and the dashboard on a shop without a repair bench (it opens on the
+  register), are left: the notice shows on Inventory for them.
+- Browser test needed: `tests/repricing.spec.ts`.

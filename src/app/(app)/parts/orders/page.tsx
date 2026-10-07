@@ -33,6 +33,11 @@ export default async function SupplierOrdersPage() {
         back={{ href: "/parts", label: shop.doesRepair ? "Parts" : "Inventory" }}
         title="Orders to suppliers"
         sub={open.length ? `${open.length} open ${open.length === 1 ? "order" : "orders"}. Tick what's running low to add it to a draft order; nothing is ordered until you send it.` : "Tick what's running low to add it to a draft order; nothing is ordered until you send it."}
+        actions={
+          <Link href="/parts/coming-in" className="btn min-h-11">
+            Coming in
+          </Link>
+        }
       />
 
       <section className="card" aria-labelledby="low-h">
