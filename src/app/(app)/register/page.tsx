@@ -22,7 +22,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const { booking } = await searchParams;
   const [shop, partners] = await Promise.all([
-    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true } }),
+    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true, houseAccountsOn: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
   if (!shop.sellsRetail) {
@@ -92,7 +92,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} sellers={people} me={user.id} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} />
     </div>
   );
 }

@@ -66,6 +66,8 @@ function schemaRefs(target: string, names: string[]): string[] {
   const text = fs.readFileSync(path.join(process.cwd(), "prisma", "schema.prisma"), "utf8").replace(/\r\n/g, "\n");
   const out = new Set<string>();
   for (const m of text.matchAll(/^model (\w+) \{\n([\s\S]*?)\n\}/gm)) {
+    // A column that is the key of a relation to another model (AccountEntry.accountId -> HouseAccount) isn't a plain customer id.
+    const keyed = new Set([...m[2].matchAll(/@relation\([^)]*fields:\s*\[(\w+)\]/g)].map((x) => x[1]));
     for (const line of m[2].split("\n")) {
       const f = /^\s+(\w+)\s+(\w+)(\[\]|\?)?\s*(.*)$/.exec(line);
       if (!f) continue;
@@ -73,7 +75,7 @@ function schemaRefs(target: string, names: string[]): string[] {
       if (type === target) {
         const fields = /@relation\([^)]*fields:\s*\[(\w+)\]/.exec(rest);
         if (fields) out.add(`${m[1]}.${fields[1]}`);
-      } else if (type === "String" && names.includes(name) && m[1] !== target) {
+      } else if (type === "String" && names.includes(name) && m[1] !== target && !keyed.has(name)) {
         out.add(`${m[1]}.${name}`);
       }
     }
@@ -269,6 +271,7 @@ async function main() {
     await db.certification.create({ data: { shopId: A, customerId: dup.id, equipment: "Laser" } });
     await db.appraisal.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe" } });
     await db.giftRegistry.create({ data: { shopId: A, customerId: dup.id, name: "Jane Doe", title: "Jane's list", token: `t${token()}`.slice(0, 30) } });
+    await db.houseAccount.create({ data: { shopId: A, customerId: dup.id } });
     const consM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "830", modelKey: modelKey("830") } });
     const consU = await db.stockUnit.create({ data: { shopId: A, machineId: consM.id, status: "SOLD", consignorId: dup.id } });
     await db.consignPayout.create({ data: { shopId: A, unitId: consU.id, customerId: dup.id, saleLineId: "x", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
@@ -454,6 +457,7 @@ async function main() {
     await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
     await db.appraisal.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person" } });
     await db.giftRegistry.create({ data: { shopId: A, customerId: del.id, name: "Del Person", title: "Del's list", token: `d${token()}`.slice(0, 30) } });
+    await db.houseAccount.create({ data: { shopId: A, customerId: del.id } });
     const delConsM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "740", modelKey: modelKey("740") } });
     const delConsU = await db.stockUnit.create({ data: { shopId: A, machineId: delConsM.id, status: "SOLD", consignorId: del.id } });
     await db.consignPayout.create({ data: { shopId: A, unitId: delConsU.id, customerId: del.id, saleLineId: "y", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });

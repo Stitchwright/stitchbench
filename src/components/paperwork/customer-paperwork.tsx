@@ -8,6 +8,8 @@ import { money } from "@/lib/format";
 import { registriesFor } from "@/lib/gift-registry";
 import { startGiftList } from "@/actions/gift-registry";
 import { ActionForm, Submit } from "@/components/action-form";
+import { accountOf } from "@/lib/house-accounts";
+import { AccountTerms } from "@/components/paperwork/account-terms";
 import { Section } from "@/components/ui";
 import { PayoutLine } from "@/components/paperwork/consign-parts";
 
@@ -17,10 +19,39 @@ export async function CustomerPaperwork({ shopId, customerId, admin, retail = tr
     db.stockUnit.count({ where: { shopId, consignorId: customerId } }),
     appraisalsFor(shopId, customerId),
     registriesFor(shopId, customerId),
-    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { sellsRetail: true } }),
+    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { sellsRetail: true, houseAccountsOn: true } }),
   ]);
+  const account = await accountOf(shopId, customerId);
   return (
     <>
+      {account ? (
+        <Section
+          title="House account"
+          actions={
+            <Link href={`/paperwork/accounts/${account.id}`} className="btn btn-sm">
+              Open the account
+            </Link>
+          }
+        >
+          <p className="text-base">
+            Owes {money(account.balanceCents)}
+            {account.aging.d30 + account.aging.d60 + account.aging.d90 > 0 ? `, ${money(account.aging.d30 + account.aging.d60 + account.aging.d90)} of it past 30 days` : ""}. {account.limitCents ? `Limit ${money(account.limitCents)}.` : "No limit."} {account.termsDays} days to pay.
+            {account.status === "CLOSED" ? " Closed to new charges." : ""}
+          </p>
+        </Section>
+      ) : (
+        shop.houseAccountsOn &&
+        admin && (
+          <Section title="House account">
+            <details>
+              <summary className="link cursor-pointer text-sm">Let her buy now and pay from a monthly statement</summary>
+              <div className="mt-2">
+                <AccountTerms customerId={customerId} limitCents={0} termsDays={30} status="OPEN" opening />
+              </div>
+            </details>
+          </Section>
+        )
+      )}
       {retail && shop.sellsRetail && (
         <Section title="Wish lists">
           {lists.length > 0 && (
