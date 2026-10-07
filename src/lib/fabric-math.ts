@@ -1,7 +1,7 @@
 // Fabric cuts (fabric-smarts-design.md sections 2 and 9). Pure: no "server-only", no database, so the Fabric page, the
 // server body (src/lib/fabric.ts) and the check script share one set of numbers. Yards are eighths, money integer cents.
 import { tenThouToCents } from "@/lib/format";
-import { yards } from "@/lib/register-math";
+import { inEighths, yards } from "@/lib/register-math";
 
 export type CutKind = "FQ" | "HALF" | "REMNANT";
 export const CUT_KINDS: CutKind[] = ["FQ", "HALF", "REMNANT"];
@@ -31,13 +31,18 @@ export function cutPlan(kind: CutKind, onHand: number): { count: number; usedYar
   return { count, usedYards, leftYards: Math.max(0, Math.round((have - usedYards) * 10_000) / 10_000) };
 }
 
+/** Yards as they are: eighths as a fraction ("1 3/8"), anything else as a decimal ("1.3", "0.24"), never rounded to an eighth. */
+export function exactYards(q: number): string {
+  return inEighths(q) ? yards(q) : String(Math.round(q * 10_000) / 10_000);
+}
+
 /** "1 3/8 yd makes 5 fat quarters, with 1/8 yd left." */
 export function cutWords(kind: CutKind, onHand: number): string {
   const p = cutPlan(kind, onHand);
-  if (kind === "REMNANT") return `${yards(onHand)} yd goes to the remnant bin.`;
+  if (kind === "REMNANT") return `${exactYards(onHand)} yd goes to the remnant bin.`;
   const info = CUT_INFO[kind];
-  if (p.count === 0) return `${yards(onHand)} yd is too short for a ${info.one}.`;
-  return `${yards(onHand)} yd makes ${p.count} ${p.count === 1 ? info.one : info.many}${p.leftYards > 0 ? `, with ${yards(p.leftYards)} yd left` : ""}.`;
+  if (p.count === 0) return `${exactYards(onHand)} yd is too short for a ${info.one}.`;
+  return `${exactYards(onHand)} yd makes ${p.count} ${p.count === 1 ? info.one : info.many}${p.leftYards > 0 ? `, with ${exactYards(p.leftYards)} yd left` : ""}.`;
 }
 
 type Priced = { priceCents: number | null; costCents: number | null; costTenThou: number | null };

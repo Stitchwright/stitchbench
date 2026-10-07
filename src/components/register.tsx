@@ -1032,7 +1032,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       onKeyDown={backToScan}
                     />
                     {l.unit === "yd" &&
-                      (inEighths(l.qty) ? <div className="muted text-xs">{qtyText(l.qty, "yd")}</div> : <div className="text-xs text-[var(--bad)]">Use 1/8 yd steps</div>)}
+                      (inEighths(l.qty) ? <div className="muted text-xs">{qtyText(l.qty, "yd")}</div> : <div className="text-xs text-[var(--bad)]">Use 1/8 yd steps (a remnant sells whole)</div>)}
                     {l.partId && l.onHand != null && l.qty > l.onHand && (
                       <div className="text-xs text-[var(--bad)]">
                         Only {qtyText(Math.max(0, l.onHand), l.unit)} {l.consigned ? "left on the shelf" : "on hand"}
