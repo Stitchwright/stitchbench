@@ -1103,10 +1103,17 @@ const claimUnknown = ((globalThis as unknown as { __hubClaimUnknown?: Set<string
  * which program and version; `sole` on a one-company install, so what the install listed, ordered, was rated for and
  * shared before it named its company becomes that company's (its ratings carry over).
  */
-function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean; hubResetOptIn: boolean }, sole: boolean) {
+async function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean; hubResetOptIn: boolean }, sole: boolean) {
   // resetOptIn: the owner allows a password reset from the StitchHub account (Windows only; src/lib/hub-reset-grants.ts).
   // The hub offers the reset only while this says so; the program checks its own flag again before acting on a grant.
-  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole, resetOptIn: isDesktop() && shop.hubResetOptIn };
+  // stores: the company's open stores (shop-features-round-2-design.md section 7; at least 1): the hub bills each store
+  // after the first on the base subscription.
+  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole, resetOptIn: isDesktop() && shop.hubResetOptIn, stores: await storeCount(shop.id) };
+}
+
+/** The company's open stores, at least 1 (a company that never set stores up has its one). */
+export async function storeCount(shopId: string): Promise<number> {
+  return Math.max(1, await db.location.count({ where: { shopId, active: true } }));
 }
 
 /**
@@ -1126,7 +1133,7 @@ async function claimShops(run: SyncRun): Promise<boolean> {
     if (shop.movedOutAt) continue;
     let answer: StandingAnswer;
     try {
-      answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, shops.length === 1) })).json()) as StandingAnswer;
+      answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: await claimBody(shop, shops.length === 1) })).json()) as StandingAnswer;
     } catch (e) {
       if (hubStatus(e) === 404) {
         claimUnknown.add(run.installId);
@@ -1171,7 +1178,7 @@ export async function claimShopNow(shopId: string): Promise<StandingAnswer> {
   const sole = (await db.shop.count()) === 1;
   let answer: StandingAnswer;
   try {
-    answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole), shopRef: shop.id })).json()) as StandingAnswer;
+    answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: await claimBody(shop, sole), shopRef: shop.id })).json()) as StandingAnswer;
   } catch (e) {
     const moved = movedAnswer(e);
     if (moved) await applyMovedOut(shop.id, moved);

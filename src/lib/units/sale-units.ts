@@ -22,6 +22,7 @@ import { grantPlan } from "@/lib/units/plans";
 import { readListed } from "@/lib/listed-math";
 import { payoutOnReturn, payoutOnSale, payoutOnVoidReturn, payoutOnVoidSale } from "@/lib/consign-machines";
 import { DEFAULT_WARRANTY_MONTHS, isCondition, pushEvent, sellableMachines, unitDescription, unitDisclosure, warrantyByDefault, warrantyEnd, type UnitEvent } from "@/lib/units/units";
+import { activeStores, type Store } from "@/lib/stores";
 
 export type UnitLineIn = { stockUnitId: string | null; tradeIn: TradeInInput | null; qty: number; unitPriceCents: number; taxable: boolean };
 export type UnitLineOut = { description: string; qty: number; unitPriceCents: number; taxable: boolean; discountable: boolean; costCents: number | null; stockUnitId: string | null };
@@ -293,7 +294,7 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
 }
 
 /** Register scan ("code": serial, exact, case-insensitive) and search ("search": brand / model words): in-stock units of a kind the shop may sell, as items. */
-export async function registerUnitHits(a: { shopId: string; q: string; mode: "code" | "search" }): Promise<RegisterItem[]> {
+export async function registerUnitHits(a: { shopId: string; q: string; mode: "code" | "search"; here?: Store | null }): Promise<RegisterItem[]> {
   const t = a.q.trim();
   if (!t) return [];
   const sellable = await sellableMachines(a.shopId);
@@ -304,6 +305,13 @@ export async function registerUnitHits(a: { shopId: string; q: string; mode: "co
       : { AND: words.map((w) => ({ OR: [{ brand: { contains: w, mode: "insensitive" as const } }, { model: { contains: w, mode: "insensitive" as const } }, { serial: { contains: w, mode: "insensitive" as const } }] })) };
   const machine: Prisma.MachineWhereInput = { AND: [match, sellable] };
   const rows = await db.stockUnit.findMany({ where: { shopId: a.shopId, status: "IN_STOCK", use: "SALE", machine }, include: { machine: true }, orderBy: { createdAt: "desc" }, take: 10 });
+  // More than one store (7.2): a machine at another store says where it is (sell it there, or send it here first).
+  const stores = a.here ? await activeStores(a.shopId) : [];
+  const whereIs = (locationId: string | null) => {
+    if (stores.length <= 1 || !a.here) return undefined;
+    const s = (locationId ? stores.find((x) => x.id === locationId) : null) ?? stores.find((x) => x.main);
+    return s && s.id !== a.here.id ? [{ id: s.id, name: s.name, qty: 1 }] : undefined;
+  };
   return rows.map((u) => ({
     id: u.id,
     partNumber: u.machine.serial ?? "no serial",
@@ -317,5 +325,6 @@ export async function registerUnitHits(a: { shopId: string; q: string; mode: "co
     listedOn: readListed(u.listedOn).map((x) => x.where),
     stockUnitId: u.id,
     brand: u.machine.brand,
+    elsewhere: whereIs(u.locationId),
   }));
 }

@@ -31,6 +31,8 @@ import { ymdOf } from "@/lib/zoned";
 import { completeSaleAs, voidSaleAs, type SaleLineInput } from "@/lib/register-sale";
 import type { CurrentUser } from "@/lib/session";
 import { createCheckoutSession, looksLikeSecretKey, looksLikeWebhookSecret, refundPayment, retrieveSession, TAX_CODE_SHIPPING, verifyWebhook, type StripeSession } from "@/lib/shop/stripe";
+import { onlineStore, storeDetails, storeOfRow } from "@/lib/stores";
+import { withStoreQty } from "@/lib/stock";
 
 type Db = Prisma.TransactionClient | typeof db;
 export const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
@@ -294,6 +296,9 @@ export async function publicStore(slug: string): Promise<PublicStore | null> {
     },
   });
   if (!s) return null;
+  // More than one store (7.1): the online shop sells from the store chosen in Settings -> Stores, at its tax rate, from
+  // its address and in its time zone (the main store's are the company's own).
+  Object.assign(s, storeDetails({ taxRatePct: s.taxRatePct, timeZone: s.timeZone, address: s.address, phone: s.phone }, await onlineStore(s.id)));
   const payVia = s.shopPayVia === "platform" ? "platform" : "own";
   const canPay = payVia === "platform" ? platformStripeOn() : !!s.stripeKeySealed && !!s.stripeWebhookSealed;
   return {
@@ -392,7 +397,9 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
       photos: { select: { id: true }, orderBy: { sortOrder: "asc" }, take: 1 },
     },
   });
-  return rows
+  // In stock at the store the online shop sells from (7.2).
+  const atStoreRows = await withStoreQty(shopId, rows, await onlineStore(shopId));
+  return atStoreRows
     .map((p) => ({
       id: p.id,
       title: titleOf(p),
@@ -434,8 +441,10 @@ export type ItemView = CatalogItem & { text: string | null; fits: string | null;
 
 export async function catalogItem(shopId: string, partId: string): Promise<ItemView | null> {
   if (!ID_RE.test(partId)) return null;
-  const p = await db.part.findFirst({ where: { ...LISTED(shopId), id: partId }, include: { photos: { select: { id: true }, orderBy: { sortOrder: "asc" } } } });
-  if (!p) return null;
+  const found = await db.part.findFirst({ where: { ...LISTED(shopId), id: partId }, include: { photos: { select: { id: true }, orderBy: { sortOrder: "asc" } } } });
+  if (!found) return null;
+  // In stock at the store the online shop sells from (7.2).
+  const [p] = await withStoreQty(shopId, [found], await onlineStore(shopId));
   return {
     id: p.id,
     title: titleOf(p),
@@ -527,7 +536,8 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
         select: { id: true, description: true, onlineTitle: true, partNumber: true, priceCents: true, unit: true, qtyOnHand: true, kind: true },
       })
     : [];
-  const byId = new Map(parts.map((p) => [p.id, p]));
+  // What the online shop's store has (7.2).
+  const byId = new Map((await withStoreQty(store.id, parts, await onlineStore(store.id))).map((p) => [p.id, p]));
   // A sales tax holiday in force today (by the order's date, as at the counter) takes the tax off what it covers.
   const holidays = await holidaysOn(store.id, [ymdOf(new Date(), store.timeZone)]);
   const lines: CartLine[] = [];
@@ -634,6 +644,8 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
       data: {
         id: orderId,
         shopId: store.id,
+        // Sold from (and picked up at) the online shop's store (7.1).
+        locationId: (await onlineStore(store.id))?.id ?? null,
         number: sh.nextWebOrderNumber - 1,
         status: "PENDING",
         customerId: customer.id,
@@ -778,7 +790,8 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
       // Stock was taken already: what was short is on the order's items (written with the sale's link).
       kept = items;
     } else {
-      const parts = new Map((await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } })).map((p) => [p.id, p]));
+      // What the order's store has (7.2).
+      const parts = new Map((await withStoreQty(order.shopId, await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } }), await storeOfRow(order.shopId, order.locationId))).map((p) => [p.id, p]));
       for (const it of items) {
         const p = it.partId ? parts.get(it.partId) : null;
         const onHand = p ? Math.max(0, p.qtyOnHand) : 0;
@@ -826,7 +839,7 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
           : saleTotals(
               lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
               0,
-              order.shop.taxRatePct,
+              storeDetails({ taxRatePct: order.shop.taxRatePct }, await storeOfRow(order.shopId, order.locationId)).taxRatePct,
             )
         ).total;
     const refund = Math.max(0, paidTotal - saleTotal);
@@ -843,7 +856,8 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
           clientKey: `web-${order.id}`,
           taxCents: givenTax,
         },
-        { paidOnline: true },
+        // Off the shelf of the order's store (7.2).
+        { paidOnline: true, locationId: order.locationId },
       );
       saleId = r.saleId;
     }
@@ -924,7 +938,7 @@ async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: b
           clientKey: `web-${order.id}`,
           taxCents: order.taxCents,
         },
-        { paidOnline: true, internal: true },
+        { paidOnline: true, internal: true, locationId: order.locationId },
       );
       saleId = r.saleId;
     }
@@ -1205,6 +1219,11 @@ export async function markDoneFor(user: CurrentUser, id: string, a: { tracking?:
   if (orderNeedsAttention(o)) throw new UserError("This order needs attention first: press Try again.");
   const tracking = a.tracking?.trim().slice(0, 120) || null;
   await db.webOrder.update({ where: { id }, data: { status: "DONE", doneAt: now, tracking } });
+  // Shipped from another store for a counter sale (7.3): the tracking number goes on the sale too.
+  if (o.source === "store" && o.saleId && tracking) {
+    const sale = await db.sale.findFirst({ where: { id: o.saleId, shopId: o.shopId }, select: { note: true } });
+    if (sale) await db.sale.updateMany({ where: { id: o.saleId, shopId: o.shopId }, data: { note: [sale.note, `Shipped, tracking ${tracking}`].filter(Boolean).join(" · ").slice(0, 500) } });
+  }
   if (o.fulfil === "ship") await notifyOrder({ ...o, status: "DONE", tracking }, "shipped", now);
 }
 
@@ -1217,6 +1236,7 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
   const o = await ownOrder(user, id);
   if (o.status === "CANCELLED") throw new UserError("This order is cancelled already.");
   if (o.status === "DONE") throw new UserError("This order went out. Take a return at the register instead.");
+  if (o.source === "store") throw new UserError("This was sold at the counter and ships from another store: void or return the sale at the register instead (that cancels the shipping too).");
   if (o.status === "PENDING") {
     await db.webOrder.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, staffNote: `Cancelled by ${user.name}: ${reason || "no reason given"}` } });
     await audit(db, actorOf(user), { action: "order.cancel", subjectType: "WebOrder", subjectId: id, subjectLabel: `Online order ${fmtNo(o.number)} (not paid)`, amountCents: 0, reason: reason || null });
@@ -1241,7 +1261,8 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
 /** The register's void must not undo an online order's sale (the customer's money would stay taken): cancel the order instead. */
 export async function refuseVoidOfOnlineSale(shopId: string, saleId: string): Promise<void> {
   const sale = await db.sale.findFirst({ where: { id: saleId, shopId }, select: { clientKey: true } });
-  const order = await db.webOrder.findFirst({ where: { shopId, OR: [{ saleId }, ...(sale?.clientKey?.startsWith("web-") ? [{ id: sale.clientKey.slice(4) }] : [])] }, select: { number: true } });
+  // A counter sale shipped from another store (7.3) is the register's own sale: its void cancels the shipping.
+  const order = await db.webOrder.findFirst({ where: { shopId, source: { not: "store" }, OR: [{ saleId }, ...(sale?.clientKey?.startsWith("web-") ? [{ id: sale.clientKey.slice(4) }] : [])] }, select: { number: true } });
   if (order) throw new UserError(`This sale is online order ${fmtNo(order.number)}. Cancel the order on the Online orders page instead: that refunds the customer and puts the stock back.`);
 }
 

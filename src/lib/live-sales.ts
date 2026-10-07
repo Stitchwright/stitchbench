@@ -14,16 +14,19 @@ import { customerIdsByPhone } from "@/lib/phone-search";
 import { validEmail } from "@/lib/phone";
 import { inEighths, qtyText } from "@/lib/register-math";
 import { cancelPayLinkFor, makePayLinkFor, payLinkProblem, resendPayLinkFor } from "@/lib/pay-links";
+import { atStore, currentStoreId, storeOfRow } from "@/lib/stores";
+import { storeQty, withStoreQty } from "@/lib/stock";
 
 export const HELD_STATUSES = ["HELD", "SENT"];
 export const CLAIM_WORDS: Record<string, string> = { HELD: "Held for her", SENT: "Pay link sent", PAID: "Paid", LET_GO: "Let go" };
 const ID_RE = /^[a-z0-9]{10,40}$/i;
 
 /** How much of each item is held for live-sale buyers (claimed, not yet paid or let go). */
-export async function liveHeld(shopId: string, partIds?: string[]): Promise<Map<string, number>> {
+export async function liveHeld(shopId: string, partIds?: string[], store?: { id: string; main: boolean } | null): Promise<Map<string, number>> {
   const rows = await db.liveClaim.groupBy({
     by: ["partId"],
-    where: { shopId, status: { in: HELD_STATUSES }, partId: partIds ? { in: partIds } : { not: null } },
+    // With a store: only the claims of that store's live sales (each store's shelf holds its own claims, 7.2).
+    where: { shopId, status: { in: HELD_STATUSES }, partId: partIds ? { in: partIds } : { not: null }, ...(store ? { liveSale: atStore(store) } : {}) },
     _sum: { qty: true },
   });
   return new Map(rows.filter((r) => r.partId).map((r) => [r.partId!, Math.round((r._sum.qty ?? 0) * 1000) / 1000]));
@@ -42,7 +45,8 @@ export async function startLiveSaleFor(user: CurrentUser, a: { name?: string | n
   if (!Number.isInteger(hold) || hold < 1 || hold > 24 * 14) throw new UserError("Hold claims for 1 hour to 14 days (336 hours).");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } });
   const day = now.toLocaleDateString("en-US", { timeZone: shop.timeZone, month: "short", day: "numeric" });
-  const s = await db.liveSale.create({ data: { shopId: user.shopId, name: (a.name?.trim() || `Facebook Live, ${day}`).slice(0, 120), holdHours: hold, startsAt: now, createdById: user.id } });
+  // Run from this store: its shelf holds the claims (7.2).
+  const s = await db.liveSale.create({ data: { shopId: user.shopId, locationId: await currentStoreId(user), name: (a.name?.trim() || `Facebook Live, ${day}`).slice(0, 120), holdHours: hold, startsAt: now, createdById: user.id } });
   return s.id;
 }
 
@@ -84,8 +88,10 @@ export async function claimFor(user: CurrentUser, saleId: string, c: ClaimInput,
   }
   const name = (customer?.name ?? c.name ?? "").trim().slice(0, 120);
   if (!name) throw new UserError("Type the buyer's name.");
-  const held = (await liveHeld(user.shopId, [p.id])).get(p.id) ?? 0;
-  const left = Math.max(0, p.qtyOnHand - held);
+  // What's on the live sale's store's shelf, less what its claims hold (7.2).
+  const store = await storeOfRow(user.shopId, s.locationId);
+  const held = (await liveHeld(user.shopId, [p.id], store)).get(p.id) ?? 0;
+  const left = Math.max(0, (await storeQty(db, user.shopId, p.id, store?.id ?? null)) - held);
   if (qty > left + 1e-9) throw new UserError(left > 0 ? `Only ${qtyText(left, p.unit)} left of ${p.description}.` : `${p.description} is all claimed.`);
   const claim = await db.liveClaim.create({
     data: {
@@ -123,8 +129,10 @@ export async function undropClaimFor(user: CurrentUser, claimId: string): Promis
   if (!c) throw new UserError("Claim not found.");
   if (c.partId) {
     const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId }, select: { qtyOnHand: true } });
-    const held = (await liveHeld(user.shopId, [c.partId])).get(c.partId) ?? 0;
-    if (!p || p.qtyOnHand - held < c.qty - 1e-9) throw new UserError("That stock has been claimed since.");
+    const sale = await db.liveSale.findFirst({ where: { id: c.liveSaleId, shopId: user.shopId }, select: { locationId: true } });
+    const store = await storeOfRow(user.shopId, sale?.locationId ?? null);
+    const held = (await liveHeld(user.shopId, [c.partId], store)).get(c.partId) ?? 0;
+    if (!p || (await storeQty(db, user.shopId, c.partId, store?.id ?? null)) - held < c.qty - 1e-9) throw new UserError("That stock has been claimed since.");
   }
   await db.liveClaim.updateMany({ where: { id: c.id, shopId: user.shopId }, data: { status: "HELD", letGoAt: null } });
 }
@@ -182,7 +190,8 @@ export async function sendLinksFor(user: CurrentUser, saleId: string, now = new 
     try {
       const customerId = first.customerId ?? (await customerForBuyer(user, first));
       const r = await makePayLinkFor(
-        user,
+        // The live sale's store: its shelf holds the claims, and the sale is its when she pays (7.2).
+        { ...user, locationId: s.locationId ?? (await storeOfRow(user.shopId, null))?.id ?? null },
         { customerId, lines: claims.map((c) => ({ partId: c.partId, description: c.description, qty: c.qty, unitPriceCents: c.priceCents, taxable: true })), note: `From our ${s.name}.`, send: "usual", days },
         { trusted: true, now },
       );
@@ -254,8 +263,10 @@ export async function liveView(shopId: string, id: string, now = new Date()): Pr
   await syncClaims(shopId, id);
   const s = await db.liveSale.findFirst({ where: { id, shopId }, include: { claims: { orderBy: { createdAt: "asc" } } } });
   if (!s) return null;
-  const parts = s.picks.length ? await db.part.findMany({ where: { shopId, id: { in: s.picks } }, select: { id: true, partNumber: true, description: true, onlineTitle: true, priceCents: true, unit: true, qtyOnHand: true } }) : [];
-  const held = await liveHeld(shopId, s.picks);
+  // The live sale's store's shelf (7.2): its stock, less its claims.
+  const store = await storeOfRow(shopId, s.locationId);
+  const parts = await withStoreQty(shopId, s.picks.length ? await db.part.findMany({ where: { shopId, id: { in: s.picks } }, select: { id: true, partNumber: true, description: true, onlineTitle: true, priceCents: true, unit: true, qtyOnHand: true } }) : [], store);
+  const held = await liveHeld(shopId, s.picks, store);
   const order = new Map(s.picks.map((p, i) => [p, i]));
   const buyers = new Map<string, LiveBuyer>();
   for (const c of s.claims) {

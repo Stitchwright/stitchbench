@@ -13,6 +13,8 @@ import { actorOf, audit } from "@/lib/audit";
 import { publicBaseUrl } from "@/lib/messaging/settings";
 import { publicStore, shopUrl } from "@/lib/shop/online-shop";
 import { feedRow, googleLocalTsv, googleProductXml, leftOutReason, metaCsv, metaReason, type FeedPart, type FeedRow } from "@/lib/shop/feeds-math";
+import { activeStores, onlineStore } from "@/lib/stores";
+import { withStoreQty } from "@/lib/stock";
 
 export const FEED_FILES = { google: "google.xml", local: "local.tsv", meta: "meta.csv" } as const;
 export type FeedFile = keyof typeof FEED_FILES;
@@ -134,9 +136,20 @@ export async function feedFile(slug: string, token: string, file: string): Promi
   const shop = await db.shop.findUnique({ where: { id: store.id }, select: { feedToken: true, feedStoreCode: true } });
   if (!shop?.feedToken || shop.feedToken.length !== token.length || !crypto.timingSafeEqual(Buffer.from(shop.feedToken), Buffer.from(token))) return null;
   const url = shopUrl(store.slug)!;
-  const parts = await feedParts(store.id);
-  const pick = (why: (p: FeedPart) => string | null): FeedRow[] => parts.filter((p) => !why(p)).map((p) => feedRow(p, { shopUrl: url, photoUrl }));
+  const all = await feedParts(store.id);
+  // More than one store (7.2): the product feeds count the online shop's store's shelf; the local inventory feed lists
+  // every open store's own shelf under its own Business Profile store code.
+  const parts = await withStoreQty(store.id, all, await onlineStore(store.id));
+  const pick = (why: (p: FeedPart) => string | null, from: FeedPart[] = parts): FeedRow[] => from.filter((p) => !why(p)).map((p) => feedRow(p, { shopUrl: url, photoUrl }));
   if (kind === "google") return { body: googleProductXml({ name: store.name, url }, pick(leftOutReason)), type: "application/xml; charset=utf-8" };
-  if (kind === "local") return { body: googleLocalTsv(shop.feedStoreCode ?? store.slug, pick(leftOutReason)), type: "text/tab-separated-values; charset=utf-8" };
+  if (kind === "local") {
+    const stores = await activeStores(store.id);
+    if (stores.length <= 1) return { body: googleLocalTsv(shop.feedStoreCode ?? store.slug, pick(leftOutReason)), type: "text/tab-separated-values; charset=utf-8" };
+    const codes = new Map((await db.location.findMany({ where: { shopId: store.id }, select: { id: true, feedStoreCode: true } })).map((l) => [l.id, l.feedStoreCode]));
+    const files = await Promise.all(stores.map(async (s, i) => googleLocalTsv(s.main ? (shop.feedStoreCode ?? store.slug) : (codes.get(s.id) ?? `${store.slug}-${i + 1}`), pick(leftOutReason, await withStoreQty(store.id, all, s)))));
+    // One header, then every store's rows.
+    const lines = (f: string) => f.split("\n");
+    return { body: [lines(files[0])[0], ...files.flatMap((f) => lines(f).slice(1).filter(Boolean))].join("\n") + "\n", type: "text/tab-separated-values; charset=utf-8" };
+  }
   return { body: metaCsv(pick(metaReason)), type: "text/csv; charset=utf-8" };
 }

@@ -22,6 +22,8 @@ import { exemptCertificate } from "@/lib/tax-exempt";
 import { customerIdsBySpelling } from "@/lib/customer-search";
 import type { BookingDue } from "@/lib/booking-types";
 import { findColorsFor } from "@/lib/colors";
+import { currentStore, type Store } from "@/lib/stores";
+import { storeStockFor } from "@/lib/stock";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
 // functions (even a type re-export trips the bundler), and the machines-for-sale hooks (src/lib/units/sale-units.ts) build items too.
@@ -32,10 +34,15 @@ const view = viewItem;
  * a live-sale claim holds stock without moving it (liveHeld, phase 3), so the register takes those off too. The live
  * sale's own "left" (qtyOnHand less liveHeld) likewise already counts the special orders' holds.
  */
-async function lessLiveHeld(shopId: string, items: RegisterItem[]): Promise<RegisterItem[]> {
+async function lessLiveHeld(shopId: string, items: RegisterItem[], here: Store | null = null): Promise<RegisterItem[]> {
   if (!items.length) return items;
-  const held = await liveHeld(shopId, items.map((it) => it.id));
-  return held.size ? items.map((it) => (held.get(it.id) ? { ...it, qtyOnHand: Math.round((it.qtyOnHand - held.get(it.id)!) * 1000) / 1000 } : it)) : items;
+  // More than one store (7.2): the stock is this store's shelf, and the other stores that have some are named
+  // ("At Florida: 5"); live-sale claims held are this store's own.
+  const parts = items.filter((it) => !it.stockUnitId);
+  const stock = await storeStockFor(shopId, parts, here);
+  const local = stock ? items.map((it) => (stock.get(it.id) ? { ...it, qtyOnHand: stock.get(it.id)!.here, elsewhere: stock.get(it.id)!.others } : it)) : items;
+  const held = await liveHeld(shopId, local.map((it) => it.id), stock ? here : null);
+  return held.size ? local.map((it) => (held.get(it.id) ? { ...it, qtyOnHand: Math.round((it.qtyOnHand - held.get(it.id)!) * 1000) / 1000 } : it)) : local;
 }
 
 /**
@@ -65,7 +72,7 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   const rank = (p: (typeof matches)[number]) => (exact(p) || twin(p) ? 0 : 8) + (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
   matches.sort((a, b) => rank(a) - rank(b));
   // No part by that number: a machine for sale whose serial it is.
-  return matches[0] ? (await lessLiveHeld(user.shopId, [view(matches[0])]))[0] : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code" }))[0] ?? null);
+  return matches[0] ? (await lessLiveHeld(user.shopId, [view(matches[0])], await currentStore(user)))[0] : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code", here: await currentStore(user) }))[0] ?? null);
 }
 
 /**
@@ -94,7 +101,8 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
   const seen = new Set<string>();
   const items = [...colors.map(({ location, sameAs, boughtAt, boughtText, ...it }) => (void location, void sameAs, void boughtAt, void boughtText, it)), ...parts.map(view)].filter((it) => !seen.has(it.id) && seen.add(it.id)).slice(0, 30);
   // Machines for sale whose brand or model matches come after the parts.
-  return [...(await lessLiveHeld(user.shopId, items)), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];
+  const here = await currentStore(user);
+  return [...(await lessLiveHeld(user.shopId, items, here)), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search", here }))];
 }
 
 export type PickupJob = {

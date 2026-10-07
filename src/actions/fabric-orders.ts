@@ -38,13 +38,21 @@ export const addReorderToDrafts = safe(async function addReorderToDrafts(formDat
 /** Orders page (shop-features-round-2-design.md 1.1): the ticked items (pick.<id> with qty.<id> pieces) onto draft orders, one per supplier. */
 export const addItemsToOrders = safe(async function addItemsToOrders(formData: FormData) {
   const user = await requireUser();
-  const picks: { partId: string; qty: number }[] = [];
+  const picks: { partId: string; qty: number; split?: Record<string, number> }[] = [];
   for (const [k, v] of formData.entries()) {
     if (!k.startsWith("pick.") || !v) continue;
     const partId = k.slice(5);
     const qty = Number(str(formData.get(`qty.${partId}`)) ?? "");
     if (!Number.isFinite(qty) || qty <= 0) throw new UserError("Enter how many for each ticked item.");
-    picks.push({ partId, qty });
+    // "All stores" (shop-features-round-2-design.md 7.3): each other store's share rides along, kept while it fits the amount.
+    let split: Record<string, number> | undefined;
+    try {
+      const raw = JSON.parse(String(formData.get(`split.${partId}`) ?? "null")) as Record<string, number> | null;
+      if (raw && typeof raw === "object" && Object.values(raw).reduce((a, b) => a + Number(b), 0) <= qty) split = raw;
+    } catch {
+      split = undefined;
+    }
+    picks.push({ partId, qty, ...(split ? { split } : {}) });
   }
   const text = await addItemsToDraftFor(user, picks);
   refresh();

@@ -404,6 +404,19 @@ async function main() {
     assert.equal((await accountView(b.user)).shop.hubAccountEmail, null, "B has no account");
     ok("the sync claims every company with name, kind, program, version and sole; the install stays pending");
 
+    // The store count (phase 5): one store until a second is added; the hub bills each store after the first.
+    assert.equal(claimA.body.stores, 1, "a company with one store says 1");
+    const mainA = await db.location.create({ data: { shopId: a.shopId, name: "Main store", main: true } });
+    const flA = await db.location.create({ data: { shopId: a.shopId, name: "Florida", sortOrder: 1 } });
+    const closedA = await db.location.create({ data: { shopId: a.shopId, name: "Old store", sortOrder: 2, active: false } });
+    const storeClaims0 = mock.claims.length;
+    await syncHub();
+    const again = mock.claims.slice(storeClaims0).find((c) => c.body.shopRef === a.shopId)!;
+    assert.equal(again.body.stores, 2, "two open stores (a closed one doesn't count)");
+    assert.equal(mock.claims.slice(storeClaims0).find((c) => c.body.shopRef === b.shopId)?.body.stores, 1, "B's count is its own");
+    await db.location.deleteMany({ where: { id: { in: [mainA.id, flA.id, closedA.id] } } });
+    ok("the claim says how many open stores the company has (1 until a second is added)");
+
     await startHubAccountFor(a.user, form({ email, terms: "on" }));
     assert.equal(mock.starts.length, 2);
     assert.equal(mock.starts[1].auth, mock.installKey, "'Send it again' goes with the install key now");

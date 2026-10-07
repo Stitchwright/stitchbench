@@ -16,6 +16,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { addDays, parseYmd, ymdOf } from "@/lib/zoned";
 import { pushEvent, unitDescription } from "@/lib/units/units";
 import { actorOf, audit } from "@/lib/audit";
+import { currentStoreId } from "@/lib/stores";
 
 export const USES = ["SALE", "LOANER", "DEMO", "RENTAL"] as const;
 export type UnitUse = (typeof USES)[number];
@@ -214,12 +215,15 @@ export async function lendFor(user: CurrentUser, input: LendInput): Promise<{ lo
   if (deposit > 200_000) throw new UserError("Check the deposit.");
   if (deposit && !customer) throw new UserError("A deposit is held for someone: pick the customer.");
   const tenders = tenderOf(input.tender, deposit);
+  const here = await currentStoreId(user);
   const loan = await db.$transaction(async (tx) => {
     // One out at a time: the unit's open loan is the lock.
     if (await tx.unitLoan.count({ where: { shopId, unitId: unit.id, backAt: null } })) throw new UserError(`${unitDescription(unit)} is out already.`);
     const made = await tx.unitLoan.create({
       data: {
         shopId,
+        // Lent from this store (7.1).
+        locationId: here,
         unitId: unit.id,
         kind,
         customerId: customer?.id ?? null,

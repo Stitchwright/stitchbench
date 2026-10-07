@@ -42,6 +42,9 @@ import { CustomerExtrasLines, useCustomerExtras, type ExtraLine } from "@/compon
 import { bestRule, type RuleCtx, type YardBreak } from "@/lib/price-rules";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
 import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
+import { RegisterApproval, overLimit, type ApprovalDraft, type ApprovalNeed } from "@/components/register-approval";
+import { bringItHere } from "@/actions/transfers";
+import { runAction } from "@/components/action-form";
 
 const NO_PROMOS: Promo[] = [];
 const NO_BREAKS: YardBreak[] = [];
@@ -110,6 +113,9 @@ type CartLine = {
   /** From a customer's gift list (9.9): the list item it ticks off, and the list's name for the line. */
   registryItemId?: string;
   listName?: string;
+  /** "Ship it to her from there" (7.3): the other store it ships from. */
+  shipFromId?: string;
+  shipFromName?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -167,6 +173,7 @@ export function Register({
   houseAccounts = false,
   cardReader = null,
   threadPhoto = null,
+  store = null,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -202,6 +209,11 @@ export function Register({
   cardReader?: ReaderSetup | null;
   /** The Assistant's thread match from a photo (9.10): shown with the Fabric and thread helpers on; unavailable says why it can't run now. */
   threadPhoto?: { unavailable?: string } | null;
+  /**
+   * More than one store (shop-features-round-2-design.md 7.2, 7.3, 7.5): this store's name, its refund and discount
+   * limits, and whether special orders can be brought over. Null with one store: nothing about stores shows.
+   */
+  store?: { name: string; limits: { refundCents: number | null; discountPct: number | null } } | null;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -264,6 +276,13 @@ export function Register({
   const [missing, setMissing] = useState<string | null>(null);
   // A "Coming soon" item picked in the search: the special order panel opens on it (a pre-order).
   const [preorderItem, setPreorderItem] = useState<RegisterItem | null>(null);
+  // More than one store (7.3, 7.5): an item none here but at another store; bringing it over for her; where shipped
+  // lines go; a refund or discount waiting for its OK (and the OK it got).
+  const [elsewhereItem, setElsewhereItem] = useState<RegisterItem | null>(null);
+  const [bringFrom, setBringFrom] = useState<{ id: string; name: string } | null>(null);
+  const [shipTo, setShipTo] = useState("");
+  const [approvalAsk, setApprovalAsk] = useState<{ need: ApprovalNeed; draft: ApprovalDraft } | null>(null);
+  const approvalId = useRef<string | null>(null);
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
   // The sale as last sent and the key it went with: sent again unchanged (after a lost answer), it keeps the key.
@@ -825,6 +844,18 @@ export function Register({
   }
 
   async function finish(withTenders?: Tender[]) {
+    // Over this store's limit (7.5): the OK first (a manager's code or the owner's), then the sale goes through.
+    const need = store
+      ? overLimit(store.limits, {
+          refundCents: t.total < 0 ? -t.total : 0,
+          discountCents: lines.reduce((a, l) => a + (l.qty > 0 ? Math.max(0, l.manualDiscountCents) : 0), 0) + orderDiscountCents,
+          grossCents: lines.reduce((a, l) => a + (l.qty > 0 ? Math.round(l.qty * l.unitPriceCents) : 0), 0),
+        })
+      : null;
+    if (need && !approvalId.current) {
+      setApprovalAsk({ need, draft: { lines: lines.map((l) => ({ description: l.description, qty: l.qty, unitPriceCents: l.unitPriceCents, discountCents: l.manualDiscountCents })), customer: customer?.name ?? null, totalCents: t.total } });
+      return;
+    }
     setBusy(true);
     setDone(null);
     const sale = {
@@ -856,8 +887,11 @@ export function Register({
         tradeUpTicketId: l.tradeUpTicketId ?? null,
         delisted: l.delisted ?? false,
         registryItemId: l.registryItemId ?? null,
+        shipFromId: l.shipFromId ?? null,
       })),
       soldById: soldBy || null,
+      shipTo: lines.some((l) => l.shipFromId) ? shipTo : null,
+      approvalId: approvalId.current,
       orderDiscountCents,
       tenders: withTenders ?? tenders,
     };
@@ -870,6 +904,9 @@ export function Register({
         return;
       }
       pending.current = null;
+      approvalId.current = null;
+      setApprovalAsk(null);
+      setShipTo("");
       setDone({ id: r.saleId, number: r.number, change: r.changeCents, cards: r.cards ?? [] });
       toast.success(`Sale #${r.number} done${r.changeCents ? `. Change: ${money(r.changeCents)}` : ""}`);
       setCart([]);
@@ -965,10 +1002,21 @@ export function Register({
               item={preorderItem}
               canPrice={canSell}
               onNeedCustomer={() => setNewCustomer(true)}
-              onClose={() => setPreorderItem(null)}
-              onDone={(r, o) => {
+              onClose={() => {
+                setPreorderItem(null);
+                setBringFrom(null);
+              }}
+              onDone={async (r, o) => {
                 setPreorderItem(null);
                 if (r) setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+                // Brought over from another store (7.3): that store is asked to send it, holding it for her.
+                if (bringFrom) {
+                  const from = bringFrom;
+                  setBringFrom(null);
+                  const b = await runAction(() => bringItHere(o.id, from.id));
+                  if (b.error) toast.error(b.error);
+                  else if (b.note) toast.success(b.note, { duration: 10000 });
+                }
                 toast.message(`Print the slip for special order ${o.number} from its page.`, { action: { label: "Open it", onClick: () => window.open(`/special-orders/${o.id}`, "_blank") } });
               }}
             />
@@ -1100,6 +1148,60 @@ export function Register({
         {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
         {!returnMode && <StarterBundles unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
+        {elsewhereItem && (
+          <div className="card card-pad space-y-3 text-base" role="region" aria-label="At another store" data-testid="elsewhere-panel">
+            <h2 className="h2">
+              <span className="mono">{elsewhereItem.partNumber}</span> {elsewhereItem.description}
+            </h2>
+            <p>
+              None here. {elsewhereItem.elsewhere!.map((o) => `At ${o.name}: ${qtyText(o.qty, elsewhereItem.unit)}`).join(" · ")}.
+            </p>
+            {elsewhereItem.elsewhere!.map((o) => (
+              <div key={o.id} className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-primary min-h-11"
+                  disabled={!specialOrders}
+                  onClick={() => {
+                    // A special order for her here (she pays now or leaves a deposit), and the other store sends it over.
+                    setBringFrom({ id: o.id, name: o.name });
+                    setPreorderItem(elsewhereItem);
+                    setElsewhereItem(null);
+                  }}
+                >
+                  Bring it here for her from {o.name}
+                </button>
+                <button
+                  type="button"
+                  className="btn min-h-11"
+                  onClick={() => {
+                    addItem(elsewhereItem);
+                    setCart((c) => c.map((l, i) => (i === c.length - 1 && l.partId === elsewhereItem.id ? { ...l, shipFromId: o.id, shipFromName: o.name, onHand: o.qty } : l)));
+                    setElsewhereItem(null);
+                  }}
+                >
+                  Ship it to her from {o.name}
+                </button>
+              </div>
+            ))}
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  addItem(elsewhereItem);
+                  setElsewhereItem(null);
+                }}
+              >
+                It&apos;s here after all: sell it
+              </button>
+              <button type="button" className="link" onClick={() => setElsewhereItem(null)}>
+                Never mind
+              </button>
+            </div>
+          </div>
+        )}
+
         {results.length > 0 && (
           <div className="card">
             <ul className="divide-y divide-line text-sm" aria-label="Search results">
@@ -1111,6 +1213,8 @@ export function Register({
                     onClick={() => {
                       // Coming soon and none on the shelf: a pre-order (the special order panel opens on it).
                       if (it.comingSoonOn && it.qtyOnHand <= 0 && specialOrders && !returnMode) setPreorderItem(it);
+                      // None here, some at another store (7.3): bring it here for her, or ship it to her from there.
+                      else if (store && !returnMode && !it.stockUnitId && it.qtyOnHand <= 0 && it.elsewhere?.length) setElsewhereItem(it);
                       else addItem(it);
                       setResults([]);
                       code.current?.focus();
@@ -1135,7 +1239,8 @@ export function Register({
                     </span>
                     <span className="num">
                       {money(it.priceCents)}
-                      {it.unit === "yd" ? "/yd" : ""} · {qtyText(it.qtyOnHand, it.unit)} on hand
+                      {it.unit === "yd" ? "/yd" : ""} · {it.stockUnitId ? (it.elsewhere?.length ? `at ${it.elsewhere[0].name}` : "in stock") : `${qtyText(it.qtyOnHand, it.unit)} ${store ? "in this store" : "on hand"}`}
+                      {store && !it.stockUnitId && it.elsewhere?.length ? <span className="muted block text-xs">{it.elsewhere.map((o) => `At ${o.name}: ${qtyText(o.qty, it.unit)}`).join(" · ")}</span> : null}
                     </span>
                   </button>
                 </li>
@@ -1331,6 +1436,7 @@ export function Register({
                     )}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     {l.listName && <span className="pill tone-ready ml-1">gift: {l.listName}</span>}
+                    {l.shipFromName && <span className="pill tone-wait ml-1">ships from {l.shipFromName}</span>}
                     {mustDelist(l) && (
                       <label className="ml-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold">
                         <input type="checkbox" className="check" checked={l.delisted === true} onChange={(e) => setLine(l.key, { delisted: e.target.checked })} /> Take it down on {l.listedOn!.join(", ")} first: done
@@ -1737,6 +1843,27 @@ export function Register({
             <p className="text-[var(--bad)]" role="alert">
               {problem}
             </p>
+          )}
+          {lines.some((l) => l.shipFromId) && (
+            <div className="field">
+              <label htmlFor="ship-to" className="label">
+                Ship to (her address)
+              </label>
+              <textarea id="ship-to" rows={2} className="textarea" value={shipTo} onChange={(e) => setShipTo(e.target.value)} placeholder="12 Main St, Naples FL 34102" />
+              <p className="muted text-sm">{[...new Set(lines.filter((l) => l.shipFromId).map((l) => l.shipFromName))].join(" and ")} gets a Ship this job with the tracking number to fill in.</p>
+            </div>
+          )}
+          {approvalAsk && (
+            <RegisterApproval
+              need={approvalAsk.need}
+              draft={approvalAsk.draft}
+              onCancel={() => setApprovalAsk(null)}
+              onApproved={(id) => {
+                approvalId.current = id;
+                setApprovalAsk(null);
+                finish();
+              }}
+            />
           )}
           <button type="button" className="btn btn-primary btn-lg w-full" disabled={busy || !lines.length || Boolean(problem) || lines.some((l) => mustDelist(l) && !l.delisted)} onClick={() => finish()}>
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}

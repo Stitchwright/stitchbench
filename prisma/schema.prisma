@@ -4289,6 +4289,10 @@ model Location {
   dailyAt            String?
   approveRefundCents Int?
   approveDiscountPct Int?
+  // Google's local inventory feed: the store's Business Profile store code (the main store's is Shop.feedStoreCode)
+  feedStoreCode      String?
+  // The owner's daily summary (7.5): the store's day it was last sent for (YYYY-MM-DD in the store's zone), never twice
+  dailySentOn        String?
   active             Boolean  @default(true)
   sortOrder          Int      @default(0)
   createdAt          DateTime @default(now())

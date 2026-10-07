@@ -20,6 +20,7 @@ import { DESIGN_LABEL, MAX_INCHES, MAX_LONGARM_CENTS, MOVES, OPEN_LONGARM, STATU
 import type { CurrentUser } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
 import type { LongarmDesign, LongarmPricing, LongarmStatus } from "@/generated/prisma/enums";
+import { currentStoreId } from "@/lib/stores";
 
 export const MAX_PHOTOS = 20;
 const DESIGNS = Object.keys(DESIGN_LABEL) as LongarmDesign[];
@@ -120,11 +121,13 @@ export async function createOrderFor(user: CurrentUser, fd: FormData): Promise<{
   const shopId = user.shopId;
   await requireRetail(shopId);
   const data = await dataFrom(shopId, fieldsFrom(fd));
+  const here = await currentStoreId(user);
   return db.$transaction(async (tx) => {
     const customer = await customerFromForm(tx, shopId, fd, user.id, "counter");
     const sh = await tx.shop.update({ where: { id: shopId }, data: { nextLongarmNumber: { increment: 1 } }, select: { nextLongarmNumber: true } });
     const number = sh.nextLongarmNumber - 1;
-    const o = await tx.longarmOrder.create({ data: { shopId, number, customerId: customer.id, name: customer.name, createdById: user.id, ...data }, select: { id: true } });
+    // Taken in at this store (7.1).
+    const o = await tx.longarmOrder.create({ data: { shopId, locationId: here, number, customerId: customer.id, name: customer.name, createdById: user.id, ...data }, select: { id: true } });
     return { id: o.id, number };
   });
 }

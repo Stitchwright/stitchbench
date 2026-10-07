@@ -39,7 +39,7 @@ import { applyMembership, ruleCtxFor, undoMembership } from "@/lib/price-groups"
 import { bestRule, type RuleCtx } from "@/lib/price-rules";
 import { birthdayFor, markBirthdayUsed, unuseBirthday, yardBreaksFor } from "@/lib/birthdays";
 import { creditCents, spendCredit, unuseCredits } from "@/lib/trade-up";
-import { currentStore, storeDetails, storeOfRow } from "@/lib/stores";
+import { activeStores, currentStore, storeDetails, storeOfRow } from "@/lib/stores";
 import { moveStock } from "@/lib/stock";
 import { approvalFor, useApproval } from "@/lib/approvals";
 
@@ -100,6 +100,8 @@ export type SaleLineInput = {
   delisted?: boolean;
   /** Bought from a customer's gift list (9.9): the list item, ticked off by this line. */
   registryItemId?: string | null;
+  /** "Ship it to her from there" (shop-features-round-2-design.md 7.3): the other store this item ships from. */
+  shipFromId?: string | null;
 };
 
 export type SaleInput = {
@@ -122,6 +124,8 @@ export type SaleInput = {
   birthday?: boolean;
   /** Who sold it (shop-features-round-2-design.md 9.7): one of the company's people; the person ringing it up when blank. */
   soldById?: string | null;
+  /** Where lines shipped from another store go (7.3): her address. */
+  shipTo?: string | null;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -178,6 +182,18 @@ export async function completeSaleAs(
     // the company's own, so one store changes nothing).
     const store = opts.locationId !== undefined ? await storeOfRow(shopId, opts.locationId) : await currentStore(user);
     const storeId = store?.id ?? null;
+    // "Ship it to her from there" (7.3): items another store has, sold here and shipped from there to her address.
+    const shipFrom = new Map<number, string>();
+    for (const [i, l] of (Array.isArray(input.lines) ? input.lines : []).entries()) {
+      if (!l?.shipFromId) continue;
+      const from = (await activeStores(shopId)).find((s) => s.id === l.shipFromId);
+      if (!from || from.id === storeId) throw new UserError("Pick the other store it ships from.");
+      if (!l.partId || !(Number(l.qty) > 0) || l.specialOrderId || l.stockUnitId || lay) throw new UserError("Only an item from the shelf ships from another store.");
+      shipFrom.set(i, from.id);
+    }
+    const shipTo = shipFrom.size ? (typeof input.shipTo === "string" ? input.shipTo.trim().slice(0, 500) : "") : "";
+    if (shipFrom.size && !input.customerId) throw new UserError("Pick the customer it ships to first.");
+    if (shipFrom.size && !shipTo) throw new UserError("Type her address to ship to.");
     // A layaway's held items are on its own store's shelf (undefined: not a layaway's sale).
     const layStore = lay ? ((await db.layaway.findFirst({ where: { id: lay.id, shopId }, select: { locationId: true } }))?.locationId ?? null) : undefined;
     const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId } }), store);
@@ -582,7 +598,8 @@ export async function completeSaleAs(
             store,
             {
               refundCents: totals.total < 0 ? -totals.total : 0,
-              discountCents: lines.reduce((a, l) => a + (l.qty > 0 && l.discountCents > 0 ? l.discountCents : 0), 0) + totals.orderDiscount,
+              // The discounts typed at the register (not promotions or price groups, which the shop set up itself).
+              discountCents: input.lines.reduce((a, l) => a + (Number(l.qty) > 0 ? Math.max(0, Math.round(Number(l.discountCents) || 0)) : 0), 0) + totals.orderDiscount,
               grossCents: lines.reduce((a, l) => a + (l.qty > 0 ? Math.round(l.qty * l.unitPriceCents) : 0), 0),
             },
             input.approvalId,
@@ -664,7 +681,7 @@ export async function completeSaleAs(
             // Off this store's shelf (a return goes back on it). A special order or a layaway picked up is taken where
             // it was held: its own store.
             const pick = input.lines[i].specialOrderId ? so.pickups.get(input.lines[i].specialOrderId!) : undefined;
-            const lineStore = pick ? pick.locationId : layStore !== undefined ? layStore : storeId;
+            const lineStore = shipFrom.get(i) ?? (pick ? pick.locationId : layStore !== undefined ? layStore : storeId);
             await moveStock(tx, { shopId, partId: l.partId, locationId: lineStore, qty: -l.qty, reason: "SOLD", userId: user.id, note: `Sale #${number}`, createdAt: at });
           }
           if (l.consignLinkId && l.consignItemKey) {
@@ -795,6 +812,17 @@ export async function completeSaleAs(
         if (made) return { sale: made, cards: [] as Issued[], again: true };
         throw e;
       });
+    // Shipped from another store (7.3): that store's "Ship this" job, after the sale is saved.
+    if (shipFrom.size && !("again" in result)) {
+      const byStore = new Map<string, import("@/lib/store-ship").ShipLine[]>();
+      for (const [i, from] of shipFrom) {
+        const l = lines[i];
+        const part = l.partId ? parts.get(l.partId) : null;
+        byStore.set(from, [...(byStore.get(from) ?? []), { partId: l.partId ?? null, partNumber: part?.partNumber ?? null, description: l.description, qty: l.qty, unit: part?.unit ?? null, unitPriceCents: l.unitPriceCents, discountCents: l.discountCents, taxable: l.taxable }]);
+      }
+      const { makeShipJobs } = await import("@/lib/store-ship");
+      await makeShipJobs({ shopId, saleId: result.sale.id, saleNumber: result.sale.number, customerId: customerId!, address: shipTo, taxRatePct, byStore, userId: user.id, at });
+    }
     // A return from a receipt paid back as Card: onto the cards that paid that sale on the reader (4.8), after the save.
     // Phase 6 + the release's review fix: only while the receipt stands for the cart (original: every line a return
     // that sale sold), the same rule as "tax as sold"; any other return's Card refund is run on the terminal by hand.
@@ -860,6 +888,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await voidAccountOfSale(tx, shopId, sale.id, at);
     // Its card reader payments are on no sale again (refund them from Settings, Card reader).
     await untieReaderPayments(tx, shopId, sale.id);
+    // Shipped from another store (7.3): the job not shipped yet is cancelled (the stock comes back below).
+    await (await import("@/lib/store-ship")).cancelShipJobs(tx, shopId, sale.id, at);
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);
@@ -872,8 +902,9 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
         if (part) {
-          // Back on the shelf of the store that sold it.
-          await moveStock(tx, { shopId, partId: part.id, locationId: sale.locationId, qty: l.qty, reason: "SOLD", userId: user.id, note: `Sale #${sale.number} void`, createdAt: at });
+          // Back on the shelf it came off: the sale's store, or the store it shipped from or was held at (its own move says).
+          const took = await tx.stockMove.findFirst({ where: { shopId, partId: part.id, reason: "SOLD", note: `Sale #${sale.number}`, qty: -l.qty }, select: { locationId: true } });
+          await moveStock(tx, { shopId, partId: part.id, locationId: took ? took.locationId : sale.locationId, qty: l.qty, reason: "SOLD", userId: user.id, note: `Sale #${sale.number} void`, createdAt: at });
         }
       }
       if (l.consignLinkId && l.consignItemKey) {
