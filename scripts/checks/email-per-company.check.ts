@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/user-error";
-import { knownDeviceFor, withKnownDevice } from "@/lib/known-device";
+import { knownDeviceCookieName, knownDeviceFor, withKnownDevice } from "@/lib/known-device";
 import { checkSignIn, endEverySession, signInStep } from "@/lib/sign-in";
 import { bindingOf, choiceCookieName, mintTicket, newNonce, readTicket } from "@/lib/sign-in-ticket";
 import { checkResetLink, finishReset, requestResetFor } from "@/lib/password-reset";
@@ -106,7 +106,32 @@ async function main() {
     assert.deepEqual(both?.map((u) => u.id).sort(), [inA.id, inB.id].sort(), "the same password fits both: the step lists both");
     assert.deepEqual(new Set(both?.map((u) => u.shopName)), new Set([a.name, b.name]));
     assert.equal(await checkSignIn({ email, password: PW }, req()), null, "authorize() doesn't pick one of two");
-    ok("sign-in: different passwords sign in straight; the same password lists both companies and authorize() signs in neither");
+    // A browser known for one of the logins still compares the other: the same password lists both.
+    const devA = withKnownDevice(null, inA.id, Date.now(), inA.sessionVersion)!;
+    const fromKnown = await signInStep({ email, password: PW }, req({ [knownDeviceCookieName()]: devA }));
+    assert.deepEqual(fromKnown?.map((u) => u.id).sort(), [inA.id, inB.id].sort(), "a known browser for A still lists both");
+    ok("sign-in: different passwords sign in straight; the same password lists both companies (a known browser too) and authorize() signs in neither");
+
+    // A co-tenant's own login with the victim's email, its password set to each guess: the guess fits their login, and it
+    // still counts as a wrong try against the victim's (and is logged in the victim's company).
+    const signInState = (globalThis as unknown as { __signIn: { failures: Map<string, { n: number }> } }).__signIn;
+    const failLog = (globalThis as unknown as { __signInFailLogged: Map<string, number> }).__signInFailLogged;
+    const failsOf = (id: string) => signInState.failures.get(`u:${id}`)?.n ?? 0;
+    signInState.failures.delete(`u:${inA.id}`);
+    failLog.delete(email);
+    const t0 = new Date();
+    await db.user.update({ where: { id: inB.id }, data: { passwordHash: await bcrypt.hash("guess-0001", 10) } });
+    const coTenant = await signInStep({ email, password: "guess-0001" }, req());
+    assert.deepEqual(coTenant?.map((u) => u.id), [inB.id], "the guess fits the co-tenant's own login only");
+    assert.equal(failsOf(inA.id), 1, "and counts one wrong try against the victim's login");
+    assert.equal(failsOf(inB.id), 0, "the login it fit is not counted");
+    const failsSince = (shopId: string, subjectId: string) => db.auditEntry.count({ where: { shopId, action: "signin.fail", subjectId, at: { gte: t0 } } });
+    for (let i = 0; i < 50 && !(await failsSince(a.shopId, inA.id)); i++) await new Promise((r) => setTimeout(r, 100)); // written after the answer
+    assert.equal(await failsSince(a.shopId, inA.id), 1, "logged in the victim's company");
+    assert.equal(await failsSince(b.shopId, inB.id), 0, "not in the company it fit");
+    await db.user.update({ where: { id: inB.id }, data: { passwordHash: await bcrypt.hash(PW, 10) } });
+    for (const id of [inA.id, inB.id]) signInState.failures.delete(`u:${id}`);
+    ok("sign-in: a guess that fits a co-tenant's login with the same email still counts and is logged against the other login");
 
     // ---------- 3. the ticket ----------
     const logins = both!.map((u) => ({ id: u.id, sv: u.sv }));
