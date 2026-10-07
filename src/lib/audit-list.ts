@@ -41,6 +41,9 @@ export const AUDIT_ACTIONS = {
   // Prices
   "part.price": { category: "prices", label: "Item price or cost changed" },
   "service.price": { category: "prices", label: "Service price changed" },
+  "prices.raise": { category: "prices", label: "Prices raised for a group of items" },
+  "prices.undo": { category: "prices", label: "A price raise undone" },
+  "prices.floor": { category: "prices", label: "Margin floor changed" },
   "shop.rates": { category: "prices", label: "Labor rate, tax rate, markup or storage fee changed" },
   // Stock
   "stock.count": { category: "stock", label: "Stock recounted or adjusted" },

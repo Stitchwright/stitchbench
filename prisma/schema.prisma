@@ -181,6 +181,9 @@ model Shop {
   // off) and the store code from the Google Business Profile, for the local inventory feed.
   feedToken            String?       @unique
   feedStoreCode        String?
+  // Margin floor (shop-features-round-2-design.md 4.4): "tell me when an item's margin falls under N%", as {"all": 40} with
+  // optional per-kind figures ({"FABRIC": 45}); null: off. src/lib/repricing-math.ts.
+  marginFloor          Json?
   createdAt            DateTime      @default(now())
 
   users             User[]
@@ -260,6 +263,7 @@ model Shop {
   appointments      Appointment[]
   shifts            Shift[]
   companyMoves      CompanyMove[]
+  priceChanges      PriceChange[]
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
@@ -2547,6 +2551,10 @@ model PurchaseOrderLine {
   boltYards     Float         @default(15)
   costCents     Int?
   receivedYards Float         @default(0)
+  // The supplier says it's back ordered (shop-features-round-2-design.md 4.4): when the shop marked it, and the day it is
+  // expected (YYYY-MM-DD, the shop's zone; null: not known). Cleared when it comes or the shop takes the mark off.
+  backorderedOn DateTime?
+  expectedOn    String?
 
   @@index([orderId])
   @@index([shopId, partId])
@@ -3195,4 +3203,19 @@ model Promotion {
   createdAt DateTime @default(now())
 
   @@index([shopId, firstDay])
+}
+
+// "Raise prices" (shop-features-round-2-design.md 4.4): one raise as the shop chose it (rule: whose, by how much, how
+// rounded) and every item it changed with the old and new price, so "Undo" (for a day) puts back what it raised.
+model PriceChange {
+  id       String    @id @default(cuid())
+  shopId   String
+  shop     Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  at       DateTime  @default(now())
+  userId   String?
+  rule     Json
+  items    Json // [{ partId, oldCents, newCents }]
+  undoneAt DateTime?
+
+  @@index([shopId, at])
 }
