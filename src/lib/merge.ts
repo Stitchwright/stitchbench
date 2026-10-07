@@ -51,6 +51,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
   { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
+  { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -256,6 +257,10 @@ export async function mergeCustomersFor(user: CurrentUser, fromId: string, intoI
     const theirSeries = new Set((await tx.kitSeriesMember.findMany({ where: { shopId, customerId: into.id }, select: { seriesId: true } })).map((x) => x.seriesId));
     const seriesClash = (await tx.kitSeriesMember.findMany({ where: { shopId, customerId: from.id }, select: { id: true, seriesId: true } })).filter((x) => theirSeries.has(x.seriesId));
     if (seriesClash.length) await tx.kitSeriesMember.deleteMany({ where: { shopId, id: { in: seriesClash.map((x) => x.id) } } });
+    // Certified on the same machine on both: the kept record's certification stands (one a machine).
+    const theirCerts = new Set((await tx.certification.findMany({ where: { shopId, customerId: into.id }, select: { equipment: true } })).map((x) => x.equipment.toLowerCase()));
+    const certClash = (await tx.certification.findMany({ where: { shopId, customerId: from.id }, select: { id: true, equipment: true } })).filter((x) => theirCerts.has(x.equipment.toLowerCase()));
+    if (certClash.length) await tx.certification.deleteMany({ where: { shopId, id: { in: certClash.map((x) => x.id) } } });
     for (const r of CUSTOMER_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await replaceInLists(tx, shopId, from.id, into.id);
     await tx.customer.update({ where: { id: into.id }, data: customerFill(from, into, date).data });
@@ -383,6 +388,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
+  add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
