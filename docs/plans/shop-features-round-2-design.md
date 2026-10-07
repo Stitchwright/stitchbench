@@ -1017,3 +1017,24 @@ Decisions made while building:
 - Browser test needed: `/parts/orders` (tick, amounts, "Add ticked items to draft orders", Start an order by hand), an
   order page with fabric and pieces lines (save, send, "When the box arrives", "Receive what came"), the item page's
   Order more, the old `/fabric/orders/<id>` link; `tests/fabric.spec.ts` updated for "Receive what came".
+
+**`item-details` (2.1 and 6.2, 7 Oct 2026).** Migration `20261020100000_item_details` (`Part.colorNumber`, `colorName`,
+`colorHex`, `material`, `itemType`, `specs` JSON, an index on shop and type). Code: `src/lib/item-details.ts` (pure: the
+types, their fields, "What is it?" choices, forgiving input, the one-line summary), the short lists in
+`src/lib/constants.ts`, `src/components/item-details-fields.tsx` (the item form's "What is it?" list and the chosen type's
+details), `src/components/color-dot.tsx`; `src/actions/parts.ts` saves them; the item page and the Parts / Inventory list
+show the summary with its swatch, and the list's search reads color number, name and material. Check:
+`scripts/checks/item-details.check.ts` (5 groups); `move-export` still passes.
+Decisions made while building:
+- "What is it?" is one list: the plain kinds, then (for shops with a counter) "Cutters, lasers and 3D printers": filament,
+  resin, cutter blade, cutting mat, vinyl and laser material (filed as supplies) and dies (accessories). A thread saved
+  before this is still a thread (its type is read from its kind), so no data was changed by the migration.
+- Only the chosen type's fields are kept; switching an item to a type without details clears them. A form without the
+  details (an import, an older tab) leaves them as they are.
+- Each list (fibres, weights, spools, filament materials...) is a suggestion: a word of the shop's own is kept as typed,
+  and a list word typed in any case or spacing is saved as listed ("5000 m cone" -> "5,000 m cone"). Numbers get their
+  unit ("40" -> "40 wt", "1kg" -> "1 kg", "500" -> "500 ml").
+- The swatch is picked with the color picker (or "No swatch"); picking it from a photo of the spool is left for
+  `thread-photo` (9.10).
+- Browser test needed: the add form and an item's Details with each type (the details box appears and swaps; the swatch
+  picker and "No swatch"), the item page's summary line, the Parts list's summary and search ("0015", "navy", "PETG").

@@ -1,5 +1,7 @@
 import { costText } from "@/lib/format";
 import { CONDITIONS, CONDITION_OPTION, ORIGINS, ORIGIN_OPTION } from "@/lib/part-labels";
+import { kindChoiceOf, specsOf } from "@/lib/item-details";
+import { ItemTypeFields } from "@/components/item-details-fields";
 
 type P = {
   partNumber: string;
@@ -25,6 +27,12 @@ type P = {
   colorTags?: string[];
   boltYards?: number;
   inPrint?: string;
+  itemType?: string | null;
+  colorNumber?: string | null;
+  colorName?: string | null;
+  colorHex?: string | null;
+  material?: string | null;
+  specs?: unknown;
 };
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
@@ -67,20 +75,12 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
         </label>
         <input id="description" name="description" required defaultValue={part?.description} className="input" />
       </div>
-      <div className="field">
-        <label htmlFor="kind" className="label">
-          Type
-        </label>
-        <select id="kind" name="kind" defaultValue={part?.kind ?? "PART"} className="select">
-          <option value="PART">Part</option>
-          <option value="ACCESSORY">Accessory (feet, hoops, extension tables...)</option>
-          <option value="SUPPLY">Supply (needles, oil, bobbins...)</option>
-          <option value="NOTION">Notion (scissors, rulers, pins, marking tools...)</option>
-          <option value="FABRIC">Fabric</option>
-          <option value="THREAD">Thread</option>
-          <option value="PATTERN">Pattern / book</option>
-        </select>
-      </div>
+      {/* "What is it?" and the details of thread, filament and other supplies (shop-features-round-2-design.md 2.1, 6.2). */}
+      <ItemTypeFields
+        choice={part ? kindChoiceOf({ kind: part.kind ?? "PART", itemType: part.itemType }) : "PART"}
+        craft={fabric}
+        details={part ? { colorNumber: part.colorNumber ?? null, colorName: part.colorName ?? null, colorHex: part.colorHex ?? null, material: part.material ?? null, specs: specsOf(part.specs) } : undefined}
+      />
       <div className="field">
         <label htmlFor="condition" className="label">
           Condition

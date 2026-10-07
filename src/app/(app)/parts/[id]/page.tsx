@@ -24,6 +24,8 @@ import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XN
 import { partTags } from "@/lib/part-labels";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { qtyText } from "@/lib/register-math";
+import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
+import { ColorDot } from "@/components/color-dot";
 import { OrderMoreForm } from "@/components/fabric-orders-forms";
 import { eachSuggestion } from "@/lib/fabric-orders-math";
 
@@ -80,7 +82,13 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 {t}
               </span>
             ))}
-            {`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {`${p.kind !== "PART" ? `${typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {detailsLine(p) && (
+              <span className="mt-1 flex items-center gap-2 text-base text-ink">
+                <ColorDot hex={p.colorHex} size="lg" />
+                {detailsLine(p)}
+              </span>
+            )}
           </>
         }
         actions={

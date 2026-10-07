@@ -275,3 +275,22 @@ export const ENROLLMENT_STATUS_LABEL: Record<string, string> = { ENROLLED: "Sign
 export const APPOINTMENT_STATUS_LABEL: Record<string, string> = { BOOKED: "Booked", DONE: "Done", NO_SHOW: "Didn't come", CANCELLED: "Cancelled" };
 export const RUN_STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", CANCELLED: "Cancelled", DONE: "Done" };
 export const CAMPAIGN_STATUS_LABEL: Record<string, string> = { DRAFT: "Draft", QUEUING: "Getting ready", SENDING: "Sending", SENT: "Sent", CANCELLED: "Cancelled" };
+
+// Item details (shop-features-round-2-design.md 2.1 and 6.2): the short lists the item form offers. Each list is a
+// suggestion: a shop can type its own word, and a typed word that matches one of these in any case is saved as listed.
+export const THREAD_FIBRES = ["Polyester", "Cotton", "Rayon", "Silk", "Metallic", "Nylon", "Wool", "Blend"] as const;
+export const THREAD_WEIGHTS = ["12 wt", "28 wt", "30 wt", "40 wt", "50 wt", "60 wt", "80 wt", "100 wt"] as const;
+export const THREAD_PUT_UPS = ["200 m spool", "500 m spool", "1,000 m spool", "1,100 yd spool", "5,000 m cone", "6,000 yd cone"] as const;
+export const FILAMENT_MATERIALS = ["PLA", "PLA+", "Silk PLA", "PETG", "ABS", "ASA", "TPU", "Nylon", "PC", "Carbon fiber PLA", "Wood PLA"] as const;
+export const FILAMENT_DIAMETERS = ["1.75 mm", "2.85 mm"] as const;
+export const FILAMENT_SPOOLS = ["250 g", "500 g", "750 g", "1 kg", "2 kg", "5 kg"] as const;
+export const FILAMENT_FINISHES = ["Matte", "Glossy", "Silk", "Glow in the dark", "Translucent"] as const;
+export const RESIN_TYPES = ["Standard", "Tough", "Water-washable", "ABS-like", "Flexible", "Plant-based", "High temperature"] as const;
+export const RESIN_VOLUMES = ["500 ml", "1 l", "2 l", "5 l"] as const;
+export const BLADE_TYPES = ["Fine point", "Deep point", "Premium fine point", "Rotary", "Knife", "Scoring wheel", "Debossing tip", "Engraving tip"] as const;
+export const MAT_TYPES = ["Light grip", "Standard grip", "Strong grip", "Fabric grip", "Card mat"] as const;
+export const MAT_SIZES = ["12 x 12 in", "12 x 24 in", "24 x 28 in"] as const;
+export const VINYL_TYPES = ["Permanent", "Removable", "Heat transfer (iron-on)", "Glitter", "Holographic", "Printable"] as const;
+export const VINYL_SIZES = ["12 x 12 in sheet", "12 in x 3 ft roll", "12 in x 5 ft roll", "12 in x 12 ft roll"] as const;
+export const LASER_MATERIALS = ["Birch plywood", "Basswood", "MDF", "Acrylic", "Cork", "Leather", "Cardstock", "Felt", "Fabric"] as const;
+export const LASER_THICKNESSES = ["1.5 mm", "3 mm", "4 mm", "6 mm"] as const;
