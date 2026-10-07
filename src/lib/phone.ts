@@ -20,6 +20,16 @@ export function toE164(raw: string | null | undefined): string | null {
   return `+1${ten}`;
 }
 
+/**
+ * What was typed in a customer search, as the new customer's name or phone: a phone when it is only digits and the
+ * marks a phone number is written with ("555-0142", "(555) 123 4567", "+1 555..."), at least 4 digits; otherwise a name
+ * ("Apt 4 Smith", "Ruth 2nd" stay names).
+ */
+export function nameOrPhone(typed: string): { name: string; phone: string } {
+  const t = typed.trim();
+  return /^\+?[\d\s().-]+$/.test(t) && t.replace(/\D/g, "").length >= 4 ? { name: "", phone: t } : { name: t, phone: "" };
+}
+
 /** "+15551234567" -> "(555) 123-4567"; other numbers as they are. */
 export function fmtPhone(e164: string): string {
   const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
