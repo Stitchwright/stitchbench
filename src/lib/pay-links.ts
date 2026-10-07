@@ -12,7 +12,7 @@ import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { money } from "@/lib/format";
-import { moduleOn } from "@/lib/module-gate";
+import { noticesOn } from "@/lib/module-gate";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { seal, unseal } from "@/lib/messaging/secrets";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
@@ -182,7 +182,8 @@ export async function makePayLinkFor(user: CurrentUser, input: PayLinkInput, o: 
 async function sendPayLink(user: CurrentUser, orderId: string, now: Date): Promise<string> {
   const o = await db.webOrder.findFirst({ where: { id: orderId, shopId: user.shopId, source: "staff" }, include: ORDER_INCLUDE });
   if (!o || !o.customerId) throw new UserError("Pay link not found.");
-  if (!(await moduleOn(o.shopId, "marketing"))) return "Messages are off (Marketing isn't on): copy the link and send it to her yourself.";
+  // In the base since 7 Oct 2026 (transactional, like the ready notice): email or texts switched on is enough.
+  if (!(await noticesOn(o.shopId))) return "Messages are off (no email or texts set up): copy the link and send it to her yourself.";
   const ms = await messagingView(o.shopId);
   const link = unseal(o.linkSealed, o.shopId, `orderLink:${o.id}`)?.plain ?? "";
   const items = o.items as unknown as OrderItem[];
@@ -198,7 +199,7 @@ async function sendPayLink(user: CurrentUser, orderId: string, now: Date): Promi
   const q = await queueToCustomer(db, {
     shopId: o.shopId,
     customerId: o.customerId,
-    kind: "order_notice",
+    kind: "pay_link",
     channels: "preferred",
     dedupeKey: `web:${o.id}:paylink:${now.getTime()}`,
     refType: "web_order",

@@ -62,7 +62,7 @@ export default async function SpecialOrders({ searchParams }: { searchParams: Pr
       {tab === "here" && counts.call > 0 && (
         <p className="card card-pad text-base">
           <span className="pill tone-wait mr-2">Call these</span>
-          {counts.call} {counts.call === 1 ? "customer takes" : "customers take"} no messages (or Marketing is off): call {counts.call === 1 ? "her" : "them"} and mark it called.
+          {counts.call} {counts.call === 1 ? "customer takes" : "customers take"} no messages (or messages are off): call {counts.call === 1 ? "her" : "them"} and mark it called.
         </p>
       )}
       {rows.length === 0 ? (

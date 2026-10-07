@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { requireBaseWritable } from "@/lib/base-gate";
-import { moduleOn } from "@/lib/module-gate";
+import { noticesOn } from "@/lib/module-gate";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView } from "@/lib/messaging/settings";
 import { firstName, renderKind } from "@/lib/messaging/templates";
@@ -120,7 +120,7 @@ export async function doneWantFor(user: CurrentUser, id: string, now = new Date(
   if (!r.count) throw new UserError("Want list line not found.");
 }
 
-/** "Let her know": the order_in message naming the item that's here (Marketing on, her usual way). */
+/** "Let her know": the order_in message naming the item that's here (in the base: email or texts on, her usual way). */
 export async function tellWantFor(user: CurrentUser, id: string, now = new Date()): Promise<string> {
   await requireBaseWritable(user);
   const w = await db.wantItem.findFirst({ where: { id: String(id), shopId: user.shopId, doneAt: null }, include: { customer: { select: { id: true, name: true } } } });
@@ -128,7 +128,7 @@ export async function tellWantFor(user: CurrentUser, id: string, now = new Date(
   if (!w.matchedPartId) throw new UserError("Nothing matching is here yet.");
   const part = await db.part.findFirst({ where: { id: w.matchedPartId, shopId: user.shopId }, select: { description: true, onlineTitle: true } });
   if (!part) throw new UserError("That item isn't in your inventory any more.");
-  if (!(await moduleOn(user.shopId, "marketing"))) throw new UserError("Messages are off (Marketing isn't on). Call her instead, then tap Done.");
+  if (!(await noticesOn(user.shopId))) throw new UserError("Messages are off (no email or texts set up). Call her instead, then tap Done.");
   const ms = await messagingView(user.shopId);
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, phone: true } });
   const vars = { first_name: firstName(w.customer.name), name: w.customer.name, shop_name: shop.name, shop_phone: shop.phone ?? "", item: part.onlineTitle?.trim() || part.description, ref_line: " It's on your want list with us.", balance_line: "" };

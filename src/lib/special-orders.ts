@@ -17,7 +17,7 @@ import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { money, str, toCents } from "@/lib/format";
-import { moduleOn } from "@/lib/module-gate";
+import { noticesOn } from "@/lib/module-gate";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView } from "@/lib/messaging/settings";
 import { firstName, renderKind } from "@/lib/messaging/templates";
@@ -450,9 +450,10 @@ export async function arrivedFor(user: CurrentUser, arrivals: { partId: string; 
   return (await hereNow(user, take, now)).words;
 }
 
-/** Here: held for her, and told (the "it's here" message, Marketing on, never twice), or on the Call these list. */
+/** Here: held for her, and told (the "it's here" message once email or texts are on, never twice), or on the Call these list. */
 async function hereNow(user: CurrentUser, rows: Row[], now: Date): Promise<{ words: string }> {
-  const marketing = await moduleOn(user.shopId, "marketing");
+  // In the base since 7 Oct 2026: email or texts switched on is enough (no Marketing needed).
+  const marketing = await noticesOn(user.shopId);
   const ms = marketing ? await messagingView(user.shopId) : null;
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, phone: true } });
   const vs = new Map((await views(user.shopId, rows)).map((v) => [v.id, v]));
@@ -499,7 +500,7 @@ async function hereNow(user: CurrentUser, rows: Row[], now: Date): Promise<{ wor
   }
   const parts = [`${rows.length === 1 ? "Special order" : `${rows.length} special orders`} marked here and held.`];
   if (told) parts.push(`${told === 1 ? "The customer hears" : `${told} customers hear`} it's here.`);
-  if (call.length) parts.push(`Call ${call.slice(0, 5).join(", ")}${call.length > 5 ? " and more" : ""}: ${marketing ? "no way to message them" : "Marketing is off, so nothing was sent"}.`);
+  if (call.length) parts.push(`Call ${call.slice(0, 5).join(", ")}${call.length > 5 ? " and more" : ""}: ${marketing ? "no way to message them" : "messages are off, so nothing was sent"}.`);
   return { words: parts.join(" ") };
 }
 

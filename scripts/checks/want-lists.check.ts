@@ -1,6 +1,6 @@
 // Want lists (shop-features-round-2-design.md 1.4): the words rule; adding a line (an item, or words; an item on the
 // shelf is "Here now" at once; refusals); an item received by hand, a new item and a supplier's list matching words;
-// "4 customers want this"; "Let her know" (the order_in message, once; refused with Marketing off or no way to reach
+// "4 customers want this"; "Let her know" (the order_in message, once; refused with messages off or no way to reach
 // her); Done; the to-do count; the tenant section.
 //   npm run -s check scripts/checks/want-lists.check.ts
 import "dotenv/config";
@@ -34,7 +34,8 @@ const part = (shopId: string, n: string, o: Partial<{ description: string; desig
 
 async function main() {
   await withSink();
-  const a = await checkShop({ retail: true, modules: ["marketing"] });
+  // A base shop (no Marketing): "it's here" (order_in) is in the base since 7 Oct 2026.
+  const a = await checkShop({ retail: true });
   const b = await checkShop({ retail: true });
   try {
     await messagingFor(a.shopId, { email: true });

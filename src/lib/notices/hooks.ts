@@ -249,6 +249,7 @@ export async function stillWanted(row: OutMessage): Promise<string | null> {
     case "parts_in":
       return partsInStillWanted(row);
     case "order_notice":
+    case "pay_link":
       return orderNoticeStillWanted(row);
     case "software_renew":
       return renewNoticeStillWanted(row);
