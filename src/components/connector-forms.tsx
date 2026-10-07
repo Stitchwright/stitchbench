@@ -8,6 +8,10 @@ import { saveConnector } from "@/actions/fabric-orders";
 import { CATALOG_FIELDS } from "@/lib/connectors/types";
 import type { CatalogPreview, SheetView } from "@/lib/connectors/catalog";
 import type { ColumnMap } from "@/lib/connectors/types";
+import { KIND_CHOICES } from "@/lib/item-details";
+
+/** "What's on this list?": the item form's choices, fabric by the yard first (the list's own type column, if any, wins per row). */
+const LIST_KINDS = [{ value: "FABRIC", label: "Fabric by the yard" }, ...KIND_CHOICES.filter((c) => c.value !== "FABRIC")];
 
 export type ConnectorChoice = { id: string; label: string; blurb: string; placeholder: boolean };
 
@@ -55,11 +59,15 @@ export function ConnectorForm({ name, connector, accountNumber, layout, choices,
   );
 }
 
-/** Catalog import: choose the file, check the column mapping, preview the counts (a dry run), then apply. */
+/**
+ * Catalog import: choose the file, say what is on it, check the column mapping, preview the counts (a dry run), then
+ * "Bring them in". Fabric, thread, notions, accessories, patterns and supplies (shop-features-round-2-design.md 2.3).
+ */
 export function CatalogImport({ supplierId, supplierName, placeholder }: { supplierId: string; supplierName: string; placeholder: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [view, setView] = useState<SheetView | null>(null);
   const [map, setMap] = useState<ColumnMap>({});
+  const [kind, setKind] = useState("FABRIC");
   const [preview, setPreview] = useState<CatalogPreview | null>(null);
   const [save, setSave] = useState(true);
   const [pending, start] = useTransition();
@@ -68,6 +76,7 @@ export function CatalogImport({ supplierId, supplierName, placeholder }: { suppl
     const fd = new FormData();
     fd.set("file", file!);
     fd.set("map", JSON.stringify(map));
+    fd.set("defaultKind", kind);
     for (const [k, v] of Object.entries(extra)) fd.set(k, v);
     return fd;
   };
@@ -86,6 +95,7 @@ export function CatalogImport({ supplierId, supplierName, placeholder }: { suppl
         else {
           setView(r.view);
           setMap(r.view.map);
+          setKind(r.view.defaultKind);
         }
       } catch {
         toast.error("Couldn't read the file: check the connection and try again.");
@@ -133,8 +143,32 @@ export function CatalogImport({ supplierId, supplierName, placeholder }: { suppl
             {view.mapFrom === "saved" ? "These columns are the ones saved for this supplier." : view.mapFrom === "placeholder" ? "These columns are a placeholder until this wholesaler shares its layout: check them." : "These columns are a guess from the headings: check them."}
             {placeholder && view.mapFrom !== "placeholder" ? " (This wholesaler's own layout isn't known yet.)" : ""}
           </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {CATALOG_FIELDS.map((f) => (
+          <div className="field max-w-md">
+            <label className="label" htmlFor={`kind-${supplierId}`}>
+              What&apos;s on this list?
+            </label>
+            <select
+              id={`kind-${supplierId}`}
+              className="input"
+              value={kind}
+              onChange={(e) => {
+                setKind(e.currentTarget.value);
+                setPreview(null);
+              }}
+            >
+              {LIST_KINDS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <p className="muted text-sm">A row whose own Type column says otherwise (&quot;Thread&quot;, &quot;Notions&quot;) goes in as that.</p>
+          </div>
+          {(["main", "fabric", "details"] as const).map((group) => {
+            const fields = CATALOG_FIELDS.filter((f) => f.group === group);
+            const grid = (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {fields.map((f) => (
               <div className="field" key={f.key}>
                 <label className="label" htmlFor={`map-${supplierId}-${f.key}`}>
                   {f.label}
@@ -164,7 +198,18 @@ export function CatalogImport({ supplierId, supplierName, placeholder }: { suppl
                 </select>
               </div>
             ))}
-          </div>
+            </div>
+            );
+            if (group === "main") return <div key={group}>{grid}</div>;
+            // The rarer columns fold away, open when the sheet's headings already filled one.
+            const used = fields.some((f) => map[f.key]);
+            return (
+              <details key={group} open={used} className="text-sm">
+                <summary className="cursor-pointer py-2">{group === "fabric" ? "Fabric columns (collection, designer, bolt size)" : "Color and detail columns (color number, weight, spool, material...)"}</summary>
+                {grid}
+              </details>
+            );
+          })}
           {view.sample.length > 0 && (
             <div className="scroll-x">
               <table className="table text-xs">
@@ -200,13 +245,13 @@ export function CatalogImport({ supplierId, supplierName, placeholder }: { suppl
       {preview && (
         <div className="card card-pad space-y-2" role="status">
           <p className="text-sm">
-            <span className="font-semibold">{preview.create}</span> new fabrics, <span className="font-semibold">{preview.update}</span> updated, <span className="font-semibold">{preview.unchanged}</span> already right
+            <span className="font-semibold">{preview.create}</span> new items, <span className="font-semibold">{preview.update}</span> updated, <span className="font-semibold">{preview.unchanged}</span> already right
             {preview.skipped ? (
               <>
                 , <span className="font-semibold">{preview.skipped}</span> rows skipped or partly read
               </>
             ) : null}
-            . New fabrics start with no stock; nothing here changes how many yards you have.
+            . New items start with no stock; nothing here changes how many you have.
           </p>
           {preview.newSample.length > 0 && <p className="muted text-xs">New: {preview.newSample.join("; ")}{preview.create > preview.newSample.length ? "..." : ""}</p>}
           {preview.changeSample.length > 0 && (
@@ -229,7 +274,7 @@ export function CatalogImport({ supplierId, supplierName, placeholder }: { suppl
             </details>
           )}
           <button type="button" className="btn btn-primary btn-sm" disabled={pending || preview.create + preview.update === 0} onClick={apply}>
-            {pending ? "Importing..." : `Apply: add ${preview.create}, update ${preview.update}`}
+            {pending ? "Bringing them in..." : `Bring them in: add ${preview.create}, update ${preview.update}`}
           </button>
         </div>
       )}

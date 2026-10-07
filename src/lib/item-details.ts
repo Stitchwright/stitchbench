@@ -268,3 +268,45 @@ export function detailsLine(p: Shown): string {
       return [mat, color, s.volume, s.size].filter(Boolean).join(" · ");
   }
 }
+
+/** A choice value checked: "FABRIC", "THREAD", "SUPPLY:filament"... or null when it isn't one. */
+export function kindChoiceValue(v: string | null | undefined): string | null {
+  if (!v) return null;
+  try {
+    const c = parseKindChoice(v);
+    return c.itemType && c.itemType !== "thread" ? `${c.kind}:${c.itemType}` : c.kind;
+  } catch {
+    return null;
+  }
+}
+
+const KIND_WORDS: [RegExp, string][] = [
+  [/filament|\bpla\b|petg|\babs\b|\btpu\b/, "SUPPLY:filament"],
+  [/resin/, "SUPPLY:resin"],
+  [/vinyl|\bhtv\b|iron.?on/, "SUPPLY:vinyl"],
+  [/blade/, "SUPPLY:blade"],
+  [/\bmats?\b|cutting mat/, "SUPPLY:mat"],
+  [/laser|plywood|basswood|acrylic|\bmdf\b/, "SUPPLY:laser-material"],
+  [/\bdies?\b/, "ACCESSORY:die"],
+  [/thread|floss/, "THREAD"],
+  [/fabric|yardage|quilting cotton|by the yard|\bbolt/, "FABRIC"],
+  [/notion/, "NOTION"],
+  [/accessor|\bfeet\b|\bfoot\b/, "ACCESSORY"],
+  [/pattern|\bbook/, "PATTERN"],
+  [/suppl|needle|\boil\b|bobbin/, "SUPPLY"],
+  [/\bparts?\b/, "PART"],
+];
+
+/**
+ * A distributor list's type column in words ("Thread", "Notions", "3D filament", "HTV") as an item's "What is it?" value,
+ * or null when the words don't say (shop-features-round-2-design.md 2.3). The choice values themselves are read too.
+ */
+export function kindFromWords(text: string | null | undefined): string | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  const exact = kindChoiceValue(t.toUpperCase().replace(/:(.*)$/, (_, x: string) => `:${x.toLowerCase()}`));
+  if (exact) return exact;
+  const w = t.toLowerCase();
+  for (const [re, v] of KIND_WORDS) if (re.test(w)) return v;
+  return null;
+}

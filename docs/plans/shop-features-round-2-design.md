@@ -1061,3 +1061,22 @@ Decisions made while building:
   passes again.
 - Browser test needed: the register's search ("isa 15", "navy", "PLA black 1.75") and Find a color (big swatches, Add,
   Order more, the matches, a customer's colors), the customer page's "Colors bought before", an item's "Same color as".
+
+**`catalog-any-item` (2.3, 7 Oct 2026).** Migration `20261020300000_catalog_any_item` (`FabricSupplier.defaultKind`).
+Code: `CATALOG_FIELDS` (`src/lib/connectors/types.ts`) gains the type column and the 2.1 details (color number and name,
+fibre or material, thread weight, spool size, filament diameter and spool weight, size), grouped main / fabric /
+details; `readCatalogRows` reads them; `src/lib/connectors/catalog.ts` plans any item (`kindFromWords` in
+`src/lib/item-details.ts` reads a type column in words); the import (`src/components/connector-forms.tsx`) asks "What's
+on this list?" and folds the fabric and detail columns away; Parts → Orders to suppliers gains **Suppliers' lists** (each
+supplier's import, "Add supplier"; owners and admins), beside the Fabric page's own. Check:
+`scripts/checks/catalog-any-item.check.ts` (4 groups); `connectors` still passes.
+Decisions made while building:
+- Each row's type is its own Type column in words ("Thread", "Notions", "3D filament", "HTV"), else the list's type
+  ("What's on this list?", saved on the supplier with the columns); a word the program doesn't know is read as the
+  list's type and named among the partly read rows. A supplier that never set one stays fabric by the yard, as before.
+- An item that is there keeps its kind: a notion row against fabric by the yard, a fabric row against a notion, and a
+  partner's consigned stock are left alone and named. An item with no type takes the list's type when its kind is the
+  same (a SUPPLY on a filament list becomes filament), then its details are filled or changed; specs are merged.
+- New costs update the item's cost (Raise prices, 4.4, will read them when it is built); stock is never touched.
+- Browser test needed: Parts → Orders to suppliers → Suppliers' lists (add a supplier, open it, choose a thread list,
+  "What's on this list?", the folded columns, Preview, Bring them in), and the Fabric page's import still reading fabric.
