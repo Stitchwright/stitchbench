@@ -9,9 +9,11 @@ import { NotifyByField } from "@/components/notify-by-field";
  * instead of every customer on the shop being sent down for a <select>. Picking one fills the hidden customerId the
  * same way the old <select> did; leaving it blank means "new customer" (fill in the fields below), as before.
  * `prefix` names the fields `${prefix}customerId` / `${prefix}notifyBy`; with `notifyRequired`, a picked customer
- * who hasn't been asked how to be told gets the required "How should we tell them" radios under the pick.
+ * who hasn't been asked how to be told gets the required "How should we tell them" radios under the pick. `newBox`: the
+ * form has a new customer's name box after this one, so the search says to use it; without one, a customer not found
+ * is added on the Customers page first.
  */
-export function CustomerPicker({ initial, prefix = "", notifyRequired = false }: { initial: CustomerHit | null; prefix?: string; notifyRequired?: boolean }) {
+export function CustomerPicker({ initial, prefix = "", notifyRequired = false, newBox = false }: { initial: CustomerHit | null; prefix?: string; notifyRequired?: boolean; newBox?: boolean }) {
   const [customer, setCustomer] = useState<CustomerHit | null>(initial);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
@@ -44,7 +46,7 @@ export function CustomerPicker({ initial, prefix = "", notifyRequired = false }:
             id="customer-search"
             className="input"
             autoComplete="off"
-            placeholder="Search name or phone, or leave blank for a new customer"
+            placeholder={newBox ? "Search name or phone, or leave blank for a new customer" : "Search name or phone"}
             value={q}
             onChange={async (e) => {
               const v = e.target.value;
@@ -54,7 +56,9 @@ export function CustomerPicker({ initial, prefix = "", notifyRequired = false }:
             }}
           />
           {searched && searched === q.trim() && hits.length === 0 && (
-            <p className="text-sm">No customer matches &lsquo;{searched}&rsquo;. For a new customer, type their name in the next box.</p>
+            <p className="text-sm">
+              No customer matches &lsquo;{searched}&rsquo;. {newBox ? "For a new customer, type their name in the next box." : "Check the spelling, or add them on the Customers page first."}
+            </p>
           )}
           {hits.length > 0 && (
             <ul className="divide-y divide-line rounded border border-line text-sm">

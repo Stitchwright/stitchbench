@@ -88,7 +88,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
           <input type="hidden" name="kind" value={kind.key} />
           <Section title="Customer">
             <div className="grid-form">
-              <CustomerPicker initial={presetCustomer} notifyRequired={needNotify} />
+              <CustomerPicker initial={presetCustomer} notifyRequired={needNotify} newBox />
               <div className="field">
                 <label htmlFor="customerName" className="label">
                   Or a new customer&apos;s name

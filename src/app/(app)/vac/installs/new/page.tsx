@@ -23,7 +23,7 @@ export default async function NewInstall() {
       <ActionForm action={createInstall} className="max-w-3xl space-y-4">
         <Section title="Customer">
           <div className="grid-form">
-            <CustomerPicker initial={null} />
+            <CustomerPicker initial={null} newBox />
             <div className="field">
               <label htmlFor="customerName" className="label">
                 Or a new customer: name

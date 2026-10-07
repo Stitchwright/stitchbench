@@ -131,7 +131,7 @@ export function AppointmentForm({
         </div>
       ) : (
         <>
-          <CustomerPicker initial={customer} notifyRequired={false} />
+          <CustomerPicker initial={customer} notifyRequired={false} newBox />
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="field">
               <label htmlFor="customerName" className="label">
