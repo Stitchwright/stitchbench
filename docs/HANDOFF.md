@@ -1202,7 +1202,7 @@ accounts and billing: design first).
 
 24. **Tax holidays, shop-pays-the-tax sales, machine sales with warranty for every shop, layaway, financing** (owner
    request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
-   ten owner questions in its section 7 (not yet answered).
+   ten owner questions in its section 7: **all answered as recommended (7 Oct); building on branch `sales-features`**.
 
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
    or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per
