@@ -64,3 +64,7 @@ desktop/dist-stitchshop/
 
 # the demo seed's guest (a real person the demo is shown to): local only
 scripts/demo/*.local.json
+
+# deep-research working notes and reports (the finished report is copied into docs/research/)
+research_notes/
+reports/
