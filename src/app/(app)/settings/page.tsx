@@ -259,6 +259,15 @@ export default async function SettingsPage() {
               Online booking (Scheduling)
             </Link>
           </div>
+          <div>
+            <Link href="/settings/customer-questions" className="link">
+              Customer questions on your booking page
+            </Link>{" "}
+            ·{" "}
+            <Link href="/customer-questions" className="link">
+              Questions waiting
+            </Link>
+          </div>
           {modules.states.assistant.status !== "off" && (
             <div>
               <Link href="/settings/assistant" className="link">

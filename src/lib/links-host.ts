@@ -1,7 +1,7 @@
 // What the public links address may serve (scheduling-messaging-design.md section 14.2). Pure; the same lists as
 // desktop/links-gate.mjs. Used by src/proxy.ts for requests whose Host is PUBLIC_URL's host when PUBLIC_LINKS_ONLY=true.
-export const PUBLIC_GET = ["/e/", "/u/", "/book/", "/shop/", "/api/e/", "/api/u/", "/api/book/", "/api/shop/", "/_next/static/", "/favicon.ico"];
-export const PUBLIC_POST = ["/api/e/", "/api/u/", "/api/book/", "/api/shop/"];
+export const PUBLIC_GET = ["/e/", "/u/", "/book/", "/shop/", "/api/e/", "/api/u/", "/api/book/", "/api/shop/", "/api/public/", "/_next/static/", "/favicon.ico"];
+export const PUBLIC_POST = ["/api/e/", "/api/u/", "/api/book/", "/api/shop/", "/api/public/"];
 
 /**
  * "pass" for GET / HEAD of a public prefix and POST of a public API prefix; "404" for everything else, including any
