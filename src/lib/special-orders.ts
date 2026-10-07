@@ -560,6 +560,9 @@ export async function undoCancelFor(user: CurrentUser, id: string, now = new Dat
   if (o.status !== "CANCELLED") throw new UserError("That special order isn't cancelled.");
   if (!o.cancelledAt || now.getTime() - o.cancelledAt.getTime() > 86_400_000) throw new UserError("It was cancelled more than a day ago. Take a new special order instead.");
   if (o.saleId) {
+    // The cancel moved money (given back, credited or kept): undoing it voids that sale, an owner's or admin's (as the
+    // cancel with money and the register's void are).
+    if (user.role === "TECH") throw new UserError("Only an owner or admin can undo a cancel that moved money.");
     await voidSaleAs(user, o.saleId, `Undo: special order ${o.number} open again`);
     return;
   }
