@@ -30,7 +30,7 @@ import { actorOf, audit } from "@/lib/audit";
 import { addItemsToDraftFor } from "@/lib/fabric-orders";
 import { makePayLinkFor } from "@/lib/pay-links";
 import { holdFor, paidTowardOrders, releaseHeld } from "@/lib/special-order-hooks";
-import { currentStore, onlineStore, storeDetails } from "@/lib/stores";
+import { currentStore, currentStoreId, onlineStore, storeDetails } from "@/lib/stores";
 
 const MAX_MONEY = 10_000_000;
 export const OPEN_STATUSES = ["WAITING", "ORDERED", "HERE"];
@@ -435,23 +435,41 @@ export async function markHereFor(user: CurrentUser, id: string, now = new Date(
 }
 
 /**
- * Stock arrived for these items (an order received, stock received by hand): the oldest open orders for each are
- * marked here while the quantity lasts. Returns the words for the person receiving.
+ * Stock arrived for these items (an order received, stock received by hand) at the store receiving it (this device's):
+ * the oldest open orders for each at that store are marked here and held on its shelf while the quantity lasts. Orders
+ * waiting at another store aren't marked here (the stock isn't there): the words say so, to send it over with a
+ * transfer (Stores) and mark them here when it arrives. Returns the words for the person receiving.
  */
 export async function arrivedFor(user: CurrentUser, arrivals: { partId: string; qty: number }[], now = new Date()): Promise<string> {
   const got = new Map<string, number>();
   for (const a of arrivals) if (a.partId && a.qty > 0) got.set(a.partId, (got.get(a.partId) ?? 0) + a.qty);
   if (!got.size) return "";
   const rows = await db.specialOrder.findMany({ where: { shopId: user.shopId, partId: { in: [...got.keys()] }, status: { in: ["WAITING", "ORDERED"] } }, include: INCLUDE, orderBy: { number: "asc" } });
+  if (!rows.length) return "";
+  // A null store is the main store, on either side.
+  const mainId = (await db.location.findFirst({ where: { shopId: user.shopId, main: true }, select: { id: true } }))?.id ?? null;
+  const here = (await currentStoreId(user)) ?? mainId;
   const take: Row[] = [];
+  const elsewhere = new Map<string, number>();
   for (const r of rows) {
+    if ((r.locationId ?? mainId) !== here) {
+      const at = r.locationId ?? mainId ?? "";
+      elsewhere.set(at, (elsewhere.get(at) ?? 0) + 1);
+      continue;
+    }
     const left = got.get(r.partId!) ?? 0;
     if (left + 1e-9 < r.qty) continue;
     got.set(r.partId!, left - r.qty);
     take.push(r);
   }
-  if (!take.length) return "";
-  return (await hereNow(user, take, now)).words;
+  const words: string[] = [];
+  if (take.length) words.push((await hereNow(user, take, now)).words);
+  if (elsewhere.size) {
+    const names = new Map((await db.location.findMany({ where: { shopId: user.shopId, id: { in: [...elsewhere.keys()] } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
+    const n = [...elsewhere.values()].reduce((x, y) => x + y, 0);
+    words.push(`${n} special ${n === 1 ? "order" : "orders"} for this wait${n === 1 ? "s" : ""} at ${[...elsewhere.keys()].map((k) => names.get(k) ?? "another store").join(", ")}: send ${n === 1 ? "it" : "them"} over with a transfer (Stores), then mark ${n === 1 ? "it" : "them"} here there.`);
+  }
+  return words.filter(Boolean).join(" ");
 }
 
 /** Here: held for her, and told (the "it's here" message once email or texts are on, never twice), or on the Call these list. */
@@ -625,4 +643,20 @@ export async function startPreorder(a: { slug: string; partId: string; qty?: num
   });
   const link = await makePayLinkFor(user, { customerId: customer.id, lines: [{ description: `Pre-order ${o.number}: ${o.description}, deposit`, unitPriceCents: deposit, specialOrderId: o.id }], send: "none", days: 2 }, { trusted: true });
   return openPayLink(link.link.split("/shop/o/")[1]);
+}
+
+/**
+ * Pre-orders made online whose deposit was never paid (its link ran out or was taken back, nothing paid toward it):
+ * cancelled, so they don't hold stock when it arrives. Run with the online shop's sweep. Returns how many.
+ */
+export async function expireUnpaidPreorders(now = new Date()): Promise<number> {
+  const rows = await db.specialOrder.findMany({ where: { kind: "PREORDER", note: "Pre-ordered online", status: { in: ["WAITING", "ORDERED"] }, createdAt: { lt: new Date(now.getTime() - 2 * 86_400_000) } }, select: { id: true, shopId: true, status: true }, take: 500 });
+  let n = 0;
+  for (const o of rows) {
+    if ((await paidTowardOrders(o.shopId, [o.id])).get(o.id)) continue;
+    if (await db.webOrder.count({ where: { shopId: o.shopId, source: "staff", status: { in: ["PENDING", "PAID"] }, specialOrderIds: { has: o.id } } })) continue;
+    const r = await db.specialOrder.updateMany({ where: { id: o.id, shopId: o.shopId, status: o.status }, data: { status: "CANCELLED", prevStatus: o.status, cancelledAt: now, note: "Pre-ordered online; the deposit was never paid" } });
+    n += r.count;
+  }
+  return n;
 }

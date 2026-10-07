@@ -1293,6 +1293,8 @@ export async function expireStaleOrders(now = new Date()): Promise<number> {
     where: { status: "PENDING", source: "staff", expiresAt: { lt: now } },
     data: { status: "CANCELLED", cancelledAt: now, staffNote: "The pay link ran out unpaid." },
   });
+  // Pre-orders made online whose deposit link ran out unpaid: cancelled, so they don't hold stock when it comes.
+  await (await import("@/lib/special-orders")).expireUnpaidPreorders(now).catch((e) => console.error("pre-orders:", e instanceof Error ? e.message : e));
   return r.count + links.count;
 }
 

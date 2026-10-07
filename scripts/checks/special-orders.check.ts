@@ -8,6 +8,7 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
+import { ensureMainStore } from "@/lib/stores";
 import { isUserError } from "@/lib/action";
 import { balanced, buildBooks } from "@/lib/books";
 import { DEFAULT_BOOKS } from "@/lib/books-accounts";
@@ -30,6 +31,8 @@ import {
   specialOrderView,
   takeSpecialOrderAs,
   undoCancelFor,
+  arrivedFor,
+  expireUnpaidPreorders,
   waitingForCustomer,
 } from "@/lib/special-orders";
 import { checkShop, cleanup, clearKick, messagingFor, withSink } from "./lib";
@@ -157,6 +160,29 @@ async function main() {
     assert.equal((await specialOrderCounts(a.shopId)).call, 1);
     assert.match(await markHereFor(a.user, typed.id), /marked here/);
     ok("ordered onto the supplier's draft (one line for both); received: the oldest here and held, the message once; no-messages customers to call; a typed order marked here by hand");
+
+    // 4b. Stock arriving at one store doesn't mark here an order waiting at another (review fix): the words say where.
+    await ensureMainStore(db, a.shopId);
+    const flStore = await db.location.create({ data: { shopId: a.shopId, name: "Florida" } });
+    const flOrder = await takeSpecialOrderAs(a.user, { customerId: ann.id, partId: charm.id, qty: 1, priceCents: 3000, depositCents: 0 });
+    await db.specialOrder.update({ where: { id: flOrder.id }, data: { locationId: flStore.id } });
+    const qtyBefore = (await db.part.findUniqueOrThrow({ where: { id: charm.id } })).qtyOnHand;
+    const flWords = await arrivedFor(a.user, [{ partId: charm.id, qty: 1 }]);
+    assert.match(flWords, /waits at Florida/);
+    assert.equal((await specialOrderView(a.shopId, flOrder.id))!.status, "WAITING", "not marked here: the stock is at the main store");
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: charm.id } })).qtyOnHand, qtyBefore, "nothing held");
+    await db.specialOrder.delete({ where: { id: flOrder.id } });
+    await db.location.delete({ where: { id: flStore.id } });
+    ok("stock received at one store leaves an order waiting at another store as it is, and says where it waits");
+
+    // 4c. An online pre-order whose deposit was never paid is cancelled by the sweep (it would hold arriving stock).
+    const old = new Date(Date.now() - 3 * 86_400_000);
+    const unpaidPre = await db.specialOrder.create({ data: { shopId: a.shopId, number: 9001, customerId: ann.id, kind: "PREORDER", partId: charm.id, description: "Charm pack", qty: 1, priceCents: 3000, depositCents: 1000, note: "Pre-ordered online", createdAt: old } });
+    assert.ok((await expireUnpaidPreorders()) >= 1);
+    assert.equal((await db.specialOrder.findUniqueOrThrow({ where: { id: unpaidPre.id } })).status, "CANCELLED");
+    assert.notEqual((await specialOrderView(a.shopId, pre.id))!.status, "CANCELLED", "a pre-order with its deposit paid stays");
+    await db.specialOrder.delete({ where: { id: unpaidPre.id } });
+    ok("an online pre-order never paid is cancelled by the sweep; one with its deposit paid stays");
 
     // 5. Picked up at the register by a tech: the order's price, the deposits off, the held stock released then sold.
     const waiting = await waitingForCustomer(a.shopId, jane.id);
