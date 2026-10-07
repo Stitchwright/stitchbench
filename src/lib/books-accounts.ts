@@ -16,7 +16,7 @@ export const ACCOUNT_KEYS = [
   { key: "dueFromPartners", label: "Collected for us by a partner shop", def: "Due from Partner Shops" },
   { key: "dueToPartners", label: "Partner repair bills taken at the counter", def: "Due to Partner Shops" },
   { key: "tradeIns", label: "Trade-in credit given", def: "Trade-in Purchases" },
-  { key: "customerDeposits", label: "Money held for customers (layaway payments)", def: "Customer Deposits" },
+  { key: "customerDeposits", label: "Money held for customers (layaway payments, special order deposits)", def: "Customer Deposits" },
   { key: "lenderReceivable", label: "Owed by lenders (financed sales not paid yet)", def: "Due from Lenders" },
 ] as const;
 

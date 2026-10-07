@@ -14,6 +14,8 @@ import { addItemsToOrders, addSupplier } from "@/actions/fabric-orders";
 import { NewOrderForm } from "@/components/fabric-orders-forms";
 import { CatalogImport } from "@/components/connector-forms";
 import { connectorFor } from "@/lib/connectors/registry";
+import { waitingToOrder } from "@/lib/special-orders";
+import { orderSpecialOrders } from "@/actions/special-orders";
 
 const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
 
@@ -26,6 +28,8 @@ export default async function SupplierOrdersPage() {
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true, sellsRetail: true, doesRepair: true } }),
   ]);
   const open = orders.filter((o) => o.status === "DRAFT" || o.status === "SENT" || o.status === "PARTLY_RECEIVED");
+  // Special orders not ordered yet (shop-features-round-2-design.md 1.2): "3 special orders waiting", Add them.
+  const specials = shop.sellsRetail ? await waitingToOrder(user.shopId) : [];
   const orderable = rows.filter((r) => r.supplier).length;
   return (
     <div className="max-w-5xl space-y-6">
@@ -34,6 +38,21 @@ export default async function SupplierOrdersPage() {
         title="Orders to suppliers"
         sub={open.length ? `${open.length} open ${open.length === 1 ? "order" : "orders"}. Tick what's running low to add it to a draft order; nothing is ordered until you send it.` : "Tick what's running low to add it to a draft order; nothing is ordered until you send it."}
       />
+
+      {specials.length > 0 && (
+        <ActionForm action={orderSpecialOrders} className="card card-pad flex flex-wrap items-center justify-between gap-3 text-base">
+          {specials.map((s) => (
+            <input key={s.id} type="hidden" name="id" value={s.id} />
+          ))}
+          <span>
+            <Link href="/special-orders" className="link">
+              {specials.length} special {specials.length === 1 ? "order" : "orders"} waiting
+            </Link>{" "}
+            to be ordered for customers.
+          </span>
+          <Submit className="btn btn-primary min-h-11">Add {specials.length === 1 ? "it" : "them"}</Submit>
+        </ActionForm>
+      )}
 
       <section className="card" aria-labelledby="low-h">
         <div className="card-pad space-y-1 border-b border-line">

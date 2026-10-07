@@ -72,6 +72,7 @@ const items: Item[] = [
   { href: "/sales", label: "Sales log", icon: Receipt, repair: true },
   { href: "/register/sales", label: "Register sales", icon: Receipt, retail: true },
   { href: "/register/online", label: "Online orders", icon: Globe, retail: true },
+  { href: "/special-orders", label: "Special orders", icon: ClipboardList, retail: true },
   { href: "/reports", label: "Reports", icon: BarChart3, admin: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

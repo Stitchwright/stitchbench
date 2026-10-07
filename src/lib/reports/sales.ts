@@ -67,7 +67,7 @@ function lineCost(l: { qty: number; costCents: number | null; costTenThou: numbe
  */
 export function saleLines(s: SaleWithLines) {
   const kinds = s.lines.map((l) => saleLineKind({ ...l, partKind: l.part?.kind }));
-  const eligible = s.lines.map((l, i) => lineNet(l) > 0 && !["REPAIR", "GIFT_CARD", "TRADE_IN", "CLASS", "APPOINTMENT", "LAYAWAY", "LAYAWAY_FEE"].includes(kinds[i]));
+  const eligible = s.lines.map((l, i) => lineNet(l) > 0 && !["REPAIR", "GIFT_CARD", "TRADE_IN", "CLASS", "APPOINTMENT", "LAYAWAY", "LAYAWAY_FEE", "DEPOSIT", "DEPOSIT_KEPT"].includes(kinds[i]));
   const base = s.lines.reduce((a, l, i) => a + (eligible[i] ? lineNet(l) : 0), 0);
   const orderDiscount = Math.min(s.discountCents, base);
   let left = orderDiscount;

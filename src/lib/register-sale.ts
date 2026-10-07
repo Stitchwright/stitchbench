@@ -15,6 +15,7 @@ import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, round
 import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/units/sale-units";
 import { applyPlanLine, endPlansOf, preparePlanLine, type PlanLineInput, type PreparedPlan } from "@/lib/units/plans";
 import { afterLayawaySale, beforeLayawayLines, voidLayawaySale, type LayawayHook } from "@/lib/layaway-hooks";
+import { afterSpecialOrderSale, beforeSpecialOrderLines, prepareSpecialOrderLines, voidSpecialOrderSale, type SpecialOrderHook } from "@/lib/special-order-hooks";
 import type { TradeInInput } from "@/lib/units/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
@@ -68,6 +69,8 @@ export type SaleLineInput = {
    */
   specialOrderId?: string | null;
   depositKind?: "DEPOSIT" | "DEPOSIT_KEPT" | null;
+  /** The register's "deposit used" line for a special order picked up on this sale (the server works out the amount). */
+  depositUsed?: boolean;
   /** Rentals (1.8), from the program only: rent paid on a machine out on rental (RENT, income). */
   unitLoanId?: string | null;
   rentKind?: "RENT" | null;
@@ -117,7 +120,7 @@ function saleByKey(shopId: string, clientKey: string | null) {
 export async function completeSaleAs(
   user: CurrentUser,
   input: SaleInput,
-  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean } = {},
+  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean; specialOrder?: SpecialOrderHook } = {},
 ): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
@@ -131,6 +134,9 @@ export async function completeSaleAs(
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
     const made = await saleByKey(shopId, clientKey);
     if (made) return { saleId: made.id, number: made.number, changeCents: made.changeCents };
+    // Special orders picked up on this sale: priced from the order, the deposits paid taken off (worked out here).
+    const so = await prepareSpecialOrderLines(shopId, input.customerId ?? null, Array.isArray(input.lines) ? input.lines : []);
+    input = { ...input, lines: so.lines };
     const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
     if (!input.lines.length) throw new UserError("Nothing to sell yet. Scan or search for an item.");
     if (input.lines.length > 300) throw new UserError("That's too many lines for one sale.");
@@ -308,7 +314,7 @@ export async function completeSaleAs(
         if (part.kind === "MACHINE") throw new UserError(`${part.partNumber} is a machine model to order. Sell the machine itself under Machine for sale.`);
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
         if (part.unit === "yd" && !inEighths(qty)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
-        if (priceRole === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+        if (priceRole === "TECH" && !so.priced.has(i) && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
         // A tech can type the price of an item that has none, but not leave it free.
         if (priceRole === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
       }
@@ -334,8 +340,8 @@ export async function completeSaleAs(
         discountCents: disc,
         // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc
         // line only. Layaway money is never taxed nor discounted (it isn't a sale).
-        taxable: job || l.layawayKind ? false : part ? true : Boolean(l.taxable),
-        discountable: !job && !l.layawayKind,
+        taxable: job || l.layawayKind || l.depositKind || l.rentKind ? false : part || so.priced.has(i) ? true : Boolean(l.taxable),
+        discountable: !job && !l.layawayKind && !l.depositKind && !l.rentKind,
         costCents: part?.costCents ?? null,
         costTenThou: part ? fineCost(part.costCents, part.costTenThou) : null,
         consignLinkId: part?.consignLinkId ?? null,
@@ -384,7 +390,7 @@ export async function completeSaleAs(
     const lineKinds = lines.map((l, i) =>
       saleLineKind({
         ...l,
-        kind: input.lines[i].layawayKind ?? null,
+        kind: input.lines[i].layawayKind ?? input.lines[i].depositKind ?? input.lines[i].rentKind ?? null,
         giftCardId: input.lines[i].giftCard ? "pending" : null,
         tradeInUnitId: l.tradeIn ? "pending" : null,
         machinePlanId: planLines.has(i) ? "pending" : null,
@@ -404,7 +410,7 @@ export async function completeSaleAs(
     }
     const promoLine = (l: (typeof lines)[number], i: number) => ({ ...l, kind: lineKinds[i], brand: l.partId ? parts.get(l.partId)?.brand : l.stockUnitId ? unitBrands.get(l.stockUnitId) : null });
     for (const [i, l] of lines.entries()) {
-      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind) continue;
+      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId) continue;
       const best = bestDiscount(promos, promoLine(l, i));
       if (best && best.cents > l.discountCents) {
         l.discountCents = best.cents;
@@ -477,6 +483,8 @@ export async function completeSaleAs(
         const cards: Issued[] = [];
         // A pick-up or a cancel: the layaway is finished and its held items back on the shelf, so the lines can sell them.
         if (lay) await beforeLayawayLines(tx, { shopId, hook: lay, user, at });
+        // Special orders picked up (or cancelled): their held quantity back on the shelf, the orders finished.
+        if (so.pickups.size || opts.specialOrder) await beforeSpecialOrderLines(tx, { shopId, pickups: so.pickups, hook: opts.specialOrder ?? null, user, at });
         const sale = await tx.sale.create({
           data: {
             shopId,
@@ -501,7 +509,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
@@ -603,9 +611,10 @@ export async function completeSaleAs(
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
+        if (so.pickups.size || opts.specialOrder) await afterSpecialOrderSale(tx, { shopId, pickups: so.pickups, hook: opts.specialOrder ?? null, saleId: sale.id });
         // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
         const label = `Sale #${number}`;
-        if (lines.some((l, i) => l.qty < 0 && !input.lines[i].layawayKind)) {
+        if (lines.some((l, i) => l.qty < 0 && !input.lines[i].layawayKind && !input.lines[i].depositKind)) {
           await audit(tx, actor, { action: "sale.return", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, amountCents: totals.total, reason: input.note?.slice(0, 200) || null });
         }
         const lineDiscounts = lines.reduce((a, l) => a + (l.discountCents > 0 ? l.discountCents : 0), 0);
@@ -717,6 +726,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       }
     }
     if (layawayVoid) await voidLayawaySale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
+    // A special order picked up or cancelled on this sale is back as it was (after the lines above put the stock back).
+    if (sale.lines.some((l) => l.specialOrderId)) await voidSpecialOrderSale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
   });
 }
 

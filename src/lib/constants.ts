@@ -193,6 +193,7 @@ export const MESSAGE_KIND_LABEL: Record<string, string> = {
   help_reply: "Reply to HELP",
   bags_due: "Bags due reminder",
   parts_in: "Parts arrived",
+  order_in: "Special order or want list arrived",
   order_notice: "Online order",
   test: "Test",
 };

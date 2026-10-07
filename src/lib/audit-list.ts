@@ -36,6 +36,7 @@ export const AUDIT_ACTIONS = {
   "order.cancel": { category: "money", label: "Online order cancelled" },
   "paylink.make": { category: "money", label: "Pay link sent to a customer" },
   "paylink.cancel": { category: "money", label: "Pay link taken back" },
+  "specialorder.keep": { category: "money", label: "Special order deposit kept" },
   "estimate.answer": { category: "money", label: "Estimate answered by staff (phone or text)" },
   "credit.issue": { category: "money", label: "Store credit given" },
   // Prices

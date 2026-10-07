@@ -26,6 +26,9 @@ export type RegisterItem = {
   details?: string;
   colorHex?: string | null;
   colorNumber?: string | null;
+  /** Coming soon (shop-features-round-2-design.md 1.2): the day it's expected, and the day in words ("Nov 1"). */
+  comingSoonOn?: string | null;
+  comingSoonText?: string;
 };
 
 export const viewItem = (p: {
@@ -47,6 +50,7 @@ export const viewItem = (p: {
   colorHex?: string | null;
   material?: string | null;
   specs?: unknown;
+  comingSoonOn?: string | null;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -62,6 +66,8 @@ export const viewItem = (p: {
   details: detailsLine(p) || undefined,
   colorHex: p.colorHex ?? null,
   colorNumber: p.colorNumber ?? null,
+  comingSoonOn: p.comingSoonOn ?? null,
+  comingSoonText: p.comingSoonOn ? new Date(`${p.comingSoonOn}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }) : undefined,
 });
 
 /** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */

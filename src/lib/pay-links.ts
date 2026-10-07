@@ -53,9 +53,12 @@ export type PayLinkInput = {
 
 /** Special orders and rentals a link pays toward: open, this shop's and this customer's (filled in by their packages). */
 async function checkRefs(shopId: string, customerId: string, lines: PayLine[]): Promise<void> {
-  void shopId;
-  void customerId;
-  if (lines.some((l) => l.specialOrderId || l.loanId)) throw new UserError("A line can only be one thing.");
+  const soIds = [...new Set(lines.map((l) => l.specialOrderId).filter((x): x is string => !!x))];
+  if (soIds.length && (await db.specialOrder.count({ where: { shopId, id: { in: soIds }, customerId, status: { in: ["WAITING", "ORDERED", "HERE"] } } })) !== soIds.length) {
+    throw new UserError("That special order isn't open (or isn't hers).");
+  }
+  if (lines.some((l) => l.loanId)) throw new UserError("A line can only be one thing.");
+  if (lines.some((l) => l.partId && (l.specialOrderId || l.loanId))) throw new UserError("A line can only be one thing.");
 }
 
 /** Why this shop can't send pay links yet, in words, or null when it can. */
