@@ -31,6 +31,7 @@ import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
 import { RegisterGiftLists, type GiftListPick } from "@/components/register-gift-lists";
 import { RegisterCardReader, type ReaderSetup } from "@/components/register-card-reader";
+import { ThreadPhotoMatch } from "@/components/thread-photo-match";
 import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
 import { SoftwareLineFields } from "@/components/software-line";
 import type { SoftwareLineInput } from "@/lib/software";
@@ -129,6 +130,7 @@ export function Register({
   me = "",
   houseAccounts = false,
   cardReader = null,
+  threadPhoto = null,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -152,6 +154,8 @@ export function Register({
   houseAccounts?: boolean;
   /** The shop's card readers (4.8), when the card reader is on: Card reader sends the amount to one. */
   cardReader?: ReaderSetup | null;
+  /** The Assistant's thread match from a photo (9.10): shown with the Fabric and thread helpers on; unavailable says why it can't run now. */
+  threadPhoto?: { unavailable?: string } | null;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -802,6 +806,7 @@ export function Register({
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           <RegisterGiftLists returnMode={returnMode} onAdd={addGiftListLine} />
+          {threadPhoto && <ThreadPhotoMatch unavailable={threadPhoto.unavailable} returnMode={returnMode} onAdd={(it) => addItem(it)} />}
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
           {layaway && !returnMode && (

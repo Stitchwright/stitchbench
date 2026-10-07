@@ -11,6 +11,7 @@ import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { sellers } from "@/lib/commissions";
 import { registerReaders } from "@/lib/card-reader";
+import { entryFor } from "@/lib/assistant/ui";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
@@ -63,6 +64,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const people = await sellers(user.shopId);
   // The card reader (4.8), when it is on and a reader is paired.
   const cardReader = await registerReaders(user.shopId);
+  // Thread match from a photo (9.10): with the Assistant's Fabric and thread helpers on.
+  const photoEntry = await entryFor(user.shopId, "fabric");
+  const threadPhoto = photoEntry.show ? { unavailable: photoEntry.unavailable } : null;
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
   const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
@@ -95,7 +99,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} cardReader={cardReader} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} cardReader={cardReader} threadPhoto={threadPhoto} />
     </div>
   );
 }

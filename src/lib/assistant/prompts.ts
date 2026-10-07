@@ -248,3 +248,30 @@ export function parseTags(text: string): string[] | null {
   const all = [...new Set([...colors, ...themes])].slice(0, 5);
   return all.length ? all : null;
 }
+
+// ----- thread match from a photo (shop-features-round-2-design.md 9.10) -----
+
+export const THREAD_PHOTO_SYSTEM = `You look at a photo of sewing thread, a quilt, a garment or fabric and report its main colors, so a shop can find threads to match. Answer with JSON only: {"colors":[{"hex":"#rrggbb","name":"","where":""}]}. One to three colors, the most important first. "hex" is your best reading of the color as it would look in daylight (allow for shadows and the light in the photo); "name" is a plain color name (navy, sage green, burgundy); "where" says in two to four words which part of the photo it is (the thread, the background, the flowers). Never name a thread maker or number, never describe the photo otherwise and never add fields.`;
+
+export function buildThreadPhoto(): Built {
+  return { feature: "thread_photo", cls: "read", system: THREAD_PHOTO_SYSTEM, messages: [{ role: "user", content: "What are the main colors to match?" }], maxTokens: 200 };
+}
+
+export type PhotoColor = { hex: string; name: string | null; where: string | null };
+
+/** The colors in an answer: real #rrggbb values only, each once, three at most. */
+export function parseThreadColors(text: string): PhotoColor[] | null {
+  const j = jsonOf(text) as { colors?: unknown } | null;
+  if (!j || typeof j !== "object" || !Array.isArray(j.colors)) return null;
+  const out: PhotoColor[] = [];
+  for (const c of j.colors as Record<string, unknown>[]) {
+    const raw = typeof c?.hex === "string" ? c.hex.trim().toLowerCase() : "";
+    const m = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/.exec(raw);
+    if (!m) continue;
+    const hex = `#${m[1].length === 3 ? [...m[1]].map((x) => x + x).join("") : m[1]}`;
+    if (out.some((o) => o.hex === hex)) continue;
+    out.push({ hex, name: field(c.name, 40), where: field(c.where, 40) });
+    if (out.length === 3) break;
+  }
+  return out.length ? out : null;
+}
