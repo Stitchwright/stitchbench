@@ -10,9 +10,11 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import type { CurrentUser } from "@/lib/session";
-import { applyCatalogFor, previewCatalogFor, sheetViewFor } from "@/lib/connectors/catalog";
+import { applyCatalogFor, previewCatalogFor, previewSourceFor, sheetViewFor } from "@/lib/connectors/catalog";
+import { CATALOG_SOURCES } from "@/lib/connectors/sources";
 import { readCatalogRows, suggestMap } from "@/lib/connectors/layout";
-import { ensureSupplierFor } from "@/lib/fabric-orders";
+import { addItemsToDraftFor, ensureSupplierFor, receiveOrderFor, sendOrderFor } from "@/lib/fabric-orders";
+import { completeSaleAs } from "@/lib/register-sale";
 import { detailsLine, kindFromWords, specsOf } from "@/lib/item-details";
 import { checkShop, cleanup, type CheckShop } from "./lib";
 import { expectNotFound } from "./tenant";
@@ -117,7 +119,41 @@ async function main() {
     assert.equal((await db.part.findUniqueOrThrow({ where: { id: fab.id } })).description, "Batik");
     ok("refused by name: a notion row against fabric by the yard, a fabric row against a notion, a partner's consigned stock");
 
-    // 4. Tenant.
+    // 4. Barcodes, and the source interface.
+    const upcSheet = ["SKU,UPC,Description,Cost", "GING-8,074447123456,Shears,19.00", "NEW-UPC,012345678905,Seam ripper,1.50"].join("\n");
+    await applyCatalogFor(user(a), supId, "u.csv", bytes(upcSheet), { itemNumber: "SKU", upc: "UPC", description: "Description", costPerYard: "Cost" }, false, "NOTION");
+    const g = await db.part.findUniqueOrThrow({ where: { id: shears.id } });
+    assert.ok(g.altNumbers.includes("074447123456") && g.numberKeys.includes("00074447123456"), "a barcode joins the item's numbers (and its GTIN form)");
+    const nu = await db.part.findFirstOrThrow({ where: { shopId: a.shopId, partNumber: "NEW-UPC" } });
+    assert.deepEqual(nu.altNumbers, ["012345678905"]);
+    assert.deepEqual(CATALOG_SOURCES.map((x) => [x.id, x.kind]), [["file", "file"]], "the spreadsheet is the one source today");
+    await expectError("an unknown feed", () => previewSourceFor(user(a), supId, "notions-marketing-api"), /isn't available/);
+    ok("barcodes from a list join each item's numbers; the source interface lists the spreadsheet and refuses a feed that isn't there");
+
+    // 5. Machine models: imported as models to order, ordered, received with serial numbers into machines for sale.
+    const machines = ["SKU,Maker,Model,Type,Cost,MAP,Warranty", "BRO-PE800,Brother,PE800,Embroidery machine,450.00,699.00,25 years limited"].join("\n");
+    await applyCatalogFor(user(a), supId, "m.csv", bytes(machines), { itemNumber: "SKU", brand: "Maker", model: "Model", kind: "Type", costPerYard: "Cost", pricePerYard: "MAP", warranty: "Warranty" }, false, "NOTION");
+    const pe = await db.part.findFirstOrThrow({ where: { shopId: a.shopId, partNumber: "BRO-PE800" } });
+    assert.deepEqual([pe.kind, pe.itemType, pe.description, pe.qtyOnHand, specsOf(pe.specs).machineKind, specsOf(pe.specs).model, specsOf(pe.specs).warranty], ["MACHINE", "machine", "Brother PE800", 0, "sewing", "PE800", "25 years limited"]);
+    await addItemsToDraftFor(user(a), [{ partId: pe.id, qty: 2 }]);
+    const mpo = await db.purchaseOrder.findFirstOrThrow({ where: { shopId: a.shopId, status: "DRAFT" }, include: { lines: true } });
+    await sendOrderFor(user(a), mpo.id, "manual");
+    const ml = mpo.lines.find((l) => l.partId === pe.id)!;
+    assert.equal(ml.unit, "EACH");
+    const recv = (o: Record<string, string>) => {
+      const f = new FormData();
+      for (const [k, v] of Object.entries(o)) f.set(k, v);
+      return f;
+    };
+    await expectError("two came, one serial", () => receiveOrderFor(user(a), mpo.id, recv({ [`yards.${ml.id}`]: "2", [`serials.${ml.id}`]: "SN-1" })), /enter 2 serial numbers/);
+    assert.match(await receiveOrderFor(user(a), mpo.id, recv({ [`yards.${ml.id}`]: "2", [`serials.${ml.id}`]: "SN-1\nSN-2" })), /2 machines are now in Machines for sale/);
+    const units = await db.stockUnit.findMany({ where: { shopId: a.shopId }, include: { machine: true }, orderBy: { createdAt: "asc" } });
+    assert.deepEqual(units.map((u) => [u.machine.brand, u.machine.model, u.machine.serial, u.costCents, u.priceCents, u.status]), [["Brother", "PE800", "SN-1", 45000, 69900, "IN_STOCK"], ["Brother", "PE800", "SN-2", 45000, 69900, "IN_STOCK"]]);
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: pe.id } })).qtyOnHand, 0, "the model itself is never stock");
+    await expectError("the model at the register", () => completeSaleAs(user(a), { lines: [{ partId: pe.id, description: "", qty: 1, unitPriceCents: 69900, taxable: true }], tenders: [{ method: "CASH", amountCents: 74793 }] }), /machine model to order/);
+    ok("machine models: imported with maker, model, cost, MAP and warranty; ordered in pieces; serials required for each; received into machines for sale; never sold or stocked as an item");
+
+    // 6. Tenant.
     await expectNotFound("B previews on A's supplier", () => previewCatalogFor(user(b), supId, "t.csv", bytes(sheet), map));
     await expectNotFound("B applies on A's supplier", () => applyCatalogFor(user(b), supId, "t.csv", bytes(sheet), map, true));
     const bSup = await ensureSupplierFor(user(b), "Hab+Dash");

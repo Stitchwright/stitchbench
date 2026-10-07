@@ -28,6 +28,7 @@ export const KIND_LABEL: Record<string, string> = {
   FABRIC: "Fabric",
   THREAD: "Thread",
   PATTERN: "Pattern / book",
+  MACHINE: "Machine model (to order)",
 };
 
 /** A part number reduced to letters and digits, upper-case: "XA-1234-001" → "XA1234001". */

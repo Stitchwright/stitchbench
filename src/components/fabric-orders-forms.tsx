@@ -182,7 +182,7 @@ export function AddLineForm({ orderId, lockCost = false }: { orderId: string; lo
 }
 
 /** `received`: what was in when the page was drawn, sent back so a second press of the same form can't receive it twice. `each`: pieces, not yards. */
-export type ReceiveLine = { id: string; itemNumber: string; description: string; each?: boolean; outstanding: number; received: number; text: string };
+export type ReceiveLine = { id: string; itemNumber: string; description: string; each?: boolean; machine?: boolean; outstanding: number; received: number; text: string };
 
 /** Receive: what came on each line, yards for fabric and pieces for anything else (prefilled with what is outstanding; blank skips a line). */
 export function ReceiveForm({ orderId, lines, partly }: { orderId: string; lines: ReceiveLine[]; partly: boolean }) {
@@ -203,6 +203,14 @@ export function ReceiveForm({ orderId, lines, partly }: { orderId: string; lines
               <input id={`got-${l.id}`} name={`yards.${l.id}`} defaultValue={l.outstanding > 0 ? l.outstanding : ""} inputMode={l.each ? "numeric" : "decimal"} className="input num w-28" />
               <input type="hidden" name={`seen.${l.id}`} value={l.received} />
             </div>
+            {l.machine && (
+              <div className="field min-w-[14rem] flex-1">
+                <label className="label" htmlFor={`sn-${l.id}`}>
+                  Serial numbers, one a line (each becomes a machine for sale)
+                </label>
+                <textarea id={`sn-${l.id}`} name={`serials.${l.id}`} rows={2} className="input mono" autoComplete="off" />
+              </div>
+            )}
           </li>
         ))}
       </ul>

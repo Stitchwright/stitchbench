@@ -15,7 +15,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 /** Items that carry details: a color number or name, a type, or a thread saved before types. */
-const HAS_DETAILS: Prisma.PartWhereInput = { OR: [{ colorNumber: { not: null } }, { colorName: { not: null } }, { itemType: { not: null } }, { kind: "THREAD" }] };
+const HAS_DETAILS: Prisma.PartWhereInput = { kind: { not: "MACHINE" }, OR: [{ colorNumber: { not: null } }, { colorName: { not: null } }, { itemType: { not: null } }, { kind: "THREAD" }] };
 
 /** The most items a lookup scores (a shop's whole thread wall is a few thousand). */
 const MAX_CANDIDATES = 6000;

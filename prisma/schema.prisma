@@ -837,6 +837,7 @@ enum PartKind {
   FABRIC
   THREAD
   PATTERN
+  MACHINE // a machine model from a distributor's list, ordered on a purchase order; never stock itself: receiving it makes machines for sale (StockUnit)
 }
 
 enum PartCondition {

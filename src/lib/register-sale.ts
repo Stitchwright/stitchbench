@@ -292,6 +292,8 @@ export async function completeSaleAs(
         }
       }
       if (part) {
+        // A machine model is ordered, not sold: what arrives is a machine for sale (shop-features-round-2-design.md 2.3).
+        if (part.kind === "MACHINE") throw new UserError(`${part.partNumber} is a machine model to order. Sell the machine itself under Machine for sale.`);
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
         if (part.unit === "yd" && !inEighths(qty)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
         if (priceRole === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);

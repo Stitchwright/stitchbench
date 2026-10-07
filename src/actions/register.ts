@@ -37,7 +37,7 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   // Its barcode form too: a scanner's 12-digit UPC finds the item imported with its 13-digit EAN.
   const keys = codeKeys(c);
   const matches = await db.part.findMany({
-    where: { shopId: user.shopId, OR: [{ partNumber: sameText(c) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
+    where: { shopId: user.shopId, kind: { not: "MACHINE" }, OR: [{ partNumber: sameText(c) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
     take: 20,
     include: FIRST_PHOTO,
   });
@@ -69,6 +69,7 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
     db.part.findMany({
       where: {
         shopId: user.shopId,
+        kind: { not: "MACHINE" },
         OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
       },
       orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
