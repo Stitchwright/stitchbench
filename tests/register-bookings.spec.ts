@@ -89,7 +89,7 @@ test("the register's picker signs a new customer up and adds the line; return mo
   await expect(row).toContainText("5 seats left");
   await row.getByRole("button", { name: /^Sign up/ }).click();
   // No customer on the sale: the picker asks for a name and phone.
-  await expect(page.getByText("Pick the customer first")).toBeVisible();
+  await expect(page.getByText("Who is signing up?")).toBeVisible();
   await row.getByLabel("Name").fill(`Walk In ${RUN}`);
   await row.getByLabel("Phone").fill("(212) 555-0177");
   await row.getByRole("button", { name: "Sign up", exact: true }).last().click(); // the form's submit, not the row's own button
@@ -104,7 +104,7 @@ test("the register's picker signs a new customer up and adds the line; return mo
   expect(rows[1]).toMatchObject({ name: `Walk In ${RUN}`, paidCents: 4500 });
 
   // Return mode: the paid seat is listed and refunded.
-  await page.getByRole("button", { name: /Return mode/ }).click();
+  await page.getByRole("button", { name: /Return an item/ }).click();
   await page.getByRole("button", { name: "Classes & appointments" }).click();
   await expect(page.getByText("Paid here and refundable")).toBeVisible();
   await page.locator("li", { hasText: `Walk In ${RUN}` }).getByRole("button", { name: "Refund $45.00" }).click();

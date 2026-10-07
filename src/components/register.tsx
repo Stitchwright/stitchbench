@@ -79,6 +79,10 @@ const SCAN_MIN_CHARS = 4;
 const SCAN_MAX_GAP_MS = 60;
 const SCAN_AVG_GAP_MS = 35;
 
+// The payment box: the everyday ways to pay as big buttons, the rest smaller under the amount.
+const BIG_METHODS: TenderMethod[] = ["CASH", "CARD", "CHECK"];
+const SMALL_METHODS = TENDER_METHODS.filter((m) => !BIG_METHODS.includes(m));
+
 /** Puts text back in a field the way typing would, so the page's own state follows. */
 function setFieldText(el: HTMLInputElement | HTMLTextAreaElement, text: string) {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -114,6 +118,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const ratePct = exemptOn ? 0 : taxRatePct;
   const [custQ, setCustQ] = useState("");
   const [custHits, setCustHits] = useState<CustomerHit[]>([]);
+  // The search the hits answer, so "No customer matches" shows only once the answer for what is typed is back.
+  const [custSearched, setCustSearched] = useState("");
   // The "New customer" form: open with its fields, or closed.
   const [newCustomer, setNewCustomerForm] = useState<NewCustomer | null>(null);
   const [addingCustomer, setAddingCustomer] = useState(false);
@@ -121,6 +127,12 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const [orderDisc, setOrderDisc] = useState({ kind: "%" as "%" | "$", value: "" });
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [tenderAmt, setTenderAmt] = useState("");
+  // Cash (or Card, Check, Other) pressed with no amount typed: that payment took what was due, and the amount box now
+  // edits it, so "press Cash, then type what was handed over" works as well as typing first. `fullCents` is what it
+  // took, put back when the box is emptied.
+  const [editing, setEditing] = useState<{ index: number; fullCents: number } | null>(null);
+  const tenderBox = useRef<HTMLInputElement>(null);
+  const donePanel = useRef<HTMLDivElement>(null);
   // The gift card or store credit number for the next Gift card / Store credit payment, and the card last scanned.
   const [tenderCard, setTenderCard] = useState("");
   const [gcInfo, setGcInfo] = useState<GiftCardInfo | null>(null);
@@ -150,8 +162,13 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const problem = tenderProblem(t, tenders);
   // Still to pay back on a refund: below 0 when too much was paid back.
   const refundLeft = t.paid - t.total;
+  const editingTender = editing ? (tenders[editing.index] ?? null) : null;
 
   useEffect(() => code.current?.focus(), []);
+  // The finished sale's panel (change due, Print receipt) is where the cashier looks next: bring it into view.
+  useEffect(() => {
+    if (done) donePanel.current?.scrollIntoView?.({ block: "nearest" });
+  }, [done]);
 
   // Enter in a line's Qty, Price or Disc % field: back to the scan box for the next item.
   const backToScan = (e: React.KeyboardEvent) => {
@@ -238,9 +255,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       fd.set("customerName", who.name);
       fd.set("customerPhone", who.phone);
     } else {
-      toast.error("Pick the customer first.");
-      document.getElementById("register-customer")?.focus();
-      setSignup({ classId, name: "", phone: "" });
+      // No customer on the sale: one form under the class asks who (no error alongside it).
+      setSignup({ classId, name: custQ.trim(), phone: "" });
       return;
     }
     const r = await enrollAtRegister(classId, fd);
@@ -467,9 +483,16 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   }
 
   async function addTender(method: TenderMethod) {
-    const typed = toCents(tenderAmt);
+    // A payment still being typed for is finished by pressing the next way to pay: what is in the box is already its
+    // amount, so the new one starts blank (what is still due).
+    const typedText = editing ? "" : tenderAmt;
+    if (editing) {
+      setEditing(null);
+      setTenderAmt("");
+    }
+    const typed = toCents(typedText);
     // Something typed that isn't an amount is not the same as blank (which takes what is still to pay).
-    if (tenderAmt.trim() && typed == null) return toast.error("Type the amount like 12.50, or leave it blank.");
+    if (typedText.trim() && typed == null) return toast.error("Type the amount like 12.50, or leave it blank.");
     // A refund is paid out in negative amounts, whatever sign was typed. Blank is what is still to pay (back).
     let amount = typed != null ? (refund ? -Math.abs(typed) : typed) : refund ? -refundLeft : t.due;
     let card: { cardNumber: string; last4: string } | null = null;
@@ -497,8 +520,23 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     setTenderAmt("");
     setTenderCard("");
     setGcInfo(null);
+    if (typed == null && method !== "GIFT" && method !== "CREDIT") {
+      // Pressed first: the amount box now edits this payment (type what the customer handed over; the change shows).
+      setEditing({ index: tenders.length, fullCents: amount });
+      tenderBox.current?.focus();
+      return;
+    }
     // Ready for the next scan (a scanner's Enter on this button would take the payment again).
     code.current?.focus();
+  }
+
+  /** The amount box: typed before a payment button, it waits; after one (Cash pressed first), it changes that payment. */
+  function typeTenderAmount(v: string) {
+    setTenderAmt(v);
+    if (!editing) return;
+    const cents = toCents(v);
+    const amount = !v.trim() ? editing.fullCents : cents == null || cents === 0 ? null : refund ? -Math.abs(cents) : cents;
+    if (amount != null) setTenders((ts) => ts.map((x, i) => (i === editing.index ? { ...x, amountCents: amount } : x)));
   }
 
   /** The gift card panel's "Add to sale": a card sold, loaded or paid out becomes a line (the server decides a payout's amount). */
@@ -573,6 +611,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       toast.success(`Sale #${r.number} done${r.changeCents ? `. Change: ${money(r.changeCents)}` : ""}`);
       setCart([]);
       setTenders([]);
+      setEditing(null);
+      setTenderAmt("");
       setTenderCard("");
       setGcInfo(null);
       setGcPanel(null);
@@ -592,7 +632,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
+    // At 1024 wide (a tablet held sideways, the menu folded) the sale table and the 20rem payment column both fit.
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="space-y-3">
         <form
           className="flex flex-wrap items-end gap-2"
@@ -619,7 +660,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
 
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
-            <Plus size={14} aria-hidden /> Misc item
+            <Plus size={14} aria-hidden /> Other item (type a price)
           </button>
           <button type="button" className="btn btn-sm" aria-expanded={gcPanel != null} onClick={() => setGcPanel((p) => (p ? null : { mode: "new", number: "", amount: "" }))}>
             <Gift size={14} aria-hidden /> Gift card
@@ -647,7 +688,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             <VacUnitTools vac={vac} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />
           )}
           <button type="button" className={`btn btn-sm ${returnMode ? "btn-primary" : ""}`} aria-pressed={returnMode} onClick={() => setReturnMode((r) => !r)}>
-            <Undo2 size={14} aria-hidden /> Return mode {returnMode ? "on" : "off"}
+            <Undo2 size={14} aria-hidden /> {returnMode ? "Stop returning" : "Return an item"}
           </button>
         </div>
         {missing && (
@@ -656,7 +697,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             <Link href={`/parts?new=${encodeURIComponent(missing)}#add`} className="link" target="_blank">
               Add it to inventory
             </Link>{" "}
-            (a store barcode can be looked up online there), or ring it up as a misc item.
+            (a store barcode can be looked up online there), or ring it up with &quot;Other item&quot;.
             {vac === "on" && (
               <>
                 {" "}
@@ -727,7 +768,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             </button>
           </div>
         )}
-        {returnMode && <p className="pill tone-wait">Return mode: scanned items come off the sale (negative quantity) and go back on the shelf.</p>}
+        {returnMode && (
+          <p className="tone-wait rounded px-3 py-2 font-semibold">Returning: scan what comes back. It comes off the sale and goes back on the shelf.</p>
+        )}
 
         {results.length > 0 && (
           <div className="card">
@@ -874,17 +917,36 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                         </div>
                         {signup?.classId === c.id && !customer && (
                           <form
-                            className="flex flex-wrap items-end gap-2"
+                            className="space-y-2 rounded border border-line p-3"
+                            aria-label={`Who is signing up for ${c.title}`}
                             onSubmit={(e) => {
                               e.preventDefault();
                               void signUpHere(c.id, { name: signup.name, phone: signup.phone });
                             }}
                           >
-                            <input className="input" placeholder="Name" aria-label="Name" value={signup.name} onChange={(e) => setSignup({ ...signup, name: e.target.value })} required />
-                            <input className="input" placeholder="Phone" aria-label="Phone" value={signup.phone} onChange={(e) => setSignup({ ...signup, phone: e.target.value })} required />
-                            <button type="submit" className="btn btn-sm btn-primary">
-                              Sign up
-                            </button>
+                            <p className="font-semibold">Who is signing up? Type their name and phone.</p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="field">
+                                <label htmlFor={`signup-name-${c.id}`} className="label">
+                                  Name
+                                </label>
+                                <input id={`signup-name-${c.id}`} className="input" autoFocus autoComplete="off" value={signup.name} onChange={(e) => setSignup({ ...signup, name: e.target.value })} required />
+                              </div>
+                              <div className="field">
+                                <label htmlFor={`signup-phone-${c.id}`} className="label">
+                                  Phone
+                                </label>
+                                <input id={`signup-phone-${c.id}`} type="tel" className="input" value={signup.phone} onChange={(e) => setSignup({ ...signup, phone: e.target.value })} required />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button type="submit" className="btn btn-primary">
+                                Sign up
+                              </button>
+                              <button type="button" className="btn" onClick={() => setSignup(null)}>
+                                Cancel
+                              </button>
+                            </div>
                           </form>
                         )}
                       </li>
@@ -897,15 +959,17 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         )}
 
         <div className="card overflow-x-auto">
-          <table className="table w-full text-sm" aria-label="Sale">
+          <table className="table w-full [&_td]:px-2 [&_th]:px-2" aria-label="Sale">
             <thead>
               <tr>
                 <th>Item</th>
-                <th className="w-28">Qty</th>
-                <th className="w-28">Price</th>
-                <th className="w-20">Disc %</th>
-                <th className="w-24 text-right">Line</th>
-                <th className="w-10" />
+                <th className="w-24">Qty</th>
+                <th className="w-24">Price</th>
+                <th className="w-20">% off</th>
+                <th className="w-24 text-right">Line total</th>
+                <th className="w-12">
+                  <span className="sr-only">Remove</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -972,7 +1036,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                   <td>
                     <input
                       type="number"
-                      aria-label={`Discount for ${l.description}`}
+                      aria-label={`% off for ${l.description}`}
                       className="input num min-w-14"
                       min={0}
                       max={100}
@@ -996,6 +1060,48 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       </div>
 
       <aside className="space-y-3">
+        {done && (
+          // Stays until the next item goes on (or New sale): the change due is the one number the cashier needs.
+          <div ref={donePanel} className="card card-pad space-y-3 border-2" style={{ borderColor: "var(--ok)" }} role="status">
+            <p className="text-lg">
+              Sale #{done.number} done.
+              {done.change ? (
+                <>
+                  {" "}Change due{" "}
+                  <span className="num block text-4xl font-bold text-[var(--ok)]" data-testid="change-due">
+                    {money(done.change)}
+                  </span>
+                </>
+              ) : (
+                " No change due."
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/register/sales/${done.id}`} className="btn btn-primary btn-lg flex-1">
+                Print receipt
+              </Link>
+              <button
+                type="button"
+                className="btn btn-lg flex-1"
+                onClick={() => {
+                  setDone(null);
+                  code.current?.focus();
+                }}
+              >
+                New sale
+              </button>
+            </div>
+            {done.cards
+              .filter((c) => c.what !== "paid-out")
+              .map((c) => (
+                <p key={c.cardId + c.what}>
+                  <Link href={`/register/gift-cards/${c.cardId}/print`} className="link">
+                    Print {c.kind === "credit" ? "store credit slip" : c.what === "loaded" ? "the loaded card" : "the gift card"} ({money(c.amountCents)})
+                  </Link>
+                </p>
+              ))}
+          </div>
+        )}
         <div className="card card-pad space-y-2">
           <div className="field">
             <label htmlFor="register-customer" className="label">
@@ -1022,18 +1128,30 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               <div className="flex items-end gap-2">
                 <input
                   id="register-customer"
-                  className="input flex-1"
+                  className="input min-w-0 flex-1"
                   placeholder="Name or phone"
+                  autoComplete="off"
                   value={custQ}
                   onChange={async (e) => {
-                    setCustQ(e.target.value);
-                    setCustHits(await findCustomers(e.target.value));
+                    const v = e.target.value;
+                    setCustQ(v);
+                    const hits = await findCustomers(v);
+                    setCustHits(hits);
+                    setCustSearched(v.trim().length >= 2 ? v.trim() : "");
                   }}
                 />
                 <button type="button" className="btn btn-sm whitespace-nowrap" aria-expanded={Boolean(newCustomer)} onClick={() => setNewCustomer(!newCustomer)}>
                   <Plus size={14} aria-hidden /> New customer
                 </button>
               </div>
+            )}
+            {!customer && !newCustomer && custSearched && custSearched === custQ.trim() && custHits.length === 0 && (
+              <p className="text-sm">
+                No customer matches &lsquo;{custSearched}&rsquo;.{" "}
+                <button type="button" className="link" onClick={() => setNewCustomerForm({ ...EMPTY_CUSTOMER, ...(/\d/.test(custSearched) ? { phone: custSearched } : { name: custSearched }) })}>
+                  Add &lsquo;{custSearched}&rsquo; as a new customer
+                </button>
+              </p>
             )}
             {!customer && newCustomer && (
               <form className="space-y-2 rounded border border-line p-2" onSubmit={submitNewCustomer} aria-label="New customer">
@@ -1093,13 +1211,13 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           </div>
         </div>
 
-        <div className="card card-pad space-y-1 text-sm">
+        <div className="card card-pad space-y-1">
           <Row k="Subtotal" v={money(t.subtotal)} />
           <div className="flex items-center justify-between gap-2">
-            <span>Discount on sale</span>
+            <span>Take money off the sale</span>
             <span className="flex items-center gap-1">
               <input
-                aria-label="Discount on the whole sale"
+                aria-label="Money off the whole sale"
                 inputMode="decimal"
                 className="input num w-20"
                 disabled={!canSell}
@@ -1107,7 +1225,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                 onChange={(e) => setOrderDisc({ ...orderDisc, value: e.target.value })}
               />
               <select
-                aria-label="Discount type"
+                aria-label="Percent or dollars off"
                 className="select w-16"
                 disabled={!canSell}
                 value={orderDisc.kind}
@@ -1120,7 +1238,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           </div>
           {t.orderDiscount > 0 && <Row k="" v={`-${money(t.orderDiscount)}`} />}
           <Row k={receiptRate != null ? `Tax as sold (${receiptRate}%)` : exemptOn ? `Tax exempt (certificate ${exemptCert})` : `Tax (${taxRatePct}%)`} v={money(t.tax)} />
-          <div className="flex justify-between border-t border-line pt-1 text-lg font-bold">
+          <div className="flex justify-between border-t border-line pt-1 text-2xl font-bold">
             <span>{t.total < 0 ? "Refund" : "Total"}</span>
             <span className="num" data-testid="sale-total">
               {money(Math.abs(t.total))}
@@ -1128,34 +1246,54 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           </div>
         </div>
 
-        <div className="card card-pad space-y-2">
-          <div className="field">
-            <label htmlFor="tender-amount" className="label">
-              {refund ? "Refund amount" : "Amount tendered"} (blank = {money(refund ? Math.max(0, refundLeft) : t.due)})
-            </label>
-            <input id="tender-amount" inputMode="decimal" className="input num" value={tenderAmt} onChange={(e) => setTenderAmt(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="tender-card" className="label">
-              Gift card or store credit number (scan or type; blank = the customer&apos;s credit)
-            </label>
-            <input id="tender-card" className="input mono" autoComplete="off" value={tenderCard} onChange={(e) => setTenderCard(e.target.value)} />
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {TENDER_METHODS.map((m) => (
-              <button key={m} type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender(m)}>
+        <section className="card card-pad space-y-3" aria-label="Payment">
+          <h2 className="text-lg font-semibold">{refund ? "Pay the refund" : "Payment"}</h2>
+          {/* The everyday ways to pay, big. Press one, then type what was handed over (or type first, then press). */}
+          <div className="grid grid-cols-3 gap-2">
+            {BIG_METHODS.map((m) => (
+              <button key={m} type="button" className="btn btn-lg" disabled={!lines.length} onClick={() => addTender(m)}>
                 {TENDER_LABEL[m]}
               </button>
             ))}
           </div>
+          <div className="field">
+            <label htmlFor="tender-amount" className="label">
+              {editingTender
+                ? editingTender.method === "CASH"
+                  ? refund
+                    ? "Cash handed back"
+                    : "Cash handed over"
+                  : `${TENDER_LABEL[editingTender.method]} amount`
+                : refund
+                  ? `Refund amount (leave blank for ${money(Math.max(0, refundLeft))})`
+                  : `Payment amount (leave blank for the full ${money(t.due)})`}
+            </label>
+            <input id="tender-amount" ref={tenderBox} inputMode="decimal" autoComplete="off" className="input num text-lg" value={tenderAmt} onChange={(e) => typeTenderAmount(e.target.value)} />
+          </div>
+          {t.change > 0 && !problem && (
+            <div className="flex items-baseline justify-between text-2xl font-bold text-[var(--ok)]" data-testid="change-now">
+              <span>Change due</span>
+              <span className="num text-3xl">{money(t.change)}</span>
+            </div>
+          )}
           {tenders.length > 0 && (
-            <ul className="text-sm">
+            <ul>
               {tenders.map((x, i) => (
-                <li key={i} className="flex justify-between">
+                <li key={i} className="flex items-center justify-between gap-2">
                   <span>
                     {TENDER_LABEL[x.method]}
                     {x.last4 ? ` ending ${x.last4}` : ""}{" "}
-                    <button type="button" className="link text-xs" onClick={() => setTenders((ts) => ts.filter((_, j) => j !== i))}>
+                    <button
+                      type="button"
+                      className="link text-sm"
+                      onClick={() => {
+                        setTenders((ts) => ts.filter((_, j) => j !== i));
+                        if (editing) {
+                          setEditing(null);
+                          setTenderAmt("");
+                        }
+                      }}
+                    >
                       remove
                     </button>
                   </span>
@@ -1166,46 +1304,31 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           )}
           {t.total >= 0 && t.due > 0 && tenders.length > 0 && <Row k="Still due" v={money(t.due)} />}
           {problem && tenders.length > 0 && (refund || t.due === 0) && (
-            <p className="text-sm text-[var(--bad)]" role="alert">
+            <p className="text-[var(--bad)]" role="alert">
               {problem}
             </p>
           )}
-          {t.change > 0 && !problem && (
-            <div className="flex justify-between text-lg font-bold text-[var(--ok)]">
-              <span>Change</span>
-              <span className="num">{money(t.change)}</span>
-            </div>
-          )}
-          <button
-            type="button"
-            className="btn btn-primary w-full"
-            disabled={busy || !lines.length || Boolean(problem)}
-            onClick={finish}
-          >
+          <button type="button" className="btn btn-primary btn-lg w-full" disabled={busy || !lines.length || Boolean(problem)} onClick={finish}>
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}
           </button>
-          <p className="muted text-xs">Cards run on your own card reader; record them here as Card.</p>
-        </div>
-
-        {done && (
-          <div className="card card-pad text-sm" role="status">
-            Sale #{done.number} done{done.change ? `. Change due ${money(done.change)}` : ""}.{" "}
-            <Link href={`/register/sales/${done.id}`} className="link">
-              Print receipt
-            </Link>
-            {done.cards
-              .filter((c) => c.what !== "paid-out")
-              .map((c) => (
-                <span key={c.cardId + c.what}>
-                  {" "}
-                  ·{" "}
-                  <Link href={`/register/gift-cards/${c.cardId}/print`} className="link">
-                    Print {c.kind === "credit" ? "store credit slip" : c.what === "loaded" ? "the loaded card" : "the gift card"} ({money(c.amountCents)})
-                  </Link>
-                </span>
+          <div className="space-y-2 border-t border-line pt-3">
+            <p className="label">Gift card, store credit or other</p>
+            <div className="flex flex-wrap gap-2">
+              {SMALL_METHODS.map((m) => (
+                <button key={m} type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender(m)}>
+                  {TENDER_LABEL[m]}
+                </button>
               ))}
+            </div>
+            <div className="field">
+              <label htmlFor="tender-card" className="label">
+                Gift card or store credit number (scan it; leave blank to use the customer&apos;s store credit)
+              </label>
+              <input id="tender-card" className="input mono" autoComplete="off" value={tenderCard} onChange={(e) => setTenderCard(e.target.value)} />
+            </div>
           </div>
-        )}
+          <p className="muted text-sm">Cards run on your own card reader; record them here as Card.</p>
+        </section>
       </aside>
     </div>
   );
