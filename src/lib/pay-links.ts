@@ -24,7 +24,7 @@ import { actorOf, audit } from "@/lib/audit";
 import { ymdOf } from "@/lib/zoned";
 import { fmtYmdLong } from "@/lib/units/units";
 import { applyPayment, ORDER_INCLUDE, orderUrl, sha256, stripeKeyFor, TOKEN_RE, type OrderItem } from "@/lib/shop/online-shop";
-import { createCheckoutSession, retrieveSession } from "@/lib/shop/stripe";
+import { createCheckoutSession, expireSession, retrieveSession } from "@/lib/shop/stripe";
 import { currentStore, storeDetails } from "@/lib/stores";
 
 const MAX_MONEY = 10_000_000;
@@ -245,6 +245,49 @@ export async function cancelPayLinkFor(user: CurrentUser, id: string, now = new 
   await audit(db, actorOf(user), { action: "paylink.cancel", subjectType: "WebOrder", subjectId: o.id, subjectLabel: `Pay link #${o.number}`, amountCents: o.totalCents });
 }
 
+/**
+ * Pending pay links toward a special order or a rental that can't take money any more (picked up, cancelled, ended):
+ * taken back, and a payment page still open closed (a payment that slips through anyway is refunded by the online
+ * shop's own rule for a cancelled order). Never throws: the step that ended the order already happened.
+ */
+export async function cancelLinksFor(shopId: string, ref: { specialOrderId?: string; loanId?: string }, why: string, now = new Date()): Promise<number> {
+  try {
+    const rows = ref.specialOrderId
+      ? await db.webOrder.findMany({ where: { shopId, source: "staff", status: "PENDING", specialOrderIds: { has: ref.specialOrderId } }, select: { id: true } })
+      : ref.loanId
+        ? await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "WebOrder" WHERE "shopId" = ${shopId} AND "source" = 'staff' AND "status" = 'PENDING' AND "items"::jsonb @> ${JSON.stringify([{ loanId: ref.loanId }])}::jsonb`
+        : [];
+    let n = 0;
+    for (const { id } of rows) {
+      const r = await db.webOrder.updateMany({ where: { id, shopId, status: "PENDING" }, data: { status: "CANCELLED", cancelledAt: now, staffNote: `Pay link taken back: ${why}.` } });
+      n += r.count;
+      const o = r.count ? await db.webOrder.findUnique({ where: { id }, include: ORDER_INCLUDE }) : null;
+      if (o?.stripeSessionId) {
+        const key = stripeKeyFor({ id: o.shopId, shopPayVia: o.shop.shopPayVia, stripeKeySealed: o.shop.stripeKeySealed });
+        await expireSession(key, o.stripeSessionId).catch(() => undefined);
+      }
+    }
+    return n;
+  } catch (e) {
+    console.error("pay links:", e instanceof Error ? e.message : e);
+    return 0;
+  }
+}
+
+/** Why a pending link can't be paid any more (its special order or rental closed, an item gone), or null. */
+async function linkProblem(o: { shopId: string; customerId: string | null; items: unknown }): Promise<string | null> {
+  const items = (o.items ?? []) as unknown as OrderItem[];
+  try {
+    if (o.customerId) await checkRefs(o.shopId, o.customerId, items as unknown as PayLine[]);
+    else if (items.some((i) => i.specialOrderId || i.loanId)) return "its customer is gone";
+  } catch (e) {
+    return e instanceof Error ? e.message.replace(/[.]$/, "").toLowerCase() : "it can't be paid";
+  }
+  const ids = [...new Set(items.map((i) => i.partId).filter((x): x is string => !!x))];
+  if (ids.length && (await db.part.count({ where: { shopId: o.shopId, id: { in: ids } } })) !== ids.length) return "an item on it isn't in the inventory any more";
+  return null;
+}
+
 export type PayLinkRow = {
   id: string;
   number: number;
@@ -305,6 +348,13 @@ export async function openPayLink(token: string, now = new Date()): Promise<stri
   if (!o || o.source !== "staff") throw new UserError("There's no pay link at this address.");
   if (o.status !== "PENDING") throw new UserError(o.status === "CANCELLED" ? "This link was cancelled. Please call the shop." : "This is paid already. Thank you!");
   if (o.expiresAt && o.expiresAt < now) throw new UserError("This link has run out. Please call the shop for a new one.");
+  // Checked again before she pays: the special order or rental may have closed since the link was sent.
+  const problem = await linkProblem(o);
+  if (problem) {
+    await db.webOrder.updateMany({ where: { id: o.id, status: "PENDING" }, data: { status: "CANCELLED", cancelledAt: now, staffNote: `Pay link taken back: ${problem}.` } });
+    if (o.stripeSessionId) await expireSession(stripeKeyFor({ id: o.shopId, shopPayVia: o.shop.shopPayVia, stripeKeySealed: o.shop.stripeKeySealed }), o.stripeSessionId).catch(() => undefined);
+    throw new UserError("This link can't be paid any more. Please call the shop.");
+  }
   const key = stripeKeyFor({ id: o.shopId, shopPayVia: o.shop.shopPayVia, stripeKeySealed: o.shop.stripeKeySealed });
   if (o.stripeSessionId) {
     const s = await retrieveSession(key, o.stripeSessionId);

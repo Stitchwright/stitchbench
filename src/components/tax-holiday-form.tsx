@@ -1,14 +1,19 @@
 // The tax holiday form on Settings → Selling (tax-machine-sales-layaway-design.md section 1): a name, the first and
 // last day, what it covers and the price limit per item; a preset (Massachusetts) fills it in for the shop to confirm.
-import { HOLIDAY_KINDS, type HolidayPreset } from "@/lib/tax-holiday-math";
+import { HOLIDAY_KINDS, storesInState, type HolidayPreset } from "@/lib/tax-holiday-math";
 import type { HolidayRow } from "@/lib/tax-holidays";
 import { saveHoliday } from "@/actions/tax-holidays";
 import { ActionForm, Submit } from "@/components/action-form";
 
-export function TaxHolidayForm({ h, preset, year, prefix }: { h?: HolidayRow; preset?: HolidayPreset | null; year: number; prefix: string }) {
+type StoreOpt = { id: string; name: string; address: string | null };
+
+/** `stores`: the open stores, when there is more than one (stores can be in different states). */
+export function TaxHolidayForm({ h, preset, year, prefix, stores = [] }: { h?: HolidayRow; preset?: HolidayPreset | null; year: number; prefix: string; stores?: StoreOpt[] }) {
   const dates = h ?? preset?.datesFor(year) ?? { firstDay: "", lastDay: "" };
   const kinds = new Set(h?.kinds ?? preset?.kinds ?? HOLIDAY_KINDS.map((k) => k.key).filter((k) => !["CLASS", "APPOINTMENT", "SERVICE_PLAN"].includes(k)));
   const max = h ? h.maxUnitCents : (preset?.maxUnitCents ?? null);
+  // The stores it covers: as saved (none named: every store); a preset ticks the stores in its state.
+  const covered = new Set(h ? (h.locationIds.length ? h.locationIds : stores.map((s) => s.id)) : (preset ? storesInState(stores, preset) : stores).map((s) => s.id));
   return (
     <ActionForm action={saveHoliday.bind(null, h?.id ?? null)} success={h ? "Saved" : "Tax holiday added. The register applies it on those days."} reset={!h} className="space-y-3">
       {!h && preset && <input type="hidden" name="preset" value={preset.key} />}
@@ -53,6 +58,20 @@ export function TaxHolidayForm({ h, preset, year, prefix }: { h?: HolidayRow; pr
           ))}
         </div>
       </fieldset>
+      {stores.length > 1 && (
+        <fieldset>
+          <input type="hidden" name="storesShown" value="1" />
+          <legend className="label">At which stores</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {stores.map((s) => (
+              <label key={s.id} className="flex items-center gap-2">
+                <input type="checkbox" name="stores" value={s.id} defaultChecked={covered.has(s.id)} /> {s.name}
+              </label>
+            ))}
+          </div>
+          <p className="muted text-xs">A holiday is the state&apos;s: tick the stores in that state.</p>
+        </fieldset>
+      )}
       {h && (
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="active" defaultChecked={h.active} /> On (untick to switch it off)

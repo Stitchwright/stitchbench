@@ -15,8 +15,7 @@ import { requireModule } from "@/lib/modules";
 import { moduleOn, requireOn } from "@/lib/module-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { completeSaleAs } from "@/lib/register-sale";
-import { TENDER_METHODS, saleTotals, type TenderMethod } from "@/lib/register-math";
-import { exemptCertificate } from "@/lib/tax-exempt";
+import { TENDER_METHODS, type TenderMethod } from "@/lib/register-math";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { parseYmd, zonedTime } from "@/lib/zoned";
 import { queueToCustomer } from "@/lib/messaging/queue";
@@ -288,7 +287,6 @@ export async function collectJobFor(user: CurrentUser, id: string, fd: FormData 
   if (claimed.count !== 1) throw new UserError(j.status === "READY" ? "That job was just collected." : `Only a ready job can be collected (this one is ${statusLabel(j.status, j.kind).toLowerCase()}).`);
   try {
     if (j.quoteCents <= 0) return `Job #${j.number} is collected (no charge).`;
-    const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } });
     const hours = j.machineMinutes / 60;
     const machineCents = j.quoteCents - j.materialCents - j.setupCents;
     const lines = [
@@ -296,9 +294,8 @@ export async function collectJobFor(user: CurrentUser, id: string, fd: FormData 
       ...(j.materialCents > 0 ? [{ description: `Material: ${j.materialQty} ${j.materialUnit === "sheet" ? (j.materialQty === 1 ? "sheet" : "sheets") : j.materialUnit ?? ""} ${j.materialName ?? ""}`.replace(/\s+/g, " ").trim().slice(0, 200), qty: 1, unitPriceCents: j.materialCents, taxable: j.taxable }] : []),
       ...(j.setupCents > 0 ? [{ description: `Set-up, job #${j.number}`, qty: 1, unitPriceCents: j.setupCents, taxable: j.taxable }] : []),
     ];
-    const exempt = j.customerId ? exemptCertificate(await db.customer.findFirst({ where: { id: j.customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } })) : null;
-    const total = saleTotals(lines, 0, exempt ? 0 : shop.taxRatePct, []).total;
-    const sale = await completeSaleAs(user, { customerId: j.customerId, lines, tenders: [{ method, amountCents: total, note: null }], note: `Print or cut job #${j.number}`, clientKey: `make-${j.id}-${at.getTime()}` });
+    // One payment for exactly what the sale comes to (the store's rate, a tax holiday, her exemption: worked out there).
+    const sale = await completeSaleAs(user, { customerId: j.customerId, lines, tenders: [], note: `Print or cut job #${j.number}`, clientKey: `make-${j.id}-${at.getTime()}` }, { tenderExact: { method, amountCents: 0, note: null } });
     await db.makeJob.updateMany({ where: { id: j.id, shopId }, data: { saleId: sale.saleId } });
     return `Job #${j.number} is collected: sale #${sale.number} in the register.`;
   } catch (e) {

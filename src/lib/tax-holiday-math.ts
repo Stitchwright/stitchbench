@@ -49,6 +49,16 @@ export const HOLIDAY_PRESETS: HolidayPreset[] = [
 ];
 export const presetByKey = (key: string | null | undefined) => HOLIDAY_PRESETS.find((p) => p.key === key) ?? null;
 
+/**
+ * The stores in a preset's state, by their address ("Boston, MA 02110" or "... Massachusetts"); every store when no
+ * address says the state (the owner ticks them on the form).
+ */
+export function storesInState<S extends { id: string; address: string | null }>(stores: S[], preset: Pick<HolidayPreset, "key" | "state">): S[] {
+  const re = new RegExp(`(^|[^A-Za-z])(${preset.key}|${preset.state})([^A-Za-z]|$)`);
+  const hit = stores.filter((s) => s.address && re.test(s.address));
+  return hit.length ? hit : stores;
+}
+
 /** The holiday in force on `ymd`, if any (the first found). */
 export const holidayOn = (holidays: Holiday[], ymd: string) => holidays.find((h) => h.firstDay <= ymd && ymd <= h.lastDay) ?? null;
 

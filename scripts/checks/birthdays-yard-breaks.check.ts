@@ -103,6 +103,10 @@ async function main() {
     const s4 = await completeSaleAs(a.user, { customerId: null, lines: [{ ...line(wide.id, 3), unitPriceCents: 2400 }], tenders: [cash(5400)] });
     const l4 = await db.saleLine.findFirstOrThrow({ where: { saleId: s4.saleId } });
     assert.ok(l4.discountCents === 1800 && l4.priceNote === "3+ yd price", "its own break: $18 a yard from 3 yards");
+    // Paid online or by a pay link (review fix): what was charged stands, so no rule (not even the item's own break) reprices it.
+    const s4o = await completeSaleAs(a.user, { customerId: null, lines: [{ ...line(wide.id, 3), unitPriceCents: 2400 }], tenders: [], taxCents: 0 }, { paidOnline: true, tenderExact: { method: "ONLINE", amountCents: 0 } });
+    const l4o = await db.saleLine.findFirstOrThrow({ where: { saleId: s4o.saleId } });
+    assert.ok(l4o.discountCents === 0 && l4o.priceNote === null && s4o.totalCents === 7200, "paid online: no break");
     // A member's 20% beats the 10% break.
     const gid = await saveGroupFor(a.user, form({ name: "Teachers", gives: "pct", pctOff: "20" }));
     await setCustomerGroupFor(a.user, ann.id, form({ groupId: gid }));

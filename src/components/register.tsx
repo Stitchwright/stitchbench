@@ -39,9 +39,10 @@ import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { SpecialOrderPanel, type SpecialOrderDefaults } from "@/components/special-order-panel";
 import { CustomerExtrasLines, useCustomerExtras, type ExtraLine } from "@/components/register-extras";
-import { bestRule, type RuleCtx, type YardBreak } from "@/lib/price-rules";
-import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
-import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
+import type { RuleCtx, YardBreak } from "@/lib/price-rules";
+import { priceLine, type PricingCtx } from "@/lib/line-pricing";
+import { holidayDays, type Holiday } from "@/lib/tax-holiday-math";
+import { priceBeforeTax, type Promo } from "@/lib/promo-math";
 import { RegisterApproval, overLimit, type ApprovalDraft, type ApprovalNeed } from "@/components/register-approval";
 import { bringItHere } from "@/actions/transfers";
 import { runAction } from "@/components/action-form";
@@ -303,29 +304,25 @@ export function Register({
     () => ({ group: extras?.group?.inForce ? extras.group : null, lifetime: extras?.lifetime ?? [], yardBreaks, birthdayPct: birthdayOn ? (extras?.birthday?.value ?? null) : null }),
     [extras, yardBreaks, birthdayOn],
   );
+  // Every line is a return from the scanned receipt: nothing is repriced (an exchange prices what is bought as usual).
+  const wholeReturn = !!returnOf && receiptStands(returnOf.id, cart) && cart.every((l) => l.qty < 0);
+  // Each line priced and taxed by the rules the server applies when the sale is saved (src/lib/line-pricing.ts).
+  const pricingCtx = useMemo<PricingCtx>(
+    () => ({ promos: wholeReturn ? [] : promotions, rules: wholeReturn ? null : ruleCtx, holidays: holiday ? [holiday] : [], ratePct, exempt: exemptOn, wholeReturn }),
+    [wholeReturn, promotions, ruleCtx, holiday, ratePct, exemptOn],
+  );
   const lines = useMemo(
     () =>
       cart.map((l) => {
         const manual = discountOf(l);
         const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard && !l.depositUsed };
-        const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf && !start.specialOrderId;
-        const best = item ? bestDiscount(promotions, start) : null;
-        const promoLine = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
-        // The customer's price rule (her group, a lifetime discount, a yard break, the birthday offer): the bigger wins.
-        const hit = item && !l.noRule && l.kind !== "MEMBERSHIP" ? bestRule(ruleCtx, { ...promoLine, onPromo: !!best }) : null;
-        const ruledHit = !!hit && hit.cents > promoLine.discountCents;
-        const ruledLine = ruledHit ? { ...promoLine, discountCents: hit.cents } : promoLine;
         // A repair's trade-up credit on a machine (the server works out the same).
-        const credit = l.tradeUpTicketId ? Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), extras?.tradeUps.find((t) => t.ticketId === l.tradeUpTicketId)?.amountCents ?? 0) : 0;
-        const tradeUp = credit > ruledLine.discountCents;
-        const line = tradeUp ? { ...ruledLine, discountCents: credit } : ruledLine;
-        const ruled = ruledHit || tradeUp;
-        const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
-        const taxable = line.taxable && !(covered && !line.taxAnyway);
-        const included = item && taxable && !covered && !line.discountCents && ratePct > 0 ? includedPromo(promotions, line) : null;
-        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (!ruled && best && best.cents > manual ? best.promo.name : null), rule: tradeUp ? "Trade-up credit" : ruled ? hit!.label : null, taxIncluded: !!included, holidayCovered: covered, taxable };
+        const credit = l.tradeUpTicketId ? Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), extras?.tradeUps.find((t) => t.ticketId === l.tradeUpTicketId)?.amountCents ?? 0) : null;
+        // A return line from the scanned receipt comes back taxed as it was sold.
+        const p = priceLine(pricingCtx, { ...start, tradeUpCents: credit, asSold: start.qty < 0 && start.fromSale ? { taxable: start.taxable, taxNote: null } : null });
+        return { ...start, discountCents: p.discountCents, taxable: p.taxable, manualDiscountCents: manual, promo: p.promo?.name ?? null, rule: p.ruleLabel, taxIncluded: p.taxIncluded, holidayCovered: !!p.holidayId };
       }),
-    [cart, holiday, promotions, returnOf, ratePct, ruleCtx, extras],
+    [cart, pricingCtx, extras],
   );
   // The totals count a tax-included line at its price before tax (the tax is added back on top).
   const priced = lines.map((l) => (l.taxIncluded ? { ...l, unitPriceCents: priceBeforeTax(l.unitPriceCents, ratePct) } : l));

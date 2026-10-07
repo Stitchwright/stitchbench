@@ -12,8 +12,7 @@ import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { money, str } from "@/lib/format";
-import { lineNet, saleTotals, TENDER_METHODS, type Tender } from "@/lib/register-math";
-import { exemptCertificate } from "@/lib/tax-exempt";
+import { lineNet, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import { completeSaleAs } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { addDays, addMonths, ymdOf } from "@/lib/zoned";
@@ -172,30 +171,23 @@ async function openRental(shopId: string, id: string) {
   return r;
 }
 
-/** What one taxed line comes to with the shop's tax (none for a tax-exempt customer), as the register works it out. */
-async function totalWithTax(shopId: string, customerId: string | null, l: { qty: number; unitPriceCents: number; discountCents: number }): Promise<number> {
-  const [shop, c] = await Promise.all([
-    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } }),
-    customerId ? db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }) : null,
-  ]);
-  return saleTotals([{ ...l, taxable: true }], 0, exemptCertificate(c) ? 0 : shop.taxRatePct).total;
-}
+/** The one payment for a program-built sale: its kind, for exactly the total the sale works out (the store's rate, a holiday, her exemption). */
+const exactTender = (t: Tender | null | undefined): Tender | undefined => tenderOf(t, 1)[0];
 
 /** Rent for some periods at the counter (taxed as a rental). */
 export async function payRentAs(user: CurrentUser, a: { loanId: string; periods: number; tender: Tender | null; clientKey?: string | null }): Promise<{ saleId: string; number: number }> {
   const r = await openRental(user.shopId, a.loanId);
   const periods = Math.max(1, Math.min(24, Math.round(Number(a.periods)) || 1));
   const unit = await db.stockUnit.findFirst({ where: { id: r.unitId, shopId: user.shopId }, include: { machine: true } });
-  const total = await totalWithTax(user.shopId, r.customerId, { qty: periods, unitPriceCents: r.rateCents ?? 0, discountCents: 0 });
   const sale = await completeSaleAs(
     user,
     {
       customerId: r.customerId,
       lines: [{ description: `Rent: ${unit ? unitDescription(unit) : "machine"}, ${periods} ${r.ratePer}${periods === 1 ? "" : "s"}`, qty: periods, unitPriceCents: r.rateCents ?? 0, taxable: true, unitLoanId: r.id, rentKind: "RENT" }],
-      tenders: tenderOf(a.tender, total),
+      tenders: [],
       clientKey: a.clientKey ?? null,
     },
-    { internal: true },
+    { internal: true, tenderExact: exactTender(a.tender) },
   );
   return { saleId: sale.saleId, number: sale.number };
 }
@@ -222,12 +214,13 @@ export async function buyRentalAs(user: CurrentUser, a: { loanId: string; tender
     db.unitLoan.update({ where: { id: r.id }, data: { backAt: now, conditionBack: "Bought" } }),
   ]);
   try {
-    const total = await totalWithTax(user.shopId, r.customerId, { qty: 1, unitPriceCents: v.priceCents, discountCents: v.creditCents });
     const sale = await completeSaleAs(
       user,
-      { customerId: r.customerId, lines: [{ description: "", qty: 1, unitPriceCents: v.priceCents, discountCents: v.creditCents, taxable: true, stockUnitId: unit.id, unitLoanId: r.id }], tenders: tenderOf(a.tender, total), clientKey: a.clientKey ?? null },
-      { internal: true },
+      { customerId: r.customerId, lines: [{ description: "", qty: 1, unitPriceCents: v.priceCents, discountCents: v.creditCents, taxable: true, stockUnitId: unit.id, unitLoanId: r.id }], tenders: [], clientKey: a.clientKey ?? null },
+      { internal: true, tenderExact: exactTender(a.tender) },
     );
+    // Rent still waiting on a pay link for this rental can't be paid now.
+    await (await import("@/lib/pay-links")).cancelLinksFor(user.shopId, { loanId: r.id }, "the machine was bought", now);
     return { saleId: sale.saleId, number: sale.number, creditCents: v.creditCents };
   } catch (e) {
     await db.$transaction([db.stockUnit.update({ where: { id: unit.id }, data: { use: "RENTAL" } }), db.unitLoan.update({ where: { id: r.id }, data: { backAt: null, conditionBack: null } })]);

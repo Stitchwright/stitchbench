@@ -12,8 +12,7 @@ import { fmtDate, str, toCents } from "@/lib/format";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { completeSaleAs } from "@/lib/register-sale";
-import { TENDER_METHODS, saleTotals, type TenderMethod } from "@/lib/register-math";
-import { openingTax } from "@/lib/ticket-tax";
+import { TENDER_METHODS, type TenderMethod } from "@/lib/register-math";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
 import { DESIGN_LABEL, MAX_INCHES, MAX_LONGARM_CENTS, MOVES, OPEN_LONGARM, STATUS_LABEL, orderCents, rateTenthFrom } from "@/lib/longarm-math";
@@ -177,7 +176,6 @@ export async function collectFor(user: CurrentUser, id: string, fd: FormData | n
   if (claimed.count !== 1) throw new UserError(o.status === "READY" ? "That quilt was just collected." : `Only a ready work order can be collected (this one is ${STATUS_LABEL[o.status].toLowerCase()}).`);
   try {
     if (o.totalCents <= 0) return `#${o.number} is collected (no charge).`;
-    const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } });
     const size = `${o.widthIn} x ${o.lengthIn} in`;
     const lines = [
       { description: `Quilting #${o.number}: ${size}, ${o.design === "CUSTOM" ? "custom" : "pantograph"}${o.designName ? ` (${o.designName})` : ""}`.slice(0, 200), qty: 1, unitPriceCents: o.quiltCents, taxable: o.taxable },
@@ -185,16 +183,12 @@ export async function collectFor(user: CurrentUser, id: string, fd: FormData | n
       ...(o.battingCents > 0 ? [{ description: `Batting${o.batting ? `: ${o.batting}` : ""}`.slice(0, 200), qty: 1, unitPriceCents: o.battingCents, taxable: o.taxable }] : []),
       ...(o.extraCents > 0 ? [{ description: (o.extraNote ? `Quilting extras: ${o.extraNote}` : "Quilting extras").slice(0, 200), qty: 1, unitPriceCents: o.extraCents, taxable: o.taxable }] : []),
     ];
-    // The same rule the sale itself applies (register-sale.ts): a tax-exempt customer pays no tax, so the tender matches.
-    const { taxRatePct } = await openingTax(db, shopId, shop.taxRatePct, o.customerId, null);
-    const total = saleTotals(lines, 0, taxRatePct, []).total;
-    const sale = await completeSaleAs(user, {
-      customerId: o.customerId,
-      lines,
-      tenders: [{ method, amountCents: total, note: null }],
-      note: `Longarm quilting #${o.number}`,
-      clientKey: `longarm-${o.id}-${at.getTime()}`,
-    });
+    // One payment for exactly what the sale comes to (the store's rate, a tax holiday, her exemption: worked out there).
+    const sale = await completeSaleAs(
+      user,
+      { customerId: o.customerId, lines, tenders: [], note: `Longarm quilting #${o.number}`, clientKey: `longarm-${o.id}-${at.getTime()}` },
+      { tenderExact: { method, amountCents: 0, note: null } },
+    );
     await db.longarmOrder.updateMany({ where: { id: o.id, shopId }, data: { saleId: sale.saleId } });
     return `#${o.number} is collected: sale #${sale.number} in the register.`;
   } catch (e) {

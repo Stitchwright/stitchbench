@@ -14,7 +14,7 @@ import { requireOn, moduleOn } from "@/lib/module-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { enrollIn } from "@/lib/classes";
 import { completeSaleAs } from "@/lib/register-sale";
-import { saleTotals, TENDER_METHODS, type TenderMethod } from "@/lib/register-math";
+import { TENDER_METHODS, type TenderMethod } from "@/lib/register-math";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { makePayLinkFor, payLinkProblem } from "@/lib/pay-links";
 import { queueToCustomer } from "@/lib/messaging/queue";
@@ -150,10 +150,9 @@ function amountFor(user: CurrentUser, e: Awaited<ReturnType<typeof ownEnrollment
 /** The register sale for event money taken at the counter: one line, the tender for the whole (tax as the event is taxed). */
 async function counterSale(user: CurrentUser, a: { customerId: string | null; exempt: boolean; description: string; cents: number; taxable: boolean; method: TenderMethod; clientKey: string }): Promise<string> {
   if (!TENDER_METHODS.includes(a.method) || a.method === "GIFT" || a.method === "CREDIT") throw new UserError("Pick how she paid: cash, card, check or other.");
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { taxRatePct: true } });
   const line = { description: a.description, qty: 1, unitPriceCents: a.cents, taxable: a.taxable };
-  const t = saleTotals([line], 0, a.exempt ? 0 : shop.taxRatePct);
-  const r = await completeSaleAs(user, { customerId: a.customerId, lines: [line], tenders: [{ method: a.method, amountCents: t.total }], note: a.description, clientKey: a.clientKey });
+  // One payment for exactly what the sale comes to (the store's rate, a tax holiday, her exemption: worked out there).
+  const r = await completeSaleAs(user, { customerId: a.customerId, lines: [line], tenders: [], note: a.description, clientKey: a.clientKey }, { tenderExact: { method: a.method, amountCents: 0 } });
   return r.saleId;
 }
 

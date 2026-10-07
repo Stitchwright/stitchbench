@@ -12,7 +12,7 @@ import type { PartKind } from "@/generated/prisma/enums";
 import { handleClubEvent } from "@/lib/clubs";
 import { db } from "@/lib/db";
 import { actorOf, audit } from "@/lib/audit";
-import { UserError } from "@/lib/user-error";
+import { isUserError, UserError } from "@/lib/user-error";
 import { modelKey, money, str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { seal, unseal } from "@/lib/messaging/secrets";
@@ -539,7 +539,7 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
   // What the online shop's store has (7.2).
   const byId = new Map((await withStoreQty(store.id, parts, await onlineStore(store.id))).map((p) => [p.id, p]));
   // A sales tax holiday in force today (by the order's date, as at the counter) takes the tax off what it covers.
-  const holidays = await holidaysOn(store.id, [ymdOf(new Date(), store.timeZone)]);
+  const holidays = await holidaysOn(store.id, [ymdOf(new Date(), store.timeZone)], (await onlineStore(store.id))?.id ?? null);
   const lines: CartLine[] = [];
   const problems: string[] = [];
   for (const [id, qtyRaw] of cart) {
@@ -817,32 +817,23 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
       givenTax = lines.length ? keptTax(session, items, kept, !!shipLine, paidTax) : 0;
     }
     if (!existing && givenTax == null && lines.length) {
-      // The rate as it stood at checkout. If today's rate no longer gives the tax the customer paid on the whole order
-      // (the shop changed its rate meanwhile), the order's own tax is used, in proportion to what is sold.
-      const wholeByRate = saleTotals(
-        [
-          ...items.map((i) => ({ qty: i.qty, unitPriceCents: i.unitPriceCents, taxable: true })),
-          ...(order.fulfil === "ship" && order.shipCents > 0 ? [{ qty: 1, unitPriceCents: order.shipCents, taxable: false }] : []),
-        ],
-        0,
-        order.shop.taxRatePct,
-      ).tax;
-      if (wholeByRate !== order.taxCents) {
-        const soldNet = sold.reduce((s2, l) => s2 + Math.round(l.qty * l.unitPriceCents), 0);
-        givenTax = order.subtotalCents > 0 ? Math.round((order.taxCents * soldNet) / order.subtotalCents) : 0;
-      }
+      // What the customer paid stands (review fix: the sale recomputing the tax at another rate or with a holiday made the
+      // payment and the sale disagree): the order's own tax when all of it is sold; with a line short, the tax on what is
+      // sold at the store's rate when that rate gives the order's tax, else the order's tax in proportion.
+      const soldNet = sold.reduce((s2, l) => s2 + Math.round(l.qty * l.unitPriceCents), 0);
+      const rate = storeDetails({ taxRatePct: order.shop.taxRatePct }, await storeOfRow(order.shopId, order.locationId)).taxRatePct;
+      const byRate = (ls: { qty: number; unitPriceCents: number; taxable: boolean }[]) => saleTotals(ls, 0, rate).tax;
+      const itemsTax = byRate(items.map((i) => ({ qty: i.qty, unitPriceCents: i.unitPriceCents, taxable: true })));
+      givenTax =
+        soldNet >= order.subtotalCents
+          ? order.taxCents
+          : itemsTax === order.taxCents
+            ? byRate(sold.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true })))
+            : order.subtotalCents > 0
+              ? Math.round((order.taxCents * soldNet) / order.subtotalCents)
+              : 0;
     }
-    const saleTotal = existing
-      ? existing.totalCents
-      : (givenTax != null
-          ? withGivenTax(lines, givenTax)
-          : saleTotals(
-              lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
-              0,
-              storeDetails({ taxRatePct: order.shop.taxRatePct }, await storeOfRow(order.shopId, order.locationId)).taxRatePct,
-            )
-        ).total;
-    const refund = Math.max(0, paidTotal - saleTotal);
+    let saleTotal = existing ? existing.totalCents : lines.length ? withGivenTax(lines, givenTax ?? 0).total : 0;
     let saleId: string | null = existing?.id ?? null;
     if (!existing && lines.length) {
       const user = await booksUserFor(order.shopId);
@@ -851,16 +842,18 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
         {
           customerId: order.customerId,
           lines,
-          tenders: [{ method: "ONLINE", amountCents: saleTotal, note: `Online order ${fmtNo(order.number)}` }],
-          note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${givenTax != null ? ", tax by Stripe Tax" : ""}`,
+          tenders: [],
+          note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${order.taxVia === "stripe" ? ", tax by Stripe Tax" : ""}`,
           clientKey: `web-${order.id}`,
-          taxCents: givenTax,
+          taxCents: givenTax ?? 0,
         },
-        // Off the shelf of the order's store (7.2).
-        { paidOnline: true, locationId: order.locationId },
+        // Off the shelf of the order's store (7.2); one Paid online payment for exactly the sale's total.
+        { paidOnline: true, locationId: order.locationId, tenderExact: { method: "ONLINE", amountCents: 0, note: `Online order ${fmtNo(order.number)}` } },
       );
       saleId = r.saleId;
+      saleTotal = r.totalCents;
     }
+    const refund = Math.max(0, paidTotal - saleTotal);
     // The link to the sale is written before the refund, so a refund that fails can't lose it.
     if (saleId && order.saleId !== saleId) {
       await db.webOrder.update({ where: { id: order.id }, data: { saleId, items: kept as unknown as Prisma.InputJsonValue, taxCents: paidTax, totalCents: paidTotal } });
@@ -933,12 +926,13 @@ async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: b
         {
           customerId: order.customerId,
           lines,
-          tenders: [{ method: "ONLINE", amountCents: order.totalCents, note: `Pay link ${fmtNo(order.number)}` }],
+          tenders: [],
           note: `Pay link ${fmtNo(order.number)}`,
           clientKey: `web-${order.id}`,
           taxCents: order.taxCents,
         },
-        { paidOnline: true, internal: true, locationId: order.locationId },
+        // The tax charged stands (taxCents) and no price rule reprices a paid link: one Paid online payment for exactly the total.
+        { paidOnline: true, internal: true, locationId: order.locationId, tenderExact: { method: "ONLINE", amountCents: 0, note: `Pay link ${fmtNo(order.number)}` } },
       );
       saleId = r.saleId;
     }
@@ -952,6 +946,22 @@ async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: b
     }
     return { applied: true, status: fresh.status };
   } catch (e) {
+    // The sale can't be booked (its special order was picked up or cancelled while the link waited, an item is gone):
+    // trying again won't help, so her money goes straight back through Stripe and the shop is told on the order.
+    if (isUserError(e) && !order.saleId && order.stripeIntent && order.refundedCents === 0) {
+      try {
+        const key = stripeKeyFor({ id: order.shopId, shopPayVia: order.shop.shopPayVia, stripeKeySealed: order.shop.stripeKeySealed });
+        const r = await refundPayment(key, order.stripeIntent, null, `pay-link-unbooked:${order.id}`, "could not be booked");
+        await db.webOrder.update({
+          where: { id: order.id },
+          data: { status: "CANCELLED", cancelledAt: now, refundedCents: r.amount, staffNote: `Paid, but it couldn't be booked (${e.message.slice(0, 200)}): ${money(r.amount)} refunded to her card. Send a new link if she still owes it.` },
+        });
+        console.error("pay link refunded, not booked:", e.message);
+        return { applied: true, status: "CANCELLED" };
+      } catch (re) {
+        console.error("pay link refund:", re instanceof Error ? re.message : re);
+      }
+    }
     await db.webOrder.update({ where: { id: order.id }, data: { staffNote: `${ORDER_ATTENTION}${e instanceof Error ? e.message.slice(0, 400) : "error"}` } });
     console.error("pay link payment:", e instanceof Error ? e.message : e);
     return { applied: true, status: "PAID" };

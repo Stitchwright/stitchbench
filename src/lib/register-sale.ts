@@ -32,11 +32,10 @@ import { linesOfSale } from "@/lib/sale-return";
 import { holidaysOn } from "@/lib/tax-holidays";
 import { prepareFinanced, recordFinanced, voidFinanced } from "@/lib/financing";
 import { promotionsOn } from "@/lib/promotions";
-import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
-import { holidayCovers } from "@/lib/tax-holiday-math";
-import { applySoftwareLine, prepareSoftwareLine, voidSoftwareOfSale, type PreparedSoftware, type SoftwareLineInput } from "@/lib/software";
+import { applySoftwareLine, prepareSoftwareLine, softwarePaidLines, voidSoftwareOfSale, type PreparedSoftware, type SoftwareLineInput } from "@/lib/software";
 import { applyMembership, ruleCtxFor, undoMembership } from "@/lib/price-groups";
-import { bestRule, type RuleCtx } from "@/lib/price-rules";
+import type { RuleCtx } from "@/lib/price-rules";
+import { priceLine } from "@/lib/line-pricing";
 import { birthdayFor, markBirthdayUsed, unuseBirthday, yardBreaksFor } from "@/lib/birthdays";
 import { creditCents, spendCredit, unuseCredits } from "@/lib/trade-up";
 import { activeStores, currentStore, storeDetails, storeOfRow } from "@/lib/stores";
@@ -146,7 +145,7 @@ function withTax(t: ReturnType<typeof saleTotals>, taxCents: number): ReturnType
 
 /** The sale already made under this key, if any. */
 function saleByKey(shopId: string, clientKey: string | null) {
-  return clientKey ? db.sale.findUnique({ where: { shopId_clientKey: { shopId, clientKey } }, select: { id: true, number: true, changeCents: true } }) : null;
+  return clientKey ? db.sale.findUnique({ where: { shopId_clientKey: { shopId, clientKey } }, select: { id: true, number: true, changeCents: true, totalCents: true } }) : null;
 }
 
 /**
@@ -156,8 +155,20 @@ function saleByKey(shopId: string, clientKey: string | null) {
 export async function completeSaleAs(
   user: CurrentUser,
   input: SaleInput,
-  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean; specialOrder?: SpecialOrderHook; locationId?: string | null } = {},
-): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
+  opts: {
+    paidOnline?: boolean;
+    layaway?: LayawayHook;
+    internal?: boolean;
+    specialOrder?: SpecialOrderHook;
+    locationId?: string | null;
+    /**
+     * One payment of this kind for exactly the sale's total as worked out here (input.tenders is ignored): for sales the
+     * program builds (rent, event money, print jobs, longarm, online and pay-link orders), so the payment always matches
+     * the store's rate, a tax holiday and the customer's exemption.
+     */
+    tenderExact?: Tender;
+  } = {},
+): Promise<{ saleId: string; number: number; changeCents: number; totalCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
     // Layaway money and its held items come only from src/lib/layaway.ts; the items' prices were settled when it began.
@@ -170,10 +181,12 @@ export async function completeSaleAs(
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
     const made = await saleByKey(shopId, clientKey);
-    if (made) return { saleId: made.id, number: made.number, changeCents: made.changeCents };
+    if (made) return { saleId: made.id, number: made.number, changeCents: made.changeCents, totalCents: made.totalCents };
     // Special orders picked up on this sale: priced from the order, the deposits paid taken off (worked out here).
     const so = await prepareSpecialOrderLines(shopId, input.customerId ?? null, Array.isArray(input.lines) ? input.lines : []);
     input = { ...input, lines: so.lines };
+    // Paid online or by a pay link: software one licence a line, its code later when none is on hand (the customer has paid).
+    if (opts.paidOnline) input = { ...input, lines: await softwarePaidLines(shopId, input.lines) };
     // A loaner's or rental's money names one of this shop's loans.
     const loanIds = [...new Set(input.lines.map((l) => l.unitLoanId).filter((x): x is string => !!x))];
     if (loanIds.length && (await db.unitLoan.count({ where: { shopId: user.shopId, id: { in: loanIds } } })) !== loanIds.length) throw new UserError("That loan isn't one of this shop's.");
@@ -202,7 +215,8 @@ export async function completeSaleAs(
     // While the program is read-only (hub-accounts-billing-design.md 3.5): a return (every line money back) still goes
     // through, a sale doesn't.
     if (!opts.paidOnline && !input.lines.every((l) => Number(l.qty) < 0)) await requireBaseWritable(user);
-    const rawTenders = Array.isArray(input.tenders) ? input.tenders : [];
+    // A payment for exactly the total (tenderExact): its amount is filled in once the total is known, below.
+    const rawTenders = opts.tenderExact ? [{ ...opts.tenderExact, amountCents: 1 }] : Array.isArray(input.tenders) ? input.tenders : [];
     if (rawTenders.length > 20) throw new UserError("That's too many payments for one sale.");
 
     // Every item must be this shop's; repairs must be this shop's unpaid partner jobs.
@@ -451,24 +465,23 @@ export async function completeSaleAs(
     const customerId = input.customerId || firstBookingCustomer(lines, bookings);
     // A return scanned in from a receipt (every line a return, each an item that sale sold) gives back the tax as that
     // sale charged it: its rate and exemption, not the customer's or the shop's today.
-    const fromReceipt = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.every((l) => l.qty < 0);
+    const named = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.some((l) => l.qty < 0);
+    const fromReceipt = named && lines.every((l) => l.qty < 0);
     // Release review fix + tax holidays combined: the receipt is used only while every return line came from it
     // (linesOfSale); then each line comes back taxed as that sale taxed it (taxable + taxNote, so a holiday line returns
-    // tax free), at its rate and exemption. Otherwise the shop's rules today apply (exempt, holidays, tax included).
-    const receipt = fromReceipt
+    // tax free), and a whole return at its rate and exemption. Otherwise the shop's rules today apply (exempt,
+    // holidays, tax included) to what is bought; an exchange's return lines still come back as sold (backFrom).
+    const receipt = named
       ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true, lines: { select: { partId: true, description: true, taxable: true, taxNote: true } } } })
       : null;
     if (fromReceipt && !receipt) throw new UserError("The sale being returned wasn't found.");
-    const original = receipt && linesOfSale(lines, receipt.lines) ? receipt : null;
+    const backFrom = receipt && linesOfSale(lines.filter((l) => l.qty < 0), receipt.lines) ? receipt : null;
+    const original = fromReceipt ? backFrom : null;
     const exemptId = original
       ? original.taxExemptId
       : givenTax == null && customerId && input.chargeTax !== true
         ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
         : null;
-    // "On account" (9.4): her open house account, within its limit.
-    const accountId = opts.paidOnline ? null : await prepareAccountTender(shopId, customerId, tenders);
-    // Card payments taken on the card reader (4.8): approved at Stripe for that amount, this shop's, used once.
-    const readerIntents = opts.paidOnline ? [] : await prepareReaderTenders(shopId, tenders);
     // Each line's category (written on it below), and why a line that could be taxed wasn't (SaleLine.taxNote).
     const lineKinds = lines.map((l, i) =>
       saleLineKind({
@@ -482,112 +495,96 @@ export async function completeSaleAs(
     );
     // A membership item (shop-features-round-2-design.md 1.5) is reported as Memberships.
     for (const [i, l] of lines.entries()) if (l.partId && parts.get(l.partId)?.membershipGroupId) lineKinds[i] = "MEMBERSHIP";
-    const taxNotes: (string | null)[] = lines.map(() => null);
-    // Promotions in force today (tax-machine-sales-layaway-design.md section 2): the best percent or amount off that
-    // covers an item being bought becomes its own discount (a bigger one an owner typed stands). Not for a return, a
-    // layaway (its prices were settled when it began), the online shop (priced at checkout) or a given tax amount.
-    const promoIds: (string | null)[] = lines.map(() => null);
-    const promos = lay || original || givenTax != null || opts.paidOnline ? [] : await promotionsOn(shopId, ymdOf(new Date(), shop.timeZone));
+    // Each line priced and taxed by the rules the register uses too (src/lib/line-pricing.ts, so the two agree): the best
+    // of a promotion in force today, her price rules (her group, a lifetime discount on her machine's supplies, a per-yard
+    // break, the birthday offer) and a repair's trade-up credit (a bigger discount an owner typed stands); then a tax
+    // holiday in force at this store, or "price includes the tax". None of the shop's own pricing for a return from a
+    // receipt, a layaway (its prices were settled when it began), an online or pay-link sale (priced at checkout: what
+    // was charged stands) or a given tax amount.
+    const today = ymdOf(new Date(), shop.timeZone);
+    const noRules = !!(lay || original || givenTax != null || opts.paidOnline);
+    const promos = noRules ? [] : await promotionsOn(shopId, today);
     const unitBrands = new Map<string, string>();
     if (promos.length) {
       const ids = lines.map((l) => l.stockUnitId).filter((x): x is string => !!x);
       if (ids.length) for (const u of await db.stockUnit.findMany({ where: { shopId, id: { in: ids } }, select: { id: true, machine: { select: { brand: true } } } })) unitBrands.set(u.id, u.machine.brand);
     }
-    const promoLine = (l: (typeof lines)[number], i: number) => ({ ...l, kind: lineKinds[i], brand: l.partId ? parts.get(l.partId)?.brand : l.stockUnitId ? unitBrands.get(l.stockUnitId) : null });
-    for (const [i, l] of lines.entries()) {
-      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].unitLoanId) continue;
-      const best = bestDiscount(promos, promoLine(l, i));
-      if (best && best.cents > l.discountCents) {
-        l.discountCents = best.cents;
-        promoIds[i] = best.promo.id;
-      }
-    }
-    // The customer's price rules (shop-features-round-2-design.md 1.5, 1.6): her group, a lifetime discount on her
-    // machine's supplies, a per-yard break, the birthday offer. The biggest of these and a promotion wins, not both; a
-    // bigger discount an owner typed stands. Not for a return, a layaway, the online shop or a given tax amount.
-    const groupIds: (string | null)[] = lines.map(() => null);
-    const priceNotes: (string | null)[] = lines.map(() => null);
-    const today = ymdOf(new Date(), shop.timeZone);
-    const noRules = !!(lay || original || givenTax != null || opts.paidOnline);
     const bday = !noRules && input.birthday ? await birthdayFor(shopId, customerId, today) : null;
     if (!noRules && input.birthday && bday?.kind !== "pct") throw new UserError("Her birthday offer isn't there today (not her birthday month, or used this year). Take it off the sale.");
-    const ruleCtx: RuleCtx = noRules ? {} : { ...(await ruleCtxFor(shopId, customerId, today)), yardBreaks: await yardBreaksFor(shopId), birthdayPct: bday?.kind === "pct" ? bday.value : null };
-    for (const [i, l] of lines.entries()) {
-      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].unitLoanId || input.lines[i].noRule || lineKinds[i] === "MEMBERSHIP") continue;
-      const part = l.partId ? parts.get(l.partId) : null;
-      const hit = bestRule(ruleCtx, { ...l, kind: lineKinds[i], wholesaleCents: part?.wholesaleCents ?? null, breakMinQty: part?.breakMinQty ?? null, breakPriceCents: part?.breakPriceCents ?? null, onPromo: !!promoIds[i] || !!(promos.length && bestDiscount(promos, promoLine(l, i))) });
-      if (hit && hit.cents > l.discountCents) {
-        l.discountCents = hit.cents;
-        promoIds[i] = null;
-        groupIds[i] = hit.groupId ?? null;
-        priceNotes[i] = hit.label;
-      }
-    }
-    // A repair's trade-up credit on a machine being bought (1.9): a discount on that line, once per ticket.
+    const ruleCtx: RuleCtx | null = noRules ? null : { ...(await ruleCtxFor(shopId, customerId, today)), yardBreaks: await yardBreaksFor(shopId), birthdayPct: bday?.kind === "pct" ? bday.value : null };
+    // A repair's trade-up credit on a machine being bought (1.9): once per ticket.
     const tradeUps = new Map<number, string>();
+    const tradeUpCents = new Map<number, number>();
     for (const [i, l] of lines.entries()) {
       const tid = input.lines[i].tradeUpTicketId;
       if (!tid) continue;
       if (!l.stockUnitId || l.qty <= 0 || noRules) throw new UserError("A repair credit comes off a machine being bought.");
       if ([...tradeUps.values()].includes(tid)) throw new UserError("That repair credit is on this sale twice.");
-      const credit = Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), await creditCents(shopId, customerId, tid, today));
-      if (credit > l.discountCents) {
-        l.discountCents = credit;
-        promoIds[i] = null;
-        groupIds[i] = null;
-      }
-      priceNotes[i] = "Trade-up credit";
+      tradeUpCents.set(i, Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), await creditCents(shopId, customerId, tid, today)));
       tradeUps.set(i, tid);
+    }
+    // Tax holidays in force at this store (9: a holiday names its stores) today, or for a layaway's pick-up on the day it began.
+    let holidays: Awaited<ReturnType<typeof holidaysOn>> = [];
+    if (givenTax == null && !original && !exemptId) {
+      const days = [today];
+      if (lay?.mode === "pickup") {
+        const began = await db.layaway.findFirst({ where: { id: lay.id, shopId }, select: { startedAt: true } });
+        if (began) days.push(ymdOf(began.startedAt, shop.timeZone));
+      }
+      holidays = await holidaysOn(shopId, days, layStore !== undefined ? layStore : storeId);
+    }
+    const taxNotes: (string | null)[] = lines.map(() => null);
+    const promoIds: (string | null)[] = lines.map(() => null);
+    const groupIds: (string | null)[] = lines.map(() => null);
+    const priceNotes: (string | null)[] = lines.map(() => null);
+    const ctx = { promos, rules: ruleCtx, holidays, ratePct: shop.taxRatePct, exempt: givenTax == null && !original && !!exemptId, givenTax: givenTax != null, wholeReturn: !!original };
+    for (const [i, l] of lines.entries()) {
+      const li = input.lines[i];
+      const part = l.partId ? parts.get(l.partId) : null;
+      // A return line from the scanned receipt (a whole return, or an exchange): as that sale sold and taxed it.
+      const sold = backFrom && l.qty < 0 ? backFrom.lines.find((x) => (l.partId ? x.partId === l.partId : !x.partId && x.description === l.description)) : null;
+      const p = priceLine(ctx, {
+        ...l,
+        kind: lineKinds[i],
+        brand: part ? part.brand : l.stockUnitId ? unitBrands.get(l.stockUnitId) : null,
+        wholesaleCents: part?.wholesaleCents ?? null,
+        breakMinQty: part?.breakMinQty ?? null,
+        breakPriceCents: part?.breakPriceCents ?? null,
+        specialOrderId: li.specialOrderId ?? null,
+        unitLoanId: li.unitLoanId ?? null,
+        layaway: !!li.layawayKind,
+        noRule: !!li.noRule,
+        taxAnyway: !!li.taxAnyway,
+        tradeUpCents: tradeUpCents.get(i) ?? null,
+        asSold: sold ? { taxable: original ? sold.taxable : sold.taxable && backFrom!.taxRatePct > 0 && !backFrom!.taxExemptId, taxNote: sold.taxNote } : null,
+      });
+      l.discountCents = p.discountCents;
+      l.unitPriceCents = p.unitPriceCents;
+      l.taxable = p.taxable;
+      taxNotes[i] = p.taxNote;
+      promoIds[i] = p.promo?.id ?? null;
+      groupIds[i] = p.groupId;
+      priceNotes[i] = tradeUps.has(i) ? "Trade-up credit" : p.ruleLabel;
     }
     // A rental bought: the rent credit off the machine's price says so on the receipt.
     for (const [i, l] of lines.entries()) if (l.stockUnitId && input.lines[i].unitLoanId && l.discountCents > 0) priceNotes[i] = "Rent credit";
     // A membership sold names its buyer (she joins its group).
     if (lines.some((l, i) => lineKinds[i] === "MEMBERSHIP" && l.qty > 0) && !customerId) throw new UserError("Pick the customer first: a membership is for someone.");
-    if (original) {
-      // A return from a receipt gives each item back as it was taxed: one bought on a tax holiday comes back tax free.
-      for (const [i, l] of lines.entries()) {
-        // The sold line it matches, as linesOfSale matched it: the same part, or (no part) the same description.
-        const o = original.lines.find((x) => (l.partId ? x.partId === l.partId : !x.partId && x.description === l.description));
-        if (o) {
-          l.taxable = o.taxable;
-          taxNotes[i] = o.taxNote;
-        }
-      }
-    } else if (givenTax == null && exemptId) {
-      for (const [i, l] of lines.entries()) if (l.taxable) taxNotes[i] = "exempt";
-    } else if (givenTax == null) {
-      // A sales tax holiday in force today (tax-machine-sales-layaway-design.md section 1), or for a layaway's pick-up
-      // on the day it began, takes the tax off the lines it covers, unless the cashier charged it anyway on that line.
-      const days = [ymdOf(new Date(), shop.timeZone)];
-      if (lay?.mode === "pickup") {
-        const began = await db.layaway.findFirst({ where: { id: lay.id, shopId }, select: { startedAt: true } });
-        if (began) days.push(ymdOf(began.startedAt, shop.timeZone));
-      }
-      const holidays = await holidaysOn(shopId, days);
-      for (const [i, l] of lines.entries()) {
-        if (l.qty <= 0 || input.lines[i].taxAnyway) continue;
-        const h = holidays.find((x) => holidayCovers(x, { ...l, kind: lineKinds[i] }));
-        if (h) {
-          l.taxable = false;
-          taxNotes[i] = `holiday:${h.id}`;
-        }
-      }
-      // "Price includes the tax" (off unless the owner turned it on): the sticker price is the most the customer pays;
-      // the line keeps the price before tax, worked out at the shop's rate, so the books and the tax report show the real tax.
-      for (const [i, l] of lines.entries()) {
-        if (l.qty <= 0 || !l.taxable || taxNotes[i] || l.discountCents || !(l.partId || l.stockUnitId)) continue;
-        const p = includedPromo(promos, promoLine(l, i));
-        if (!p) continue;
-        l.unitPriceCents = priceBeforeTax(l.unitPriceCents, shop.taxRatePct);
-        taxNotes[i] = "included";
-        promoIds[i] = p.id;
-      }
-    }
     const taxRatePct = original ? original.taxRatePct : givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
-    const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
+    const totalsOf = () => (givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders));
+    let totals = totalsOf();
+    if (opts.tenderExact) {
+      const exact = tenders[0] && totals.total !== 0 ? [{ ...tenders[0], amountCents: totals.total }] : [];
+      tenders.splice(0, tenders.length, ...exact);
+      totals = totalsOf();
+    }
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
     if (problem) throw new UserError(problem);
+    // "On account" (9.4): her open house account, within its limit.
+    const accountId = opts.paidOnline ? null : await prepareAccountTender(shopId, customerId, tenders);
+    // Card payments taken on the card reader (4.8): approved at Stripe for that amount, this shop's, used once.
+    const readerIntents = opts.paidOnline ? [] : await prepareReaderTenders(shopId, tenders);
     // Over the store's limit (7.5): a refund, or a discount as a share of the full prices, needs its approval first.
     // Layaways, special orders and online orders priced by the program never stop here.
     const approval =
@@ -823,6 +820,11 @@ export async function completeSaleAs(
       const { makeShipJobs } = await import("@/lib/store-ship");
       await makeShipJobs({ shopId, saleId: result.sale.id, saleNumber: result.sale.number, customerId: customerId!, address: shipTo, taxRatePct, byStore, userId: user.id, at });
     }
+    // Special orders picked up on this sale: a pay link still waiting toward one is taken back (it can't be paid now).
+    if (so.pickups.size && !("again" in result)) {
+      const { cancelLinksFor } = await import("@/lib/pay-links");
+      for (const [id, p] of so.pickups) await cancelLinksFor(shopId, { specialOrderId: id }, `special order ${p.number} was picked up`, at);
+    }
     // A return from a receipt paid back as Card: onto the cards that paid that sale on the reader (4.8), after the save.
     // Phase 6 + the release's review fix: only while the receipt stands for the cart (original: every line a return
     // that sale sold), the same rule as "tax as sold"; any other return's Card refund is run on the terminal by hand.
@@ -834,7 +836,7 @@ export async function completeSaleAs(
         await db.sale.updateMany({ where: { id: result.sale.id, shopId }, data: { note: [input.note?.slice(0, 300), words].filter(Boolean).join(" · ").slice(0, 500) } });
       }
     }
-    return { saleId: result.sale.id, number: result.sale.number, changeCents: result.sale.changeCents, cards: result.cards };
+    return { saleId: result.sale.id, number: result.sale.number, changeCents: result.sale.changeCents, totalCents: result.sale.totalCents, cards: result.cards };
   }
 }
 

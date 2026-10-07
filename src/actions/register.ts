@@ -240,7 +240,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     // exactly that amount: one line, or two when the charge doesn't divide evenly among the units (splitForReturn).
     const net = lineNet({ qty: l.qty, unitPriceCents: l.unitPriceCents, discountCents: l.discountCents, taxable: l.taxable });
     for (const part of splitForReturn(l.qty, net)) {
-      lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable });
+      lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable && sale.taxRatePct > 0 && !sale.taxExemptId });
     }
   }
   const paid = (sale.tenders as Tender[]).filter((t) => t.cardId && t.amountCents > 0);
