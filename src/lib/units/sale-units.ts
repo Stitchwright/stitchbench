@@ -26,7 +26,8 @@ export type UnitLineOut = { description: string; qty: number; unitPriceCents: nu
 type Tx = Prisma.TransactionClient;
 
 /** Before the sale: check every unit and trade-in line (by index) and fix its wording, price, tax and quantity. Throws UserError. */
-export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADMIN" | "TECH"; customerId: string | null; lines: UnitLineIn[] }): Promise<Map<number, UnitLineOut>> {
+/** heldFor: a layaway's pick-up, whose machines are HELD for it (src/lib/layaway.ts puts them back in stock in the sale). */
+export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADMIN" | "TECH"; heldFor?: string | null; customerId: string | null; lines: UnitLineIn[] }): Promise<Map<number, UnitLineOut>> {
   const out = new Map<number, UnitLineOut>();
   const mine = a.lines.map((l, i) => [l, i] as const).filter(([l]) => l.stockUnitId || l.tradeIn);
   if (!mine.length) return out;
@@ -71,7 +72,8 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
       out.set(i, { description: `Return: ${unit.machine.brand} ${unit.machine.model} S/N ${unit.machine.serial ?? "none"}`, qty: -1, unitPriceCents: price, taxable: original.taxable, discountable: false, costCents: unit.costCents, stockUnitId: unit.id });
       continue;
     }
-    if (!unit || unit.status !== "IN_STOCK") throw new UserError(`${desc} isn't in stock any more.`);
+    const held = !!unit && !!a.heldFor && unit.status === "HELD" && unit.layawayId === a.heldFor;
+    if (!unit || (unit.status !== "IN_STOCK" && !held)) throw new UserError(`${desc} isn't in stock any more.`);
     await needActive(unit.machine.equipment);
     if (l.qty !== 1) throw new UserError("A machine for sale is one line of 1.");
     if (!a.customerId) throw new UserError("Pick the customer first: a warranty needs the buyer.");

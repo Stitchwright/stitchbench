@@ -1,11 +1,14 @@
-// Settings → Selling machines (tax-machine-sales-layaway-design.md section 3): the shop's own service plans (sold at the
-// register or included with a machine for sale) and each maker's warranty as the shop wants it shown. Owners and
-// admins change them; everyone can read them.
+// Settings → Selling (tax-machine-sales-layaway-design.md sections 3 and 4): the layaway defaults and the terms
+// customers sign, the shop's own service plans (sold at the register or included with a machine for sale), and each
+// maker's warranty as the shop wants it shown. Owners and admins change them; everyone can read them.
 import { requireUser } from "@/lib/session";
 import { money } from "@/lib/format";
 import { listPlans, planTerms } from "@/lib/units/plans";
 import { listMakerTerms, termsText } from "@/lib/units/units";
 import { deleteMakerTerms, saveMakerTerms, savePlan } from "@/actions/units";
+import { saveLayawaySettings } from "@/actions/layaway";
+import { layawaySettings } from "@/lib/layaway";
+import { EVERY_LABEL, LAYAWAY_EVERY } from "@/lib/layaway-math";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader, Section } from "@/components/ui";
 
@@ -68,10 +71,82 @@ function PlanFields({ p, prefix }: { p?: Awaited<ReturnType<typeof listPlans>>[n
 export default async function SalesSettingsPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
-  const [plans, makers] = await Promise.all([listPlans(user.shopId), listMakerTerms(user.shopId)]);
+  const [plans, makers, lw] = await Promise.all([listPlans(user.shopId), listMakerTerms(user.shopId), layawaySettings(user.shopId)]);
   return (
     <div className="max-w-3xl space-y-6">
-      <PageHeader title="Plans and warranties" sub="What you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
+      <PageHeader title="Layaway, plans and warranties" sub="How layaways work at your shop, what you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
+
+      <Section title="Layaway">
+        <p className="muted mb-3 text-sm">What the register fills in when a customer wants to pay over time. You can change any of it for one layaway at the register.</p>
+        <ActionForm action={saveLayawaySettings} success="Saved" className="space-y-3">
+          <fieldset disabled={!admin} className="space-y-3">
+            <div className="grid-form">
+              <div className="field">
+                <label htmlFor="lw-pct" className="label">
+                  Deposit (% of the price)
+                </label>
+                <input id="lw-pct" name="depositPct" className="input num" inputMode="numeric" defaultValue={lw.depositPct} />
+              </div>
+              <div className="field">
+                <label htmlFor="lw-days" className="label">
+                  Days to pay it off
+                </label>
+                <input id="lw-days" name="days" className="input num" inputMode="numeric" defaultValue={lw.days} />
+              </div>
+              <div className="field">
+                <label htmlFor="lw-every" className="label">
+                  They pay
+                </label>
+                <select id="lw-every" name="every" className="select" defaultValue={lw.every}>
+                  {LAYAWAY_EVERY.map((e) => (
+                    <option key={e} value={e}>
+                      {EVERY_LABEL[e]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <details>
+              <summary className="link cursor-pointer text-sm">More options: cancelling, and the terms they sign</summary>
+              <div className="mt-3 space-y-3">
+                <div className="grid-form">
+                  <div className="field">
+                    <label htmlFor="lw-fee" className="label">
+                      Cancel fee ($)
+                    </label>
+                    <input id="lw-fee" name="feeCents" className="input num" inputMode="decimal" defaultValue={(lw.feeCents / 100).toFixed(2)} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="lw-feepct" className="label">
+                      Plus this % of what they paid
+                    </label>
+                    <input id="lw-feepct" name="feePct" className="input num" inputMode="numeric" defaultValue={lw.feePct} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="lw-refund" className="label">
+                      The rest goes back
+                    </label>
+                    <select id="lw-refund" name="refund" className="select" defaultValue={lw.refund}>
+                      <option value="credit">As store credit</option>
+                      <option value="money">As money</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="lw-terms" className="label">
+                    The terms they sign
+                  </label>
+                  <textarea id="lw-terms" name="terms" rows={6} className="textarea text-sm" defaultValue={lw.terms} aria-describedby="lw-terms-hint" />
+                  <p id="lw-terms-hint" className="muted text-xs">
+                    Several states have rules for layaway terms and refunds. Ask your lawyer or accountant before you use these words. Empty this box to go back to the program&apos;s wording.
+                  </p>
+                </div>
+              </div>
+            </details>
+            {admin && <Submit>Save layaway settings</Submit>}
+          </fieldset>
+        </ActionForm>
+      </Section>
 
       <Section title="Your service plans">
         <p className="muted mb-3 text-sm">

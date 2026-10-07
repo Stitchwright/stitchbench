@@ -123,6 +123,18 @@ model Shop {
   stripeKeySealed      String?
   stripeWebhookSealed  String?
   nextWebOrderNumber   Int           @default(1001)
+  // Layaway (tax-machine-sales-layaway-design.md section 4): the shop's defaults (owner's answer 3): the deposit as a
+  // percent of the price, days to pay it off, payments every 2 weeks ("2w") or monthly ("month"), what cancelling keeps
+  // (a fee in cents and / or a percent of what was paid), how the rest goes back ("credit": store credit, "money": the
+  // way they paid), and the terms the customer signs (blank: the program's default wording).
+  layawayDepositPct    Int           @default(10)
+  layawayDays          Int           @default(90)
+  layawayEvery         String        @default("2w")
+  layawayFeeCents      Int           @default(0)
+  layawayFeePct        Int           @default(0)
+  layawayRefund        String        @default("credit")
+  layawayTerms         String?
+  nextLayawayNumber    Int           @default(1)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
   checkInKind          String        @default("sewing")
   // Vac Shop "bags due": days between bag purchases
@@ -215,6 +227,7 @@ model Shop {
   stockUnits        StockUnit[]
   // Machines for sale (tax-machine-sales-layaway-design.md section 3)
   makerWarranties   MakerWarranty[]
+  layaways          Layaway[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
   vacCares          VacCare[]
@@ -370,6 +383,7 @@ model Customer {
   viaTickets    Ticket[]       @relation("TicketViaAccount")
   sales         Sale[]
   giftCards     GiftCard[]
+  layaways      Layaway[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -837,6 +851,7 @@ enum MoveReason {
   SOLD // over the counter (register) or to a partner shop
   CONSIGNED // sent to, or taken back from, a partner shop's consignment shelf
   CUT // fabric cut into fat quarters, half yards or a remnant: one move out of the bolt, one into the item it feeds
+  HELD // set aside for a layaway (off the shelf), or back on the shelf when it is picked up or cancelled
 }
 
 model StockMove {
@@ -1316,6 +1331,9 @@ model SaleLine {
   giftCardId     String?
   // A service plan sold on this line (the MachinePlan it made, plain id)
   machinePlanId  String?
+  // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
+  // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
+  layawayId      String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1325,6 +1343,7 @@ model SaleLine {
   @@index([machineId])
   @@index([enrollmentId])
   @@index([appointmentId])
+  @@index([layawayId])
 }
 
 // A partnership with another shop, from this shop's side (the id is the hub's link id).
@@ -1850,7 +1869,8 @@ model StockUnit {
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   machineId       String    @unique
   machine         Machine   @relation(fields: [machineId], references: [id], onDelete: Restrict)
-  status          String    @default("IN_STOCK") // IN_STOCK | SOLD | REMOVED
+  status          String    @default("IN_STOCK") // IN_STOCK | HELD (on a layaway) | SOLD | REMOVED
+  layawayId       String? // the layaway holding it (plain id) while HELD
   condition       String    @default("NEW") // NEW | OPEN_BOX | REFURB | USED
   costCents       Int? // what it cost the shop (a trade-in: the credit given)
   priceCents      Int? // asking price
@@ -2972,4 +2992,57 @@ model MachinePlan {
 
   @@index([shopId, machineId])
   @@index([saleLineId])
+}
+
+// Layaway (tax-machine-sales-layaway-design.md section 4): the items held for a customer while they pay over time. The
+// money goes through the register (SaleLine.layawayId, kind LAYAWAY: money held for the customer, not a sale yet); the
+// last visit sells the items at that day's tax and uses the payments up. A machine is HELD (StockUnit.layawayId), a
+// stock item's quantity taken off the shelf (StockMove HELD) until then.
+model Layaway {
+  id              String        @id @default(cuid())
+  shopId          String
+  shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number          Int
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status          String        @default("OPEN") // OPEN | COMPLETED | CANCELLED
+  startedAt       DateTime      @default(now())
+  // The last day to pay (YYYY-MM-DD, shop's zone) and the payment plan: [{ due: "YYYY-MM-DD", cents }] after the deposit
+  dueBy           String
+  every           String        @default("2w")
+  plan            Json          @default("[]")
+  // The deposit taken at the start (the plan splits the rest)
+  depositMinCents Int           @default(0)
+  // The terms as printed for the customer to sign (kept as they were)
+  terms           String
+  note            String?
+  // The pick-up sale, or the cancel's refund sale (plain ids)
+  saleId          String?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelFeeCents  Int?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  lines           LayawayLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([customerId])
+}
+
+model LayawayLine {
+  id             String  @id @default(cuid())
+  layawayId      String
+  layaway        Layaway @relation(fields: [layawayId], references: [id], onDelete: Cascade)
+  partId         String?
+  stockUnitId    String?
+  description    String
+  partNumber     String?
+  unit           String?
+  qty            Float
+  unitPriceCents Int
+  discountCents  Int     @default(0)
+  taxable        Boolean @default(true)
+
+  @@index([layawayId])
 }

@@ -29,6 +29,7 @@ import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-cam
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
+import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
@@ -93,6 +94,7 @@ export function Register({
   canSell,
   vac,
   unitKinds,
+  layaway,
   preload,
 }: {
   taxRatePct: number;
@@ -101,6 +103,8 @@ export function Register({
   vac?: "on" | "readonly" | "off";
   /** Machines for sale: the kinds the shop may sell and take in trade now (empty: returns only); absent while it has no machines for sale or plans. */
   unitKinds?: TradeKind[] | null;
+  /** The shop's layaway defaults and today (in its zone), for the Layaway button. */
+  layaway?: LayawayDefaults;
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -220,6 +224,20 @@ export function Register({
   function addLine(line: UnitCartLine) {
     setDone(null);
     setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line }]);
+  }
+
+  /** A layaway's deposit, payment or pick-up rang up its own sale: show its receipt link and start the next one fresh. */
+  function rungUp(r: { saleId: string; number: number }) {
+    pending.current = null;
+    setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+    setCart([]);
+    setTenders([]);
+    setOrderDisc({ kind: "%", value: "" });
+    setCustomer(null);
+    setChargeTax(false);
+    setReturnMode(false);
+    setReturnOf(null);
+    code.current?.focus();
   }
 
   /** A class seat or appointment: one line, the booking's price and tax; a refund in return mode. */
@@ -661,6 +679,18 @@ export function Register({
           </button>
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
+          {layaway && !returnMode && (
+            <LayawayPanel
+              customerId={customer?.id ?? null}
+              customerName={customer?.name ?? null}
+              cart={lines}
+              priceCents={t.subtotal - t.orderDiscount}
+              totalCents={t.total}
+              defaults={layaway}
+              onNeedCustomer={() => setNewCustomer(true)}
+              onDone={rungUp}
+            />
+          )}
           <button type="button" className={`btn btn-sm ${returnMode ? "btn-primary" : ""}`} aria-pressed={returnMode} onClick={() => setReturnMode((r) => !r)}>
             <Undo2 size={14} aria-hidden /> Return mode {returnMode ? "on" : "off"}
           </button>

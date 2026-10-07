@@ -263,6 +263,7 @@ async function main() {
     await db.estimateLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), maskedUrl: "https://x/e/•••abcd", totalCents: 4500, lines: [], expiresAt: new Date(Date.now() + DAY) } });
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -439,6 +440,7 @@ async function main() {
       },
     });
     await db.longarmOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    const delLayaway = await db.layaway.create({ data: { shopId: A, number: 2, customerId: del.id, status: "OPEN", dueBy: "2026-12-31", terms: "Terms" } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -458,11 +460,13 @@ async function main() {
       /seat in Free-motion quilting/,
       /Partner repair tag T9/,
       /partnership with Old partner/,
+      /Layaway #2 is still being paid for/,
     ]) {
       assert.match(why, re);
     }
-    assert.equal(dplan.blockers.length, 6);
-    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 3 more\)/);
+    assert.equal(dplan.blockers.length, 7);
+    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 4 more\)/);
+    await db.layaway.update({ where: { id: delLayaway.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
     // Close each: the ticket collected but unpaid is still refused (money owed).
     await db.ticket.update({ where: { id: dt.id }, data: { status: "COLLECTED", closedAt: new Date() } });
     await db.webOrder.update({ where: { id: order.id }, data: { status: "DONE" } });

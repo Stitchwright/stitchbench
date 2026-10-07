@@ -8,6 +8,8 @@ import { PageHeader, Section, Empty } from "@/components/ui";
 import { PERIODS, salesReport, type Period } from "@/lib/reports/sales";
 import { ticketsReport, topCustomers } from "@/lib/reports/tickets";
 import { liabilityReport } from "@/lib/reports/giftcards";
+import { depositsHeld, listLayaways } from "@/lib/layaway";
+import { coveredWork } from "@/lib/units/plans";
 import { taxReport } from "@/lib/reports/tax";
 import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
 import { balanced, buildBooks, loadBooks } from "@/lib/books";
@@ -19,6 +21,7 @@ const TABS = [
   { key: "tickets", label: "Tickets" },
   { key: "customers", label: "Top customers" },
   { key: "gift-cards", label: "Gift cards" },
+  { key: "layaways", label: "Layaways and plans" },
   { key: "tax", label: "Sales tax" },
   { key: "books", label: "Bookkeeping" },
 ] as const;
@@ -114,6 +117,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
       {tab === "tickets" && <TicketsTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "customers" && <CustomersTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "gift-cards" && <GiftTab shopId={user.shopId} start={start} end={end} csv={csv} />}
+      {tab === "layaways" && <LayawayTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "tax" && <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} />}
       {tab === "books" && books && <BooksTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} fromStr={fromStr} toStr={toStr} exportedThrough={books.exportedThrough} />}
     </div>
@@ -390,6 +394,95 @@ async function CustomersTab({ shopId, start, end, csv }: TabProps) {
         </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * Layaways (tax-machine-sales-layaway-design.md section 4): the money held for customers as the books count it (every
+ * layaway line of a sale that stands) against what the open layaways have been paid, which must match; the open ones;
+ * and the repair work given free under service plans in the range (section 3).
+ */
+async function LayawayTab({ shopId, start, end }: TabProps) {
+  const [held, heldAtEnd, open, covered] = await Promise.all([depositsHeld(shopId), depositsHeld(shopId, end), listLayaways(shopId, "OPEN"), coveredWork(shopId, start, end)]);
+  const paidOpen = open.reduce((a, l) => a + l.paidCents, 0);
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="card card-pad">
+          <div className="num text-xl font-semibold">{money(held)}</div>
+          <div className="muted text-xs">Money held for customers on layaway today (owed to them, not income yet)</div>
+        </div>
+        <div className="card card-pad">
+          <div className="num text-xl font-semibold">{money(heldAtEnd)}</div>
+          <div className="muted text-xs">Held at the end of this range (the books&apos; Customer Deposits)</div>
+        </div>
+        <div className="card card-pad">
+          <div className="num text-xl font-semibold">{open.length}</div>
+          <div className="muted text-xs">Layaways being paid for</div>
+        </div>
+      </div>
+      {paidOpen !== held && (
+        <p className="card card-pad text-sm" role="alert">
+          The open layaways have been paid {money(paidOpen)}, but {money(held)} is held in the books. A pick-up or cancel may have been voided; check the layaways below.
+        </p>
+      )}
+      <Section title="Being paid for">
+        {open.length === 0 ? (
+          <Empty>None.</Empty>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <Th>Layaway</Th>
+                <Th>Customer</Th>
+                <Th right>Paid</Th>
+                <Th right>Left</Th>
+                <Th right>Behind</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {open.map((l) => (
+                <tr key={l.id}>
+                  <td>
+                    <Link href={`/layaways/${l.id}`} className="link">
+                      #{l.number}
+                    </Link>
+                  </td>
+                  <td>{l.customer?.name ?? ""}</td>
+                  <Num>{money(l.paidCents)}</Num>
+                  <Num>{money(l.leftCents)}</Num>
+                  <Num>{l.behindCents ? money(l.behindCents) : ""}</Num>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+      <Section title="Repair work covered by service plans (tickets in this range)">
+        {covered.length === 0 ? (
+          <Empty>None.</Empty>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <Th>Plan</Th>
+                <Th right>Lines</Th>
+                <Th right>Would have cost</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {covered.map((c) => (
+                <tr key={c.plan}>
+                  <td>{c.plan}</td>
+                  <Num>{c.lines}</Num>
+                  <Num>{money(c.cents)}</Num>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+    </>
   );
 }
 

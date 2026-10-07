@@ -198,3 +198,28 @@ Decisions made while building:
 - Browser test needed: `/units` add form (kind links, "More options"), the register's Machine for sale / Trade-in /
   Service plan / Return a machine, a ticket's "Covered by ..." button, the class roster's "Use an owner's class",
   `/settings/sales`; `tests/vac-shop.spec.ts` and `tests/modules-lapse.spec.ts` were updated for the new words.
+
+**Section 4, layaway (7 Oct 2026).** Migration `20261019100000_layaway` (Shop layaway defaults, `Layaway`,
+`LayawayLine`, `SaleLine.layawayId`, `StockUnit.layawayId` with status HELD, stock move reason HELD). Code:
+`src/lib/layaway.ts`, `src/lib/layaway-hooks.ts` (the register's part, so `register-sale.ts` doesn't import it back),
+`src/lib/layaway-math.ts`, `src/actions/layaway.ts`, the register's Layaway button (`src/components/layaway-panel.tsx`),
+`/layaways`, `/layaways/[id]`, `/layaways/[id]/print` (terms to sign), Settings → "Layaway, plans and warranties",
+Reports → "Layaways and plans", to-do lines for layaways behind, the customer's page. Check:
+`scripts/checks/layaway.check.ts` (8 groups); `customer-merge`, `move-export`, `books-export`, `reports`, `sales-tax`,
+`store-credit`, `gift-cards`, `clubs`, `online-shop`, `register-bookings`, `machine-sales`, `vac-units` still pass.
+Decisions made while building:
+- No `LayawayPayment` table: every payment is a register sale with a LAYAWAY line carrying the layaway's id (any
+  payment method, store credit and gift cards included), so receipts, the day's takings, voids and the books need
+  nothing new. What was paid is the LAYAWAY lines of sales that stand; the books post them to a new "Customer Deposits"
+  account (Settings → Bookkeeping can rename it), and the report checks that total against the open layaways.
+- Pick-up is one sale: the held items sold at that day's rate (answer 4; the holiday rule comes with section 1), a
+  LAYAWAY line of minus what was paid, and the rest paid then. The machine's warranty starts that day. Voiding the
+  pick-up opens the layaway again and holds the items again; a payment can't be voided once the layaway is finished.
+- Cancel (owner or admin) gives the payments back less the shop's fee (a LAYAWAY_FEE line, income) as store credit or
+  money, by the setting, changeable each time; the items go back on sale.
+- Stock items come off the shelf when held (a HELD stock move) and go back on at pick-up just before the sale takes
+  them again, so sales velocity counts them on the pick-up day.
+- The stored deposit is the one taken (the plan splits the rest); "behind" is what the plan asked for by today less
+  what was paid. The reminder is a button ("Send a friendly reminder", Marketing on), not automatic.
+- Browser test needed: the register's Layaway button (start with a machine and an item, payment, pick up), the layaway
+  page (plan, payments, cancel), the printed terms, Settings → Layaway, Reports → Layaways and plans.

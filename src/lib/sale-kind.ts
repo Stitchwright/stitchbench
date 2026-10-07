@@ -18,11 +18,13 @@ export const SALE_KIND_LABEL: Record<string, string> = {
   REPAIR: "Partner repair bills",
   TRADE_IN: "Trade-ins",
   GIFT_CARD: "Gift cards",
+  LAYAWAY: "Layaway payments (held for customers)",
+  LAYAWAY_FEE: "Layaway cancel fees",
   MISC: "Other",
 };
 
-/** Lines that are not sales: a gift card is a liability, a trade-in a purchase, a partner repair bill the repair shop's sale. */
-export const NOT_SALE_KINDS = ["GIFT_CARD", "TRADE_IN", "REPAIR"];
+/** Lines that are not sales: a gift card or a layaway payment is money owed to the customer, a trade-in a purchase, a partner repair bill the repair shop's sale. */
+export const NOT_SALE_KINDS = ["GIFT_CARD", "TRADE_IN", "REPAIR", "LAYAWAY"];
 
 type KindInput = {
   kind?: string | null;
