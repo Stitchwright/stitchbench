@@ -1,3 +1,4 @@
+import { HistoryLink } from "@/components/history-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Trash2, Printer } from "lucide-react";
@@ -31,7 +32,8 @@ import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
 import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { UnitBadge } from "@/components/vac/unit-badge";
-import { addLine, addPayment, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
+import { exemptCertificate } from "@/lib/tax-exempt";
+import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
 
 function inRange(v: number | null, min: number | null, max: number | null) {
@@ -82,6 +84,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const kind = await kindOf(user.shopId, m);
   const canWork = await canWorkOn(user.shopId, m.equipment, { intakeAt: t.intakeAt, status: t.status });
   const isSite = t.jobType === "SITE";
+  const exemptNow = Boolean(exemptCertificate(t.customer) ?? exemptCertificate(t.viaAccount));
   // Came in through a partner sewing shop (StitchShop)?
   const job = await db.repairJob.findUnique({ where: { ticketId: t.id } });
   const jobLink = job ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: job.linkId } } }) : null;
@@ -111,6 +114,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><HistoryLink role={user.role} type="Ticket" id={t.id} /></div>
       <PageHeader
         back={{ href: "/tickets", label: "Tickets" }}
         title={
@@ -453,7 +457,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <dl className="num mb-4 ml-auto grid max-w-xs grid-cols-2 gap-y-1 text-sm">
               <dt className="muted">Subtotal</dt>
               <dd className="text-right">{money(tot.subtotal)}</dd>
-              <dt className="muted">Tax ({t.taxRatePct}%)</dt>
+              <dt className="muted">{t.taxExemptId ? `Tax exempt (certificate ${t.taxExemptId})` : `Tax (${t.taxRatePct}%)`}</dt>
               <dd className="text-right">{money(tot.tax)}</dd>
               <dt className="font-semibold">Total</dt>
               <dd className="text-right font-semibold">{money(tot.total)}</dd>
@@ -468,6 +472,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 </>
               )}
             </dl>
+
+            {canWork && (t.taxExemptId || (exemptNow && t.taxRatePct > 0)) && (
+              <p className="no-print mb-3 text-right text-sm">
+                {t.taxExemptId ? (
+                  <ActionButton action={setTicketTax.bind(null, t.id, true)} className="link" confirm="Charge tax on this ticket after all?">
+                    Charge tax on this ticket
+                  </ActionButton>
+                ) : (
+                  <ActionButton action={setTicketTax.bind(null, t.id, false)} className="link" confirm="Take the tax off this ticket? The customer's exemption certificate is recorded on it.">
+                    Customer is tax exempt: take the tax off
+                  </ActionButton>
+                )}
+              </p>
+            )}
 
             {canWork && (
               <div className="grid gap-4 md:grid-cols-2">
@@ -581,6 +599,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   Note
                 </label>
                 <input id="payNote" name="note" className="input" placeholder="check #, last 4..." />
+              </div>
+              <div className="field min-w-40">
+                <label htmlFor="payCard" className="label">
+                  Gift card or credit number
+                </label>
+                <input id="payCard" name="card" className="input mono" autoComplete="off" placeholder="only for gift card / store credit" />
               </div>
               <Submit>Record payment</Submit>
             </ActionForm>

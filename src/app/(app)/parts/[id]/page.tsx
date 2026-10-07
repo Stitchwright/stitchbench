@@ -1,3 +1,4 @@
+import { HistoryLink } from "@/components/history-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -59,6 +60,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><HistoryLink role={user.role} type="Part" id={p.id} /></div>
       <PageHeader
         back={{ href: "/parts", label: "Parts" }}
         title={

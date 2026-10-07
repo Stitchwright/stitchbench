@@ -237,6 +237,12 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   });
   await db.suppression.create({ data: { shopId, channel: "email", address: "gone@example.test", scope: "marketing", source: "link" } });
   await db.consentEvent.create({ data: { shopId, customerId: cust.id, channel: "email", event: "marketing_yes", source: "counter" } });
+  const giftCard = await db.giftCard.create({ data: { shopId, number: "GC-MOVE-TEST-0001", kind: "gift", customerId: cust.id, balanceCents: 4200 } });
+  await db.giftCardEntry.create({ data: { shopId, cardId: giftCard.id, amountCents: 4200, reason: "SOLD", note: "move check" } });
+  await db.booksSettings.create({ data: { shopId, accounts: { sales: "4000 Sales" }, byCategory: true, exportedThrough: "2026-03-31" } });
+  await db.offsiteSettings.create({ data: { shopId, on: false, target: "folder", folderPath: "C:\Backups", bucket: { endpoint: "https://example.test", secretSealed: "sealed" }, publicKey: "AAAA", keyId: "0123456789abcdef" } });
+  await db.offsiteObject.create({ data: { shopId, name: "data/2026-03-01-020000.sbob", kind: "data", size: 10, sha256: "00" } });
+  await db.auditEntry.create({ data: { shopId, userName: "Move check", role: "OWNER", category: "money", action: "sale.void", subjectType: "Sale", subjectLabel: "Sale #1", changes: { status: ["COMPLETED", "VOIDED"] } } });
   await db.inboundText.create({ data: { shopId, sid: `SM${crypto.randomBytes(16).toString("hex")}`, fromNumber: "+12125550123", body: "Thanks", receivedAt: new Date(now - day) } });
   await db.estimateLink.create({
     data: {
@@ -349,6 +355,7 @@ async function main() {
     const expect = structuredClone(before);
     Object.assign(expect.Shop[0], { shopOn: false });
     Object.assign(expect.PartnerKey[0], { privateSealed: null }); // the sealed private key is left out of the file
+    Object.assign(expect.OffsiteSettings[0], { bucket: null }); // the own-bucket settings (a sealed secret) are left out of the file
     const ms = after.MessagingSettings[0];
     assert.ok(typeof ms.marketingHoldAt === "string" && Date.parse(ms.marketingHoldAt) >= t0 - 1000, "marketing is held");
     Object.assign(expect.MessagingSettings[0], { emailOn: false, smsOn: false, marketingHoldAt: ms.marketingHoldAt, inboundAt: null, inboundIncomplete: 0 });

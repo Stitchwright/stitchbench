@@ -9,13 +9,15 @@ import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { codeKeys, numberKey } from "@/lib/parts";
 import { sameText } from "@/lib/input";
-import { lineNet } from "@/lib/register-math";
+import { lineNet, type Tender } from "@/lib/register-math";
+import type { Issued } from "@/lib/gift-card-number";
 import { splitForReturn } from "@/lib/sale-return";
 import { registerUnitHits } from "@/lib/vac/sale-units";
 import { FIRST_PHOTO, viewItem, type RegisterItem } from "@/lib/register-item";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs, type SaleInput } from "@/lib/register-sale";
 import { refuseVoidOfOnlineSale } from "@/lib/shop/online-shop";
+import { exemptCertificate } from "@/lib/tax-exempt";
 import type { BookingDue } from "@/lib/booking-types";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
@@ -163,6 +165,8 @@ export type SaleForReturn = {
   lines: SaleReturnLine[];
   /** Payment lines for a repair bill, left out: reverse those with the repair shop instead (same as voiding a sale). */
   skippedRepairLines: number;
+  /** Gift cards and store credit the sale was paid with: the default way back is onto the same card. */
+  cardsPaid: { number: string; kind: "gift" | "credit"; amountCents: number }[];
 };
 
 /**
@@ -174,7 +178,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
   if (!Number.isInteger(number) || number <= 0) return null;
   const sale = await db.sale.findFirst({
     where: { shopId: user.shopId, number, status: "COMPLETED" },
-    include: { lines: true, customer: { select: { id: true, name: true, phone: true } } },
+    include: { lines: true, customer: { select: { id: true, name: true, phone: true, taxExemptId: true, taxExemptUntil: true } } },
   });
   if (!sale) return null;
   const lines: SaleReturnLine[] = [];
@@ -191,26 +195,43 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
       lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable });
     }
   }
-  return { id: sale.id, number: sale.number, customer: sale.customer, lines, skippedRepairLines };
+  const paid = (sale.tenders as Tender[]).filter((t) => t.cardId && t.amountCents > 0);
+  const cards = paid.length ? await db.giftCard.findMany({ where: { shopId: user.shopId, id: { in: paid.map((t) => t.cardId!) } }, select: { id: true, number: true, kind: true } }) : [];
+  const cardsPaid = paid.flatMap((t) => {
+    const c = cards.find((x) => x.id === t.cardId);
+    return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
+  });
+  return { id: sale.id, number: sale.number, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines, cardsPaid };
 }
 
-export type CustomerHit = { id: string; name: string; phone: string | null };
+/** `taxExemptId`: the certificate number when the customer is tax exempt now (null: not; absent: not looked up yet). */
+export type CustomerHit = { id: string; name: string; phone: string | null; taxExemptId?: string | null };
+
+const hitOf = (c: { id: string; name: string; phone: string | null; taxExemptId: string | null; taxExemptUntil: Date | null }): CustomerHit => ({ id: c.id, name: c.name, phone: c.phone, taxExemptId: exemptCertificate(c) });
+
+/** Whether a customer of this shop is tax exempt now: the register looks it up for a customer it was handed without it. */
+export async function customerTaxExempt(customerId: string): Promise<string | null> {
+  const user = await requireUser();
+  const c = await db.customer.findFirst({ where: { id: String(customerId), shopId: user.shopId }, select: { taxExemptId: true, taxExemptUntil: true } });
+  return exemptCertificate(c);
+}
 
 export async function findCustomers(q: string): Promise<CustomerHit[]> {
   const user = await requireUser();
   const t = q.trim();
   if (t.length < 2) return [];
   const digits = t.replace(/\D/g, "");
-  return db.customer.findMany({
+  const rows = await db.customer.findMany({
     where: {
       shopId: user.shopId,
       kind: "RETAIL",
       OR: [{ name: { contains: t, mode: "insensitive" } }, ...(digits.length >= 4 ? [{ phone: { contains: digits.slice(-4) } }] : []), { email: { contains: t, mode: "insensitive" } }],
     },
-    select: { id: true, name: true, phone: true },
+    select: { id: true, name: true, phone: true, taxExemptId: true, taxExemptUntil: true },
     orderBy: { name: "asc" },
     take: 10,
   });
+  return rows.map(hitOf);
 }
 
 /**
@@ -229,14 +250,14 @@ export async function quickAddCustomer(fd: FormData): Promise<CustomerHit | { er
     if (!name || (!phone && !email)) throw new UserError("Enter a name and a phone or email.");
     const c = await db.customer.create({ data: { shopId: user.shopId, kind: "RETAIL", name, phone, email, address }, select: { id: true, name: true, phone: true } });
     revalidatePath("/customers", "layout");
-    return c;
+    return { ...c, taxExemptId: null };
   } catch (e) {
     if (isUserError(e)) return { error: e.message };
     throw e;
   }
 }
 
-export async function completeSale(input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number } | { error: string }> {
+export async function completeSale(input: SaleInput): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] } | { error: string }> {
   try {
     const user = await requireUser();
     // A given tax amount and the ONLINE tender belong to the online shop's payment path, never to the counter.

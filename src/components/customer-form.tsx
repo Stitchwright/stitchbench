@@ -16,10 +16,12 @@ type C = {
   routeDay: string | null;
   notes: string | null;
   notifyBy?: string;
+  taxExemptId?: string | null;
+  taxExemptUntil?: string | null;
 };
 
 /** `marketingHidden`: Marketing was never on for this company, so "how should we tell them" isn't asked here. */
-export function CustomerForm({ action, customer, submitLabel, marketingHidden = false }: { action: (fd: FormData) => Promise<ActionResult>; customer?: C; submitLabel: string; marketingHidden?: boolean }) {
+export function CustomerForm({ action, customer, submitLabel, marketingHidden = false, taxFields = false }: { action: (fd: FormData) => Promise<ActionResult>; customer?: C; submitLabel: string; marketingHidden?: boolean; taxFields?: boolean }) {
   const [kind, setKind] = useState<C["kind"]>(customer?.kind ?? "RETAIL");
   return (
     <ActionForm action={action} success={customer ? "Saved" : undefined} className="grid-form">
@@ -76,6 +78,22 @@ export function CustomerForm({ action, customer, submitLabel, marketingHidden = 
               Route day
             </label>
             <input id="routeDay" name="routeDay" defaultValue={customer?.routeDay ?? ""} className="input" placeholder="Thursday" />
+          </div>
+        </>
+      )}
+      {taxFields && (
+        <>
+          <div className="field">
+            <label htmlFor="taxExemptId" className="label">
+              Tax-exempt certificate number
+            </label>
+            <input id="taxExemptId" name="taxExemptId" defaultValue={customer?.taxExemptId ?? ""} className="input mono" placeholder="Leave blank if they pay tax" />
+          </div>
+          <div className="field">
+            <label htmlFor="taxExemptUntil" className="label">
+              Certificate good through
+            </label>
+            <input id="taxExemptUntil" name="taxExemptUntil" type="date" defaultValue={customer?.taxExemptUntil ?? ""} className="input" />
           </div>
         </>
       )}

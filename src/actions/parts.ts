@@ -7,6 +7,7 @@ import { isUserError, safe, UserError, type ActionResult } from "@/lib/action";
 import { openWaits } from "@/lib/part-waits";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
+import { actorOf, audit, diff } from "@/lib/audit";
 import { str } from "@/lib/format";
 import { MAX_STOCK, centsField, costField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
@@ -143,6 +144,8 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   await db.part.update({ where: { id: partId }, data: { ...data, partNumber, altNumbers, numberKeys: partKeys(partNumber, altNumbers) } }).catch(async (e: unknown) => {
     throw await partNumberClash(e, user.shopId, partNumber);
   });
+  const changes = diff(p, { costCents: data.costCents, priceCents: data.priceCents, wholesaleCents: data.wholesaleCents }, ["costCents", "priceCents", "wholesaleCents"]);
+  if (changes) await audit(db, actorOf(user), { action: "part.price", subjectType: "Part", subjectId: partId, subjectLabel: partNumber, changes });
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/parts");
 });

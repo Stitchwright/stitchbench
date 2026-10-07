@@ -15,7 +15,11 @@ import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/vac/sale-u
 import type { TradeInInput } from "@/lib/vac/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
+import { actorOf, audit } from "@/lib/audit";
+import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type CardLine, type Issued } from "@/lib/gift-cards";
 import { fmtWhen } from "@/lib/zoned";
+import { exemptCertificate } from "@/lib/tax-exempt";
+import { saleLineKind } from "@/lib/sale-kind";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -41,6 +45,8 @@ export type SaleLineInput = {
   /** A class seat or an appointment paid (qty 1) or refunded (qty -1) here. */
   enrollmentId?: string | null;
   appointmentId?: string | null;
+  /** A gift card sold ("new" or a pre-printed "printed" blank), loaded, or its balance paid out (negative): later-round-1-design.md 2.3. */
+  giftCard?: CardLine | null;
 };
 
 export type SaleInput = {
@@ -53,6 +59,8 @@ export type SaleInput = {
   clientKey?: string | null;
   /** The online shop with Stripe Tax: the tax as the processor worked it out, recorded in place of the shop's rate (owner's calls only). */
   taxCents?: number | null;
+  /** The customer is tax exempt but the cashier says charge tax anyway (no certificate is recorded then). */
+  chargeTax?: boolean;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -80,7 +88,7 @@ function saleByKey(shopId: string, clientKey: string | null) {
  * `paidOnline`: the books write for an online order the customer has already paid (online-shop.ts only, never an
  * action). Money taken is always booked, so the lapsed / moving gate is skipped for it.
  */
-export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: { paidOnline?: boolean } = {}): Promise<{ saleId: string; number: number; changeCents: number }> {
+export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: { paidOnline?: boolean } = {}): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
@@ -130,7 +138,44 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       })),
     });
 
+    // Gift card lines (sold, loaded, paid out), checked and priced by the server (by line index).
+    const giftLines = new Map<number, Awaited<ReturnType<typeof prepareCardLine>>>();
+    for (const [i, l] of input.lines.entries()) {
+      if (!l.giftCard) continue;
+      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId].some(Boolean)) throw new UserError("A line can only be one thing.");
+      giftLines.set(i, await prepareCardLine(shopId, user.role, l.giftCard, Number(l.qty), Math.round(Number(l.unitPriceCents))));
+    }
+    if ([...giftLines.values()].some((g) => g.qty < 0) && rawTenders.some((t) => t?.method !== "CASH" && Number(t?.amountCents))) {
+      throw new UserError("A gift card balance is paid out in cash. Use Cash for the payout.");
+    }
+
     const lines = input.lines.map((l, i) => {
+      const gift = giftLines.get(i);
+      if (gift) {
+        // Selling or loading a card isn't a sale of goods: untaxed, never discounted (and the tax reports leave it out).
+        return {
+          partId: null,
+          repairJobId: null,
+          pickedUp: false,
+          description: gift.description,
+          partNumber: null,
+          qty: gift.qty,
+          unit: null,
+          unitPriceCents: gift.unitPriceCents,
+          discountCents: 0,
+          taxable: false,
+          discountable: false,
+          costCents: null,
+          costTenThou: null,
+          consignLinkId: null,
+          consignItemKey: null,
+          machineId: null,
+          stockUnitId: null,
+          tradeIn: null,
+          enrollmentId: null,
+          appointmentId: null,
+        };
+      }
       const things = [l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId].filter(Boolean).length;
       if (things > 1) throw new UserError("A line can only be one thing.");
       if (l.enrollmentId || l.appointmentId) return bookingLine(user.role, l, bookings, shop.timeZone);
@@ -231,6 +276,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         method: ALL_TENDER_METHODS.includes(t?.method) ? t.method : "OTHER",
         amountCents: Math.round(Number(t?.amountCents) || 0),
         note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
+        cardNumber: typeof t?.cardNumber === "string" ? t.cardNumber.slice(0, 40) : null,
       }))
       .filter((t) => t.amountCents !== 0);
     if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
@@ -239,7 +285,14 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // A tax amount the processor worked out (Stripe Tax) stands in for the rate; the rate recorded is the effective one,
     // so a return mirrors the sale's tax as closely as a rate can.
     const givenTax = input.taxCents != null && user.role !== "TECH" ? Math.max(0, Math.round(Number(input.taxCents))) : null;
-    const taxRatePct = givenTax != null ? effectiveRate(lines, givenTax) : shop.taxRatePct;
+    // A tax-exempt customer's sale charges no tax (their certificate number is kept on it), unless the cashier ticks
+    // "Charge tax anyway" (chargeTax). A processor's tax amount (online shop) is never overridden here.
+    const customerId = input.customerId || firstBookingCustomer(lines, bookings);
+    const exemptId =
+      givenTax == null && customerId && input.chargeTax !== true
+        ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
+        : null;
+    const taxRatePct = givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
     const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
@@ -257,12 +310,13 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // Each line's part of the whole-sale discount, adding up to it exactly (what a consigned item really sold for).
     const orderShares = orderDiscountShares(lines, totals.orderDiscount);
 
-    const customerId = input.customerId || firstBookingCustomer(lines, bookings);
     const at = new Date();
-    const sale = await db
+    const result = await db
       .$transaction(async (tx) => {
         const sh = await tx.shop.update({ where: { id: shopId }, data: { nextSaleNumber: { increment: 1 } }, select: { nextSaleNumber: true } });
         const number = sh.nextSaleNumber - 1;
+        const actor = actorOf(user);
+        const cards: Issued[] = [];
         const sale = await tx.sale.create({
           data: {
             shopId,
@@ -274,7 +328,9 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
             taxCents: totals.tax,
             totalCents: totals.total,
             taxRatePct,
-            tenders: tenders as Prisma.InputJsonValue,
+            taxExemptId: exemptId,
+            // The card number typed for a gift card or store credit isn't kept here; the card itself is (below).
+            tenders: tenders.map(({ cardNumber, ...t }) => (void cardNumber, t)) as Prisma.InputJsonValue,
             changeCents: totals.change,
             note: input.note?.slice(0, 500) || null,
             clientKey,
@@ -285,7 +341,14 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row } });
+          const kind = saleLineKind({ ...row, giftCardId: input.lines[i].giftCard ? "pending" : null, tradeInUnitId: tradeIn ? "pending" : null, partKind: row.partId ? parts.get(row.partId)?.kind : null });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind } });
+          const gift = giftLines.get(i);
+          if (gift) {
+            const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
+            cards.push(issued);
+            await tx.saleLine.update({ where: { id: line.id }, data: { giftCardId: issued.cardId } });
+          }
           if (l.stockUnitId || tradeIn) {
             await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
           }
@@ -361,15 +424,54 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
             if (handOver) await sendToPartner(shopId, job.linkId, "job.pickedup", { id: job.id, at: at.toISOString() }, tx, false);
           }
         }
-        return sale;
+        // Gift card and store credit payments (and store credit given back) move their cards in this transaction too: a
+        // card that can't cover its amount fails the whole sale.
+        if (tenders.some((t) => t.method === "GIFT" || t.method === "CREDIT")) {
+          const stored: Tender[] = [];
+          for (const { cardNumber, ...t } of tenders) {
+            if (t.method !== "GIFT" && t.method !== "CREDIT") {
+              stored.push(t);
+              continue;
+            }
+            const r = await applyCardTender(tx, actor, { method: t.method, amountCents: t.amountCents, cardNumber }, { customerId, saleId: sale.id, label: `Sale #${number}` });
+            stored.push({ ...t, cardId: r.cardId, last4: r.last4, leftCents: r.leftCents });
+            if (r.issued) cards.push(r.issued);
+          }
+          await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
+        }
+        // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
+        const label = `Sale #${number}`;
+        if (lines.some((l) => l.qty < 0)) {
+          await audit(tx, actor, { action: "sale.return", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, amountCents: totals.total, reason: input.note?.slice(0, 200) || null });
+        }
+        const lineDiscounts = lines.reduce((a, l) => a + (l.discountCents > 0 ? l.discountCents : 0), 0);
+        if (lineDiscounts > 0 || totals.orderDiscount > 0) {
+          await audit(tx, actor, {
+            action: "sale.discount",
+            subjectType: "Sale",
+            subjectId: sale.id,
+            subjectLabel: label,
+            amountCents: lineDiscounts + totals.orderDiscount,
+            changes: { lineDiscountCents: [0, lineDiscounts], saleDiscountCents: [0, totals.orderDiscount] },
+          });
+        }
+        const overrides: Record<string, [unknown, unknown]> = {};
+        for (const l of lines) {
+          const part = l.partId ? parts.get(l.partId) : null;
+          if (part && part.priceCents != null && l.unitPriceCents !== part.priceCents && l.qty > 0) overrides[part.partNumber] = [part.priceCents, l.unitPriceCents];
+        }
+        if (Object.keys(overrides).length) {
+          await audit(tx, actor, { action: "sale.price_override", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, changes: overrides });
+        }
+        return { sale, cards };
       })
       .catch(async (e: unknown) => {
         // The same sale sent twice at once: the other try made it.
         const made = (e as { code?: string })?.code === "P2002" ? await saleByKey(shopId, clientKey) : null;
-        if (made) return made;
+        if (made) return { sale: made, cards: [] as Issued[] };
         throw e;
       });
-    return { saleId: sale.id, number: sale.number, changeCents: sale.changeCents };
+    return { saleId: result.sale.id, number: result.sale.number, changeCents: result.sale.changeCents, cards: result.cards };
   }
 }
 
@@ -390,6 +492,18 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       data: { status: "VOIDED", voidedAt: at, note: [sale.note, `Void: ${reason || "no reason given"} (${user.name})`].filter(Boolean).join("\n") },
     });
     if (!done.count) throw new UserError("That sale is already void.");
+    await audit(tx, actorOf(user), {
+      action: "sale.void",
+      subjectType: "Sale",
+      subjectId: sale.id,
+      subjectLabel: `Sale #${sale.number}`,
+      amountCents: sale.totalCents,
+      changes: { status: ["COMPLETED", "VOIDED"] },
+      reason: reason || null,
+    });
+    // Gift cards and store credit the sale used come back; a card it sold goes void, unless it has been spent since
+    // (then the void is refused and nothing changes).
+    await reverseSale(tx, actorOf(user), sale.id, sale.number);
     // Vacuums sold go back in stock; trade-ins taken come back out (Vac Shop).
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.

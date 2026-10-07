@@ -20,6 +20,7 @@ import { isValidEmail, normalizeEmail } from "@/lib/email";
 import { knownDeviceCookie, knownDeviceFor, requestCookie } from "@/lib/known-device";
 import { choiceCookieName, readTicket, spendTicket } from "@/lib/sign-in-ticket";
 import type { Role } from "@/generated/prisma/enums";
+import { audit } from "@/lib/audit";
 
 // The same email rule accounts are made with (lib/email): a stricter check here locked out logins like owner@myshop.
 const credentialsSchema = z.object({
@@ -127,6 +128,45 @@ async function passwordMatches(logins: Login[], password: string): Promise<Match
  * try, not one per login compared.
  */
 export async function signInStep(credentials: unknown, request: Request | Headers | undefined): Promise<Matched[] | null> {
+  const found = await checkPassword(credentials, request);
+  // Not awaited: a refused try (a flood) must not wait for the log.
+  if (!found) void logFailure(credentials);
+  return found;
+}
+
+// Wrong passwords for a login that exists go in that company's audit log (design 4.1), at most one a minute per email so
+// a guessing flood can't fill the table; an email nobody has belongs to no company and is not logged.
+const FAIL_LOG_EVERY = 60_000;
+const failLogged = ((globalThis as unknown as { __signInFailLogged?: Map<string, number> }).__signInFailLogged ??= new Map());
+
+async function logFailure(credentials: unknown): Promise<void> {
+  try {
+    const parsed = credentialsSchema.safeParse(credentials);
+    if (!parsed.success) return;
+    const now = Date.now();
+    const key = parsed.data.email;
+    if (now - (failLogged.get(key) ?? 0) < FAIL_LOG_EVERY) return;
+    failLogged.delete(key);
+    failLogged.set(key, now);
+    if (failLogged.size > 10_000) failLogged.delete(failLogged.keys().next().value as string);
+    for (const u of await db.user.findMany({ where: { email: key, active: true }, select: { id: true, shopId: true, name: true, role: true, email: true } })) {
+      await audit(db, { shopId: u.shopId, id: u.id, name: u.name, role: u.role }, { action: "signin.fail", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})` });
+    }
+  } catch (e) {
+    console.error("audit sign-in failure:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function logSignIn(u: SignedIn): Promise<SignedIn> {
+  try {
+    await audit(db, { shopId: u.shopId, id: u.id, name: u.name, role: u.role }, { action: "signin.ok", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})` });
+  } catch (e) {
+    console.error("audit sign-in:", e instanceof Error ? e.message : e);
+  }
+  return u;
+}
+
+async function checkPassword(credentials: unknown, request: Request | Headers | undefined): Promise<Matched[] | null> {
   const parsed = credentialsSchema.safeParse(credentials);
   if (!parsed.success) return null;
   const { email, password } = parsed.data;
@@ -202,12 +242,15 @@ async function redeemTicket(credentials: unknown, request: Request | Headers | u
  * { email, password }, which signs in only when exactly one login fits, or { ticket, userId }.
  */
 export async function checkSignIn(credentials: unknown, request: Request | undefined): Promise<SignedIn | null> {
-  if (credentials && typeof credentials === "object" && "ticket" in credentials) return redeemTicket(credentials, request);
+  if (credentials && typeof credentials === "object" && "ticket" in credentials) {
+    const u = await redeemTicket(credentials, request);
+    return u && logSignIn(u);
+  }
   const found = await signInStep(credentials, request);
   if (!found || found.length !== 1) return null;
   const { shopName: _shop, ...login } = found[0];
   void _shop;
-  return login;
+  return logSignIn(login);
 }
 
 /**

@@ -10,6 +10,7 @@ import { assertId } from "@/lib/input";
 import { shopKinds } from "@/lib/equipment/shop";
 import { requireModule } from "@/lib/modules";
 // Adding a person and switching access live in src/lib/people.ts (the Solo plan's two logins, src/lib/plan.ts).
+import { actorOf, audit, diff } from "@/lib/audit";
 import { addPersonAs, protectAdminLogin, setPersonActiveAs } from "@/lib/people";
 
 /** The "For" select: "" (every kind) -> null, else a kind key this company has. */
@@ -65,25 +66,28 @@ export const saveShop = safe(async function saveShop(formData: FormData) {
     if (n <= top) throw new UserError(`Ticket #${ticketNo(top)} is already in use, so the next ticket number has to be ${top + 1} or more.`);
     nextTicketNumber = n;
   }
-  await db.shop.update({
-    where: { id: user.shopId },
-    data: {
-      name: str(formData.get("name")) ?? shop.name,
-      phone: str(formData.get("phone")),
-      email: str(formData.get("email")),
-      address: str(formData.get("address")),
-      laborRateCents: cents("laborRate", "Labor rate", shop.laborRateCents),
-      taxRatePct: num("taxRatePct", "Sales tax", shop.taxRatePct, 0, 30),
-      partsMarkupPct: num("partsMarkupPct", "Parts markup", shop.partsMarkupPct, 0, 1000),
-      warrantyDays: Math.round(num("warrantyDays", "Warranty (days)", shop.warrantyDays, 0, 3650)),
-      abandonedAfterDays: Math.round(num("abandonedAfterDays", "Abandoned after (days)", shop.abandonedAfterDays, 1, 3650)),
-      storageFeeCents: cents("storageFee", "Storage fee", shop.storageFeeCents),
-      nextTicketNumber,
-      libraryRoot: str(formData.get("libraryRoot")) ?? shop.libraryRoot,
-      timeZone: validTimeZone(str(formData.get("timeZone"))) ?? shop.timeZone,
-      payInstructions: str(formData.get("payInstructions")),
-    },
-  });
+  const data = {
+    name: str(formData.get("name")) ?? shop.name,
+    phone: str(formData.get("phone")),
+    email: str(formData.get("email")),
+    address: str(formData.get("address")),
+    laborRateCents: cents("laborRate", "Labor rate", shop.laborRateCents),
+    taxRatePct: num("taxRatePct", "Sales tax", shop.taxRatePct, 0, 30),
+    partsMarkupPct: num("partsMarkupPct", "Parts markup", shop.partsMarkupPct, 0, 1000),
+    warrantyDays: Math.round(num("warrantyDays", "Warranty (days)", shop.warrantyDays, 0, 3650)),
+    abandonedAfterDays: Math.round(num("abandonedAfterDays", "Abandoned after (days)", shop.abandonedAfterDays, 1, 3650)),
+    storageFeeCents: cents("storageFee", "Storage fee", shop.storageFeeCents),
+    libraryRoot: str(formData.get("libraryRoot")) ?? shop.libraryRoot,
+    timeZone: validTimeZone(str(formData.get("timeZone"))) ?? shop.timeZone,
+    payInstructions: str(formData.get("payInstructions")),
+  };
+  await db.shop.update({ where: { id: user.shopId }, data: { ...data, nextTicketNumber } });
+  // Rates and fees are prices; the rest are shop details (audit log, design 4.1).
+  const rates = diff(shop, data, ["laborRateCents", "taxRatePct", "partsMarkupPct", "storageFeeCents"]);
+  const details = diff(shop, data, ["name", "phone", "email", "address", "warrantyDays", "abandonedAfterDays", "libraryRoot", "timeZone", "payInstructions"]);
+  const actor = actorOf(user);
+  if (rates) await audit(db, actor, { action: "shop.rates", subjectType: "Shop", subjectId: user.shopId, subjectLabel: shop.name, changes: rates });
+  if (details) await audit(db, actor, { action: "shop.details", subjectType: "Shop", subjectId: user.shopId, subjectLabel: shop.name, changes: details });
   revalidatePath("/", "layout");
 });
 
@@ -111,6 +115,8 @@ export const saveServiceItem = safe(async function saveServiceItem(itemId: strin
     const it = await db.serviceItem.findFirst({ where: { id: itemId, shopId: user.shopId } });
     if (!it) throw new UserError("Service not found.");
     await db.serviceItem.update({ where: { id: itemId }, data: { name, priceCents: price, active: formData.get("active") === "on", ...listing } });
+    const changes = diff(it, { priceCents: price }, ["priceCents"]);
+    if (changes) await audit(db, actorOf(user), { action: "service.price", subjectType: "Service", subjectId: itemId, subjectLabel: it.name, changes });
   } else {
     const count = await db.serviceItem.count({ where: { shopId: user.shopId } });
     await db.serviceItem.create({ data: { shopId: user.shopId, name, priceCents: price, sortOrder: count, ...listing } });
@@ -164,6 +170,7 @@ export const resetUserPassword = safe.whileLapsed("resetUserPassword")(async fun
   if (u.role === "OWNER") throw new UserError("Only the owner can change the owner's password, under My password.");
   // Signed-in devices of that person have to sign in again with the new password.
   await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } });
+  await audit(db, actorOf(admin), { action: "user.password_reset", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})` });
 });
 
 // On the Solo plan a third active login is refused (src/lib/people.ts, src/lib/plan.ts).
@@ -184,6 +191,7 @@ export const setUserRole = safe(async function setUserRole(userId: string, formD
   if (u.role === role) return;
   // They sign in again, so nothing they had open keeps working with the old role.
   await db.user.update({ where: { id: u.id }, data: { role, sessionVersion: { increment: 1 } } });
+  await audit(db, actorOf(admin), { action: "user.role", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})`, changes: { role: [u.role, role] } });
   revalidatePath("/settings");
 });
 
@@ -202,4 +210,5 @@ export const changePassword = safe.whileLapsed("changePassword")(async function 
   if (!(await bcrypt.compare(current, u.passwordHash))) throw new UserError("Current password is wrong.");
   // Every device signed in with the old password (this one too) signs in again.
   await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10), sessionVersion: { increment: 1 } } });
+  await audit(db, actorOf(user), { action: "user.password_change", subjectType: "User", subjectId: user.id, subjectLabel: `${user.name} (${user.email})` });
 });

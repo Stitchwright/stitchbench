@@ -198,6 +198,11 @@ model Shop {
   consignSales      ConsignSale[]
   settlements       Settlement[]
   outbox            PartnerOutbox[]
+  giftCards         GiftCard[]
+  books             BooksSettings?
+  offsite           OffsiteSettings?
+  offsiteObjects    OffsiteObject[]
+  offsiteRuns       OffsiteRun[]
   // Paid modules
   licenses          License[]
   moduleGrants      ModuleGrant[]
@@ -352,11 +357,15 @@ model Customer {
   // Longarm rental: since when the shop has certified them to rent a machine (null: not certified)
   longarmCertifiedAt DateTime?
   createdAt          DateTime          @default(now())
+  // Tax exempt (a resale or exemption certificate): sales and tickets for them charge no tax, with the number recorded
+  taxExemptId        String?
+  taxExemptUntil     DateTime?
 
   machines      Machine[]
   tickets       Ticket[]       @relation("TicketCustomer")
   viaTickets    Ticket[]       @relation("TicketViaAccount")
   sales         Sale[]
+  giftCards     GiftCard[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -585,6 +594,8 @@ model Ticket {
   // Timing / adjustment readings: { "<factory setting id>": { "found": 2.4, "left": 3.1 } }
   measurements        Json         @default("{}")
   taxRatePct          Float        @default(0)
+  // The exemption certificate when this ticket was opened (or tax switched off for it); taxRatePct is then 0
+  taxExemptId         String?
   intakeAt            DateTime     @default(now())
   readyAt             DateTime?
   // Since when it has been waiting on the pickup shelf: set on every move into READY_FOR_PICKUP, cleared on leaving it
@@ -654,6 +665,8 @@ enum PaymentMethod {
   SHOP_COLLECTED
   INVOICE
   OTHER
+  GIFT
+  CREDIT
 }
 
 model Payment {
@@ -1240,6 +1253,8 @@ model Sale {
   taxCents      Int
   totalCents    Int
   taxRatePct    Float
+  // The certificate number when the sale was tax exempt (taxRatePct is then 0)
+  taxExemptId   String?
   // [{ method: CASH | CARD | CHECK | GIFT | OTHER, amountCents, note }]; cards are run on the shop's own terminal
   tenders       Json      @default("[]")
   changeCents   Int       @default(0)
@@ -1287,6 +1302,10 @@ model SaleLine {
   // A class seat or an appointment paid (qty 1) or refunded (qty -1) on this line (plain ids)
   enrollmentId   String?
   appointmentId  String?
+  // A gift card sold, loaded or paid out on this line (plain id)
+  giftCardId     String?
+  // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
+  kind           String?
 
   @@index([saleId])
   @@index([stockUnitId])
@@ -1352,6 +1371,72 @@ model PartnerLink {
 
 // A company's signing key for partner messages and invites (src/lib/partner-keys.ts): one row per company. The private
 // key is sealed (secrets.ts) and never sent; a move leaves it out, so the company makes a new key on the new install.
+// The bookkeeping export's names and choices (later-round-1-design.md 3.4), one row per company: the bookkeeper's own
+// account names by key (blank keeps the default), one sales account or one per category, discounts netted into sales or
+// shown apart, a card clearing account, and the last day already exported.
+model BooksSettings {
+  shopId          String   @id
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  accounts        Json     @default("{}")
+  byCategory      Boolean  @default(false)
+  netDiscounts    Boolean  @default(false)
+  cardClearing    String   @default("")
+  exportedThrough String? // "YYYY-MM-DD", the shop's day
+  updatedAt       DateTime @updatedAt
+}
+
+// Off-site backup (later-round-1-design.md section 1), one row per company. OFF until the owner has made the recovery key
+// and typed part of it back. The program keeps only the public half of the key pair.
+model OffsiteSettings {
+  shopId       String    @id
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  on           Boolean   @default(false)
+  target       String    @default("hub") // hub | folder | bucket
+  folderPath   String    @default("")
+  // The shop's own S3-compatible bucket (offsite-bucket): { endpoint, bucket, region, accessKeyId, secretSealed }
+  bucket       Json?
+  publicKey    String? // base64, 32 bytes
+  keyId        String? // the key's fingerprint, 16 hex characters
+  keyMadeAt    DateTime?
+  keyCheckedAt DateTime?
+  updatedAt    DateTime  @updatedAt
+}
+
+// A company's index of its off-site store: the data files and the photo objects (each sent once). Travels with the company
+// in a move, so photos aren't sent again afterwards.
+model OffsiteObject {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name       String
+  kind       String // data | photo
+  photoTable String?
+  photoId    String?
+  size       Int
+  sha256     String
+  uploadedAt DateTime  @default(now())
+  // When the photo's row left the database (its object goes after the grace period), or when the object was pruned
+  goneAt     DateTime?
+
+  @@unique([shopId, name])
+  @@index([shopId, kind, uploadedAt])
+}
+
+// This install's history of runs (per install: not in a move).
+model OffsiteRun {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String    @default("running") // running | ok | failed
+  bytes      BigInt    @default(0)
+  photos     Int       @default(0)
+  error      String?
+
+  @@index([shopId, startedAt])
+}
+
 model PartnerKey {
   shopId        String   @id
   shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -2723,4 +2808,84 @@ model ManualIndexDoc {
 
   @@id([shopId, docId])
   @@index([shopId, status])
+}
+
+// ============================================================
+// Audit log (later-round-1-design.md section 4): who did what to money, stock, prices and people. Append-only: the
+// database refuses UPDATE and DELETE (migration trigger) except in a transaction that says it is pruning
+// (src/lib/audit.ts). No foreign keys: an entry outlives the login or record it names, with the name and label as they
+// were.
+// ============================================================
+model AuditEntry {
+  id           String   @id @default(cuid())
+  shopId       String
+  at           DateTime @default(now())
+  userId       String?
+  userName     String
+  role         String?
+  // user | platform-admin | customer | system
+  actor        String   @default("user")
+  category     String // money | prices | stock | deletes | settings | people | data
+  action       String // "sale.void"
+  subjectType  String
+  subjectId    String?
+  subjectLabel String?
+  // { field: [before, after] }
+  changes      Json?
+  amountCents  Int?
+  reason       String?
+  ip           String?
+
+  @@index([shopId, at])
+  @@index([shopId, subjectType, subjectId])
+}
+
+// ============================================================
+// Gift cards and store credit (later-round-1-design.md section 2). The ledger (GiftCardEntry) is the truth;
+// balanceCents is its sum, kept in step in the same transaction (never below 0: a database check says so).
+// ============================================================
+model GiftCard {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // Printed on the card: GC-XXXX-XXXX-XXXX-C, or a number from a pre-printed blank (6 to 24 letters and digits)
+  number       String
+  kind         String    @default("gift") // gift | credit
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  balanceCents Int       @default(0)
+  status       String    @default("active") // active | void
+  issuedAt     DateTime  @default(now())
+  lastUsedAt   DateTime?
+  note         String?
+  createdById  String?
+
+  entries GiftCardEntry[]
+
+  @@unique([shopId, number])
+  @@index([shopId, customerId])
+}
+
+model GiftCardEntry {
+  id          String   @id @default(cuid())
+  shopId      String
+  cardId      String
+  card        GiftCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  at          DateTime @default(now())
+  // + onto the card, - off it
+  amountCents Int
+  // SOLD | LOADED | REDEEMED | REFUNDED_TO | CASHED_OUT | ADJUSTED | OPENING | VOID | MOVED
+  reason      String
+  // Plain ids of what caused it
+  saleId      String?
+  saleLineId  String?
+  paymentId   String?
+  ticketId    String?
+  userId      String?
+  note        String?
+
+  @@index([cardId, at])
+  @@index([shopId, at])
+  @@index([saleId])
+  @@index([paymentId])
 }

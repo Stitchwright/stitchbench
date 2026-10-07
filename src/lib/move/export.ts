@@ -223,13 +223,27 @@ async function countOther(tx: Tx, table: string, shopId: string): Promise<number
   return r[0]?.n ?? 0;
 }
 
+/**
+ * The columns a page reads: all of them, or (a backup, whose pictures are sent on their own) every column but the Bytes
+ * ones, which come out as null with the picture's SHA-256 in `_ref` for the restore to fetch the right object by.
+ */
+async function selectList(tx: Tx, t: MoveTable, noBytes: boolean): Promise<string> {
+  if (!noBytes || !t.bytes?.length) return "*";
+  const cols = await tx.$queryRawUnsafe<{ column_name: string }[]>(
+    `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position`,
+    t.t,
+  );
+  return cols.map((c) => (t.bytes!.includes(c.column_name) ? `NULL::bytea AS "${c.column_name}", encode(sha256("${c.column_name}"), 'hex') AS "_ref"` : `"${c.column_name}"`)).join(", ");
+}
+
 /** The rows of one table in key order, a page at a time (design 3: 200 a page, 20 for pictures). */
-async function* pages(tx: Tx, t: MoveTable, shopId: string): AsyncGenerator<Row[]> {
+async function* pages(tx: Tx, t: MoveTable, shopId: string, noBytes = false): AsyncGenerator<Row[]> {
   const page = t.page ?? PAGE;
   let after = "";
+  const list = await selectList(tx, t, noBytes);
   for (;;) {
     const rows = await tx.$queryRawUnsafe<(Row & { _k: string })[]>(
-      `SELECT *, (${t.key}) AS _k FROM "${t.t}" WHERE ${shopFilterSql(t)} AND (${t.key}) > $2 ORDER BY (${t.key}) LIMIT ${page}`,
+      `SELECT ${list}, (${t.key}) AS _k FROM "${t.t}" WHERE ${shopFilterSql(t)} AND (${t.key}) > $2 ORDER BY (${t.key}) LIMIT ${page}`,
       shopId,
       after,
     );
@@ -266,6 +280,12 @@ export type ExportOpts = {
   moveId?: string | null;
   /** Called after each page and at the end. */
   onProgress?: (p: ExportProgress) => void;
+  /**
+   * "backup": an off-site backup (later-round-1-design.md 1.2): the same file with no freeze, no move record and no hub
+   * move token, and the picture tables carrying `_ref` (the SHA-256) in place of the bytes. A restore puts the pictures
+   * back from their own objects (src/lib/offsite/restore.ts) before the importer sees the file.
+   */
+  purpose?: "move" | "backup";
 };
 
 export type Export = { stream: ReadableStream<Uint8Array>; fileName: string; moveId: string | null };
@@ -276,13 +296,16 @@ export type Export = { stream: ReadableStream<Uint8Array>; fileName: string; mov
  * (table, rows, gzipped bytes) goes to the CompanyMove row every page, and the row is marked done or failed at the end.
  */
 export async function exportCompany(user: Mover, shopId: string, opts: ExportOpts = {}): Promise<Export> {
+  const backup = opts.purpose === "backup";
   let shop = await moveShop(user, shopId);
-  let moveId = opts.moveId ?? null;
+  let moveId = backup ? null : (opts.moveId ?? null);
   if (moveId) {
     const row = await db.companyMove.findFirst({ where: { id: moveId, shopId, direction: "export" }, select: { id: true } });
     if (!row) throw new UserError("That move isn't one of this company's.");
   }
-  if (opts.freeze && !shop.movingAt) {
+  if (backup) {
+    // A backup is a read: it never freezes, and it works while the company is being moved or has moved.
+  } else if (opts.freeze && !shop.movingAt) {
     moveId = await startMove(user, shopId);
     shop = await moveShop(user, shopId);
   } else if (!moveId && shop.movingAt) {
@@ -291,7 +314,7 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
   const needKeys = await adminModules(shopId);
   // A move (frozen, with its record) carries the hub's move token; a copy made without the freeze doesn't (it isn't a
   // move: a token in it would let any copy take the company on the hub).
-  const isMove = !!moveId && !!shop.movingAt && !shop.movedOutAt;
+  const isMove = !backup && !!moveId && !!shop.movingAt && !shop.movedOutAt;
   const tok = isMove ? await moveTokenFor(shopId, moveId!) : { token: null, error: null };
   const lines = new Lines();
   let sent = 0;
@@ -323,7 +346,7 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
         const mig = await tx.$queryRawUnsafe<{ m: string | null }[]>(`SELECT max(migration_name) AS m FROM "_prisma_migrations"`);
         // The install's places in the hub's feeds, from the same snapshot as the company's PartnerSeen rows.
         const hub = hubPart(await tx.hubState.findUnique({ where: { id: 1 } }), tok.token);
-        const hubNote = hub && !hub.moveToken ? hubWarning(true, isMove, tok.error) : null;
+        const hubNote = hub && !hub.moveToken && !backup ? hubWarning(true, isMove, tok.error) : null;
         const counts: Record<string, number> = {};
         for (const t of MOVE_TABLES) counts[t.t] = await countRows(tx, t, shop.id);
         progress.rowsTotal = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -346,7 +369,7 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
         for (const t of MOVE_TABLES) {
           progress.table = t.t;
           tables[t.t] = 0;
-          for await (const page of pages(tx, t, shop.id)) {
+          for await (const page of pages(tx, t, shop.id, backup)) {
             for (const r of page) await lines.push(JSON.stringify(encodeRow(t, r)) + "\n");
             tables[t.t] += page.length;
             rows += page.length;
