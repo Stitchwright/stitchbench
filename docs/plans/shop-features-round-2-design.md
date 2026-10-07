@@ -1177,3 +1177,20 @@ Decisions made while building:
   report line beside layaway's (the Special orders page shows the total held; the books carry it).
 - Browser test needed: `tests/special-orders.spec.ts` (settings, the register's Special order, the list and slip,
   receiving on the item page, the register's "Add it", cancel and undo, coming soon in the register's search).
+
+**`want-lists` (1.4, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021020000_want_lists` (`WantItem`, carried by
+the company file and the customer merge; deleted with the customer). Code: `src/lib/want-lists.ts`,
+`src/actions/want-lists.ts`, the customer's page (**Want list**, "Add to her want list": `src/components/customer-want-list.tsx`,
+`want-add-form.tsx`, `want-lines.tsx`), **Want lists** (`/want-lists`: "Here now" across the shop, or everything watched;
+linked from Special orders), "N customers want this" on the item's page, a to-do line. Matching runs from
+`src/lib/arrivals.ts` (an order received, stock received by hand), a new item (`createPart`) and a supplier's list
+(`applyCatalogFor`, the feed source too). Check: `scripts/checks/want-lists.check.ts` (5 groups); `customer-merge`,
+`catalog-any-item`, `connectors`, `move-export` pass.
+Decisions made while building:
+- Words match when every word starts a word of the item's number, description, maker, collection, designer, color name or
+  online title ("pin" doesn't match "spinner"); an item line matches only that item. A line already "Here now" isn't
+  matched again; an item on the shelf when it's added is "Here now" at once.
+- "Let her know" sends the `order_in` message (without "we're holding it", since nothing is held), once per line and
+  item; with no way to reach her (no messages, no address, Marketing off) it says to call her. Nothing goes by itself.
+- Browser test needed: `tests/want-lists.spec.ts` (add in words on the customer page, receive on the item page, "1 customer
+  wants this", Here now, the Want lists page, Done).

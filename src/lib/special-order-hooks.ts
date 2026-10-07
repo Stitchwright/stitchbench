@@ -158,5 +158,9 @@ export async function orderInStillWanted(row: { shopId: string; refType: string 
     if (o.status === "DONE") return "It was picked up";
     if (o.status !== "HERE") return "It isn't here any more";
   }
+  if (row.refType === "want" && row.refId) {
+    const w = await db.wantItem.findFirst({ where: { id: row.refId, shopId: row.shopId }, select: { id: true } });
+    if (!w) return "The want list line is gone";
+  }
   return null;
 }
