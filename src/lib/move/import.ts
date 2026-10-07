@@ -438,6 +438,8 @@ async function insertFile(file: string, plan: Plan, by: Importer, now: Date, onP
     async (tx) => {
       // A copy of this company deleted here earlier (it is coming back) leaves the rows of the tables without a foreign
       // key to Shop (the partner messages it had applied, the ones that failed): the file's are the company's now.
+      // AuditEntry is one of those tables, and the audit log refuses deletes unless the transaction says it is pruning.
+      if (plan.loose.includes("AuditEntry")) await tx.$executeRaw`SELECT set_config('stitchbench.audit_prune', 'on', true)`;
       for (const t of plan.loose) await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "shopId" = $1`, shopId);
       const tap: Tap = { hash: crypto.createHash("sha256"), bytes: 0 };
       let batch: Record<string, unknown>[] = [];
