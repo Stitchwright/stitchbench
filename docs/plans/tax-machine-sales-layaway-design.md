@@ -223,3 +223,30 @@ Decisions made while building:
   what was paid. The reminder is a button ("Send a friendly reminder", Marketing on), not automatic.
 - Browser test needed: the register's Layaway button (start with a machine and an item, payment, pick up), the layaway
   page (plan, payments, cancel), the printed terms, Settings → Layaway, Reports → Layaways and plans.
+
+**Section 1, sales tax holidays (7 Oct 2026).** Migration `20261019200000_tax_holidays` (`TaxHoliday`,
+`SaleLine.taxNote`). Code: `src/lib/tax-holiday-math.ts` (kinds, the Massachusetts preset, the limit rule, shared by
+the register and the server), `src/lib/tax-holidays.ts`, `src/actions/tax-holidays.ts`, `src/components/tax-holiday-form.tsx`;
+Settings → Selling (was "Layaway, plans and warranties") starts with "Sales tax holidays". Check:
+`scripts/checks/tax-holidays.check.ts` (8 groups); `layaway`, `sales-tax`, `online-shop`, `reports`, `move-export`,
+`register-bookings`, `store-credit` still pass.
+Decisions made while building:
+- What a holiday covers is picked from the register's report categories (fabric, notions, thread, patterns, accessories,
+  supplies, parts, machines for sale, other items; classes, appointments and service plans unticked by default). The
+  Massachusetts preset ticks the goods with a $2,500 limit and fills Aug 8 to 9 for 2026, the second August weekend for
+  other years, for the shop to confirm. The limit is checked on the price each after the line's own discount (not the
+  whole-sale discount).
+- `completeSaleAs` applies it by the shop's date (no holiday for a processor's tax amount, an exempt customer, or a
+  return); a covered line is saved untaxed with `taxNote = holiday:<id>`; "Charge tax anyway" on the register's line
+  sends `taxAnyway`. An exempt customer's taxable lines get `taxNote = exempt`. A receipt return copies each item's
+  tax and note from the original line (an item bought tax free comes back tax free).
+- Layaway: the pick-up checks the holidays on the pick-up day and on the day the layaway began; the layaway's own
+  totals (plan, pick-up quote, page) use the same rule.
+- Online shop: the cart is priced with the holiday on the order's day. If the order is posted to the books on another
+  day, the tax the customer paid is kept (the existing "given tax" path), but those lines carry no holiday note.
+- The "confirm the dates" reminder is a to-do line for owners and admins, from two weeks before the preset's month
+  until a holiday from that preset is set up for the year, only for shops that used the preset before.
+- A holiday with sales under it is switched off, not deleted (receipts and the tax report name it).
+- Browser test needed: Settings → Selling's holidays (the Massachusetts button, the form), the register on a holiday
+  (the banner, "Tax holiday" on lines, "Charge tax anyway"), the receipt's "(tax holiday)" and its line, Reports →
+  Sales tax's holiday list.

@@ -8,13 +8,14 @@ import { money, ticketNo } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { shopTimeZone } from "@/lib/shop-zone";
-import { fmtDay } from "@/lib/zoned";
+import { fmtDay, ymdOf } from "@/lib/zoned";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
 import { scheduleFor } from "@/lib/notices/vars";
 import { markBackAtCounter } from "@/actions/notices";
 import { ActionButton } from "@/components/action-form";
 import { REGISTER_AFTER_DAYS } from "@/lib/units/units";
 import { listLayaways } from "@/lib/layaway";
+import { presetReminders } from "@/lib/tax-holidays";
 
 const WEEK = 7 * 86_400_000;
 const SHOWN = 5;
@@ -81,6 +82,20 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         </Link>
       ),
     });
+  }
+
+  // A state's tax holiday the shop used before: confirm this year's dates (they are set by law each year).
+  if (admin) {
+    for (const r of await presetReminders(shopId, ymdOf(now, tz))) {
+      lines.push({
+        key: `holiday-${r.key}`,
+        node: (
+          <Link href={`/settings/sales?preset=${r.key}#holidays`} className="link">
+            Is {r.state}&apos; tax-free weekend on this year? Confirm the dates.
+          </Link>
+        ),
+      });
+    }
   }
 
   // Layaways behind on their payments (or past the last day).

@@ -24,6 +24,9 @@ import { customerForOnline, SLUG_RE, slugOf, type OnlineCustomer } from "@/lib/o
 import { KIND_LABEL, numberKey } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
 import { inEighths, qtyText, saleTotals } from "@/lib/register-math";
+import { holidaysOn } from "@/lib/tax-holidays";
+import { holidayCovers } from "@/lib/tax-holiday-math";
+import { ymdOf } from "@/lib/zoned";
 import { completeSaleAs, voidSaleAs, type SaleLineInput } from "@/lib/register-sale";
 import type { CurrentUser } from "@/lib/session";
 import { createCheckoutSession, looksLikeSecretKey, looksLikeWebhookSecret, refundPayment, retrieveSession, TAX_CODE_SHIPPING, verifyWebhook, type StripeSession } from "@/lib/shop/stripe";
@@ -489,10 +492,12 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
   const parts = ids.length
     ? await db.part.findMany({
         where: { ...LISTED(store.id), id: { in: ids } },
-        select: { id: true, description: true, onlineTitle: true, partNumber: true, priceCents: true, unit: true, qtyOnHand: true },
+        select: { id: true, description: true, onlineTitle: true, partNumber: true, priceCents: true, unit: true, qtyOnHand: true, kind: true },
       })
     : [];
   const byId = new Map(parts.map((p) => [p.id, p]));
+  // A sales tax holiday in force today (by the order's date, as at the counter) takes the tax off what it covers.
+  const holidays = await holidaysOn(store.id, [ymdOf(new Date(), store.timeZone)]);
   const lines: CartLine[] = [];
   const problems: string[] = [];
   for (const [id, qtyRaw] of cart) {
@@ -514,7 +519,10 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
     lines.push({ partId: p.id, partNumber: p.partNumber, title: titleOf(p), qty, unit: p.unit, unitPriceCents, lineCents, available, problem });
     if (problem) problems.push(`${titleOf(p)}: ${problem.toLowerCase()}.`);
   }
-  const saleLines = lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true }));
+  const saleLines = lines.map((l) => {
+    const line = { qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true };
+    return { ...line, taxable: !holidays.some((h) => holidayCovers(h, { ...line, kind: byId.get(l.partId)?.kind })) };
+  });
   const subtotal = saleLines.reduce((a, l) => a + Math.round(l.qty * l.unitPriceCents), 0);
   const shipLine = shipLineFor(store, fulfil, subtotal);
   const taxAtCheckout = store.taxVia === "stripe" && fulfil === "ship";

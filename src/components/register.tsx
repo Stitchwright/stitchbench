@@ -30,6 +30,7 @@ import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
+import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
@@ -61,6 +62,10 @@ type CartLine = {
   stockUnitId?: string;
   tradeIn?: TradeInInput;
   servicePlan?: PlanCart;
+  /** What the line is reported under (a part's kind, UNIT, CLASS...): a tax holiday covers some kinds only. */
+  kind?: string;
+  /** A tax holiday covers it but the cashier charges the tax anyway. */
+  taxAnyway?: boolean;
   /** A class seat or an appointment paid or refunded here (design 12.3): one each, priced by the server. */
   enrollmentId?: string;
   appointmentId?: string;
@@ -95,6 +100,7 @@ export function Register({
   vac,
   unitKinds,
   layaway,
+  holiday,
   preload,
 }: {
   taxRatePct: number;
@@ -105,6 +111,8 @@ export function Register({
   unitKinds?: TradeKind[] | null;
   /** The shop's layaway defaults and today (in its zone), for the Layaway button. */
   layaway?: LayawayDefaults;
+  /** The sales tax holiday in force today, if any: the lines it covers carry no tax. */
+  holiday?: Holiday | null;
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -159,7 +167,16 @@ export function Register({
   const pending = useRef<{ key: string; sent: string } | null>(null);
 
   // A partner's repair bill is paid as billed, and a trade-in is credit: a whole-sale discount doesn't come off them.
-  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard })), [cart]);
+  // A tax holiday takes the tax off the lines it covers (the server applies the same rule when the sale is saved).
+  const lines = useMemo(
+    () =>
+      cart.map((l) => {
+        const line = { ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard };
+        const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
+        return { ...line, holidayCovered: covered, taxable: line.taxable && !(covered && !line.taxAnyway) };
+      }),
+    [cart, holiday],
+  );
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
@@ -188,7 +205,7 @@ export function Register({
         return;
       }
       setDone(null);
-      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true }]);
+      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT" }]);
       return;
     }
     setDone(null);
@@ -205,6 +222,7 @@ export function Register({
           description: it.description,
           partNumber: it.partNumber,
           unit: it.unit,
+          kind: it.kind,
           qty: sign * (it.unit === "yd" ? 1 : 1),
           unitPriceCents: it.priceCents ?? 0,
           priced: it.priceCents != null,
@@ -223,7 +241,7 @@ export function Register({
   /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
   function addLine(line: UnitCartLine) {
     setDone(null);
-    setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line }]);
+    setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line, kind: line.servicePlan ? "SERVICE_PLAN" : line.stockUnitId ? "UNIT" : undefined }]);
   }
 
   /** A layaway's deposit, payment or pick-up rang up its own sale: show its receipt link and start the next one fresh. */
@@ -248,7 +266,7 @@ export function Register({
       return;
     }
     setDone(null);
-    setCart((c) => [...c, { key: newKey(), ...id, description: b.description, unit: null, qty: refund ? -1 : 1, unitPriceCents: b.dueCents, priced: true, discountPct: 0, taxable: b.taxable }]);
+    setCart((c) => [...c, { key: newKey(), ...id, description: b.description, unit: null, qty: refund ? -1 : 1, unitPriceCents: b.dueCents, priced: true, discountPct: 0, taxable: b.taxable, kind: b.kind === "enrollment" ? "CLASS" : "APPOINTMENT" }]);
     if (!customer && b.customerId) setCustomer({ id: b.customerId, name: b.customerName, phone: null });
   }
 
@@ -589,6 +607,7 @@ export function Register({
         stockUnitId: l.stockUnitId ?? null,
         tradeIn: l.tradeIn ?? null,
         servicePlan: l.servicePlan ?? null,
+        taxAnyway: l.taxAnyway ?? false,
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
       })),
@@ -652,6 +671,12 @@ export function Register({
         <InsecureNotice what="The camera" instead={CAMERA_INSTEAD} page={camPage} />
         <video ref={camVideo} className={camOn ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
+        {holiday && (
+          <p className="card card-pad text-sm" role="status">
+            <span className="pill tone-ready mr-2">Tax holiday today</span>
+            {holiday.name} ({holidayDays(holiday)}): the items it covers{holiday.maxUnitCents != null ? `, ${money(holiday.maxUnitCents)} or less each,` : ""} carry no sales tax.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
             <Plus size={14} aria-hidden /> Misc item
@@ -973,7 +998,23 @@ export function Register({
                         <input type="checkbox" checked={l.pickedUp !== false} onChange={(e) => setLine(l.key, { pickedUp: e.target.checked })} /> taking the machine home
                       </label>
                     )}
-                    {!l.taxable && <span className="muted ml-1 text-xs">(no tax)</span>}
+                    {l.holidayCovered && !l.taxAnyway ? (
+                      <span className="ml-1 inline-flex items-center gap-1 text-xs">
+                        <span className="pill tone-ready">Tax holiday</span>
+                        <button type="button" className="link" onClick={() => setLine(l.key, { taxAnyway: true })}>
+                          Charge tax anyway
+                        </button>
+                      </span>
+                    ) : l.holidayCovered ? (
+                      <span className="ml-1 inline-flex items-center gap-1 text-xs">
+                        <span className="muted">tax charged</span>
+                        <button type="button" className="link" onClick={() => setLine(l.key, { taxAnyway: false })}>
+                          Undo
+                        </button>
+                      </span>
+                    ) : (
+                      !l.taxable && <span className="muted ml-1 text-xs">(no tax)</span>
+                    )}
                   </td>
                   <td>
                     <input

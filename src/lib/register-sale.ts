@@ -20,9 +20,11 @@ import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
 import { actorOf, audit } from "@/lib/audit";
 import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type CardLine, type Issued } from "@/lib/gift-cards";
-import { fmtWhen } from "@/lib/zoned";
+import { fmtWhen, ymdOf } from "@/lib/zoned";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { saleLineKind } from "@/lib/sale-kind";
+import { holidaysOn } from "@/lib/tax-holidays";
+import { holidayCovers } from "@/lib/tax-holiday-math";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -52,6 +54,8 @@ export type SaleLineInput = {
   giftCard?: CardLine | null;
   /** The shop's service plan sold for a machine on this sale or one of the customer's. */
   servicePlan?: PlanLineInput | null;
+  /** A tax holiday covers this line but the cashier charges tax anyway (an item the state leaves out that its kind didn't catch). */
+  taxAnyway?: boolean;
   /** Layaway money (src/lib/layaway.ts only, with opts.layaway): a payment or the payments used up / given back, or its cancel fee. */
   layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
 };
@@ -347,13 +351,56 @@ export async function completeSaleAs(
     // A return scanned in from a receipt (every line a return) gives back the tax as that sale charged it: its rate and
     // exemption, not the customer's or the shop's today.
     const fromReceipt = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.every((l) => l.qty < 0);
-    const original = fromReceipt ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true } }) : null;
+    const original = fromReceipt
+      ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true, lines: { select: { partId: true, taxable: true, taxNote: true } } } })
+      : null;
     if (fromReceipt && !original) throw new UserError("The sale being returned wasn't found.");
     const exemptId = original
       ? original.taxExemptId
       : givenTax == null && customerId && input.chargeTax !== true
         ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
         : null;
+    // Each line's category (written on it below), and why a line that could be taxed wasn't (SaleLine.taxNote).
+    const lineKinds = lines.map((l, i) =>
+      saleLineKind({
+        ...l,
+        kind: input.lines[i].layawayKind ?? null,
+        giftCardId: input.lines[i].giftCard ? "pending" : null,
+        tradeInUnitId: l.tradeIn ? "pending" : null,
+        machinePlanId: planLines.has(i) ? "pending" : null,
+        partKind: l.partId ? parts.get(l.partId)?.kind : null,
+      }),
+    );
+    const taxNotes: (string | null)[] = lines.map(() => null);
+    if (original) {
+      // A return from a receipt gives each item back as it was taxed: one bought on a tax holiday comes back tax free.
+      for (const [i, l] of lines.entries()) {
+        const o = l.partId ? original.lines.find((x) => x.partId === l.partId) : null;
+        if (o) {
+          l.taxable = o.taxable;
+          taxNotes[i] = o.taxNote;
+        }
+      }
+    } else if (givenTax == null && exemptId) {
+      for (const [i, l] of lines.entries()) if (l.taxable) taxNotes[i] = "exempt";
+    } else if (givenTax == null) {
+      // A sales tax holiday in force today (tax-machine-sales-layaway-design.md section 1), or for a layaway's pick-up
+      // on the day it began, takes the tax off the lines it covers, unless the cashier charged it anyway on that line.
+      const days = [ymdOf(new Date(), shop.timeZone)];
+      if (lay?.mode === "pickup") {
+        const began = await db.layaway.findFirst({ where: { id: lay.id, shopId }, select: { startedAt: true } });
+        if (began) days.push(ymdOf(began.startedAt, shop.timeZone));
+      }
+      const holidays = await holidaysOn(shopId, days);
+      for (const [i, l] of lines.entries()) {
+        if (l.qty <= 0 || input.lines[i].taxAnyway) continue;
+        const h = holidays.find((x) => holidayCovers(x, { ...l, kind: lineKinds[i] }));
+        if (h) {
+          l.taxable = false;
+          taxNotes[i] = `holiday:${h.id}`;
+        }
+      }
+    }
     const taxRatePct = original ? original.taxRatePct : givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
     const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
@@ -405,15 +452,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const kind = saleLineKind({
-            ...row,
-            kind: input.lines[i].layawayKind ?? null,
-            giftCardId: input.lines[i].giftCard ? "pending" : null,
-            tradeInUnitId: tradeIn ? "pending" : null,
-            machinePlanId: planLines.has(i) ? "pending" : null,
-            partKind: row.partId ? parts.get(row.partId)?.kind : null,
-          });
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind, layawayId: lay?.id ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], layawayId: lay?.id ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
