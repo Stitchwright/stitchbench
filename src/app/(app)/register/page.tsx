@@ -9,6 +9,7 @@ import { listLenders } from "@/lib/financing";
 import { promotionsOn } from "@/lib/promotions";
 import { specialOrderSettings } from "@/lib/special-orders";
 import { yardBreaksFor } from "@/lib/birthdays";
+import { tradeUpSettings } from "@/lib/trade-up";
 import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -99,7 +100,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} preload={preload} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} tradeInLessPct={(await tradeUpSettings(user.shopId)).lessPct} preload={preload} />
     </div>
   );
 }

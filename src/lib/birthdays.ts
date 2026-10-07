@@ -82,7 +82,7 @@ export async function birthdayFor(shopId: string, customerId: string | null, tod
 type Tx = Prisma.TransactionClient;
 
 /** Inside a sale that used the birthday percent: once a year (another register may have just used it). */
-export async function useBirthday(tx: Tx, shopId: string, customerId: string, year: number): Promise<void> {
+export async function markBirthdayUsed(tx: Tx, shopId: string, customerId: string, year: number): Promise<void> {
   const r = await tx.customer.updateMany({ where: { id: customerId, shopId, OR: [{ birthdayUsedYear: null }, { birthdayUsedYear: { not: year } }] }, data: { birthdayUsedYear: year } });
   if (!r.count) throw new UserError("Her birthday offer was just used. Take the birthday off and complete the sale.");
 }
@@ -100,7 +100,7 @@ export async function giveBirthdayCreditAs(user: CurrentUser, customerId: string
   const c = await db.customer.findFirst({ where: { id: customerId, shopId: user.shopId }, select: { id: true, name: true } });
   if (!c) throw new UserError("Customer not found.");
   await db.$transaction(async (tx) => {
-    await useBirthday(tx, user.shopId, c.id, Number(today.slice(0, 4)));
+    await markBirthdayUsed(tx, user.shopId, c.id, Number(today.slice(0, 4)));
     await giveCredit(tx, actorOf(user), { card: null, customerId: c.id, amountCents: b.value, reason: "LOADED", cause: { userId: user.id }, label: c.name, why: "Birthday credit" });
   });
   return `Happy birthday! ${money(b.value)} is on her store credit.`;

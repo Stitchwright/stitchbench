@@ -57,6 +57,8 @@ export function CustomerExtrasLines({
   onAdd,
   birthdayOn,
   onBirthday,
+  machineOnSale = false,
+  onTradeUp,
 }: {
   extras: CustomerExtras | null;
   customerId: string | null;
@@ -65,6 +67,9 @@ export function CustomerExtrasLines({
   /** The birthday percent is on this sale (the register prices it), and its switch. */
   birthdayOn: boolean;
   onBirthday: (on: boolean) => void;
+  /** A machine for sale is on the sale (a repair credit can come off it), and the tap that uses a credit. */
+  machineOnSale?: boolean;
+  onTradeUp?: (ticketId: string) => void;
 }) {
   if (!e) return null;
   const first = e.name.split(" ")[0];
@@ -72,9 +77,25 @@ export function CustomerExtrasLines({
   const g = e.group;
   const renew = g?.renew && !inCart.includes(`member:${g.renew.partId}`) ? g.renew : null;
   const b = e.birthday;
-  if (!orders.length && !g && !e.lifetime.length && !b) return null;
+  const credits = e.tradeUps.filter((t) => !inCart.includes(`tradeup:${t.ticketId}`));
+  if (!orders.length && !g && !e.lifetime.length && !b && !credits.length) return null;
   return (
     <div className="card card-pad space-y-2 text-base" role="status">
+      {credits.map((t) => (
+        <div key={t.ticketId} className="flex flex-wrap items-center justify-between gap-2">
+          <span>
+            <span className="pill tone-ready mr-1">Repair credit {money(t.amountCents)}</span>
+            off a machine she buys (her {t.machine}), until {fmtDay(t.until)}
+          </span>
+          {machineOnSale && onTradeUp ? (
+            <button type="button" className="btn btn-primary min-h-11" onClick={() => onTradeUp(t.ticketId)}>
+              Use it
+            </button>
+          ) : (
+            <span className="muted text-sm">Add a machine for sale to use it.</span>
+          )}
+        </div>
+      ))}
       {b && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>

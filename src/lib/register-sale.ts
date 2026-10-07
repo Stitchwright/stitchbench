@@ -31,7 +31,8 @@ import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
 import { holidayCovers } from "@/lib/tax-holiday-math";
 import { applyMembership, ruleCtxFor, undoMembership } from "@/lib/price-groups";
 import { bestRule, type RuleCtx } from "@/lib/price-rules";
-import { birthdayFor, unuseBirthday, useBirthday, yardBreaksFor } from "@/lib/birthdays";
+import { birthdayFor, markBirthdayUsed, unuseBirthday, yardBreaksFor } from "@/lib/birthdays";
+import { creditCents, spendCredit, unuseCredits } from "@/lib/trade-up";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -76,6 +77,8 @@ export type SaleLineInput = {
   depositUsed?: boolean;
   /** The cashier took the customer's price rule (her group, lifetime, yard break, birthday) off this line. */
   noRule?: boolean;
+  /** A machine sold using a repair's trade-up credit (shop-features-round-2-design.md 1.9): the ticket. */
+  tradeUpTicketId?: string | null;
   /**
    * Loaners and rentals (1.7, 1.8), from the program only: a loaner's deposit is a DEPOSIT line naming the loan; a kept
    * deposit is LOAN_FEE ("Loaner charges"); rent on a machine out on rental is RENT ("Rentals").
@@ -454,6 +457,22 @@ export async function completeSaleAs(
         priceNotes[i] = hit.label;
       }
     }
+    // A repair's trade-up credit on a machine being bought (1.9): a discount on that line, once per ticket.
+    const tradeUps = new Map<number, string>();
+    for (const [i, l] of lines.entries()) {
+      const tid = input.lines[i].tradeUpTicketId;
+      if (!tid) continue;
+      if (!l.stockUnitId || l.qty <= 0 || noRules) throw new UserError("A repair credit comes off a machine being bought.");
+      if ([...tradeUps.values()].includes(tid)) throw new UserError("That repair credit is on this sale twice.");
+      const credit = Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), await creditCents(shopId, customerId, tid, today));
+      if (credit > l.discountCents) {
+        l.discountCents = credit;
+        promoIds[i] = null;
+        groupIds[i] = null;
+      }
+      priceNotes[i] = "Trade-up credit";
+      tradeUps.set(i, tid);
+    }
     // A rental bought: the rent credit off the machine's price says so on the receipt.
     for (const [i, l] of lines.entries()) if (l.stockUnitId && input.lines[i].unitLoanId && l.discountCents > 0) priceNotes[i] = "Rent credit";
     // A membership sold names its buyer (she joins its group).
@@ -557,6 +576,8 @@ export async function completeSaleAs(
             cards.push(issued);
             await tx.saleLine.update({ where: { id: line.id }, data: { giftCardId: issued.cardId } });
           }
+          const tradeUp = tradeUps.get(i);
+          if (tradeUp) await spendCredit(tx, { shopId, customerId, ticketId: tradeUp, lineId: line.id, today });
           if (l.stockUnitId || tradeIn) {
             await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
           }
@@ -660,7 +681,7 @@ export async function completeSaleAs(
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
         // The birthday offer used on this sale: once a year.
-        if (customerId && priceNotes.some((n) => n?.startsWith("Birthday"))) await useBirthday(tx, shopId, customerId, Number(today.slice(0, 4)));
+        if (customerId && priceNotes.some((n) => n?.startsWith("Birthday"))) await markBirthdayUsed(tx, shopId, customerId, Number(today.slice(0, 4)));
         if (so.pickups.size || opts.specialOrder) await afterSpecialOrderSale(tx, { shopId, pickups: so.pickups, hook: opts.specialOrder ?? null, saleId: sale.id });
         // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
         const label = `Sale #${number}`;
@@ -781,6 +802,12 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       }
     }
     if (layawayVoid) await voidLayawaySale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
+    // A repair's trade-up credit used on this sale is there again.
+    await unuseCredits(
+      tx,
+      shopId,
+      sale.lines.map((l) => l.id),
+    );
     // A birthday offer used on this sale: she can use it again this year.
     if (sale.lines.some((l) => l.priceNote?.startsWith("Birthday"))) {
       const tz = (await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;

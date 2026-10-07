@@ -161,6 +161,10 @@ model Shop {
   loanerDays           Int           @default(14)
   // Trial purchases (1.8): machines sold with "Try it for N days" (0: off)
   trialDays            Int           @default(0)
+  // Trade-up credit (1.9): a repair's cost taken off a new machine bought within this many days (0: off), and the
+  // trade-in value rule: what the shop expects to sell it for, less this percent
+  tradeUpDays          Int           @default(0)
+  tradeInLessPct       Int           @default(30)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff         Boolean       @default(false)
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
@@ -255,6 +259,7 @@ model Shop {
   priceGroups       PriceGroup[]
   yardBreaks        YardBreak[]
   unitLoans         UnitLoan[]
+  tradeUpOffers     TradeUpOffer[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
@@ -429,6 +434,7 @@ model Customer {
   specialOrders SpecialOrder[]
   wantItems     WantItem[]
   unitLoans     UnitLoan[]
+  tradeUpOffers TradeUpOffer[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -3385,4 +3391,23 @@ model UnitLoan {
   @@index([shopId, backAt])
   @@index([unitId])
   @@index([customerId])
+}
+
+// Trade-up credit used (shop-features-round-2-design.md 1.9): a repair's cost taken off a machine bought within the shop's
+// days. The offer itself is worked out from the ticket (its charges, the day it was done); this row is written when the
+// credit is used on a sale (once per ticket), so a void deletes it and the credit is there again.
+model TradeUpOffer {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  ticketId    String // plain id
+  amountCents Int
+  until       String // YYYY-MM-DD
+  usedLineId  String // the sale line it came off (plain id)
+  createdAt   DateTime @default(now())
+
+  @@unique([shopId, ticketId])
+  @@index([usedLineId])
 }

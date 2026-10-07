@@ -91,6 +91,8 @@ type CartLine = {
   /** The item's own per-yard break (1.6). */
   breakMinQty?: number | null;
   breakPriceCents?: number | null;
+  /** A machine bought with a repair's trade-up credit (1.9): the ticket. */
+  tradeUpTicketId?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -125,6 +127,7 @@ export function Register({
   promotions = NO_PROMOS,
   specialOrders = null,
   yardBreaks = NO_BREAKS,
+  tradeInLessPct = 30,
   preload,
 }: {
   taxRatePct: number;
@@ -145,6 +148,8 @@ export function Register({
   specialOrders?: SpecialOrderDefaults | null;
   /** The shop's per-yard breaks (shop-features-round-2-design.md 1.6). */
   yardBreaks?: YardBreak[];
+  /** The trade-in rule (1.9): what the shop expects to sell it for, less this percent. */
+  tradeInLessPct?: number;
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -226,14 +231,19 @@ export function Register({
         const promoLine = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
         // The customer's price rule (her group, a lifetime discount, a yard break, the birthday offer): the bigger wins.
         const hit = item && !l.noRule && l.kind !== "MEMBERSHIP" ? bestRule(ruleCtx, { ...promoLine, onPromo: !!best }) : null;
-        const ruled = !!hit && hit.cents > promoLine.discountCents;
-        const line = ruled ? { ...promoLine, discountCents: hit.cents } : promoLine;
+        const ruledHit = !!hit && hit.cents > promoLine.discountCents;
+        const ruledLine = ruledHit ? { ...promoLine, discountCents: hit.cents } : promoLine;
+        // A repair's trade-up credit on a machine (the server works out the same).
+        const credit = l.tradeUpTicketId ? Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), extras?.tradeUps.find((t) => t.ticketId === l.tradeUpTicketId)?.amountCents ?? 0) : 0;
+        const tradeUp = credit > ruledLine.discountCents;
+        const line = tradeUp ? { ...ruledLine, discountCents: credit } : ruledLine;
+        const ruled = ruledHit || tradeUp;
         const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
         const taxable = line.taxable && !(covered && !line.taxAnyway);
         const included = item && taxable && !covered && !line.discountCents && ratePct > 0 ? includedPromo(promotions, line) : null;
-        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (!ruled && best && best.cents > manual ? best.promo.name : null), rule: ruled ? hit.label : null, taxIncluded: !!included, holidayCovered: covered, taxable };
+        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (!ruled && best && best.cents > manual ? best.promo.name : null), rule: tradeUp ? "Trade-up credit" : ruled ? hit!.label : null, taxIncluded: !!included, holidayCovered: covered, taxable };
       }),
-    [cart, holiday, promotions, returnOf, ratePct, ruleCtx],
+    [cart, holiday, promotions, returnOf, ratePct, ruleCtx, extras],
   );
   // The totals count a tax-included line at its price before tax (the tax is added back on top).
   const priced = lines.map((l) => (l.taxIncluded ? { ...l, unitPriceCents: priceBeforeTax(l.unitPriceCents, ratePct) } : l));
@@ -701,6 +711,7 @@ export function Register({
         specialOrderId: l.specialOrderId ?? null,
         depositUsed: l.depositUsed ?? false,
         noRule: l.noRule ?? false,
+        tradeUpTicketId: l.tradeUpTicketId ?? null,
       })),
       orderDiscountCents,
       tenders,
@@ -795,7 +806,7 @@ export function Register({
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
-          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
+          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} tradeInLessPct={tradeInLessPct} />}
           {specialOrders && !returnMode && (
             <SpecialOrderPanel
               customerId={customer?.id ?? null}
@@ -914,7 +925,14 @@ export function Register({
             customerId={customer?.id ?? null}
             birthdayOn={birthdayOn}
             onBirthday={(on) => setBirthdayFor(on && customer ? customer.id : null)}
-            inCart={cart.flatMap((l) => [l.specialOrderId, l.kind === "MEMBERSHIP" && l.partId ? `member:${l.partId}` : null]).filter((x): x is string => !!x)}
+            machineOnSale={cart.some((l) => l.stockUnitId && l.qty > 0 && !l.tradeUpTicketId)}
+            onTradeUp={(ticketId) =>
+              setCart((c) => {
+                const i = c.findIndex((l) => l.stockUnitId && l.qty > 0 && !l.tradeUpTicketId);
+                return i < 0 ? c : c.map((l, j) => (j === i ? { ...l, tradeUpTicketId: ticketId } : l));
+              })
+            }
+            inCart={cart.flatMap((l) => [l.specialOrderId, l.kind === "MEMBERSHIP" && l.partId ? `member:${l.partId}` : null, l.tradeUpTicketId ? `tradeup:${l.tradeUpTicketId}` : null]).filter((x): x is string => !!x)}
             onAdd={addExtraLines}
           />
         )}
@@ -1123,7 +1141,7 @@ export function Register({
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
                     {l.rule && (
-                      <button type="button" className="pill tone-ready ml-1" title="Tap to take it off this line" aria-label={`${l.rule}: take it off this line`} onClick={() => setLine(l.key, { noRule: true })}>
+                      <button type="button" className="pill tone-ready ml-1" title="Tap to take it off this line" aria-label={`${l.rule}: take it off this line`} onClick={() => setLine(l.key, l.tradeUpTicketId ? { tradeUpTicketId: undefined } : { noRule: true })}>
                         {l.rule} ×
                       </button>
                     )}
