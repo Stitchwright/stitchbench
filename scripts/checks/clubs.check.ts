@@ -383,6 +383,27 @@ async function main() {
     assert.equal((await saleOf(pays[0].saleId)).status, "VOIDED");
     assert.equal((await send(refund({ payment_intent: "pi_bookscheck1", refunded: true, amount_refunded: 4000 }))).status, 200, "a replay is harmless");
     assert.equal((await taken()) - t0, 8000, "the cash month and the taxed card month remain; the two refunded card months are out");
+    // The member's own checkout sent again while they are paused: their subscription is not stopped.
+    await db.clubMember.update({ where: { id: mc.id }, data: { status: "PAUSED" } });
+    assert.deepEqual(await send(completedC), { status: 200, body: "ok" }, "a paused member's own checkout, sent again");
+    assert.notEqual(mock.subscriptions.get(subC).status, "canceled", "their subscription still runs");
+    await db.clubMember.update({ where: { id: mc.id }, data: { status: "ACTIVE" } });
+    // A second link paid on top of the running subscription, in the month the real one already paid: stopped at Stripe
+    // (a replay after the cancel is fine), and refunding it leaves the month paid by the real subscription.
+    const strayId = `sub_stray${Date.now()}`;
+    mock.subscriptions.set(strayId, { id: strayId, object: "subscription", status: "active", customer: paidC.customer, metadata: {} });
+    const strayInv = `in_stray${Date.now()}`;
+    const coveredMonth = pays[2].month;
+    const stray = { ...mock.event("checkout.session.completed", { ...paidC, subscription: strayId, invoice: strayInv, payment_intent: "pi_stray1", amount_total: 4000 }), created: Math.floor((Date.now() + 64 * 86_400_000) / 1000) };
+    assert.deepEqual(await send(stray), { status: 200, body: "stopped" });
+    assert.equal(mock.subscriptions.get(strayId).status, "canceled");
+    assert.deepEqual(await send(stray), { status: 200, body: "stopped" }, "sent again after the cancel: Stripe's resource_missing is taken as done");
+    assert.equal((await db.clubMember.findUniqueOrThrow({ where: { id: mc.id } })).stripeSubscriptionId, subC, "the member keeps their own subscription");
+    assert.equal((await db.clubPayment.findFirstOrThrow({ where: { invoiceId: strayInv } })).month, coveredMonth);
+    assert.deepEqual(await send(refund({ invoice: strayInv, refunded: true, amount_refunded: 4000 })), { status: 200, body: "ok" });
+    assert.ok((await db.clubPayment.findFirstOrThrow({ where: { invoiceId: strayInv } })).voidedAt);
+    assert.equal((await db.clubMember.findUniqueOrThrow({ where: { id: mc.id } })).paidMonth, coveredMonth, "the real subscription's payment still covers that month");
+    assert.equal((await taken()) - t0, 8000, "the stray payment in and out");
     // Deleting the customer stops the card subscription first (nothing is deleted if Stripe can't be reached).
     process.env.STRIPE_API_BASE = "http://127.0.0.1:1";
     await expectError("delete with Stripe down", () => deleteCustomerFor(user(a), c6.id, "Cy Cardbooks"), /couldn't be stopped|Couldn't reach/);
@@ -402,7 +423,7 @@ async function main() {
     await addMemberFor(user(a), bk, fd({ customerId: c7.id, billing: "PAY_AT_PICKUP" }));
     await db.clubMember.updateMany({ where: { clubId: bk, customerId: c7.id }, data: { stripeSubscriptionId: "sub_fake_dup" } });
     await expectError("merge a card member", () => mergeCustomersFor(user(a), c7.id, c5.id, "Di Dup"), /still pays for a club by card/);
-    ok("club money in the books: paid months are register sales (tax backed out of the price, or Stripe's tax), in taken today; pay at pickup by method, take back voids; one sale per Stripe invoice across checkout and invoice events; failed posts nothing; a full refund voids and rewinds; deleting a customer stops the subscription first; merge refused for card members");
+    ok("club money in the books: paid months are register sales (tax backed out of the price, or Stripe's tax), in taken today; pay at pickup by method, take back voids; one sale per Stripe invoice across checkout and invoice events; failed posts nothing; a full refund voids and rewinds (not below a month another payment covers); a stray second subscription is stopped (a replay too), a paused member's own is not; deleting a customer stops the subscription first; merge refused for card members");
 
     // 7. Tenant: B with A's ids.
     const tables = ["Club", "ClubMember", "ClubMonth", "ClubPick", "ClubPayment", "Sale", "Customer", "KitSeriesMember", "Shop"];
