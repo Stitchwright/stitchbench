@@ -1,5 +1,7 @@
 "use server";
 
+import { afterArrival } from "@/lib/arrivals";
+import { matchWantsFor } from "@/lib/want-lists";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -138,6 +140,8 @@ export const createPart = safe(async function createPart(formData: FormData) {
         // each other out): the database's key refused the second, and saving again takes the next number.
         throw isPartNumberClash(e) ? new UserError("Another item was given that shop number at the same moment. Save again.") : e;
       });
+    // A new item may be what a want list watches for (shop-features-round-2-design.md 1.4).
+    await matchWantsFor(user.shopId, [p.id]);
     revalidatePath("/parts");
     redirect(`/parts/${p.id}`);
   }
@@ -154,6 +158,7 @@ export const createPart = safe(async function createPart(formData: FormData) {
   const p = await db.part.create({ data: { ...row, partNumber: stock.partNumber, altNumbers, numberKeys: partKeys(stock.partNumber, altNumbers) } }).catch(async (e: unknown) => {
     throw await partNumberClash(e, user.shopId, stock.partNumber);
   });
+  await matchWantsFor(user.shopId, [p.id]);
   revalidatePath("/parts");
   redirect(`/parts/${p.id}`);
 });
@@ -218,14 +223,17 @@ export async function moveStock(partId: string, formData: FormData): Promise<Act
     revalidatePath("/parts");
     revalidatePath("/");
     if (mode !== "count") {
+      // Special orders and want lists waiting for it (shop-features-round-2-design.md 1.2, 1.4).
+      const arrived = await afterArrival(user, [{ partId, qty: n }]);
       const waiting = await openWaits(user.shopId, { partId });
       if (waiting.length) {
         const n = waiting.length;
         return {
           ok: true,
-          warn: `Received. ${n} ticket${n === 1 ? " is" : "s are"} waiting for this part: mark ${n === 1 ? "it" : "them"} received under Parts, On order, so the customer${n === 1 ? "" : "s"} hear${n === 1 ? "s" : ""} it's in.`,
+          warn: `Received. ${n} ticket${n === 1 ? " is" : "s are"} waiting for this part: mark ${n === 1 ? "it" : "them"} received under Parts, On order, so the customer${n === 1 ? "" : "s"} hear${n === 1 ? "s" : ""} it's in.${arrived ? ` ${arrived}` : ""}`,
         };
       }
+      if (arrived) return { ok: true, note: `Received. ${arrived}` };
     }
     return { ok: true };
   } catch (e) {

@@ -8,6 +8,8 @@ import { kindOf } from "@/lib/equipment/shop";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader } from "@/components/ui";
 import { SiteInvoiceBlock } from "@/components/vac/site-invoice";
+import { creditForTicket } from "@/lib/trade-up";
+import { fmtYmdLong } from "@/lib/units/units";
 
 export default async function Invoice({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -21,6 +23,8 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
   const isSite = t.jobType === "SITE";
   const tot = ticketTotals(t.lines, t.payments, t.taxRatePct);
   const s = t.shop;
+  // Trade-up credit (shop-features-round-2-design.md 1.9), when the shop offers it.
+  const tradeUp = await creditForTicket(user.shopId, t.id);
 
   return (
     <div>
@@ -154,6 +158,11 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           )}
           {t.accessories.some((a) => !t.accessoriesReturned.includes(a)) && (
             <p className="mt-1">Still with us: {t.accessories.filter((a) => !t.accessoriesReturned.includes(a)).join(", ")}.</p>
+          )}
+          {tradeUp && (
+            <p className="mt-1 font-semibold">
+              If you&apos;d rather buy a new machine by {fmtYmdLong(tradeUp.until)}, we&apos;ll take {money(tradeUp.amountCents)} off.
+            </p>
           )}
           <p className="mt-1">Thank you for your business.</p>
         </footer>

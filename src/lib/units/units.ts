@@ -553,7 +553,7 @@ export async function isSellableMachine(shopId: string, m: { equipment: string; 
 /** Up to 20 in-stock units matching `q` (serial, brand or model) of a kind the shop may sell. */
 export async function unitsForSaleFor(shopId: string, q: string | null): Promise<UnitForSale[]> {
   const rows = await db.stockUnit.findMany({
-    where: { shopId, status: "IN_STOCK", machine: { AND: [machineMatch(q) ?? {}, await sellableMachines(shopId)] } },
+    where: { shopId, status: "IN_STOCK", use: "SALE", machine: { AND: [machineMatch(q) ?? {}, await sellableMachines(shopId)] } },
     include: { machine: true },
     orderBy: { createdAt: "desc" },
     take: 20,

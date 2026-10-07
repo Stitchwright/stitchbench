@@ -999,6 +999,204 @@ is 19.5 days; a store on its own Windows PC adds 8.
 
 ## Built
 
+**`pay-links` (1.3, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021000000_pay_links` (`WebOrder.source`,
+`specialOrderIds`, `createdById`, `expiresAt`). Code: `src/lib/pay-links.ts` (`makePayLinkFor`, `openPayLink`,
+`resendPayLinkFor`, `cancelPayLinkFor`, `payLinksFor`, `payLinkProblem`), `src/actions/pay-links.ts`, the staff page
+**Register → Pay links** (`/register/pay-links`, `src/components/pay-link-form.tsx`; "Send a pay link" on a customer's page
+and on Online orders), the customer's link page (`/shop/o/<token>` shows **Pay $X**; `POST /shop/o/<token>/pay` opens
+Stripe), `finishStaffPaid` in `src/lib/shop/online-shop.ts`, message wording `pay_link`. Check:
+`scripts/checks/pay-links.check.ts` (6 groups); `online-shop`, `base-license`, `move-export` still pass.
+Decisions made while building:
+- A link is a web order with `source = "staff"` and no Stripe page until the customer presses Pay; the page is made then
+  (open for 24 hours) and made again if she comes back after it ran out, so the link itself lasts 14 days (the shop can
+  pass 1 to 60). The online shop's two-hour "never paid" rule leaves links alone; a link past its day is cancelled.
+  A payment on an earlier Stripe page still finds its link (by the order id Stripe carries).
+- Paid, the sale is written as the shop filled it in, at the tax worked out when the link was made (the customer's
+  exemption counted), tender "Paid online", no stock check (the shop promised the items). A link of money only (a balance,
+  a deposit, rent) is done at once; one with stock items waits to be picked up like any online order.
+- Owners and admins type amounts; a tech can send only stock items at their own price. Special orders and rentals send
+  their own links with their own prices (`trusted`). Sending asks once ("Tap again to send $34.95"); "Take it back"
+  works until she pays.
+- Sent the customer's usual way (text or email) when Marketing is on, else the shop copies the link ("Copy the link").
+- Needs the program's public address and the shop's Stripe key (Settings → Online shop); the page says so otherwise. The
+  online shop itself doesn't have to be switched on.
+- Browser test needed: `tests/pay-links.spec.ts` (the page before and after the Stripe key, the customer page's link,
+  sending with two taps, Copy the link, the customer paying on the Stripe mock, the link shown paid).
+
+**`special-orders` (1.2, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021010000_special_orders` (`SpecialOrder`,
+carried by the company file and the customer merge; `SaleLine.specialOrderId`; `Part.comingSoonOn`, `depositKept`; Shop
+deposit default, rule, days, numbers). Message kind `order_in` (wording "It's here"). Code: `src/lib/special-orders.ts`,
+`src/lib/special-order-hooks.ts` (the register's part), `src/lib/arrivals.ts` (stock received by order or by hand),
+`src/actions/special-orders.ts`, the register's **Special order** button (`src/components/special-order-panel.tsx`) and
+quiet line "Special order waiting / Add it" (`src/components/register-extras.tsx`, `src/lib/register-extras.ts`: the
+one read later packages add to), pages `/special-orders` (three tabs), `/special-orders/[id]` (pay, pay link for the rest,
+order it, it's here, called, cancel, undo), `/special-orders/[id]/print` (the slip), Settings → Selling → Special orders,
+the customer's page, the item's page (**Coming soon and deposits**, "Ask for the balances"), Orders to suppliers ("N
+special orders waiting", Add them), to-do lines (`src/lib/shop-todos.ts`), the online shop's **Pre-order** on a
+coming-soon item. Check: `scripts/checks/special-orders.check.ts` (9 groups); `pay-links`, `layaway`, `online-shop`,
+`books-export`, `customer-merge` (seeds a special order), `move-export`, `base-license`, `reports`, `store-credit`,
+`po-any-item`, `fabric-orders`, `notices`, `part-waits`, `gift-cards` and the unit tests pass.
+Decisions made while building:
+- Money is register sales, as layaway: a deposit or payment is a DEPOSIT line (untaxed, "Customer Deposits"); the pick-up
+  sells the item at the order's price (a tech can ring it up) and takes what was paid off on a DEPOSIT line the server
+  works out; the register's own "paid before" line is checked against it. A kept deposit is DEPOSIT_KEPT ("Kept
+  deposits" income). What was paid is the DEPOSIT lines of sales that stand, so a void takes its money out by itself.
+- When it arrives (a purchase order received, or stock received by hand on the item's page) the oldest open orders for
+  the item are marked here while the quantity lasts; the quantity is held off the shelf (a HELD stock move) until the
+  pick-up, so it can't be sold to someone else; the register has no "Sell it anyway" button: the held quantity is simply
+  not on hand. "It isn't here after all" undoes a wrong mark.
+- The "it's here" message is the customer's usual way, once (dedupe per order); no message possible (no messages, no
+  address, Marketing off) puts her on "Call these" until "I called her". An order typed in words is marked here by hand.
+- Cancel by the order's rule (store credit by default, answer 10; an owner or admin can choose refund or keep each
+  time); a tech can cancel only an order with nothing paid. Undo for a day voids the cancel's sale.
+- "Order it" puts the item on its supplier's draft order (the order's line is remembered); a typed order is only marked
+  ordered. The balance can be sent as a pay link (`trusted`, untaxed money toward the order); "Ask for the balances" sends
+  one to each open pre-order of an item, skipping those paid in full or with a link waiting.
+- Online pre-order: name, mobile, email, then Stripe's page for the deposit (the shop's default; the whole price when the
+  shop asks none), through a two-day pay link. An unpaid online pre-order stays on the list with nothing paid (cancel it).
+- Left for later: the kit-subscription schedule ("a week before the ship date" is the button, not a timer); a deposits
+  report line beside layaway's (the Special orders page shows the total held; the books carry it).
+- Browser test needed: `tests/special-orders.spec.ts` (settings, the register's Special order, the list and slip,
+  receiving on the item page, the register's "Add it", cancel and undo, coming soon in the register's search).
+
+**`want-lists` (1.4, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021020000_want_lists` (`WantItem`, carried by
+the company file and the customer merge; deleted with the customer). Code: `src/lib/want-lists.ts`,
+`src/actions/want-lists.ts`, the customer's page (**Want list**, "Add to her want list": `src/components/customer-want-list.tsx`,
+`want-add-form.tsx`, `want-lines.tsx`), **Want lists** (`/want-lists`: "Here now" across the shop, or everything watched;
+linked from Special orders), "N customers want this" on the item's page, a to-do line. Matching runs from
+`src/lib/arrivals.ts` (an order received, stock received by hand), a new item (`createPart`) and a supplier's list
+(`applyCatalogFor`, the feed source too). Check: `scripts/checks/want-lists.check.ts` (5 groups); `customer-merge`,
+`catalog-any-item`, `connectors`, `move-export` pass.
+Decisions made while building:
+- Words match when every word starts a word of the item's number, description, maker, collection, designer, color name or
+  online title ("pin" doesn't match "spinner"); an item line matches only that item. A line already "Here now" isn't
+  matched again; an item on the shelf when it's added is "Here now" at once.
+- "Let her know" sends the `order_in` message (without "we're holding it", since nothing is held), once per line and
+  item; with no way to reach her (no messages, no address, Marketing off) it says to call her. Nothing goes by itself.
+- Browser test needed: `tests/want-lists.spec.ts` (add in words on the customer page, receive on the item page, "1 customer
+  wants this", Here now, the Want lists page, Done).
+
+**`price-groups` (1.5, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021030000_price_groups` (`PriceGroup`, carried
+by the company file; `Customer.priceGroupId`, `priceGroupUntil`; `Part.membershipGroupId`, `membershipMonths`;
+`StockUnit.lifetimePctOff`; `SaleLine.priceGroupId`, `priceNote`; `Shop.lifetimePctDefault`). Code:
+`src/lib/price-rules.ts` (pure: the rules the register and the server share, 1.6's yard breaks and birthday too),
+`src/lib/price-groups.ts`, `src/actions/price-groups.ts`, **Settings → Prices and members** (`/settings/prices`: the groups
+with members and discounts given, memberships ending, the lifetime default), a customer's **Price group**, an item's
+**Sells a membership**, a machine for sale's **Lifetime discount on its supplies**, the register (the group's pill and
+"Renew", each line's label "Guild 10%" with a tap to take it off). Check: `scripts/checks/price-groups.check.ts`
+(7 groups); `promotions`, `vac-units`, `machine-sales`, `sales-tax`, `register-bookings`, `move-export`,
+`customer-merge`, `audit-log`, `tax-holidays`, `special-orders` pass.
+Decisions made while building:
+- The server prices the rules (as promotions): on items being bought, the biggest of a promotion and the customer's rules
+  wins, never both (answer 9); a bigger discount an owner typed stands; a tech rings them up. A group set not to apply to
+  items on sale stands aside when a promotion covers the line. "Bigger wins" is the rule, not a setting (no shop asked
+  for stacking). Not for returns, layaways, special orders' pick-ups, the online shop or a given tax amount.
+- A membership item is reported as "Memberships", untaxed, and isn't stock; selling it needs the customer; a renewal of
+  the same group adds the months to the day it ends; a void puts her back in the group she had (kept on the line). A
+  return changes nothing (end it on her page).
+- The lifetime discount is ticked per machine for sale (the shop's default percent filled in) and given on a supply line
+  bought for that machine (the Vac Shop's supply picker names the machine).
+- Changing a customer's group is an owner's or admin's step, audited (`customer.pricegroup`).
+- Browser test needed: `tests/price-groups.spec.ts` (Settings → Prices and members, a customer's group, the register's
+  label and taking it off, a membership item sold).
+
+**`birthdays-yard-breaks` (1.6, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021040000_birthdays_yard_breaks`
+(`Customer.birthMonth`, `birthDay`, `birthdayUsedYear`; `Shop.birthdayOffer`; `YardBreak`, carried by the company file;
+`Part.breakMinQty`, `breakPriceCents`). Code: `src/lib/birthdays.ts`, `src/actions/birthdays.ts`, the rules in
+`src/lib/price-rules.ts`; Settings → Prices and members (**Birthday offer**, **Per-yard price breaks**:
+`src/components/settings/birthday-yard-settings.tsx`), a customer's **Birthday** ("only if she'd like to tell you"), an
+item's **Yard break**, **Birthdays in <month>** (`/customers/birthdays`) with a to-do line while the shop has an offer, the
+register ("Happy birthday month: 15% off today" with Use it / Take it off, or "Give her the credit"; lines labelled
+"Birthday 15%", "10+ yd price"). Check: `scripts/checks/birthdays-yard-breaks.check.ts` (5 groups); `price-groups`,
+`promotions`, `layaway` pass.
+Decisions made while building:
+- The birthday percent applies to the sale's items only when the cashier taps Use it (never by itself), as a rule of its
+  own: the bigger of it, a group, a yard break and a promotion wins on each line. It is marked used for the year when the
+  sale saves (a second register at the same moment is refused) and given back when that sale is voided. A tech can use it.
+- The credit kind puts the amount on her store credit (the shop's offer, so any staff), once a year.
+- A yard break is per line (the yards of one item on one line); the shop's steps take the best percent reached; an item's
+  own break price stands instead of the shop's steps. Fabric cut into several lines doesn't add up.
+- Points and the reward cards' birthday bonus (reward-cards-design.md) can read the same fields later.
+- Browser test needed: `tests/birthdays-yard-breaks.spec.ts`.
+
+**`loaners` (1.7, 7 Oct 2026, branch `phase1-rest`).** Migrations `20261021050000_loaners` (`StockUnit.use`; `UnitLoan`,
+carried by the company file and the customer merge; `SaleLine.unitLoanId`; Shop loaner deposit and days) and
+`20261021050100_loaner_days` (the days default 14). Code: `src/lib/loans.ts`, `src/actions/loans.ts`, **Loaners, demos and
+rentals** (`/units/loans`: out now with "It's back", lend a loaner, take a demo out, the settings; `/units/loans/[id]`: the
+loan and the slip to sign), a machine's **What it's for** (`src/components/units/unit-use.tsx`), the ticket's **Loaner**
+(`src/components/slots/ticket-loaner.tsx`: "Loaner out: ..., due ...", "Did the loaner come back?", "Lend a machine"), a
+customer's "Machines out with her", a to-do line when one is overdue. Check: `scripts/checks/loaners.check.ts` (5 groups);
+`customer-merge`, `vac-units`, `machine-sales`, `layaway`, `special-orders`, `move-export`, `books-export`,
+`base-license` pass.
+Decisions made while building:
+- Tickets carry no promised date, so a loaner is due back after the shop's days (14 by default, Settings on the Loaners
+  page); the form shows the day and it can be changed.
+- Loaners, demos and rentals are left out of the register's machine search and refused there; "Sell this one" (What it's
+  for → For sale) puts one back on sale, a demo as open box, a loaner or rental as used, never while it's out.
+- A deposit is a DEPOSIT line naming the loan (Customer Deposits); "It's back" gives it back the way chosen (cash, card,
+  check, store credit); an owner or admin may keep part as "Loaner charges" (LOAN_FEE, income, audited `loan.keep`). No
+  deposit by default: a "card on file" note instead.
+- A demo needs no customer; a loaner does. One loan at a time per machine.
+- Browser test needed: `tests/loaners.spec.ts`.
+
+**`rentals-trials` (1.8, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021060000_rentals_trials` (`UnitLoan.rateCents`,
+`ratePer`, `ownPct`, `ownUntil`; `StockUnit.trialUntil`; `Shop.trialDays`). Code: `src/lib/rentals.ts`,
+`src/actions/rentals.ts`, `src/components/rental-forms.tsx`; on **Loaners, demos and rentals** (`/units/loans`): rentals
+out (paid through, rent overdue, rent-to-own credit, Take rent, Buy it now, the rent as a pay link, It's back), Rent one
+out, and the trial days under its settings; the receipt's "Try it until ..." and each line's price label; a to-do line
+for rentals behind. Check: `scripts/checks/rentals-trials.check.ts` (6 groups); `pay-links`, `special-orders`, `loaners`,
+`machine-sales`, `vac-units`, `price-groups`, `online-shop`, `books-export`, `base-license`, `move-export` pass.
+Decisions made while building:
+- A rental is a machine for sale whose use is Rental, rented out as a loan of kind RENTAL. Rent is a RENT line naming it
+  ("Rentals" income), taxed as a rental of goods (at the counter and by pay link); a tech can take rent, only an owner or
+  admin sets a rate. "Paid through" is worked out from the rent paid (whole periods from the day it went out), so rent by
+  pay link counts without anything else to update; past it, "Rent overdue".
+- Rent-to-own: by default 100% of the rent counts toward buying it for 3 months (changeable when renting out). "Buy it
+  now" ends the rental and sells the machine with the credit as its line discount ("Rent credit"; no promotion or group
+  on that line), so the rent already counted isn't counted twice. Voiding that sale puts the machine back in stock for
+  sale (the rental stays ended: rent it out again if needed).
+- Trial purchases: a shop setting (off by default); a machine sold while it is set carries "Try it until <day>: bring it
+  back by then for a full refund" on the receipt; the return is the existing Return a machine (it refunds what she paid).
+  After the window the shop's own rule applies (nothing enforced).
+- Browser test needed: `tests/rentals-trials.spec.ts`.
+
+**`trade-up` (1.9, 7 Oct 2026, branch `phase1-rest`).** Migrations `20261021070000_trade_up` (`TradeUpOffer`, carried by
+the company file; `Shop.tradeUpDays`, `tradeInLessPct`) and `20261021070100_trade_up_customer` (its customer link, kept
+on a merge and cleared on a delete). Code: `src/lib/trade-up.ts`, `src/actions/trade-up.ts`, Settings → Selling →
+**Trade-up credit and trade-ins**, the invoice's line, the register's "Repair credit $89 ... Use it" (on a machine for sale on
+the sale), the trade-in step's "You expect to sell it for" with "Start from $X (less 30%)". Check:
+`scripts/checks/trade-up.check.ts` (4 groups); `birthdays-yard-breaks`, `price-groups`, `machine-sales`, `vac-units`,
+`rentals-trials`, `move-export`, `customer-merge` pass.
+Decisions made while building:
+- Off by default (answer: setting, default off); turned on, 30 days. The credit is the ticket's charges before tax (a
+  collected or ready repair with a customer), until the days after the day it was ready (else closed). Tickets carry no
+  separate "offer" record: the row is written when the credit is used (once per ticket; a void deletes it).
+- The credit is a discount on the machine line ("Trade-up credit"), not money owed; it can't come off anything but a
+  machine for sale, and only for that customer. A tech can use it (the shop's own offer).
+- The trade-in rule only fills the starting number; staff change it freely. The AI helper's notes (5.4) come later.
+- Browser test needed: `tests/trade-up.spec.ts`.
+
+**`invoice-reader` (1.10, AI, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021080000_invoice_reader`
+(`AssistantSettings.stockOn`, `AssistantCall.purchaseOrderId`). Feature `read_invoice` (class read) in a new group
+**Stock helpers** (Settings → Assistant). Code: `src/lib/invoice-reader-math.ts` (pure: the request, reading the answer,
+matching by item number, cost changes), `src/lib/invoice-reader.ts`, `src/actions/invoice-reader.ts`,
+`src/components/slip-reader.tsx`; a sent order's page has **Receive from a photo of the packing slip**; Inventory has
+**Receive without an order** (`/parts/receive`). Check: `scripts/checks/invoice-reader.check.ts` (6 groups, a stand-in hub);
+`assistant`, `fabric-ai`, `fabric-orders`, `po-any-item`, `base-license`, `move-export` and the unit tests pass.
+Decisions made while building:
+- Up to five pictures, shrunk in the browser, one Assistant call per page (each logged with the order's id, counted
+  against the allowance). Only pictures: a supplier's PDF is printed or photographed page by page for now (the hub's
+  Assistant takes images; a PDF page renderer is left for later).
+- Lines match by item number only (the order line's own number or its item's numbers, then the shop's items' numbers),
+  never by name. "On the order" is ticked, "Not on the order" unticked, "New to us" ticked to make the item (its number,
+  description, cost, the order's supplier, kind from the supplier's list type else Notion; no price: the shop sets it).
+- "Receive these" receives order lines through the order's own receipt (so lead times, special orders and want lists
+  follow), others as stock received. A changed cost shows "Cost up 12% ($4.10 to $4.60)", ticked to update the item's
+  cost to the ten-thousandth and the order line's; a tech can receive but not change costs. The margin floor and Raise
+  prices list (4.4) aren't built yet: nothing is sent there.
+- Browser test needed: `tests/invoice-reader.spec.ts` (needs the stand-in hub and the Assistant module, as the assistant
+  spec sets up).
+
 **`po-any-item` (1.1, 7 Oct 2026, branch `phase2-selling`).** Migration `20261020000000_po_any_item` (`PoUnit` gains
 `EACH`). Code: `src/lib/fabric-orders-math.ts` (pieces math, `amountText`, `orderAmountText`, `eachSuggestion`),
 `src/lib/fabric-orders.ts` (`addItemsToDraftFor`, `reorderEachFor`, `orderOneFor`; lines by hand take any item),
@@ -1248,220 +1446,6 @@ Decisions made while building:
   a job's page through Approved, Printing, Ready, Collected (and a void), Send the quote and answering it on /e/...,
   Turn it down, the slip, the file download.
 
-**Phase 4 schema (7 Oct 2026, branch `phase4-ai`).** One migration for the whole phase,
-`20261022000000_phase4_ai`: `AssistantSettings.askOn`, `marketingOn`, `quiltOn` (on), `customerOn` (off),
-`customerDailyCap` (20); `Shop.openHours`, `hoursNote`, `statusKeyHash`, `statusKeyAt`; `Ticket.pickupWhat`,
-`pickupTips`; tables `PatternNeed`, `CareTip`, `CustomerQuestion` (all three carried by the company file; the status key
-is left out of it: the owner makes a new one after a move). The Assistant's new feature ids are in
-`src/lib/assistant/features.ts` with their groups; `groupOn` in `client.ts` reads each group's switch (no settings row:
-everything on except customer answers). Settings → Assistant shows a switch for Ask your shop, Marketing drafts and
-Quilt from your stock; customer answers have their own page (below).
-
-**`ask-your-shop` (5.1, 7 Oct 2026).** Code: the report registry `src/lib/reports/registry-defs.ts` (pure: ten reports
-and their settings, `checkChoice`) and `src/lib/reports/registry.ts` (`runReport`: best sellers, slow items, sales by
-kind, margins, waited for parts, tickets by status, class fill, gift cards owed, discounts given, machines for sale);
-the prompts `src/lib/assistant/ask-prompt.ts`; the body `src/lib/assistant/ask.ts` (`askShop`); the action
-`askYourShop`; the box `src/components/assistant/ask-shop.tsx` at the top of Reports. Check:
-`scripts/checks/ask-your-shop.check.ts` (6 groups; the shared stand-in hub for the phase is
-`scripts/checks/assistant-hub.ts`). Spec: `tests/ask-your-shop.spec.ts` (the spec mock
-`scripts/local-test/assistant-mock.mjs` answers the new prompts).
-Decisions made while building:
-- A question is **two calls**, both logged as `ask_shop` and counted: one to pick the report and its settings, one to
-  word the answer from the report's rows. The box says so. A question no report covers costs the one call. If the
-  wording call fails, the table still shows with the reason.
-- The model's pick is checked by the program: an unknown report is "can't answer"; dates must be real days, at most
-  today and five years back (none given: this year so far; from after to: swapped); kind and collection only from the
-  lists (a collection matched in any case); top N 1 to 50. Settings a report doesn't take are dropped.
-- Only item names, part descriptions, machine models, ticket numbers and class titles reach the model; there is no
-  customer report in the registry (Top customers stays off it), and the question is redacted like any typed text.
-- Owners and admins only, like Reports. "Special orders waiting" and "discounts by price group" join the registry
-  when `special-orders` and `price-groups` (phase 1) land; "at the Florida store" when `locations` does.
-- Browser test needed: Reports with the Assistant off (no box), a question (answer, table, Open this report), a question
-  nothing covers (the list), the switch off.
-
-**`marketing-drafts` (5.2, 7 Oct 2026).** Code: the requests `src/lib/assistant/marketing-prompt.ts`, the bodies
-`src/lib/assistant/marketing.ts` (`draftArrivals`, `draftClassBlurb`, `draftProductText`, `draftSocialPost`), the actions
-`draftArrivalsEmail`, `draftClassText`, `draftItemText`, `draftPostText`, and `src/components/assistant/marketing-drafts.tsx`
-(`DraftFill`: "Draft it" that fills the field and then offers "Try again" with a few words; `PostDraft`: the post with a
-Copy button). Where: a new campaign ("Let the Assistant start it": a new arrivals email from the last N days, and a post
-about them), the class form's "About the class" (new and saved classes) and a post on the class page, the item page's
-Online shop card (the text for customers, and a post). Check: `scripts/checks/marketing-drafts.check.ts` (6 groups).
-Spec: `tests/marketing-drafts.spec.ts`.
-Decisions made while building:
-- "New arrivals" are the items with stock received (`StockMove` RECEIVED) in the last N days (14 by default, at most 90),
-  most received first, up to 30; a partner's consigned stock and machine models are left out. Nothing received: refused
-  in words before any call.
-- The email keeps `{first_name}` and `{shop_name}` for the campaign to fill in; the subject comes back on its own line.
-  Pictures are not put in the email (campaign emails are plain text today); the items' names, makers, colors and prices
-  are.
-- A new class is drafted from the form as typed (it isn't saved yet); a saved class adds its first meeting and how many
-  meetings. Anyone who can edit the field can draft it; the words never change a price.
-- `AssistantSettings.marketingOn` (on by default) switches all four off together.
-- Browser test needed: an item's Draft it and post, a new class's Draft it, a new campaign's arrivals email.
-
-**`quilt-planner` (5.3, no AI, 7 Oct 2026).** Code: the yards in `src/lib/fabric-math.ts` (`parseYards`,
-`parsePatternNeeds`, `patternNeedsText`, `plainQuiltPlan`, `plainQuiltProblem`, `QUILT_SIZES`, `roundUpEighth`),
-`src/lib/quilt.ts` (a pattern's yardage, the planner's lists, `pullListItems`), `src/actions/quilt.ts`
-(`savePatternYardage`), **Yardage on the back** on a pattern's page (`src/components/pattern-yardage.tsx`), the planner
-at Fabric → **Plan a quilt** (`/fabric/quilt`, `src/components/quilt-planner.tsx`). The register takes
-`?items=id:qty,...` (the pull list goes on the sale once, then the address goes back to /register) and the kit builder
-takes `?lines=...&pattern=...&name=...`. Check: `scripts/checks/quilt-planner.check.ts` (4 groups). Spec:
-`tests/quilt-planner.spec.ts`.
-Decisions made while building:
-- The back of a pattern is typed as she reads it, one size a line ("Throw: background 2 1/4 yd, focus 1 yd"); saving
-  replaces the pattern's yardage; anything it can't read is named and nothing is saved.
-- A plain quilt is squares: blocks across and down rounded to whole blocks (the finished size shown follows), cut with
-  1/4" seams, about 40" usable across the fabric, an eighth added to each fabric for straightening, the background's
-  share and the rest spread evenly; border and 2 1/2" binding strips; backing 4" bigger all round, pieced whichever way
-  takes less. Every part rounds up to the eighth. Block patterns other than squares use a pattern's own yardage.
-- A part only offers fabrics with enough yards on the bolt; the same fabric for two parts is one line on the sale, and
-  if the bolt can't cover both the list says so and Add all to the sale waits.
-- From a pattern, the pattern itself is on the sale and in the kit.
-- Browser test needed: a pattern's yardage (save, a line it can't read), the planner from a pattern (yards, picks, the
-  pull list's total, Make it a kit, Add all to the sale), a plain quilt's yards.
-
-**`quilt-from-stock` (5.3, AI, 7 Oct 2026).** Code: `src/lib/assistant/quilt-prompt.ts` (the request, `parseQuiltPicks`),
-`src/lib/assistant/quilt.ts` (`quiltPick`, `quiltCandidates`), `src/lib/quilt-thread.ts` (pure: swatch distance, color
-words, `bestThreads`), `threadMatchesFor` in `src/lib/quilt.ts`, the actions `suggestCoordinates` (assistant) and
-`threadsToMatch` (quilt), and `src/components/quilt-assist.tsx` (`SuggestCoordinates`, `ThreadToMatch`) in the planner.
-Check: `scripts/checks/quilt-from-stock.check.ts` (5 groups). Spec: `tests/quilt-from-stock.spec.ts`.
-Decisions made while building:
-- The focus fabric is the pick for the part she names ("Her focus fabric is the Focus"), or a photo of what she brought.
-  A photo is tagged first with the existing swatch tagger (`tag_fabric`, one call, the picture only), so the picks call
-  carries words, not the picture: **the hub needs no change** for this. A photo costs two calls; a shelf fabric one.
-- Candidates: this company's fabric by the yard in stock with at least the smallest empty part's yards, not consigned,
-  not the focus itself, at most 80, the same collection first, then shared color tags. Swatch thumbnails are not sent
-  (the hub takes one picture a call); names, tags, collection and yards are.
-- The program keeps a pick only if the part was asked for, the reference was on the list, and the bolt has the yards
-  (a fabric for two parts must cover both); each part once. The rest are dropped. Nothing is chosen for her: the picks
-  fill the empty parts' choices with the reason under each, and she changes any.
-- A focus fabric with no color tags and no collection is refused with the way to fix it (tag it on its page).
-- Thread to match needs no Assistant: threads on the shelf (2.1 thread fields or a THREAD item) whose swatch is within
-  reach of the fabric's or whose color words match its tags (navy finds blue, cream finds ivory), best three per fabric;
-  a ticked thread joins the pull list, the sale and the kit (one spool each).
-- `AssistantSettings.quiltOn` (on by default) hides Suggest coordinates.
-- Browser test needed: the planner with the Assistant (Suggest coordinates fills the empty part with its reason), a
-  photo of what she brought, Thread to match ticked into the pull list.
-
-**`trade-in-helper` (5.4, 7 Oct 2026).** Code: `src/lib/units/trade-in-value.ts` (`tradeInEstimate`, the rule
-`TRADE_IN_LESS_PCT`), `src/lib/assistant/trade-in-prompt.ts` and `trade-in.ts` (`tradeInNote`), the actions
-`tradeInValue` (units) and `draftTradeInNote` (assistant), `src/components/units/trade-in-helper.tsx` on the register's
-trade-in step; `TradeInInput.note` is kept on the machine for sale (`StockUnit.note`). Check:
-`scripts/checks/trade-in-helper.check.ts` (4 groups); `machine-sales` and `vac-units` still pass. Spec:
-`tests/trade-in-helper.spec.ts`.
-Decisions made while building:
-- **What is it worth?** works without the Assistant: this company's used and refurbished units of the same model (by
-  model key and kind) that sold, what the buyer paid and how many days they took; with none, the same brand and kind;
-  with none of those, it says so. The number to start from is the middle price less the rule, to the dollar; "Use" puts
-  it in the credit, which she changes freely.
-- The rule is 30% (`TRADE_IN_LESS_PCT`) until `trade-up` (1.9, phase 1) lands with `Shop.tradeInLessPct`; at merge,
-  `tradeInEstimate` should read that setting instead of the constant (one line).
-- **Draft a condition note** (Assistant on, "Read the plate" switch on): up to four condition photos are put side by
-  side in one JPEG in the browser (each cell 512 px, quality lowered until it is under the hub's size), one
-  `trade_in_note` call (read class). The plate photo isn't on the register's trade-in step today, so it isn't sent.
-- The note is staff only: kept on the machine for sale's own note (shown on its page), never on a receipt or sale line.
-- **Hub change needed:** add `"trade_in_note"` to `PHOTO_FEATURES` in the hub's `src/assistant.mjs` (and its refusal
-  wording "Only the plate, bolt-label and swatch readers take a photo" to include the trade-in note). Without it the hub
-  refuses the call with a 400 and the button shows that message.
-- Browser test needed: the trade-in step's What is it worth? and Use, condition photos and Draft a condition note, a
-  trade-in rung up with its note (the unit page shows it).
-
-**`pickup-sheet-and-insight-words` (5.5, 7 Oct 2026).** Code: `src/lib/care-tips-starters.ts` (starter tips per kind),
-`src/lib/care-tips.ts` (the shop's tips, the sheet saved), `src/actions/care-tips.ts`, Settings → **Care tips**
-(`/settings/care-tips`, remove with Undo), the ticket's **Pickup sheet** (`src/components/slots/pickup-sheet.tsx`,
-`src/components/pickup-sheet.tsx`) printed on the invoice ("What we did", "Caring for your {machine}");
-`src/lib/assistant/pickup-prompt.ts` and `pickup.ts` (`draftPickup`), `src/lib/assistant/insight-words.ts` (the cards
-and their request) with `explainInsight`, the actions `draftPickupSheet` and `explainFabricInsight`, and "At a glance"
-(`src/components/assistant/insight-words.tsx`) on Fabric → What sells and Slow fabric. Check:
-`scripts/checks/pickup-sheet.check.ts` (5 groups). Spec: `tests/pickup-sheet.spec.ts`.
-Decisions made while building:
-- The sheet shows on a ticket once it is ready (ready in truck, ready for pickup, collected) or already has words; anyone
-  who can work on the ticket can write and save it, with or without the Assistant. The tips ticked are copied as printed
-  (a later edit of the list doesn't change a sheet already given).
-- "Draft the pickup sheet" (group Draft it, `draft_pickup`): the ticket as the drafts see it (no customer, no internal
-  notes) and the shop's tips for the machine's kind, numbered; the model returns the words and up to three numbers; a
-  number not on the list is dropped. With no work done, diagnosis or lines it refuses before any call.
-- Starter tips exist for sewing machines, vacuums, stand mixers and 3D and resin printers; a shop's own kind starts
-  empty. Tips are the owner's and admins'; everyone reads them.
-- Words on fabric insight: the program makes up to six cards from its own numbers (What sells: the three fastest
-  collections, the fastest color, the slowest collection with stock; Slow fabric: clearance and markdown stages, the
-  color tag and the collection with the most slow fabrics) and shows them without the Assistant; "Say it in words"
-  (group Fabric helpers, `explain_insight`) adds one sentence to each. The sentences aren't stored.
-- Browser test needed: Care tips (starters, a tip of her own, remove and Undo), a ready ticket's pickup sheet (draft,
-  save, the invoice), Fabric → What sells and Slow fabric with "At a glance" and Say it in words.
-
-**`customer-answers` (5.6, 7 Oct 2026).** Code: `src/lib/customer-answers-words.ts` (pure: a sentence per ticket
-status, hours in words, forgiving ticket and phone input, the sorting request and its reading),
-`src/lib/customer-answers.ts` (the answers, typed questions with the day's cap, "for a person", the staff list, the
-settings), the public route `POST /api/book/{slug}/ask`, **Questions?** on the booking page
-(`src/components/book/customer-answers.tsx`), Settings → **Customer questions** (`/settings/customer-questions`: the
-switch with its warning, typed questions a day, opening hours and a line under them) and the **Customer questions** list
-(`/customer-questions`: Answered with Undo), `src/actions/customer-answers.ts`. Check:
-`scripts/checks/customer-answers.check.ts` (6 groups). Spec: `tests/customer-answers.spec.ts`.
-Decisions made while building:
-- Off until an owner or admin turns it on (`AssistantSettings.customerOn`); the public route answers 404 while off, and
-  a read-only (lapsed) company's answers pause like its booking. The buttons need no Assistant and cost nothing; they
-  show on the booking page even when online booking itself is off (then "Book a drop-off" says to call).
-- Is my machine ready: the ticket number and the last four digits of the phone on the ticket's customer; a wrong
-  number, wrong digits or another company's ticket all get the same "We couldn't find a ticket..." (nothing is given
-  away). The answer is a fixed sentence per status: never a price, what was found, or a date promised. Ticket lookups
-  have their own tighter rate limit (10 per address per 10 minutes).
-- Hours come from the shop's opening hours (new: `Shop.openHours`, `hoursNote`, typed on the settings page), in words
-  ("Monday to Friday, 9:30 am to 5 pm"); none typed: "Call us at ... for our hours." Classes list the online classes
-  with seats left, never the fee; a full class is left out.
-- Typed questions (Assistant on and its customers' switch on): one `customer_question` call (suggest) sorts the
-  question into status, hours, classes, drop-off or a person and pulls out a ticket number; the program answers from the
-  records (a status question asks for the last four digits). Anything unclear goes to a person. At most
-  `customerDailyCap` (20) a day, counted from the call log in the shop's day; past it, or with no Assistant or the hub
-  down, the box says to use the buttons or leave the question, with no call. The call is logged with no person.
-- "For a person" saves the question with her name and a phone or email (one is needed) to `CustomerQuestion`; the list
-  is everyone's; Answered records who and when, Undo puts it back.
-- Browser test needed: Settings → Customer questions (on, hours), the public page signed out (Hours, Is my machine
-  ready? wrong and right digits, leave a question, a typed question with the Assistant), the staff list.
-
-**`status-link` (5.6, 7 Oct 2026).** Code: `makeStatusKeyFor`, `removeStatusKeyFor`, `shopForKey` in
-`src/lib/customer-answers.ts`, the routes `src/app/api/public/v1/[slug]/[what]/route.ts`, the "A phone-answering
-service" section of Settings → Customer questions (`src/components/status-key.tsx`); `/api/public/` added to the public
-links address's lists (`src/lib/links-host.ts`, `desktop/links-gate.mjs`). Check: `scripts/checks/status-link.check.ts`
-(4 groups); `links-gate` and `move-export` still pass. Spec: `tests/status-link.spec.ts`. Committed together with
-`customer-answers` (they share the answers and the settings page).
-Decisions made while building:
-- The link is `{PUBLIC_URL}/api/public/v1/{booking slug}`; the service sends `Authorization: Bearer sbk_...`. The key is
-  shown once, kept as a sha256 hash (`Shop.statusKeyHash`), compared in constant time; a new key stops the old, and
-  "Turn the status link off" removes it. The key isn't carried by the company file (made again after a move).
-- Endpoints: `GET status?ticket=&phone=` (the last four digits are enough), `GET hours`, `GET classes`, `GET dropoff`
-  (the next open times of what can be booked online), `POST book` (`typeId`, `startsAt`, `name`, `phone`: an online
-  booking like the public page's, noted "Booked by the phone-answering service", refused in words while online booking
-  is off). Anything else is a 404; no key, a wrong key or another company's key is a 401. JSON with an `answer`
-  sentence the service can read out. No Assistant, nothing counted.
-- It works whether or not the booking-page answers are switched on: making a key is the shop's choice to turn it on.
-- Rate limits: 120 a minute per address, 2,000 an hour per shop, 300 ticket lookups an hour per shop.
-- No phone service is built or chosen (question 3); the first interested shop's service is tested against this.
-
-**`pay-links` (1.3, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021000000_pay_links` (`WebOrder.source`,
-`specialOrderIds`, `createdById`, `expiresAt`). Code: `src/lib/pay-links.ts` (`makePayLinkFor`, `openPayLink`,
-`resendPayLinkFor`, `cancelPayLinkFor`, `payLinksFor`, `payLinkProblem`), `src/actions/pay-links.ts`, the staff page
-**Register → Pay links** (`/register/pay-links`, `src/components/pay-link-form.tsx`; "Send a pay link" on a customer's page
-and on Online orders), the customer's link page (`/shop/o/<token>` shows **Pay $X**; `POST /shop/o/<token>/pay` opens
-Stripe), `finishStaffPaid` in `src/lib/shop/online-shop.ts`, message wording `pay_link`. Check:
-`scripts/checks/pay-links.check.ts` (6 groups); `online-shop`, `base-license`, `move-export` still pass.
-Decisions made while building:
-- A link is a web order with `source = "staff"` and no Stripe page until the customer presses Pay; the page is made then
-  (open for 24 hours) and made again if she comes back after it ran out, so the link itself lasts 14 days (the shop can
-  pass 1 to 60). The online shop's two-hour "never paid" rule leaves links alone; a link past its day is cancelled.
-  A payment on an earlier Stripe page still finds its link (by the order id Stripe carries).
-- Paid, the sale is written as the shop filled it in, at the tax worked out when the link was made (the customer's
-  exemption counted), tender "Paid online", no stock check (the shop promised the items). A link of money only (a balance,
-  a deposit, rent) is done at once; one with stock items waits to be picked up like any online order.
-- Owners and admins type amounts; a tech can send only stock items at their own price. Special orders and rentals send
-  their own links with their own prices (`trusted`). Sending asks once ("Tap again to send $34.95"); "Take it back"
-  works until she pays.
-- Sent the customer's usual way (text or email) when Marketing is on, else the shop copies the link ("Copy the link").
-- Needs the program's public address and the shop's Stripe key (Settings → Online shop); the page says so otherwise. The
-  online shop itself doesn't have to be switched on.
-- Browser test needed: `tests/pay-links.spec.ts` (the page before and after the Stripe key, the customer page's link,
-  sending with two taps, Copy the link, the customer paying on the Stripe mock, the link shown paid).
-
 **`product-feeds` (4.1 and 4.2, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023000000_product_feeds`
 (`Part.gtin`, `Shop.feedToken` unique, `Shop.feedStoreCode`). Code: `src/lib/shop/feeds-math.ts` (pure: the GTIN check
 digit and forgiving input, which items go in and why not, Google's product feed as RSS 2.0 with the g: namespace,
@@ -1666,3 +1650,193 @@ my name and contact with each shop I visit", off by default) → `/p/:code` (the
 of that text, the stamps so far by shop, and a printable card with the same code); the organizer's hub page lists the
 shops and links the sign-up page. Rate-limit sign-ups; one passport per email or phone per hop.
 - Browser test needed: `tests/shop-hops.spec.ts` (and its hub part once the routes are on the test hub).
+
+**Phase 4 schema (7 Oct 2026, branch `phase4-ai`).** One migration for the whole phase,
+`20261022000000_phase4_ai`: `AssistantSettings.askOn`, `marketingOn`, `quiltOn` (on), `customerOn` (off),
+`customerDailyCap` (20); `Shop.openHours`, `hoursNote`, `statusKeyHash`, `statusKeyAt`; `Ticket.pickupWhat`,
+`pickupTips`; tables `PatternNeed`, `CareTip`, `CustomerQuestion` (all three carried by the company file; the status key
+is left out of it: the owner makes a new one after a move). The Assistant's new feature ids are in
+`src/lib/assistant/features.ts` with their groups; `groupOn` in `client.ts` reads each group's switch (no settings row:
+everything on except customer answers). Settings → Assistant shows a switch for Ask your shop, Marketing drafts and
+Quilt from your stock; customer answers have their own page (below).
+
+**`ask-your-shop` (5.1, 7 Oct 2026).** Code: the report registry `src/lib/reports/registry-defs.ts` (pure: ten reports
+and their settings, `checkChoice`) and `src/lib/reports/registry.ts` (`runReport`: best sellers, slow items, sales by
+kind, margins, waited for parts, tickets by status, class fill, gift cards owed, discounts given, machines for sale);
+the prompts `src/lib/assistant/ask-prompt.ts`; the body `src/lib/assistant/ask.ts` (`askShop`); the action
+`askYourShop`; the box `src/components/assistant/ask-shop.tsx` at the top of Reports. Check:
+`scripts/checks/ask-your-shop.check.ts` (6 groups; the shared stand-in hub for the phase is
+`scripts/checks/assistant-hub.ts`). Spec: `tests/ask-your-shop.spec.ts` (the spec mock
+`scripts/local-test/assistant-mock.mjs` answers the new prompts).
+Decisions made while building:
+- A question is **two calls**, both logged as `ask_shop` and counted: one to pick the report and its settings, one to
+  word the answer from the report's rows. The box says so. A question no report covers costs the one call. If the
+  wording call fails, the table still shows with the reason.
+- The model's pick is checked by the program: an unknown report is "can't answer"; dates must be real days, at most
+  today and five years back (none given: this year so far; from after to: swapped); kind and collection only from the
+  lists (a collection matched in any case); top N 1 to 50. Settings a report doesn't take are dropped.
+- Only item names, part descriptions, machine models, ticket numbers and class titles reach the model; there is no
+  customer report in the registry (Top customers stays off it), and the question is redacted like any typed text.
+- Owners and admins only, like Reports. "Special orders waiting" and "discounts by price group" join the registry
+  when `special-orders` and `price-groups` (phase 1) land; "at the Florida store" when `locations` does.
+- Browser test needed: Reports with the Assistant off (no box), a question (answer, table, Open this report), a question
+  nothing covers (the list), the switch off.
+
+**`marketing-drafts` (5.2, 7 Oct 2026).** Code: the requests `src/lib/assistant/marketing-prompt.ts`, the bodies
+`src/lib/assistant/marketing.ts` (`draftArrivals`, `draftClassBlurb`, `draftProductText`, `draftSocialPost`), the actions
+`draftArrivalsEmail`, `draftClassText`, `draftItemText`, `draftPostText`, and `src/components/assistant/marketing-drafts.tsx`
+(`DraftFill`: "Draft it" that fills the field and then offers "Try again" with a few words; `PostDraft`: the post with a
+Copy button). Where: a new campaign ("Let the Assistant start it": a new arrivals email from the last N days, and a post
+about them), the class form's "About the class" (new and saved classes) and a post on the class page, the item page's
+Online shop card (the text for customers, and a post). Check: `scripts/checks/marketing-drafts.check.ts` (6 groups).
+Spec: `tests/marketing-drafts.spec.ts`.
+Decisions made while building:
+- "New arrivals" are the items with stock received (`StockMove` RECEIVED) in the last N days (14 by default, at most 90),
+  most received first, up to 30; a partner's consigned stock and machine models are left out. Nothing received: refused
+  in words before any call.
+- The email keeps `{first_name}` and `{shop_name}` for the campaign to fill in; the subject comes back on its own line.
+  Pictures are not put in the email (campaign emails are plain text today); the items' names, makers, colors and prices
+  are.
+- A new class is drafted from the form as typed (it isn't saved yet); a saved class adds its first meeting and how many
+  meetings. Anyone who can edit the field can draft it; the words never change a price.
+- `AssistantSettings.marketingOn` (on by default) switches all four off together.
+- Browser test needed: an item's Draft it and post, a new class's Draft it, a new campaign's arrivals email.
+
+**`quilt-planner` (5.3, no AI, 7 Oct 2026).** Code: the yards in `src/lib/fabric-math.ts` (`parseYards`,
+`parsePatternNeeds`, `patternNeedsText`, `plainQuiltPlan`, `plainQuiltProblem`, `QUILT_SIZES`, `roundUpEighth`),
+`src/lib/quilt.ts` (a pattern's yardage, the planner's lists, `pullListItems`), `src/actions/quilt.ts`
+(`savePatternYardage`), **Yardage on the back** on a pattern's page (`src/components/pattern-yardage.tsx`), the planner
+at Fabric → **Plan a quilt** (`/fabric/quilt`, `src/components/quilt-planner.tsx`). The register takes
+`?items=id:qty,...` (the pull list goes on the sale once, then the address goes back to /register) and the kit builder
+takes `?lines=...&pattern=...&name=...`. Check: `scripts/checks/quilt-planner.check.ts` (4 groups). Spec:
+`tests/quilt-planner.spec.ts`.
+Decisions made while building:
+- The back of a pattern is typed as she reads it, one size a line ("Throw: background 2 1/4 yd, focus 1 yd"); saving
+  replaces the pattern's yardage; anything it can't read is named and nothing is saved.
+- A plain quilt is squares: blocks across and down rounded to whole blocks (the finished size shown follows), cut with
+  1/4" seams, about 40" usable across the fabric, an eighth added to each fabric for straightening, the background's
+  share and the rest spread evenly; border and 2 1/2" binding strips; backing 4" bigger all round, pieced whichever way
+  takes less. Every part rounds up to the eighth. Block patterns other than squares use a pattern's own yardage.
+- A part only offers fabrics with enough yards on the bolt; the same fabric for two parts is one line on the sale, and
+  if the bolt can't cover both the list says so and Add all to the sale waits.
+- From a pattern, the pattern itself is on the sale and in the kit.
+- Browser test needed: a pattern's yardage (save, a line it can't read), the planner from a pattern (yards, picks, the
+  pull list's total, Make it a kit, Add all to the sale), a plain quilt's yards.
+
+**`quilt-from-stock` (5.3, AI, 7 Oct 2026).** Code: `src/lib/assistant/quilt-prompt.ts` (the request, `parseQuiltPicks`),
+`src/lib/assistant/quilt.ts` (`quiltPick`, `quiltCandidates`), `src/lib/quilt-thread.ts` (pure: swatch distance, color
+words, `bestThreads`), `threadMatchesFor` in `src/lib/quilt.ts`, the actions `suggestCoordinates` (assistant) and
+`threadsToMatch` (quilt), and `src/components/quilt-assist.tsx` (`SuggestCoordinates`, `ThreadToMatch`) in the planner.
+Check: `scripts/checks/quilt-from-stock.check.ts` (5 groups). Spec: `tests/quilt-from-stock.spec.ts`.
+Decisions made while building:
+- The focus fabric is the pick for the part she names ("Her focus fabric is the Focus"), or a photo of what she brought.
+  A photo is tagged first with the existing swatch tagger (`tag_fabric`, one call, the picture only), so the picks call
+  carries words, not the picture: **the hub needs no change** for this. A photo costs two calls; a shelf fabric one.
+- Candidates: this company's fabric by the yard in stock with at least the smallest empty part's yards, not consigned,
+  not the focus itself, at most 80, the same collection first, then shared color tags. Swatch thumbnails are not sent
+  (the hub takes one picture a call); names, tags, collection and yards are.
+- The program keeps a pick only if the part was asked for, the reference was on the list, and the bolt has the yards
+  (a fabric for two parts must cover both); each part once. The rest are dropped. Nothing is chosen for her: the picks
+  fill the empty parts' choices with the reason under each, and she changes any.
+- A focus fabric with no color tags and no collection is refused with the way to fix it (tag it on its page).
+- Thread to match needs no Assistant: threads on the shelf (2.1 thread fields or a THREAD item) whose swatch is within
+  reach of the fabric's or whose color words match its tags (navy finds blue, cream finds ivory), best three per fabric;
+  a ticked thread joins the pull list, the sale and the kit (one spool each).
+- `AssistantSettings.quiltOn` (on by default) hides Suggest coordinates.
+- Browser test needed: the planner with the Assistant (Suggest coordinates fills the empty part with its reason), a
+  photo of what she brought, Thread to match ticked into the pull list.
+
+**`trade-in-helper` (5.4, 7 Oct 2026).** Code: `src/lib/units/trade-in-value.ts` (`tradeInEstimate`, the rule
+`TRADE_IN_LESS_PCT`), `src/lib/assistant/trade-in-prompt.ts` and `trade-in.ts` (`tradeInNote`), the actions
+`tradeInValue` (units) and `draftTradeInNote` (assistant), `src/components/units/trade-in-helper.tsx` on the register's
+trade-in step; `TradeInInput.note` is kept on the machine for sale (`StockUnit.note`). Check:
+`scripts/checks/trade-in-helper.check.ts` (4 groups); `machine-sales` and `vac-units` still pass. Spec:
+`tests/trade-in-helper.spec.ts`.
+Decisions made while building:
+- **What is it worth?** works without the Assistant: this company's used and refurbished units of the same model (by
+  model key and kind) that sold, what the buyer paid and how many days they took; with none, the same brand and kind;
+  with none of those, it says so. The number to start from is the middle price less the rule, to the dollar; "Use" puts
+  it in the credit, which she changes freely.
+- The rule is 30% (`TRADE_IN_LESS_PCT`) until `trade-up` (1.9, phase 1) lands with `Shop.tradeInLessPct`; at merge,
+  `tradeInEstimate` should read that setting instead of the constant (one line).
+- **Draft a condition note** (Assistant on, "Read the plate" switch on): up to four condition photos are put side by
+  side in one JPEG in the browser (each cell 512 px, quality lowered until it is under the hub's size), one
+  `trade_in_note` call (read class). The plate photo isn't on the register's trade-in step today, so it isn't sent.
+- The note is staff only: kept on the machine for sale's own note (shown on its page), never on a receipt or sale line.
+- **Hub change needed:** add `"trade_in_note"` to `PHOTO_FEATURES` in the hub's `src/assistant.mjs` (and its refusal
+  wording "Only the plate, bolt-label and swatch readers take a photo" to include the trade-in note). Without it the hub
+  refuses the call with a 400 and the button shows that message.
+- Browser test needed: the trade-in step's What is it worth? and Use, condition photos and Draft a condition note, a
+  trade-in rung up with its note (the unit page shows it).
+
+**`pickup-sheet-and-insight-words` (5.5, 7 Oct 2026).** Code: `src/lib/care-tips-starters.ts` (starter tips per kind),
+`src/lib/care-tips.ts` (the shop's tips, the sheet saved), `src/actions/care-tips.ts`, Settings → **Care tips**
+(`/settings/care-tips`, remove with Undo), the ticket's **Pickup sheet** (`src/components/slots/pickup-sheet.tsx`,
+`src/components/pickup-sheet.tsx`) printed on the invoice ("What we did", "Caring for your {machine}");
+`src/lib/assistant/pickup-prompt.ts` and `pickup.ts` (`draftPickup`), `src/lib/assistant/insight-words.ts` (the cards
+and their request) with `explainInsight`, the actions `draftPickupSheet` and `explainFabricInsight`, and "At a glance"
+(`src/components/assistant/insight-words.tsx`) on Fabric → What sells and Slow fabric. Check:
+`scripts/checks/pickup-sheet.check.ts` (5 groups). Spec: `tests/pickup-sheet.spec.ts`.
+Decisions made while building:
+- The sheet shows on a ticket once it is ready (ready in truck, ready for pickup, collected) or already has words; anyone
+  who can work on the ticket can write and save it, with or without the Assistant. The tips ticked are copied as printed
+  (a later edit of the list doesn't change a sheet already given).
+- "Draft the pickup sheet" (group Draft it, `draft_pickup`): the ticket as the drafts see it (no customer, no internal
+  notes) and the shop's tips for the machine's kind, numbered; the model returns the words and up to three numbers; a
+  number not on the list is dropped. With no work done, diagnosis or lines it refuses before any call.
+- Starter tips exist for sewing machines, vacuums, stand mixers and 3D and resin printers; a shop's own kind starts
+  empty. Tips are the owner's and admins'; everyone reads them.
+- Words on fabric insight: the program makes up to six cards from its own numbers (What sells: the three fastest
+  collections, the fastest color, the slowest collection with stock; Slow fabric: clearance and markdown stages, the
+  color tag and the collection with the most slow fabrics) and shows them without the Assistant; "Say it in words"
+  (group Fabric helpers, `explain_insight`) adds one sentence to each. The sentences aren't stored.
+- Browser test needed: Care tips (starters, a tip of her own, remove and Undo), a ready ticket's pickup sheet (draft,
+  save, the invoice), Fabric → What sells and Slow fabric with "At a glance" and Say it in words.
+
+**`customer-answers` (5.6, 7 Oct 2026).** Code: `src/lib/customer-answers-words.ts` (pure: a sentence per ticket
+status, hours in words, forgiving ticket and phone input, the sorting request and its reading),
+`src/lib/customer-answers.ts` (the answers, typed questions with the day's cap, "for a person", the staff list, the
+settings), the public route `POST /api/book/{slug}/ask`, **Questions?** on the booking page
+(`src/components/book/customer-answers.tsx`), Settings → **Customer questions** (`/settings/customer-questions`: the
+switch with its warning, typed questions a day, opening hours and a line under them) and the **Customer questions** list
+(`/customer-questions`: Answered with Undo), `src/actions/customer-answers.ts`. Check:
+`scripts/checks/customer-answers.check.ts` (6 groups). Spec: `tests/customer-answers.spec.ts`.
+Decisions made while building:
+- Off until an owner or admin turns it on (`AssistantSettings.customerOn`); the public route answers 404 while off, and
+  a read-only (lapsed) company's answers pause like its booking. The buttons need no Assistant and cost nothing; they
+  show on the booking page even when online booking itself is off (then "Book a drop-off" says to call).
+- Is my machine ready: the ticket number and the last four digits of the phone on the ticket's customer; a wrong
+  number, wrong digits or another company's ticket all get the same "We couldn't find a ticket..." (nothing is given
+  away). The answer is a fixed sentence per status: never a price, what was found, or a date promised. Ticket lookups
+  have their own tighter rate limit (10 per address per 10 minutes).
+- Hours come from the shop's opening hours (new: `Shop.openHours`, `hoursNote`, typed on the settings page), in words
+  ("Monday to Friday, 9:30 am to 5 pm"); none typed: "Call us at ... for our hours." Classes list the online classes
+  with seats left, never the fee; a full class is left out.
+- Typed questions (Assistant on and its customers' switch on): one `customer_question` call (suggest) sorts the
+  question into status, hours, classes, drop-off or a person and pulls out a ticket number; the program answers from the
+  records (a status question asks for the last four digits). Anything unclear goes to a person. At most
+  `customerDailyCap` (20) a day, counted from the call log in the shop's day; past it, or with no Assistant or the hub
+  down, the box says to use the buttons or leave the question, with no call. The call is logged with no person.
+- "For a person" saves the question with her name and a phone or email (one is needed) to `CustomerQuestion`; the list
+  is everyone's; Answered records who and when, Undo puts it back.
+- Browser test needed: Settings → Customer questions (on, hours), the public page signed out (Hours, Is my machine
+  ready? wrong and right digits, leave a question, a typed question with the Assistant), the staff list.
+
+**`status-link` (5.6, 7 Oct 2026).** Code: `makeStatusKeyFor`, `removeStatusKeyFor`, `shopForKey` in
+`src/lib/customer-answers.ts`, the routes `src/app/api/public/v1/[slug]/[what]/route.ts`, the "A phone-answering
+service" section of Settings → Customer questions (`src/components/status-key.tsx`); `/api/public/` added to the public
+links address's lists (`src/lib/links-host.ts`, `desktop/links-gate.mjs`). Check: `scripts/checks/status-link.check.ts`
+(4 groups); `links-gate` and `move-export` still pass. Spec: `tests/status-link.spec.ts`. Committed together with
+`customer-answers` (they share the answers and the settings page).
+Decisions made while building:
+- The link is `{PUBLIC_URL}/api/public/v1/{booking slug}`; the service sends `Authorization: Bearer sbk_...`. The key is
+  shown once, kept as a sha256 hash (`Shop.statusKeyHash`), compared in constant time; a new key stops the old, and
+  "Turn the status link off" removes it. The key isn't carried by the company file (made again after a move).
+- Endpoints: `GET status?ticket=&phone=` (the last four digits are enough), `GET hours`, `GET classes`, `GET dropoff`
+  (the next open times of what can be booked online), `POST book` (`typeId`, `startsAt`, `name`, `phone`: an online
+  booking like the public page's, noted "Booked by the phone-answering service", refused in words while online booking
+  is off). Anything else is a 404; no key, a wrong key or another company's key is a 401. JSON with an `answer`
+  sentence the service can read out. No Assistant, nothing counted.
+- It works whether or not the booking-page answers are switched on: making a key is the shop's choice to turn it on.
+- Rate limits: 120 a minute per address, 2,000 an hour per shop, 300 ticket lookups an hour per shop.
+- No phone service is built or chosen (question 3); the first interested shop's service is tested against this.

@@ -272,7 +272,7 @@ export async function previewSourceFor(user: CurrentUser, supplierId: string, so
 export async function applySourceFor(user: CurrentUser, supplierId: string, sourceId: string, defaultKind?: string | null): Promise<string> {
   const s = await ownSupplier(user, supplierId);
   const read = await fetchFromSource(user, s, sourceId);
-  return applyRowsFor(user, s, read, { defaultKind, saveMap: null, saveKind: true });
+  return withWants(user, () => applyRowsFor(user, s, read, { defaultKind, saveMap: null, saveKind: true }));
 }
 
 async function fetchFromSource(user: CurrentUser, s: Supplier, sourceId: string): Promise<CatalogRead> {
@@ -286,7 +286,16 @@ async function fetchFromSource(user: CurrentUser, s: Supplier, sourceId: string)
 /** Applies an uploaded spreadsheet: the map and the list's type saved on the supplier when asked. */
 export async function applyCatalogFor(user: CurrentUser, supplierId: string, name: string, bytes: Uint8Array, rawMap: unknown, saveMap: boolean, defaultKind?: string | null): Promise<string> {
   const { s, map, read } = await readRows(user, supplierId, name, bytes, rawMap);
-  return applyRowsFor(user, s, read, { defaultKind, saveMap: saveMap ? map : null, saveKind: saveMap });
+  return withWants(user, () => applyRowsFor(user, s, read, { defaultKind, saveMap: saveMap ? map : null, saveKind: saveMap }));
+}
+
+/** New items from a supplier's list may be what a want list watches for (shop-features-round-2-design.md 1.4). */
+async function withWants(user: CurrentUser, fn: () => Promise<string>): Promise<string> {
+  const since = new Date(Date.now() - 1000);
+  const words = await fn();
+  const { matchWantsSince } = await import("@/lib/want-lists");
+  const n = await matchWantsSince(user.shopId, since).catch(() => 0);
+  return n ? `${words} ${n} want list ${n === 1 ? "line matches" : "lines match"}: see Want lists.` : words;
 }
 
 /** Applies rows from any source: new items are made (no stock), changed ones updated. All or nothing. */

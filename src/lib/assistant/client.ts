@@ -17,12 +17,12 @@ import type { Built, Source } from "./prompts";
 /** ASSISTANT=off on a server stops every call (the MESSAGES=off pattern); the check scripts point the hub address at a stand-in instead. */
 export const assistantSwitchedOff = () => (process.env.ASSISTANT ?? "").toLowerCase() === "off";
 
-type GroupSwitches = { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn: boolean; partsOn: boolean; fabricOn: boolean; askOn: boolean; marketingOn: boolean; quiltOn: boolean; customerOn: boolean };
+type GroupSwitches = { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn: boolean; partsOn: boolean; fabricOn: boolean; askOn: boolean; marketingOn: boolean; quiltOn: boolean; customerOn: boolean; stockOn: boolean };
 
 /** A group's switch; no settings row: every group on except customer answers (off until the shop turns it on). */
 export function groupOn(s: GroupSwitches | null, g: FeatureGroup): boolean {
   if (!s) return g !== "customers";
-  const map: Record<FeatureGroup, boolean> = { draft: s.draftOn, causes: s.causesOn, plate: s.plateOn, manuals: s.manualsOn, parts: s.partsOn, fabric: s.fabricOn, ask: s.askOn, marketing: s.marketingOn, quilt: s.quiltOn, customers: s.customerOn };
+  const map: Record<FeatureGroup, boolean> = { draft: s.draftOn, causes: s.causesOn, plate: s.plateOn, manuals: s.manualsOn, parts: s.partsOn, fabric: s.fabricOn, ask: s.askOn, marketing: s.marketingOn, quilt: s.quiltOn, customers: s.customerOn, stock: s.stockOn };
   return map[g];
 }
 
@@ -53,7 +53,7 @@ export async function assistantKeyText(shopId: string): Promise<string | null> {
   return (await db.license.findUnique({ where: { shopId_keyId: { shopId, keyId: s.keyId } }, select: { key: true } }))?.key ?? null;
 }
 
-export type CallTarget = { ticketId?: string; repairJobId?: string; machineId?: string; partId?: string };
+export type CallTarget = { ticketId?: string; repairJobId?: string; machineId?: string; partId?: string; purchaseOrderId?: string };
 export type Photo = { mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string }; // data: base64
 
 type HubAnswer = {

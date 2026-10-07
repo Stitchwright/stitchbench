@@ -122,6 +122,11 @@ async function main() {
       commissionPct: null,
       routeDay: null,
       notes: null,
+      priceGroupId: null,
+      priceGroupUntil: null,
+      birthMonth: null,
+      birthDay: null,
+      birthdayUsedYear: null,
       notifyBy: "",
       smsConsentAt: null,
       smsConsentPhone: null,
@@ -269,6 +274,10 @@ async function main() {
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     await db.softwareLicense.create({ data: { shopId: A, customerId: dup.id, description: "PE-Design 11", code: "ABC-123", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: dup.id, equipment: "Laser" } });
+    await db.specialOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "DONE", description: "Charm pack", priceCents: 3000 } });
+    await db.wantItem.create({ data: { shopId: A, customerId: dup.id, words: "Tula Pink" } });
+    await db.unitLoan.create({ data: { shopId: A, unitId: "x", customerId: dup.id, backAt: new Date() } });
+    await db.tradeUpOffer.create({ data: { shopId: A, customerId: dup.id, ticketId: "t-dup", amountCents: 100, until: "2026-12-01", usedLineId: "l" } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -451,6 +460,10 @@ async function main() {
     await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
     const dLive = await db.liveSale.create({ data: { shopId: A, name: "Delete live" } });
     const dClaim = await db.liveClaim.create({ data: { shopId: A, liveSaleId: dLive.id, customerId: del.id, name: "Del Person", phone: "555-0177", description: "Jelly roll", qty: 1, priceCents: 3000, status: "PAID" } });
+    await db.wantItem.create({ data: { shopId: A, customerId: del.id, words: "Kaffe" } });
+    await db.unitLoan.create({ data: { shopId: A, unitId: "x", customerId: del.id, backAt: new Date() } });
+    await db.tradeUpOffer.create({ data: { shopId: A, customerId: del.id, ticketId: "t-del", amountCents: 100, until: "2026-12-01", usedLineId: "l" } });
+    const delSo = await db.specialOrder.create({ data: { shopId: A, number: 2, customerId: del.id, status: "HERE", description: "Charm pack", priceCents: 3000 } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -471,12 +484,14 @@ async function main() {
       /Partner repair tag T9/,
       /partnership with Old partner/,
       /Layaway #2 is still being paid for/,
+      /Special order 2 is still open/,
     ]) {
       assert.match(why, re);
     }
-    assert.equal(dplan.blockers.length, 7);
-    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 4 more\)/);
+    assert.equal(dplan.blockers.length, 8);
+    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 5 more\)/);
     await db.layaway.update({ where: { id: delLayaway.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    await db.specialOrder.update({ where: { id: delSo.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
     // Close each: the ticket collected but unpaid is still refused (money owed).
     await db.ticket.update({ where: { id: dt.id }, data: { status: "COLLECTED", closedAt: new Date() } });
     await db.webOrder.update({ where: { id: order.id }, data: { status: "DONE" } });

@@ -418,7 +418,8 @@ export async function catalogKinds(shopId: string): Promise<{ kind: string; labe
   return g.map((r) => ({ kind: r.kind, label: KIND_LABEL[r.kind] ?? r.kind, n: r._count._all })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
-export type ItemView = CatalogItem & { text: string | null; fits: string | null; photoIds: string[]; description: string };
+/** `comingSoonOn`: the day a coming-soon item is expected (the page takes a pre-order with a deposit, 1.2). */
+export type ItemView = CatalogItem & { text: string | null; fits: string | null; photoIds: string[]; description: string; comingSoonOn: string | null };
 
 export async function catalogItem(shopId: string, partId: string): Promise<ItemView | null> {
   if (!ID_RE.test(partId)) return null;
@@ -439,6 +440,7 @@ export async function catalogItem(shopId: string, partId: string): Promise<ItemV
     tags: partTags(p),
     text: p.onlineText,
     fits: p.fits,
+    comingSoonOn: p.comingSoonOn,
   };
 }
 
@@ -897,7 +899,7 @@ async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: b
         description: i.description,
         qty: i.qty,
         unitPriceCents: i.unitPriceCents,
-        taxable: i.specialOrderId || i.loanId ? false : i.taxable !== false,
+        taxable: i.specialOrderId ? false : i.taxable !== false,
         ...(i.specialOrderId ? { specialOrderId: i.specialOrderId, depositKind: "DEPOSIT" as const } : {}),
         ...(i.loanId ? { unitLoanId: i.loanId, rentKind: "RENT" as const } : {}),
       }));

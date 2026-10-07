@@ -22,6 +22,11 @@ import { STATUS_LABEL as LONGARM_STATUS } from "@/lib/longarm-math";
 import { StoreCreditSection } from "@/components/store-credit-section";
 import { classCreditsFor } from "@/lib/units/units";
 import { CustomerLayaways } from "@/components/customer-layaways";
+import { CustomerSpecialOrders } from "@/components/customer-special-orders";
+import { CustomerWantList } from "@/components/customer-want-list";
+import { CustomerPriceGroup } from "@/components/customer-price-group";
+import { CustomerBirthday } from "@/components/customer-birthday";
+import { CustomerLoans } from "@/components/customer-loans";
 import { CustomerColors } from "@/components/customer-colors";
 import { CustomerFitsSection } from "@/components/customer-fits";
 import { CustomerSoftware } from "@/components/customer-software";
@@ -141,6 +146,11 @@ export default async function CustomerPage({ params, searchParams }: { params: P
           </Section>
         )}
         {c.kind === "RETAIL" && <CustomerLayaways shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerSpecialOrders shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerWantList shopId={user.shopId} customerId={c.id} tz={tz} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerPriceGroup shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerBirthday shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && <CustomerLoans shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerColors shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerFitsSection shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && <CustomerSoftware shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
