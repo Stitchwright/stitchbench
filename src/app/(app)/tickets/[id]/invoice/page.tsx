@@ -82,6 +82,7 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
                 <td>
                   {l.description}
                   {l.coveredPlanId && <span className="block text-xs">Covered by your service plan (no charge)</span>}
+                  {l.claimId && <span className="block text-xs">Covered by the maker&apos;s warranty (no charge)</span>}
                 </td>
                 <td className="num text-right">{l.qty}</td>
                 <td className="num text-right">{money(l.unitPriceCents)}</td>

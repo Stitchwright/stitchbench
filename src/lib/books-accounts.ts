@@ -18,6 +18,8 @@ export const ACCOUNT_KEYS = [
   { key: "tradeIns", label: "Trade-in credit given", def: "Trade-in Purchases" },
   { key: "customerDeposits", label: "Money held for customers (layaway payments)", def: "Customer Deposits" },
   { key: "lenderReceivable", label: "Owed by lenders (financed sales not paid yet)", def: "Due from Lenders" },
+  { key: "makerReceivable", label: "Owed by makers (warranty claims sent, not paid yet)", def: "Due from Manufacturers" },
+  { key: "warrantyIncome", label: "Warranty work the makers pay for", def: "Warranty Claims Income" },
 ] as const;
 
 export type AccountKey = (typeof ACCOUNT_KEYS)[number]["key"];

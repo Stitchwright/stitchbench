@@ -71,6 +71,7 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
   { model: "SoftwareLicense", field: "machineId", label: ["software licence", "software licences"] },
+  { model: "WarrantyClaim", field: "machineId", label: ["warranty claim", "warranty claims"] },
 ];
 
 /** What a deleted customer's kept rows say instead of their name. */

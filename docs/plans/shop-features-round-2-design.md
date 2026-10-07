@@ -1247,3 +1247,23 @@ Decisions made while building:
 - Browser test needed: /maker/jobs (Take a job with a file and the live price, a tech's form, the never-cut refusal),
   a job's page through Approved, Printing, Ready, Collected (and a void), Send the quote and answering it on /e/...,
   Turn it down, the slip, the file download.
+
+**`warranty-claims` (9.1, 7 Oct 2026, branch `phase6-later`).** Migration `20261024000000_warranty_claims`
+(`WarrantyClaim`, `TicketLine.claimId`, `Shop.nextClaimNumber`; carried by the company file and the machine merge).
+Code: `src/lib/warranty-claims.ts`, `src/actions/warranty-claims.ts`; on a ticket, **Claim it from the maker** on a line
+(and "Charge it instead" while the claim isn't sent; the printed invoice says "Covered by the maker's warranty (no
+charge)"); the new menu item **Paperwork** (`/paperwork`, `src/components/paperwork/frame.tsx`, tabs for this phase's
+records) → **Warranty claims** (by maker: not sent, waiting, owed, paid, short, refused; the claims, filtered by status
+or maker) and each claim's page (Mark it sent with their claim number, Record what came in, They refused it, Undo).
+Books: two new accounts, "Due from Manufacturers" (owed from the day a claim is sent) and "Warranty Claims Income";
+what came in clears the receivable on its day and a short or refused claim's rest comes off the income that day. Check:
+`scripts/checks/warranty-claims.check.ts` (6 groups); `books-export`, `move-export`, `base-license` still pass. Spec:
+`tests/warranty-claims.spec.ts`.
+Decisions made while building:
+- A claimed line works like a line covered by a service plan: its price moves to `coveredCents` and it charges 0, so
+  ticket totals, invoices and reports needed no change. A line can't be both. Fees and discounts aren't claimed.
+- Lines go on the ticket's claim that isn't sent yet, else a new one, made out to the machine's brand (changeable).
+- "Not sent yet" is a step of its own before Sent (the design's FILED), so lines can be gathered first. Once sent, the
+  lines and the amount expected are fixed; the amount expected follows the lines until an owner types over it (makers
+  pay labour at their own rate). A tech can claim lines and send; recording money, refusals and undo are owner or admin.
+- Nothing connects to the makers' portals (Brother's and others are closed): the shop sends there by hand.

@@ -35,6 +35,7 @@ import {
   Ruler,
   Tag,
   Printer,
+  FileCheck,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
@@ -75,6 +76,7 @@ const items: Item[] = [
   { href: "/sales", label: "Sales log", icon: Receipt, repair: true },
   { href: "/register/sales", label: "Register sales", icon: Receipt, retail: true },
   { href: "/register/online", label: "Online orders", icon: Globe, retail: true },
+  { href: "/paperwork", label: "Paperwork", icon: FileCheck },
   { href: "/reports", label: "Reports", icon: BarChart3, admin: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
