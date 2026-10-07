@@ -1,5 +1,6 @@
 // A pay link's Pay button (shop-features-round-2-design.md 1.3): the open Stripe page for the link, or a new one, then a
-// 303 there. No session: the token in the address is the key. Rate-limited per address; a problem goes back to the
+// 303 there. Under /api/public/ so the public links gate and the server's links-host lock let its POST through (it was
+// under /shop/o/, where only GETs pass). No session: the token in the address is the key. Rate-limited per address; a problem goes back to the
 // link's page with the words.
 import { isUserError } from "@/lib/user-error";
 import { allowPublic } from "@/lib/rate-limit";

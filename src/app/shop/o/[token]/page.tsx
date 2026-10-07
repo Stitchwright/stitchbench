@@ -56,7 +56,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         </p>
       )}
       {toPay && !ranOut && (
-        <form method="post" action={`/shop/o/${encodeURIComponent(token)}/pay`} className="card card-pad space-y-3">
+        <form method="post" action={`/api/public/pay-link/${encodeURIComponent(token)}`} className="card card-pad space-y-3">
           {o.note && <p className="text-base">{o.note}</p>}
           <p className="text-base">Pay by card on the next page. Nothing is charged until you confirm there.</p>
           <button className="btn btn-primary min-h-11 w-full text-lg">Pay {money(o.totalCents)}</button>
