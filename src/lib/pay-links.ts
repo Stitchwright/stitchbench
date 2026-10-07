@@ -57,7 +57,8 @@ async function checkRefs(shopId: string, customerId: string, lines: PayLine[]): 
   if (soIds.length && (await db.specialOrder.count({ where: { shopId, id: { in: soIds }, customerId, status: { in: ["WAITING", "ORDERED", "HERE"] } } })) !== soIds.length) {
     throw new UserError("That special order isn't open (or isn't hers).");
   }
-  if (lines.some((l) => l.loanId)) throw new UserError("A line can only be one thing.");
+  const loanIds = [...new Set(lines.map((l) => l.loanId).filter((x): x is string => !!x))];
+  if (loanIds.length && (await db.unitLoan.count({ where: { shopId, id: { in: loanIds }, customerId, kind: "RENTAL", backAt: null } })) !== loanIds.length) throw new UserError("That rental isn't open (or isn't hers).");
   if (lines.some((l) => l.partId && (l.specialOrderId || l.loanId))) throw new UserError("A line can only be one thing.");
 }
 
@@ -106,7 +107,8 @@ export async function makePayLinkFor(user: CurrentUser, input: PayLinkInput, o: 
     }
     const description = (l.description?.trim() || part?.description || "").slice(0, 200);
     if (!description) throw new UserError("Say what each amount is for.");
-    const money = l.specialOrderId || l.loanId;
+    // Money toward a special order is held for her (untaxed); rent is a rental of goods (taxed).
+    const money = l.specialOrderId;
     return {
       partId: part?.id ?? null,
       partNumber: part?.partNumber ?? null,
@@ -114,7 +116,7 @@ export async function makePayLinkFor(user: CurrentUser, input: PayLinkInput, o: 
       qty,
       unit: part?.unit ?? null,
       unitPriceCents: price,
-      taxable: money ? false : part ? true : l.taxable !== false,
+      taxable: money ? false : part || l.loanId ? true : l.taxable !== false,
       ...(l.specialOrderId ? { specialOrderId: l.specialOrderId } : {}),
       ...(l.loanId ? { loanId: l.loanId } : {}),
     };

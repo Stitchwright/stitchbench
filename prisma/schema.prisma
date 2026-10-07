@@ -159,6 +159,8 @@ model Shop {
   // for by default (tickets carry no promised date)
   loanerDepositCents   Int           @default(0)
   loanerDays           Int           @default(14)
+  // Trial purchases (1.8): machines sold with "Try it for N days" (0: off)
+  trialDays            Int           @default(0)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff         Boolean       @default(false)
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
@@ -2010,6 +2012,8 @@ model StockUnit {
   // What the shop uses it for (shop-features-round-2-design.md 1.7): SALE (machines for sale, as before) | LOANER | DEMO |
   // RENTAL. Only SALE units show in the register's "sell a machine" search.
   use             String    @default("SALE")
+  // A trial purchase (1.8): sold with "Try it for N days"; a return inside the window takes it back in full
+  trialUntil      DateTime?
   events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -3366,6 +3370,12 @@ model UnitLoan {
   backAt        DateTime?
   depositCents  Int       @default(0)
   cardNote      String?
+  // A rental (1.8): the rate (cents a day, week or month), and rent-to-own: the percent of the rent paid that counts
+  // toward buying it, until a day (YYYY-MM-DD)
+  rateCents     Int?
+  ratePer       String? // day | week | month
+  ownPct        Int?
+  ownUntil      String?
   conditionOut  String?
   conditionBack String?
   note          String?
