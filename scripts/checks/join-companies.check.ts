@@ -44,7 +44,6 @@ async function main() {
     await db.user.update({ where: { id: b.user.id }, data: { email: a.user.email.toUpperCase() } });
     await db.shop.update({ where: { id: B }, data: { name: `${b.name} Florida`, address: "2 Gulf Rd, Naples FL", taxRatePct: 7 } });
     const bName = `${b.name} Florida`;
-    const ownerB = { ...b.user, email: a.user.email };
 
     // A's records
     const aCust = await db.customer.create({ data: { shopId: A, name: "Jane Both", email: "jane@both.test" } });

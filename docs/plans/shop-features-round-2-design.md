@@ -2083,3 +2083,114 @@ Decisions made while building:
 **after phase 3** (`live-sales`, 4.3, on another branch). `store-link-hub`, `store-sync-customers` and
 `store-sync-gift-cards` (7.8, a store on its own Windows PC kept in step through StitchHub) come **after phase 5**
 (multiple stores, on another branch).
+
+### Phase 5: more than one store (built 7 Oct 2026, branch `phase5-stores`, on the recommended answers: hosted first; each store after the first billed $25 a month / $250 a year)
+
+**Before phase 5, on the same branch.** Pay links (kind `pay_link`, its own notice kind now, was `order_notice`) and the
+special-order / want-list "it's here" message (`order_in`) moved into the base like the ready notice (BASE_KINDS: they go
+once email or texts are on, no Marketing; the pay-links, special-orders and want-lists checks run on a base shop). The
+program takes the hub's trade add-on keys: `isModuleOnly` accepts a hub key carrying any add-on module (assistant, vac,
+appliance, scheduling, marketing, maker; the bundle's one key names all five), never one with base; up to eight add-on keys
+an answer (base-license check group 7). The claim and the sync tell the hub `stores` (open stores, at least 1; `storeCount`
+in `src/lib/hub.ts`), which the hub bills as stores - 1; adding, closing or joining a store claims at once.
+
+**How stores fit what was there.** One rule keeps a company with one store exactly as it was: **the main store lives on the
+Shop row** (address, phone, time zone, tax rate, hours, receipt line) and **a row whose `locationId` is null belongs to the
+main store**; another store keeps its own details on its `Location`. Stock follows the same rule: `Part.qtyOnHand` stays the
+company's total, another store's stock is a `StockLevel` row, and **the main store's stock is the total less the other
+stores'** (so a write that forgot its store can't break the sum; it just lands on the main store). Every stock write goes
+through `src/lib/stock.ts` (`moveStock`, `takeStockIfThere`, `countAtStore`, `placeNewStock`, `storeQty`, `withStoreQty`,
+`storeStockFor`) with the store it happens at; `src/lib/stores.ts` has the stores, the device's store (`currentStore`: a
+`locationId` already decided, else the `sb_store` cookie, else the person's home store, else the main one), `atStore`
+where-fragments and `storeDetails` (the store's rate and zone over the company's). `CurrentUser.locationId` (optional,
+never set by sign-in) lets code act for a store (a live sale's pay links, the checks).
+
+**`locations` (7.1).** Migration `20261025000000_locations`: `Location` (one main store per company made from its own
+details, every existing row assigned to it), `locationId` on Sale, Ticket, WebOrder, StockUnit, PurchaseOrder, ShopClass,
+AppointmentType, Shift, LongarmOrder, MakeJob, SpecialOrder, UnitLoan, GiftCardEntry, Layaway, LiveSale, AccountEntry,
+CardReader, StockMove and User (home store), plus StockLevel, StockTransfer(+Line), StoreNote(+Read), Approval,
+`PurchaseOrderLine.split`, `MoveReason` TRANSFER, `Shop.onlineLocationId / nextTransferNumber / dailySummaryOn / By`,
+`User.approveCode`. Migration `20261025100000_store_extras`: `Location.feedStoreCode`, `dailySentOn`. **Settings, Stores**
+(`/settings/stores`): one store shows one choice, **Add a second store** (owner; "This store is called" renames the main
+one); with more, each store's details (the main store's write to the company's own), **Close this store** (refused while it
+has stock, machines or transfers; the main store never), **Who works where**, **The online shop** (its store), limits and
+closing time, the daily summary switch and **My approval code**. The menu shows **This computer is at** (a select; the
+store's name under the company's) and **Today** and **Between stores**, all only with more than one store. Sales, tickets,
+layaways, special orders and pay links take their store's tax rate; classes, appointment types, shifts (the person's home
+store), quilting and print/cut jobs, loaners, rentals, live sales, purchase orders and card readers record their store.
+Gift card, store credit and house account entries record the store of the sale. Settings index: a **Stores** line.
+
+**`stock-per-location` (7.2).** An item's page: **In this store: 2 · At Florida: 5**, what's on the way, **Send to another
+store**, **Ask another store to send some**, each store's bin and reorder point; the stock list and the register's search
+count this store's shelf with the others in small text; counts, receiving, the scan station, kits, fabric cuts, the
+inventory import, packing slips, marketplace and partner orders all work on the device's store. **Between stores**
+(`/parts/transfers`): asked of this store (**Send it** / **Can't this time** with a reason), coming here (**It arrived**,
+counts corrected on arrival recorded as an adjustment there), waiting on the other store (cancel; a sent one put back),
+**Send an item** by number, **Sells faster at another store** and the latest. A transfer is SENT off the sending shelf at
+once and is on no shelf until it arrives (shown on both pages); a request for a customer holds the stock at the other store
+from the start. Machines for sale move with their page's **Send it to another store** (their store changes when sent).
+`src/lib/transfers.ts`, `src/actions/transfers.ts`, `src/components/item-stores.tsx`.
+
+**`stock-between-stores` (7.3).** The register, for an item none here: **Bring it here for her from Florida** (the special
+order panel takes her order and deposit here, then Florida is asked, holding it for her; on arrival her order is here and
+held, and she hears it) or **Ship it to her from Florida** (the line "ships from Florida", her address under the cart; the
+stock comes off Florida's shelf with the sale and Florida gets a **Ship this** job on Online orders, `source: "store"`;
+Mark shipped puts the tracking number on the sale; a void cancels the job and puts the stock back where it came from).
+Voids put stock back on the shelf it came off (its own move says which). Purchase orders: **Which store gets what** per line
+and, once in, **Send <store>'s share** (a transfer from the receiving store; once). Orders to suppliers' Running low list
+has **This store / All stores** (a combined order keeps each store's share). Slow fabric and Between stores show **Sells
+faster at Florida (6 yd in 8 weeks there, none here)** with **Send it there**. The online shop, its pre-orders, its stock and
+the product feeds use the store chosen in Settings, Stores (the main store by default); Google's local inventory feed lists
+every store's own shelf under its store code. `src/lib/store-orders.ts`, `src/lib/store-ship.ts`.
+
+**`location-reports` (7.4).** Reports: a **Store** choice (All stores, the owner's default; an admin's own store) for
+sales, tickets and top customers, the CSVs follow it; Sales tax with all stores shows one section per store. The books
+export makes one entry a day per store (`SB-YYYYMMDD-n`), named in QuickBooks Online's Location column or Desktop's CLASS;
+with one store it is exactly as before. Gift cards stay company-wide.
+
+**`owner-phone` (7.5).** **Today** (`/today`, made for a phone): a card per store (taken so far by payment, sales,
+repairs waiting and ready, low stock, on shift now, what waits for her, to ship, between stores), the approvals asked of
+her (**Approve** / **Not this time**; the email's link is `/today/approvals/<id>`), and the notes. Approvals: a refund or
+a discount typed at the register over the store's limit stops the register (**This needs an OK**): a manager's code
+(owners and admins set theirs; five wrong codes wait a minute) or **Ask the owner** (an email to every owner; the register
+waits and goes on by itself); an approval is used once by the sale (`src/lib/approvals.ts`, checked in `completeSaleAs`;
+promotions and price groups aren't the cashier's discount and never stop it). The daily summary: each store's day by email
+to every owner at its closing time in its zone, once a day (the message worker's tick; kind `owner_notice`, in the base;
+only with more than one store, while she keeps it on). Ask your shop: with more than one store a question may name a store;
+the pick keeps only one of the company's, and the reports run for it.
+
+**`store-notes` (7.7).** Notes between stores on Today: to one store or all, pinned first (owners and admins pin), bold
+until read, "read by", taken down by the writer or the owner, older ones folded away. Transfer requests are the transfers in
+ASKED (above). `src/lib/store-notes.ts`.
+
+**`join-companies` (7.6).** Settings, Stores lists the owner's other companies on this install (the same email owns both);
+**Join it in as a store** (typing its name) moves every row of its own (the company file's tables) into this company in one
+transaction as a new store made from its details: its stock is the new store's, its tickets, sales and orders are numbered
+on from this company's (to the next thousand), an item number both use gets "(Store)", the same supplier becomes one, a
+login both have is kept but switched off, the same machine kinds, makers' terms, card readers, messages and opt-outs keep
+this company's. Refused while it has partner shops or a gift card number both use. The old company is left closed ("Joined
+into ... as the Florida store") with its licence keys, partnerships, settings and audit log; its StitchHub subscription is
+the owner's to cancel. Customers who may be the same person (same email, phone or name) are listed with **Compare and
+merge** (the existing merge); nothing merges by itself. `src/lib/join-companies.ts`.
+
+Checks: `stores.check.ts` (13 groups), `store-reports.check.ts` (6), `owner-phone.check.ts` (6), `join-companies.check.ts`
+(4); `base-license` (the store count, the add-on keys), `customer-merge` (StockTransfer.forCustomerId) and `move-import`
+(fixture rows for the new tables) updated. Spec: `tests/stores.spec.ts` (not run: no build on this branch).
+
+Decisions made while building:
+- The main store is the Shop row, and null means the main store, so nothing changes for one store and nothing breaks if a
+  write forgets its store; the main store can't be closed.
+- Stock on its way is on no shelf (both stores' pages show it on the way); the company total dips by it meanwhile.
+- A layaway is picked up at its own store (its items are on that shelf and the quote used that store's rate); a special
+  order picked up anywhere takes its item from the store that held it.
+- "Ship it from there" takes the other store's stock at the sale (so it isn't sold there meanwhile), not when it ships.
+- Machines sent to another store change store at once; the transfer still shows until It arrived.
+- Partner shops' consigned stock stays on the main store's shelf (their messages don't know stores).
+- Tax holidays and promotions stay company-wide (a store's own state's holidays: later); the daily summary goes by email
+  only (a text needs the owner's mobile number, which the program doesn't keep yet).
+- Joined companies keep their item numbers apart ("(Store)") rather than merging two items into one: combining two items
+  needs a merge of every row that names an item, left for later.
+
+**Not built, for later:** a store on its own Windows PC kept in step through StitchHub (7.8: `store-link-hub`,
+`store-sync-customers`, `store-sync-gift-cards`), as decided (hosted first); per-store tax holidays; texting the daily
+summary; merging two items into one.

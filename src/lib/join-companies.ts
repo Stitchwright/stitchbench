@@ -18,8 +18,6 @@ import { actorOf, audit } from "@/lib/audit";
 import { MOVE_TABLES } from "@/lib/move/format";
 import { ensureMainStore } from "@/lib/stores";
 
-type Tx = Prisma.TransactionClient;
-
 /** Tables that stay with the second company: its own settings, licence keys, partnerships, hub hops and audit log. */
 const STAY = new Set([
   "Shop",
