@@ -80,10 +80,10 @@ function cleanDraft(d: unknown): { lines: DraftLine[]; customer: string | null; 
 
 const hashCode = (code: string, salt: string) => crypto.scryptSync(code, salt, 32).toString("hex");
 
-/** A manager's approval code, stored hashed ("scrypt:salt:hash"). 4 to 8 digits. */
+/** A manager's approval code, stored hashed ("scrypt:salt:hash"). 6 to 8 digits (codes set before, 4 or 5, still work until changed). */
 export function sealCode(code: string): string {
   const c = code.trim();
-  if (!/^\d{4,8}$/.test(c)) throw new UserError("An approval code is 4 to 8 numbers.");
+  if (!/^\d{6,8}$/.test(c)) throw new UserError("An approval code is 6 to 8 numbers.");
   const salt = crypto.randomBytes(12).toString("hex");
   return `scrypt:${salt}:${hashCode(c, salt)}`;
 }
@@ -100,26 +100,56 @@ export function codeMatches(stored: string | null, code: string): boolean {
 /** Sets or clears the signed-in owner's or admin's own approval code. */
 export async function setApproveCodeFor(user: CurrentUser, code: string | null): Promise<void> {
   if (user.role === "TECH") throw new UserError("Only an owner or admin approves refunds and discounts.");
-  await db.user.updateMany({ where: { id: user.id, shopId: user.shopId }, data: { approveCode: code ? sealCode(code) : null } });
+  await db.user.updateMany({ where: { id: user.id, shopId: user.shopId }, data: { approveCode: code ? sealCode(code) : null, approveCodeOld: false } });
 }
 
-// Wrong codes in a row, per company: five, then a minute's wait (a 4-digit code isn't much of a lock on its own).
-const misses = new Map<string, { n: number; until: number }>();
+/** Wrong codes in a row before the wait, and the wait. */
+export const CODE_TRIES = 5;
+export const CODE_LOCK_MINUTES = 15;
+
+/**
+ * One try at a code, counted in the database before the code is checked (so tries at the same moment all count), for
+ * the person typing and for the store's register: false when either is waiting out a lock, or this try is past the
+ * five (the lock starts now).
+ */
+async function takeTry(table: "User" | "Location", id: string, now: Date): Promise<boolean> {
+  const rows = await db.$queryRawUnsafe<{ n: number }[]>(
+    `UPDATE "${table}" SET "approveFails" = "approveFails" + 1 WHERE "id" = $1 AND ("approveLockedUntil" IS NULL OR "approveLockedUntil" <= $2) RETURNING "approveFails" AS n`,
+    id,
+    now,
+  );
+  if (!rows.length) return false;
+  if (rows[0].n > CODE_TRIES) {
+    await db.$executeRawUnsafe(`UPDATE "${table}" SET "approveFails" = 0, "approveLockedUntil" = $2 WHERE "id" = $1`, id, new Date(now.getTime() + CODE_LOCK_MINUTES * 60_000));
+    return false;
+  }
+  return true;
+}
+
+async function missed(table: "User" | "Location", id: string, now: Date): Promise<void> {
+  // The fifth wrong code in a row starts the wait.
+  await db.$executeRawUnsafe(`UPDATE "${table}" SET "approveFails" = 0, "approveLockedUntil" = $2 WHERE "id" = $1 AND "approveFails" >= $3`, id, new Date(now.getTime() + CODE_LOCK_MINUTES * 60_000), CODE_TRIES);
+}
+
+async function rightCode(table: "User" | "Location", id: string): Promise<void> {
+  await db.$executeRawUnsafe(`UPDATE "${table}" SET "approveFails" = 0 WHERE "id" = $1`, id);
+}
 
 /** "A manager enters her code": approved at once, by the manager whose code it is (an owner or admin of this company). */
-export async function approveWithCodeFor(user: CurrentUser, store: Store | null, needIn: unknown, code: string, reason: string | null, draft: unknown): Promise<string> {
+export async function approveWithCodeFor(user: CurrentUser, store: Store | null, needIn: unknown, code: string, reason: string | null, draft: unknown, now = new Date()): Promise<string> {
   const need = cleanNeed(needIn);
-  const m = misses.get(user.shopId);
-  if (m && m.until > Date.now()) throw new UserError("Too many wrong codes. Wait a minute and try again.");
+  // Five wrong codes in a row, by this person or at this store's register: a 15-minute wait (counted in the database).
+  const counters: ["User" | "Location", string][] = [["User", user.id], ...(store ? [["Location", store.id] as ["Location", string]] : [])];
+  for (const [t, id] of counters) {
+    if (!(await takeTry(t, id, now))) throw new UserError(`Too many wrong codes. Wait ${CODE_LOCK_MINUTES} minutes and try again, or ask the owner.`);
+  }
   const managers = await db.user.findMany({ where: { shopId: user.shopId, active: true, role: { in: ["OWNER", "ADMIN"] }, approveCode: { not: null } }, select: { id: true, name: true, role: true, approveCode: true } });
   const who = managers.find((u) => codeMatches(u.approveCode, String(code ?? "")));
   if (!who) {
-    const n = (m?.n ?? 0) + 1;
-    misses.set(user.shopId, { n: n >= 5 ? 0 : n, until: n >= 5 ? Date.now() + 60_000 : 0 });
+    for (const [t, id] of counters) await missed(t, id, now);
     throw new UserError("That code isn't right.");
   }
-  misses.delete(user.shopId);
-  const now = new Date();
+  for (const [t, id] of counters) await rightCode(t, id);
   const a = await db.approval.create({
     data: { shopId: user.shopId, locationId: store?.id ?? null, kind: need.kind, amountCents: need.amountCents, pct: need.pct, reason: reason?.slice(0, 300) || null, draft: cleanDraft(draft) as Prisma.InputJsonValue, requestedById: user.id, status: "APPROVED", decidedById: who.id, decidedAt: now, note: "Manager's code", expiresAt: new Date(now.getTime() + ASK_MINUTES * 60_000) },
   });

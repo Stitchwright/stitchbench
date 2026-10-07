@@ -166,10 +166,22 @@ async function main() {
     await expectError("a big discount", () => completeSaleAs(atFl, { lines: [{ ...refundLine, qty: 1, discountCents: 300 }], tenders: [{ method: "CASH", amountCents: 749 }] }), /30% discount/);
     // Promotions and price groups the shop set up aren't the cashier's discount: under 20% typed is fine.
     await completeSaleAs(atFl, { lines: [{ ...refundLine, qty: 1, discountCents: 100 }], tenders: [{ method: "CASH", amountCents: 963 }] });
-    await setApproveCodeFor(a.user, "4321");
-    await expectError("tech sets a code", () => setApproveCodeFor(tech, "1111"), /Only an owner or admin/);
+    await expectError("a 4-digit code", () => setApproveCodeFor(a.user, "4321"), /6 to 8 numbers/);
+    await setApproveCodeFor(a.user, "864213");
+    await expectError("tech sets a code", () => setApproveCodeFor(tech, "111111"), /Only an owner or admin/);
     const need = { kind: "REFUND", amountCents: 2140, pct: null };
-    await expectError("wrong code", () => approveWithCodeFor({ ...tech, locationId: fl.id }, fl, need, "0000", "Broken", {}), /isn't right/);
+    await expectError("wrong code", () => approveWithCodeFor({ ...tech, locationId: fl.id }, fl, need, "000000", "Broken", {}), /isn't right/);
+    // Five wrong codes at once (review fix: counted in the database before each check): the sixth try and the right code wait 15 minutes.
+    const guesses = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7, 8].map((g) => approveWithCodeFor({ ...tech, locationId: fl.id }, fl, need, String(100000 + g), "Guess", {})));
+    assert.ok(guesses.some((x) => x.status === "rejected" && /Too many wrong codes/.test(String((x.reason as Error).message))), "guesses at the same moment trip the lock");
+    await expectError("locked", () => approveWithCodeFor({ ...tech, locationId: fl.id }, fl, need, "864213", "x", {}), /Too many wrong codes. Wait 15 minutes/);
+    await expectError("another person at the locked store", () => approveWithCodeFor({ ...a.user, locationId: fl.id }, fl, need, "864213", "x", {}), /Too many wrong codes/);
+    await db.user.update({ where: { id: tech.id }, data: { approveFails: 0, approveLockedUntil: null } });
+    await db.location.update({ where: { id: fl.id }, data: { approveFails: 0, approveLockedUntil: null } });
+    // A 4-digit code set before codes were 6 still works (Settings asks her to change it).
+    const salt = "0123456789abcdef01234567";
+    const old4 = `scrypt:${salt}:${(await import("node:crypto")).scryptSync("4321", salt, 32).toString("hex")}`;
+    await db.user.update({ where: { id: a.user.id }, data: { approveCode: old4, approveCodeOld: true } });
     const apId = await approveWithCodeFor({ ...tech, locationId: fl.id }, fl, need, "4321", "Broken in the box", { lines: [{ description: "Walking foot", qty: -2, unitPriceCents: 1000 }] });
     const ret = await completeSaleAs({ ...tech, locationId: fl.id }, { lines: [refundLine], tenders: [{ method: "CASH", amountCents: -2140 }], approvalId: apId });
     assert.ok(ret.saleId);

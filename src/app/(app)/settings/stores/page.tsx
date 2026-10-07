@@ -132,7 +132,7 @@ export default async function StoresPage() {
     storesOf(user.shopId),
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, address: true, phone: true, timeZone: true, taxRatePct: true, onlineLocationId: true, dailySummaryOn: true } }),
     db.user.findMany({ where: { shopId: user.shopId, active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, role: true, locationId: true } }),
-    db.user.findUnique({ where: { id: user.id }, select: { approveCode: true } }),
+    db.user.findUnique({ where: { id: user.id }, select: { approveCode: true, approveCodeOld: true } }),
   ]);
   const open = stores.filter((s) => s.active);
   const multi = open.length > 1;
@@ -312,8 +312,13 @@ export default async function StoresPage() {
               <label htmlFor="code" className="label">
                 My approval code at the register {me?.approveCode ? "(set)" : ""}
               </label>
-              <input id="code" name="code" className="input w-40" inputMode="numeric" autoComplete="off" placeholder="4 to 8 numbers" />
+              <input id="code" name="code" className="input w-40" inputMode="numeric" autoComplete="off" placeholder="6 to 8 numbers" />
             </div>
+            {me?.approveCode && me.approveCodeOld && (
+              <p className="w-full text-sm" role="status">
+                Codes are 6 numbers now (a short one is easy to guess). Yours still works: type a new one of 6 numbers here when you can.
+              </p>
+            )}
             {me?.approveCode && (
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" name="clear" className="check" /> Remove my code
