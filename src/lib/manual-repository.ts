@@ -274,6 +274,18 @@ export async function sendLibraryOffer(offerId: string, root: string, slot?: Slo
     await db.manualOffer.update({ where: { id: offer.id }, data: { state: "FAILED", reason } });
     return "FAILED";
   };
+  if (!slot) {
+    // A retry from the background: whoever offered it must still be allowed to (techs may have been switched off, the
+    // company's hub writes stopped or the hub left since).
+    const by = offer.userId ? await db.user.findUnique({ where: { id: offer.userId }, select: { id: true, shopId: true, role: true, name: true, email: true, active: true } }) : null;
+    if (!by || !by.active || by.shopId !== offer.shopId) return fail("The person who offered it can't offer manuals any more. Offer it again.");
+    try {
+      await mayOffer(by);
+    } catch (e) {
+      if (e instanceof UserError) return fail(e.message);
+      return "SENDING"; // the hub not answering: the next sync asks again
+    }
+  }
   let chk: { full: string; size: number };
   try {
     chk = await checkLibraryFile(root, offer.path);
