@@ -16,6 +16,7 @@ import { ActionButton } from "@/components/action-form";
 import { REGISTER_AFTER_DAYS } from "@/lib/units/units";
 import { listLayaways } from "@/lib/layaway";
 import { presetReminders } from "@/lib/tax-holidays";
+import { shopTodos } from "@/lib/shop-todos";
 
 const WEEK = 7 * 86_400_000;
 const SHOWN = 5;
@@ -121,6 +122,18 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         ),
       });
     }
+  }
+
+  // Special orders, loaners, rentals, memberships, birthdays (shop-features-round-2-design.md section 1).
+  for (const t of await shopTodos(shopId, now)) {
+    lines.push({
+      key: t.key,
+      node: (
+        <Link href={t.href} className="link">
+          {t.text}
+        </Link>
+      ),
+    });
   }
 
   if (gate !== "hidden") {

@@ -135,6 +135,14 @@ model Shop {
   layawayRefund        String        @default("credit")
   layawayTerms         String?
   nextLayawayNumber    Int           @default(1)
+  // Special orders and pre-orders (shop-features-round-2-design.md 1.2): the deposit asked by default (a percent of the
+  // price, or a set amount; both 0: none), what cancelling does with the deposit ("credit": store credit, "refund": the
+  // money back, "keep": kept), and the days after it's here before it shows on the dashboard as not picked up.
+  specialOrderDepositPct   Int     @default(0)
+  specialOrderDepositCents Int     @default(0)
+  specialOrderDepositRule  String  @default("credit")
+  specialOrderDays         Int     @default(30)
+  nextSpecialOrderNumber   Int     @default(1001)
   // "Price includes the tax" promotions allowed (tax-machine-sales-layaway-design.md section 2, owner's answer 5): off
   // until the owner turns it on past the warning that some states forbid advertising it.
   taxIncludedOn        Boolean       @default(false)
@@ -231,6 +239,7 @@ model Shop {
   // Machines for sale (tax-machine-sales-layaway-design.md section 3)
   makerWarranties   MakerWarranty[]
   layaways          Layaway[]
+  specialOrders     SpecialOrder[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
@@ -392,6 +401,7 @@ model Customer {
   sales         Sale[]
   giftCards     GiftCard[]
   layaways      Layaway[]
+  specialOrders SpecialOrder[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -777,6 +787,10 @@ model Part {
   ownNumber       Boolean       @default(false)
   // Listed in the online shop (section 3): needs a price; the customer's title and text, and up to four photos
   online          Boolean       @default(false)
+  // Coming soon (shop-features-round-2-design.md 1.2): the day it is expected (YYYY-MM-DD); the register and the online
+  // shop take pre-orders for it. A special order's deposit for this item is kept if she cancels (kit pre-registrations).
+  comingSoonOn    String?
+  depositKept     Boolean       @default(false)
   onlineTitle     String?
   onlineText      String?
   // Fabric smarts (fabric-smarts-design.md section 6): the collection and designer, color tags, the yards on a full
@@ -1387,6 +1401,9 @@ model SaleLine {
   // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
   // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
   layawayId      String?
+  // A special order (plain id): money paid toward it (kind DEPOSIT +), its deposits used up at pick-up or given back
+  // (DEPOSIT -), a kept deposit (DEPOSIT_KEPT), or the item itself sold at pick-up
+  specialOrderId String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -3188,4 +3205,46 @@ model Promotion {
   createdAt DateTime @default(now())
 
   @@index([shopId, firstDay])
+}
+
+// Special orders and pre-orders (shop-features-round-2-design.md 1.2): something a customer wants that isn't on the
+// shelf (an item of the shop's, or words: "Tula Pink Untamed charm pack"), at a price, with a deposit. A pre-order is the
+// same for an item marked coming soon (Part.comingSoonOn). Money goes through the register (SaleLine.specialOrderId,
+// kind DEPOSIT: held for the customer, not a sale yet); the pick-up sells the item and uses the deposits up. When it
+// arrives it is HERE: an item's quantity is held off the shelf for her (StockMove HELD, heldQty) until she picks it up.
+// WAITING (not ordered yet) | ORDERED (on a purchase order) | HERE | DONE (picked up) | CANCELLED.
+model SpecialOrder {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number      Int
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  kind        String    @default("ORDER") // ORDER | PREORDER
+  status      String    @default("WAITING")
+  partId      String? // plain id: the shop's item, when it is one
+  description String
+  qty         Float     @default(1)
+  unit        String?
+  priceCents  Int // each
+  depositCents Int      @default(0) // asked when taken
+  depositRule String    @default("credit") // credit | refund | keep (non-refundable)
+  expectedOn  String? // YYYY-MM-DD
+  poLineId    String? // the purchase order line that covers it (plain id)
+  heldQty     Float     @default(0)
+  hereAt      DateTime?
+  noticedAt   DateTime? // the "it's here" message queued (never twice)
+  calledAt    DateTime? // marked called by hand
+  saleId      String? // the pick-up sale, or the cancel's (plain ids)
+  prevStatus  String? // the status before a cancel, put back when the cancel is undone
+  cancelledAt DateTime?
+  note        String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, partId])
+  @@index([customerId])
 }

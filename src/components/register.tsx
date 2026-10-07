@@ -32,6 +32,8 @@ import { ColorFinder } from "@/components/color-finder";
 import { CustomerFits, GoesWith } from "@/components/register-fits";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
+import { SpecialOrderPanel, type SpecialOrderDefaults } from "@/components/special-order-panel";
+import { CustomerExtrasLines, type ExtraLine } from "@/components/register-extras";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
 import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
 
@@ -78,6 +80,9 @@ type CartLine = {
   appointmentId?: string;
   /** A gift card sold, loaded or paid out on this line: untaxed, never discounted, one at a time (the server prices a payout). */
   giftCard?: { mode: "new" | "printed" | "load" | "cashout"; number?: string };
+  /** A special order picked up (shop-features-round-2-design.md 1.2): its item at the order's price, and what was paid coming off. */
+  specialOrderId?: string;
+  depositUsed?: boolean;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -110,6 +115,7 @@ export function Register({
   holiday,
   lenders = [],
   promotions = NO_PROMOS,
+  specialOrders = null,
   preload,
 }: {
   taxRatePct: number;
@@ -126,6 +132,8 @@ export function Register({
   lenders?: { id: string; name: string }[];
   /** The promotions in force today (percent or amount off, the price including the tax). */
   promotions?: Promo[];
+  /** Special orders (shop-features-round-2-design.md 1.2): the shop's default deposit; absent for a shop without a counter. */
+  specialOrders?: SpecialOrderDefaults | null;
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -176,6 +184,8 @@ export function Register({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ id: string; number: number; change: number; cards: Issued[] } | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
+  // A "Coming soon" item picked in the search: the special order panel opens on it (a pre-order).
+  const [preorderItem, setPreorderItem] = useState<RegisterItem | null>(null);
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
   // The sale as last sent and the key it went with: sent again unchanged (after a lost answer), it keeps the key.
@@ -189,8 +199,8 @@ export function Register({
     () =>
       cart.map((l) => {
         const manual = discountOf(l);
-        const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard };
-        const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf;
+        const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard && !l.depositUsed };
+        const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf && !start.specialOrderId;
         const best = item ? bestDiscount(promotions, start) : null;
         const line = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
         const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
@@ -262,6 +272,12 @@ export function Register({
       ];
     });
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
+  }
+
+  /** Lines from the customer's quiet lines (a special order waiting): added as they come, priced already. */
+  function addExtraLines(more: ExtraLine[]) {
+    setDone(null);
+    setCart((c) => [...c, ...more.map((x) => ({ key: newKey(), discountPct: 0, priced: true, ...x }))]);
   }
 
   /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
@@ -652,6 +668,8 @@ export function Register({
         taxAnyway: l.taxAnyway ?? false,
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
+        specialOrderId: l.specialOrderId ?? null,
+        depositUsed: l.depositUsed ?? false,
       })),
       orderDiscountCents,
       tenders,
@@ -747,6 +765,22 @@ export function Register({
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
+          {specialOrders && !returnMode && (
+            <SpecialOrderPanel
+              customerId={customer?.id ?? null}
+              customerName={customer?.name ?? null}
+              defaults={specialOrders}
+              item={preorderItem}
+              canPrice={canSell}
+              onNeedCustomer={() => setNewCustomer(true)}
+              onClose={() => setPreorderItem(null)}
+              onDone={(r, o) => {
+                setPreorderItem(null);
+                if (r) setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+                toast.message(`Print the slip for special order ${o.number} from its page.`, { action: { label: "Open it", onClick: () => window.open(`/special-orders/${o.id}`, "_blank") } });
+              }}
+            />
+          )}
           {layaway && !returnMode && (
             <LayawayPanel
               customerId={customer?.id ?? null}
@@ -843,6 +877,7 @@ export function Register({
         {returnMode && <p className="pill tone-wait">Return mode: scanned items come off the sale (negative quantity) and go back on the shelf.</p>}
         {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
         {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
+        {!returnMode && <CustomerExtrasLines customerId={customer?.id ?? null} inCart={cart.map((l) => l.specialOrderId).filter((x): x is string => !!x)} onAdd={addExtraLines} />}
         {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
         {results.length > 0 && (
@@ -854,7 +889,9 @@ export function Register({
                     type="button"
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2"
                     onClick={() => {
-                      addItem(it);
+                      // Coming soon and none on the shelf: a pre-order (the special order panel opens on it).
+                      if (it.comingSoonOn && it.qtyOnHand <= 0 && specialOrders && !returnMode) setPreorderItem(it);
+                      else addItem(it);
                       setResults([]);
                       code.current?.focus();
                     }}
@@ -872,6 +909,7 @@ export function Register({
                       <span className="mono">{it.partNumber}</span> {it.description}
                       {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                      {it.comingSoonOn && it.qtyOnHand <= 0 && <span className="pill tone-wait ml-1">Coming soon ({it.comingSoonText}): take a pre-order</span>}
                       {it.details && <span className="block text-sm">{it.details}</span>}
                       </span>
                     </span>
@@ -1075,7 +1113,7 @@ export function Register({
                       className="input num min-w-[4.5rem]"
                       step={l.unit === "yd" ? 0.125 : 1}
                       // A repair is paid as one line; a machine from stock, a trade-in or a plan is one; a class seat or appointment is one each.
-                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.servicePlan || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.servicePlan || l.enrollmentId || l.appointmentId || l.giftCard || l.specialOrderId)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}
@@ -1095,7 +1133,7 @@ export function Register({
                       className="input num min-w-[4.5rem]"
                       // A tech can type the price of an item that has none, not change one that has. A booking is priced by
                       // the server; an owner or admin may lower a refund (a cancellation fee).
-                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
+                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId || l.specialOrderId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => {
                         const cents = toCents(e.target.value);
@@ -1114,7 +1152,7 @@ export function Register({
                       className="input num min-w-14"
                       min={0}
                       max={100}
-                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard || l.depositUsed)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                       onKeyDown={backToScan}
@@ -1122,7 +1160,7 @@ export function Register({
                   </td>
                   <td className="num text-right">{money(lineNet(l))}</td>
                   <td>
-                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key))}>
+                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key && !(l.specialOrderId && x.specialOrderId === l.specialOrderId)))}>
                       <Trash2 size={14} aria-hidden />
                     </button>
                   </td>

@@ -1141,3 +1141,39 @@ Decisions made while building:
   online shop itself doesn't have to be switched on.
 - Browser test needed: `tests/pay-links.spec.ts` (the page before and after the Stripe key, the customer page's link,
   sending with two taps, Copy the link, the customer paying on the Stripe mock, the link shown paid).
+
+**`special-orders` (1.2, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021010000_special_orders` (`SpecialOrder`,
+carried by the company file and the customer merge; `SaleLine.specialOrderId`; `Part.comingSoonOn`, `depositKept`; Shop
+deposit default, rule, days, numbers). Message kind `order_in` (wording "It's here"). Code: `src/lib/special-orders.ts`,
+`src/lib/special-order-hooks.ts` (the register's part), `src/lib/arrivals.ts` (stock received by order or by hand),
+`src/actions/special-orders.ts`, the register's **Special order** button (`src/components/special-order-panel.tsx`) and
+quiet line "Special order waiting / Add it" (`src/components/register-extras.tsx`, `src/lib/register-extras.ts`: the
+one read later packages add to), pages `/special-orders` (three tabs), `/special-orders/[id]` (pay, pay link for the rest,
+order it, it's here, called, cancel, undo), `/special-orders/[id]/print` (the slip), Settings → Selling → Special orders,
+the customer's page, the item's page (**Coming soon and deposits**, "Ask for the balances"), Orders to suppliers ("N
+special orders waiting", Add them), to-do lines (`src/lib/shop-todos.ts`), the online shop's **Pre-order** on a
+coming-soon item. Check: `scripts/checks/special-orders.check.ts` (9 groups); `pay-links`, `layaway`, `online-shop`,
+`books-export`, `customer-merge` (seeds a special order), `move-export`, `base-license`, `reports`, `store-credit`,
+`po-any-item`, `fabric-orders`, `notices`, `part-waits`, `gift-cards` and the unit tests pass.
+Decisions made while building:
+- Money is register sales, as layaway: a deposit or payment is a DEPOSIT line (untaxed, "Customer Deposits"); the pick-up
+  sells the item at the order's price (a tech can ring it up) and takes what was paid off on a DEPOSIT line the server
+  works out; the register's own "paid before" line is checked against it. A kept deposit is DEPOSIT_KEPT ("Kept
+  deposits" income). What was paid is the DEPOSIT lines of sales that stand, so a void takes its money out by itself.
+- When it arrives (a purchase order received, or stock received by hand on the item's page) the oldest open orders for
+  the item are marked here while the quantity lasts; the quantity is held off the shelf (a HELD stock move) until the
+  pick-up, so it can't be sold to someone else; the register has no "Sell it anyway" button: the held quantity is simply
+  not on hand. "It isn't here after all" undoes a wrong mark.
+- The "it's here" message is the customer's usual way, once (dedupe per order); no message possible (no messages, no
+  address, Marketing off) puts her on "Call these" until "I called her". An order typed in words is marked here by hand.
+- Cancel by the order's rule (store credit by default, answer 10; an owner or admin can choose refund or keep each
+  time); a tech can cancel only an order with nothing paid. Undo for a day voids the cancel's sale.
+- "Order it" puts the item on its supplier's draft order (the order's line is remembered); a typed order is only marked
+  ordered. The balance can be sent as a pay link (`trusted`, untaxed money toward the order); "Ask for the balances" sends
+  one to each open pre-order of an item, skipping those paid in full or with a link waiting.
+- Online pre-order: name, mobile, email, then Stripe's page for the deposit (the shop's default; the whole price when the
+  shop asks none), through a two-day pay link. An unpaid online pre-order stays on the list with nothing paid (cancel it).
+- Left for later: the kit-subscription schedule ("a week before the ship date" is the button, not a timer); a deposits
+  report line beside layaway's (the Special orders page shows the total held; the books carry it).
+- Browser test needed: `tests/special-orders.spec.ts` (settings, the register's Special order, the list and slip,
+  receiving on the item page, the register's "Add it", cancel and undo, coming soon in the register's search).

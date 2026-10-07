@@ -50,6 +50,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
   { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
+  { model: "SpecialOrder", field: "customerId", label: ["special order", "special orders"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -303,6 +304,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const l of await tx.layaway.findMany({ where: { shopId, customerId: c.id, status: "OPEN" }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Layaway #${l.number} is still being paid for. Finish or cancel it first.`);
   }
+  for (const o of await tx.specialOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["WAITING", "ORDERED", "HERE"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Special order ${o.number} is still open. Finish or cancel it first.`);
+  }
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -379,6 +383,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
+  add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
