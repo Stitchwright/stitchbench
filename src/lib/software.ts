@@ -125,6 +125,8 @@ export type PreparedSoftware = {
   /** A return: the licence it takes back, and the owner's reason when it was activated. */
   takeBack: { id: string; activated: boolean; fromCode: boolean } | null;
   overrideReason: string | null;
+  /** A return with no licence of hers to take back: money only. */
+  returnOnly?: boolean;
 };
 
 /**
@@ -159,7 +161,9 @@ export async function prepareSoftwareLine(
     const lic =
       (a.returnOfSaleId ? await db.softwareLicense.findFirst({ where: { ...where, saleId: a.returnOfSaleId }, orderBy: { createdAt: "desc" } }) : null) ??
       (a.customerId ? await db.softwareLicense.findFirst({ where: { ...where, customerId: a.customerId }, orderBy: { createdAt: "desc" } }) : null);
-    if (!lic) return base;
+    // No licence of hers to take back (bought before licences were kept, or elsewhere): the money comes back, no licence
+    // is made and no code taken.
+    if (!lic) return { ...base, returnOnly: true };
     const activated = lic.activatedAt != null;
     const reason = (sw.returnReason ?? "").trim().slice(0, 200) || null;
     if (activated && (a.role === "TECH" || !reason)) {
@@ -193,6 +197,7 @@ export async function applySoftwareLine(
   p: PreparedSoftware,
 ): Promise<string | null> {
   const today = ymdOf(a.at, a.timeZone);
+  if (p.returnOnly) return null;
   if (p.takeBack) {
     const r = await tx.softwareLicense.updateMany({ where: { id: p.takeBack.id, shopId: a.shopId, status: "ACTIVE" }, data: { status: "RETURNED", returnLineId: a.saleLineId } });
     if (!r.count) throw new UserError(`${p.description} was just returned. Take it off this sale.`);
@@ -269,6 +274,12 @@ export async function voidSoftwareOfSale(tx: Tx, shopId: string, saleId: string,
   const made = await tx.softwareLicense.findMany({ where: { shopId, saleId } });
   for (const l of made) {
     if (l.status !== "ACTIVE") throw new UserError(`${l.description} on this sale was ${l.status === "RENEWED" ? "renewed" : "returned"} since. Void that sale first.`);
+    if (l.activatedAt && !l.renewedFromId) {
+      // Activated: its code is used up (the maker has it on her machine), so it doesn't go back in the drawer to be sold
+      // again. The licence is ended, keeping the code with it.
+      await tx.softwareLicense.updateMany({ where: { id: l.id, shopId }, data: { status: "ENDED" } });
+      continue;
+    }
     await tx.softwareCode.updateMany({ where: { shopId, usedById: l.id }, data: { usedById: null } });
     if (l.renewedFromId) await tx.softwareLicense.updateMany({ where: { id: l.renewedFromId, shopId, status: "RENEWED" }, data: { status: "ACTIVE" } });
     await tx.softwareLicense.deleteMany({ where: { id: l.id, shopId } });

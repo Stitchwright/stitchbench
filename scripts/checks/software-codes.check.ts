@@ -127,6 +127,19 @@ async function main() {
     assert.equal(await codesOnHand(a.shopId, sw.id), before - 1);
     await voidSaleAs(user(a), s5.saleId, "wrong item");
     assert.equal(await codesOnHand(a.shopId, sw.id), before, "voiding the sale puts its drawer code back");
+    // Review fixes: an activated licence's code isn't put back by a void (the licence ends, keeping it); a return with no
+    // licence of hers makes none and takes no code.
+    await db.shop.update({ where: { id: a.shopId }, data: { softwareActivatedAtSale: true } });
+    const s6 = await completeSaleAs(user(a), { lines: [line(sw.id, 100_000, {})], tenders: cash(100_000) });
+    await db.shop.update({ where: { id: a.shopId }, data: { softwareActivatedAtSale: false } });
+    await voidSaleAs(user(a), s6.saleId, "wrong item");
+    assert.equal(await codesOnHand(a.shopId, sw.id), before - 1, "an activated code stays used");
+    assert.equal((await db.softwareLicense.findFirstOrThrow({ where: { shopId: a.shopId, saleId: s6.saleId } })).status, "ENDED");
+    const stranger = await db.customer.create({ data: { shopId: a.shopId, name: "No Licence" } });
+    const lics = await db.softwareLicense.count({ where: { shopId: a.shopId } });
+    await completeSaleAs(user(a), { customerId: stranger.id, lines: [line(sw.id, 100_000, {}, -1)], tenders: cash(-100_000) });
+    assert.equal(await db.softwareLicense.count({ where: { shopId: a.shopId } }), lics, "no phantom licence");
+    assert.equal(await codesOnHand(a.shopId, sw.id), before - 1, "and no code taken");
     ok("renewal: a new licence from the old renewal date, the old one renewed; voiding it brings the old one back; voiding a sale puts its code back in the drawer");
 
     // 6. Renewals list and the reminder's still-wanted check.
