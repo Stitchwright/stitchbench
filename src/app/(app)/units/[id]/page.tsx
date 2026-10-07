@@ -17,12 +17,16 @@ import { recordRegistration, setUnitOffSale, updateUnit } from "@/actions/units"
 import { ActionForm, Submit } from "@/components/action-form";
 import { IntakeFields } from "@/components/equipment/intake-fields";
 import { Empty, KV, PageHeader, Section } from "@/components/ui";
+import { MapPriceSection } from "@/components/map-price";
+import { db } from "@/lib/db";
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
   const u = await unitDetail(user.shopId, id);
   if (!u) notFound();
+  // Round 2, phase 6 (shop-features-round-2-design.md section 9): the maker's minimum advertised price.
+  const extra = await db.stockUnit.findFirstOrThrow({ where: { id: u.id, shopId: user.shopId }, select: { mapCents: true } });
   const [tz, kind, plans, terms, workable] = await Promise.all([
     shopTimeZone(user.shopId),
     kindOf(user.shopId, { equipment: u.equipment, kind: u.kind }),
@@ -154,6 +158,8 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
               </ActionForm>
             </Section>
           )}
+
+          {(u.status === "IN_STOCK" || u.status === "HELD" || extra.mapCents != null) && <MapPriceSection what="unit" id={u.id} priceCents={u.priceCents} mapCents={extra.mapCents} admin={admin} />}
 
           <Section title="History">
             {u.events.length === 0 ? (

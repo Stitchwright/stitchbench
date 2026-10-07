@@ -8,6 +8,7 @@ import { CampaignForm } from "@/components/campaign-form";
 import { MessagesTabs } from "@/components/messages-tabs";
 import { ModuleOff } from "@/components/module-off";
 import { PageHeader, Section } from "@/components/ui";
+import { MapWarnings } from "@/components/map-price";
 
 export default async function NewCampaignPage() {
   const user = await requireAdmin();
@@ -23,6 +24,7 @@ export default async function NewCampaignPage() {
     <div className="space-y-4">
       <PageHeader title="New campaign" back={{ href: "/campaigns", label: "Campaigns" }} />
       <MessagesTabs active="campaigns" />
+      <MapWarnings shopId={shopId} />
       <Section title="The message">
         <CampaignForm action={saveCampaign.bind(null, null)} draft={null} classes={classes} shop={shop} partMills={ms.smsPartMills} />
       </Section>

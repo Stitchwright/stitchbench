@@ -12,6 +12,7 @@ import { deleteHoliday } from "@/actions/tax-holidays";
 import { saveLender } from "@/actions/financing";
 import { deletePromotion, setTaxIncluded } from "@/actions/promotions";
 import { listPromotions } from "@/lib/promotions";
+import { MapWarnings } from "@/components/map-price";
 import { EFFECT_LABEL, TAX_INCLUDED_WARNING } from "@/lib/promo-math";
 import { PromotionForm } from "@/components/promotion-form";
 import { db } from "@/lib/db";
@@ -134,6 +135,9 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
         <p className="muted mb-3 text-sm">
           Plan a sale ahead: on its days the register takes the percent or amount off the items it covers by itself (it shows on each line and on the receipt). After it ends, prices go back on their own.
         </p>
+        <div className="mb-3">
+          <MapWarnings shopId={user.shopId} promosOnly />
+        </div>
         {promos.length === 0 ? (
           <Empty>No sales planned. Add one below.</Empty>
         ) : (

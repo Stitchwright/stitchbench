@@ -66,7 +66,7 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
           )}
           {it.text && <p className="whitespace-pre-wrap">{it.text}</p>}
           <p className="text-xl">
-            <Price cents={it.priceCents} unit={it.unit} />
+            <Price cents={it.priceCents} unit={it.unit} seeInCart={it.seeInCart} />
           </p>
           {it.inStock ? (
             <form method="post" action={`/api/shop/${store.slug}`} className="flex items-end gap-2">
