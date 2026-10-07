@@ -5,11 +5,15 @@ import "server-only";
 // path-style (<endpoint>/<bucket>/<key>), which every one of them accepts.
 import crypto from "node:crypto";
 import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
 import { UserError } from "@/lib/user-error";
+import { publicLookup } from "@/lib/safe-fetch";
 
-export type S3Config = { endpoint: string; bucket: string; region: string; accessKeyId: string; secret: string; prefix: string };
+/** `publicOnly` (the hosted server): each request's own connection is resolved public-only, see send() below. */
+export type S3Config = { endpoint: string; bucket: string; region: string; accessKeyId: string; secret: string; prefix: string; publicOnly?: boolean };
 
 const hmac = (key: crypto.BinaryLike, data: string) => crypto.createHmac("sha256", key).update(data).digest();
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
@@ -83,6 +87,29 @@ export function isPrivate(ip: string): boolean {
 
 const asBody = (data: Buffer) => new Uint8Array(data);
 
+/**
+ * One request to the bucket, no redirect followed. On the hosted server the connection resolves the name itself through the
+ * public-only lookup (src/lib/safe-fetch.ts) rather than fetch's own: checkEndpoint's look at the name can't be undone by the
+ * name answering with a private address a moment later (DNS rebinding).
+ */
+function send(cfg: S3Config, url: string, init: { method?: string; body?: Buffer; timeoutMs: number }): Promise<Response> {
+  const u = new URL(url);
+  const loop = process.env.OFFSITE_ALLOW_LOOPBACK === "1" && ["127.0.0.1", "localhost"].includes(u.hostname);
+  const signal = AbortSignal.timeout(init.timeoutMs);
+  if (!cfg.publicOnly || loop) return fetch(url, { method: init.method, body: init.body && asBody(init.body), redirect: "manual", signal });
+  return new Promise((resolve, reject) => {
+    const headers = init.body ? { "Content-Length": String(init.body.length) } : undefined;
+    const req = (u.protocol === "https:" ? https : http).request(u, { method: init.method ?? "GET", headers, signal, lookup: publicLookup }, (res) => {
+      const status = res.statusCode ?? 0;
+      const empty = status === 204 || status === 304;
+      if (empty) res.resume();
+      resolve(new Response(empty ? null : (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>), { status }));
+    });
+    req.on("error", (e: NodeJS.ErrnoException) => reject(e.code === "EPRIVATE" ? new UserError("Your backup bucket's address now points inside a private network, which isn't allowed here.") : e));
+    req.end(init.body);
+  });
+}
+
 async function ok(r: Response, what: string): Promise<Response> {
   if (r.ok) return r;
   const text = (await r.text().catch(() => "")).slice(0, 300);
@@ -91,19 +118,19 @@ async function ok(r: Response, what: string): Promise<Response> {
 }
 
 export async function s3Put(cfg: S3Config, key: string, data: Buffer): Promise<void> {
-  const r = await fetch(presign(cfg, "PUT", `${cfg.prefix}${key}`, { expires: 3600 }), { method: "PUT", body: asBody(data), redirect: "manual", signal: AbortSignal.timeout(30 * 60_000) });
+  const r = await send(cfg, presign(cfg, "PUT", `${cfg.prefix}${key}`, { expires: 3600 }), { method: "PUT", body: data, timeoutMs: 30 * 60_000 });
   await ok(r, "the file");
 }
 
 export async function s3Get(cfg: S3Config, key: string): Promise<Readable> {
-  const r = await fetch(presign(cfg, "GET", `${cfg.prefix}${key}`), { redirect: "manual", signal: AbortSignal.timeout(10 * 60_000) });
+  const r = await send(cfg, presign(cfg, "GET", `${cfg.prefix}${key}`), { timeoutMs: 10 * 60_000 });
   if (r.status === 404) throw new UserError("That backup file isn't in the bucket.");
   await ok(r, "the file");
   return Readable.fromWeb(r.body as import("node:stream/web").ReadableStream<Uint8Array>);
 }
 
 export async function s3Delete(cfg: S3Config, key: string): Promise<void> {
-  const r = await fetch(presign(cfg, "DELETE", `${cfg.prefix}${key}`, { expires: 120 }), { method: "DELETE", redirect: "manual", signal: AbortSignal.timeout(30_000) });
+  const r = await send(cfg, presign(cfg, "DELETE", `${cfg.prefix}${key}`, { expires: 120 }), { method: "DELETE", timeoutMs: 30_000 });
   if (r.status !== 404) await ok(r, "the delete");
 }
 
@@ -116,7 +143,7 @@ export async function s3List(cfg: S3Config): Promise<{ name: string; size: numbe
   for (let page = 0; page < 1000; page++) {
     const query: Record<string, string> = { "list-type": "2", prefix: cfg.prefix, "max-keys": "1000" };
     if (token) query["continuation-token"] = token;
-    const r = await ok(await fetch(presign(cfg, "GET", "", { query, expires: 120 }), { redirect: "manual", signal: AbortSignal.timeout(60_000) }), "the listing");
+    const r = await ok(await send(cfg, presign(cfg, "GET", "", { query, expires: 120 }), { timeoutMs: 60_000 }), "the listing");
     const xml = await r.text();
     for (const m of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
       const key = /<Key>([\s\S]*?)<\/Key>/.exec(m[1])?.[1];
