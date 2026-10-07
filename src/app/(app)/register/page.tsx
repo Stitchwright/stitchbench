@@ -17,7 +17,6 @@ import { registerReaders } from "@/lib/card-reader";
 import { entryFor } from "@/lib/assistant/ui";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { pullListItems } from "@/lib/quilt";
-import { entryFor } from "@/lib/assistant/ui";
 import { FIRST_PHOTO, viewItem } from "@/lib/register-item";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
