@@ -299,9 +299,9 @@ export default async function SettingsPage() {
 
       {admin && shop.sellsRetail && (
         <Section title="Selling">
-          <p className="muted mb-2 text-sm">Layaway (deposit, payments, cancelling), your service plans (free cleanings, extended warranty) and each maker&apos;s warranty as you want it shown.</p>
+          <p className="muted mb-2 text-sm">Sales tax holidays, layaway (deposit, payments, cancelling), your service plans (free cleanings, extended warranty) and each maker&apos;s warranty as you want it shown.</p>
           <Link href="/settings/sales" className="btn btn-sm">
-            Layaway, plans and warranties
+            Tax holidays, layaway, plans and warranties
           </Link>
         </Section>
       )}

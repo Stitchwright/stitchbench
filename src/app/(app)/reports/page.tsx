@@ -582,6 +582,19 @@ async function TaxTab({ shopId, tz, start, end, csv }: TabProps & { tz: string }
           </ul>
         </Section>
       )}
+      {r.holidays.length > 0 && (
+        <Section title="Sold tax free on a sales tax holiday">
+          <p className="muted mb-2 text-sm">Already in the non-taxable sales above. Your state may ask for this on the return.</p>
+          <ul className="space-y-1 text-sm">
+            {r.holidays.map((h) => (
+              <li key={h.name} className="flex justify-between">
+                <span>{h.name}</span>
+                <span className="num">{money(h.amountCents)}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       <Section title={`Tax-exempt sales (${r.exempt.length})`} actions={<Download href={csv("tax-exempt")} />}>
         {r.exempt.length === 0 ? (
           <Empty>No tax-exempt sales in this range.</Empty>

@@ -228,6 +228,7 @@ model Shop {
   // Machines for sale (tax-machine-sales-layaway-design.md section 3)
   makerWarranties   MakerWarranty[]
   layaways          Layaway[]
+  taxHolidays       TaxHoliday[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
   vacCares          VacCare[]
@@ -1331,6 +1332,9 @@ model SaleLine {
   giftCardId     String?
   // A service plan sold on this line (the MachinePlan it made, plain id)
   machinePlanId  String?
+  // Why a line that could be taxed wasn't (or was taxed differently): null, "exempt" (the customer's certificate),
+  // "holiday:<TaxHoliday id>" (a sales tax holiday), "included" (the price includes the tax): for the receipt, a return and the tax report
+  taxNote        String?
   // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
   // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
   layawayId      String?
@@ -3045,4 +3049,24 @@ model LayawayLine {
   taxable        Boolean @default(true)
 
   @@index([layawayId])
+}
+
+// A sales tax holiday (tax-machine-sales-layaway-design.md section 1): whole days in the shop's zone (YYYY-MM-DD), the
+// kinds of item it covers (sale line kinds: FABRIC, NOTION, UNIT...), and a per-item limit: a line whose price each,
+// after its own discount, is over it is taxed in full. The register applies it by date; preset: the state it was
+// filled in from ("MA"), for the yearly "confirm the dates" reminder.
+model TaxHoliday {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  preset       String?
+  firstDay     String
+  lastDay      String
+  kinds        String[]
+  maxUnitCents Int?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([shopId, firstDay])
 }

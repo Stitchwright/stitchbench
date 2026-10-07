@@ -1,7 +1,14 @@
-// Settings → Selling (tax-machine-sales-layaway-design.md sections 3 and 4): the layaway defaults and the terms
-// customers sign, the shop's own service plans (sold at the register or included with a machine for sale), and each
-// maker's warranty as the shop wants it shown. Owners and admins change them; everyone can read them.
+// Settings → Selling (tax-machine-sales-layaway-design.md sections 1, 3 and 4): sales tax holidays, the layaway
+// defaults and the terms customers sign, the shop's own service plans (sold at the register or included with a machine
+// for sale), and each maker's warranty as the shop wants it shown. Owners and admins change them; everyone can read them.
+import Link from "next/link";
 import { requireUser } from "@/lib/session";
+import { shopTimeZone } from "@/lib/shop-zone";
+import { ymdOf } from "@/lib/zoned";
+import { listHolidays } from "@/lib/tax-holidays";
+import { HOLIDAY_KINDS, HOLIDAY_PRESETS, holidayDays, presetByKey } from "@/lib/tax-holiday-math";
+import { deleteHoliday } from "@/actions/tax-holidays";
+import { TaxHolidayForm } from "@/components/tax-holiday-form";
 import { money } from "@/lib/format";
 import { listPlans, planTerms } from "@/lib/units/plans";
 import { listMakerTerms, termsText } from "@/lib/units/units";
@@ -68,13 +75,73 @@ function PlanFields({ p, prefix }: { p?: Awaited<ReturnType<typeof listPlans>>[n
   );
 }
 
-export default async function SalesSettingsPage() {
+export default async function SalesSettingsPage({ searchParams }: { searchParams: Promise<{ preset?: string }> }) {
   const user = await requireUser();
   const admin = user.role !== "TECH";
-  const [plans, makers, lw] = await Promise.all([listPlans(user.shopId), listMakerTerms(user.shopId), layawaySettings(user.shopId)]);
+  const sp = await searchParams;
+  const [plans, makers, lw, holidays, tz] = await Promise.all([listPlans(user.shopId), listMakerTerms(user.shopId), layawaySettings(user.shopId), listHolidays(user.shopId), shopTimeZone(user.shopId)]);
+  const today = ymdOf(new Date(), tz);
+  const year = Number(today.slice(0, 4));
+  const preset = presetByKey(sp.preset);
   return (
     <div className="max-w-3xl space-y-6">
-      <PageHeader title="Layaway, plans and warranties" sub="How layaways work at your shop, what you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
+      <PageHeader title="Selling" sub="Sales tax holidays, how layaways work at your shop, what you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
+
+      <Section title="Sales tax holidays" id="holidays">
+        <p className="muted mb-3 text-sm">
+          On the days you set, the register leaves the sales tax off the items a holiday covers (and the online shop does too). The cashier can still charge tax on one item. The tax report lists these sales apart.
+        </p>
+        {holidays.length === 0 ? (
+          <Empty>None set up. If your state has a tax-free weekend, add it here.</Empty>
+        ) : (
+          <ul className="divide-y divide-line">
+            {holidays.map((h) => (
+              <li key={h.id} className="py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-semibold">
+                    {h.name}
+                    {!h.active && <span className="pill tone-neutral ml-2">Off</span>}
+                    {h.active && h.firstDay <= today && today <= h.lastDay && <span className="pill tone-ready ml-2">On today</span>}
+                  </span>
+                  <span className="text-sm">
+                    {holidayDays(h)}
+                    {h.maxUnitCents != null ? ` · up to ${money(h.maxUnitCents)} each` : ""}
+                  </span>
+                </div>
+                <p className="muted text-sm">Covers: {HOLIDAY_KINDS.filter((k) => h.kinds.includes(k.key)).map((k) => k.label.toLowerCase()).join(", ")}</p>
+                {admin && (
+                  <details className="mt-2">
+                    <summary className="link cursor-pointer text-sm">Change</summary>
+                    <div className="mt-2 space-y-2">
+                      <TaxHolidayForm h={h} year={year} prefix={`th-${h.id}`} />
+                      <ActionButton action={deleteHoliday.bind(null, h.id)} className="btn btn-sm" success="Removed">
+                        Remove
+                      </ActionButton>
+                    </div>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {admin && (
+          <div className="mt-4 border-t border-line pt-4">
+            <h3 className="mb-2 font-semibold">Add a tax holiday</h3>
+            <p className="mb-2 flex flex-wrap gap-2 text-sm">
+              Start from:
+              {HOLIDAY_PRESETS.map((p) => (
+                <Link key={p.key} href={`/settings/sales?preset=${p.key}#holidays`} className={`btn btn-sm ${preset?.key === p.key ? "btn-primary" : ""}`}>
+                  {p.state}
+                </Link>
+              ))}
+              <Link href="/settings/sales#holidays" className={`btn btn-sm ${!preset ? "btn-primary" : ""}`}>
+                A blank form
+              </Link>
+            </p>
+            <TaxHolidayForm key={preset?.key ?? "blank"} preset={preset} year={year} prefix="th-new" />
+          </div>
+        )}
+      </Section>
 
       <Section title="Layaway">
         <p className="muted mb-3 text-sm">What the register fills in when a customer wants to pay over time. You can change any of it for one layaway at the register.</p>

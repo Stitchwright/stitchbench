@@ -11,6 +11,7 @@ import { ActionForm, Submit } from "@/components/action-form";
 import { SaleUnitNotes } from "@/components/units/sale-unit-notes";
 import { voidSale } from "@/actions/register";
 import { lastFour } from "@/lib/gift-card-number";
+import { holidayNames } from "@/lib/tax-holidays";
 
 /** A register receipt, narrow enough for an 80 mm receipt printer and fine on letter paper. */
 export default async function Receipt({ params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +30,11 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
     orderBy: { at: "asc" },
   });
   const svg = barcodeSvg(`S${sale.number}`, 7);
+  // Lines sold on a sales tax holiday print its name.
+  const holidays = await holidayNames(
+    user.shopId,
+    sale.lines.map((l) => l.taxNote),
+  );
   const tenders = sale.tenders as Tender[];
   // Clock times in the shop's zone: a hosted install's server runs on UTC, which would put an evening sale on tomorrow's date.
   const when = (d: Date, opts?: Intl.DateTimeFormatOptions) => fmtDateTime(d, shop.timeZone, opts);
@@ -68,7 +74,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
                 <span>
                   {qtyText(l.qty, l.unit)} @ {money(l.unitPriceCents)}
                   {l.discountCents ? ` less ${money(l.discountCents)}` : ""}
-                  {l.taxable ? "" : " (no tax)"}
+                  {l.taxable ? "" : l.taxNote?.startsWith("holiday:") ? " (tax holiday)" : " (no tax)"}
                 </span>
                 <span>{money(lineNet(l))}</span>
               </div>
@@ -80,6 +86,11 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
         <Line k="Subtotal" v={money(sale.subtotalCents)} />
         {sale.discountCents > 0 && <Line k="Discount" v={`-${money(sale.discountCents)}`} />}
         <Line k={sale.taxExemptId ? `Tax exempt (certificate ${sale.taxExemptId})` : `Tax ${sale.taxRatePct}%`} v={money(sale.taxCents)} />
+        {[...holidays.values()].map((name) => (
+          <div key={name} className="text-xs">
+            No sales tax on the items marked: {name}.
+          </div>
+        ))}
         <div className="flex justify-between text-base font-bold">
           <span>{sale.totalCents < 0 ? "REFUND" : "TOTAL"}</span>
           <span>{money(Math.abs(sale.totalCents))}</span>

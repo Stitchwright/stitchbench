@@ -23,6 +23,8 @@ import { fmtYmdLong, sellableEquipment, unitDescription } from "@/lib/units/unit
 import { holdItems, releaseItems } from "@/lib/layaway-hooks";
 import { behind, cancelSplit, DEFAULT_LAYAWAY_TERMS, dueByOf, isEvery, layawayPlan, minDeposit, type LayawayEvery, type PlanPayment } from "@/lib/layaway-math";
 import { ymdOf } from "@/lib/zoned";
+import { holidaysOn } from "@/lib/tax-holidays";
+import { holidayCovers } from "@/lib/tax-holiday-math";
 
 const MAX_MONEY = 10_000_000;
 
@@ -121,9 +123,17 @@ async function paidFor(shopId: string, ids: string[]): Promise<Map<string, numbe
 
 /** The tax the items would carry today: the customer's exemption counts, as it would at the register. */
 async function taxToday(shopId: string, l: LayawayRow): Promise<{ price: number; tax: number }> {
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } });
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true, timeZone: true } });
   const exempt = exemptCertificate(l.customer);
-  const t = saleTotals(l.lines, 0, exempt ? 0 : shop.taxRatePct);
+  // A tax holiday today, or on the day the layaway began, takes the tax off what it covers (as the pick-up sale will).
+  const holidays = exempt ? [] : await holidaysOn(shopId, [ymdOf(new Date(), shop.timeZone), ymdOf(l.startedAt, shop.timeZone)]);
+  const partIds = l.lines.map((x) => x.partId).filter((x): x is string => !!x);
+  const kinds = new Map(holidays.length && partIds.length ? (await db.part.findMany({ where: { shopId, id: { in: partIds } }, select: { id: true, kind: true } })).map((p) => [p.id, p.kind as string]) : []);
+  const lines = l.lines.map((x) => {
+    const kind = x.stockUnitId ? "UNIT" : x.partId ? (kinds.get(x.partId) ?? "MISC") : "MISC";
+    return { ...x, taxable: x.taxable && !holidays.some((h) => holidayCovers(h, { ...x, kind })) };
+  });
+  const t = saleTotals(lines, 0, exempt ? 0 : shop.taxRatePct);
   return { price: t.subtotal, tax: t.tax };
 }
 
@@ -226,6 +236,7 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
   const settings = await layawaySettings(shopId);
   const equipment = await sellableEquipment(shopId);
   const rows: Omit<Prisma.LayawayLineCreateManyInput, "layawayId">[] = [];
+  const rowKinds: string[] = [];
   const unitIds = new Set<string>();
   for (const l of lines) {
     const qty = Number(l.qty);
@@ -241,6 +252,7 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
       if (user.role === "TECH" && price !== u.priceCents) throw new UserError(`Only an owner or admin can change the price of ${unitDescription(u)}.`);
       unitIds.add(u.id);
       rows.push({ stockUnitId: u.id, description: unitDescription(u), qty: 1, unitPriceCents: price, discountCents: Math.min(disc, price), taxable: true });
+      rowKinds.push("UNIT");
     } else if (l.partId) {
       const p = await db.part.findFirst({ where: { id: l.partId, shopId } });
       if (!p) throw new UserError("An item isn't in your inventory any more.");
@@ -248,6 +260,7 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
       if (!(qty > 0) || qty > 10_000 || (p.unit !== "yd" && !Number.isInteger(qty))) throw new UserError(`Check the quantity of ${p.partNumber}.`);
       if (user.role === "TECH" && p.priceCents != null && price !== p.priceCents) throw new UserError(`Only an owner or admin can change the price of ${p.partNumber}.`);
       rows.push({ partId: p.id, description: (l.description || p.description).slice(0, 200), partNumber: p.partNumber, unit: p.unit, qty, unitPriceCents: price, discountCents: Math.min(disc, Math.round(qty * price)), taxable: true });
+      rowKinds.push(p.kind);
     } else {
       throw new UserError("A layaway holds stock items and machines for sale. Ring up anything else as a sale.");
     }
@@ -259,8 +272,13 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
   const dueBy = dueByOf(today, days);
   const exempt = exemptCertificate(customer);
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } });
+  // The total the plan splits: today's tax, less what a tax holiday today takes off.
+  const holidays = exempt ? [] : await holidaysOn(shopId, [today]);
   const t = saleTotals(
-    rows.map((r) => ({ qty: r.qty as number, unitPriceCents: r.unitPriceCents as number, discountCents: r.discountCents as number, taxable: true })),
+    rows.map((r, i) => {
+      const line = { qty: r.qty as number, unitPriceCents: r.unitPriceCents as number, discountCents: r.discountCents as number, taxable: true };
+      return { ...line, taxable: !holidays.some((h) => holidayCovers(h, { ...line, kind: rowKinds[i] })) };
+    }),
     0,
     exempt ? 0 : shop.taxRatePct,
   );

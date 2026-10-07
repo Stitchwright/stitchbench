@@ -3,7 +3,8 @@ import "server-only";
 // (untaxed lines and exempt customers) is taxable sales, with the tax collected, grouped by the rate charged so a
 // mid-year rate change shows two lines. Returns and voids are netted into the period they happen in and shown apart.
 // Stripe Tax orders (the tax Stripe worked out, by ship-to state) are listed apart; tax-exempt sales are listed with their
-// certificate numbers, the list an auditor asks for.
+// certificate numbers, the list an auditor asks for. Sales made tax free on a sales tax holiday are listed apart by
+// holiday (tax-machine-sales-layaway-design.md section 1: states ask for them on the return).
 import { db } from "@/lib/db";
 import { saleLines } from "@/lib/reports/sales";
 import { NOT_SALE_KINDS } from "@/lib/sale-kind";
@@ -32,6 +33,8 @@ export type TaxReport = {
   exemptTotal: number;
   stripe: StripeRow[];
   stripeTotal: number;
+  /** Sold tax free on each sales tax holiday (returns netted in), already counted in non-taxable sales. */
+  holidays: { name: string; amountCents: number }[];
   /** Sales where taxable times the rate is not the tax charged to the cent (sales the report can't re-work). */
   oddTax: { kind: "Sale" | "Ticket"; number: number; day: string; taxCents: number; expectedCents: number }[];
 };
@@ -63,6 +66,7 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
     orderBy: { createdAt: "asc" },
   });
   const stripe: StripeRow[] = [];
+  const byHoliday = new Map<string, number>();
   for (const s of sales) {
     const lines = saleLines(s).filter((x) => !NOT_SALE_KINDS.includes(x.kind));
     const gross = lines.reduce((a, x) => a + x.amount, 0);
@@ -85,6 +89,9 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
       if (sign === -1 || gross < 0) {
         r.returnsGross += sign === -1 ? -gross : gross;
         r.returnsTax += sign === -1 ? -s.taxCents : s.taxCents;
+      }
+      for (const x of lines) {
+        if (x.line.taxNote?.startsWith("holiday:")) byHoliday.set(x.line.taxNote.slice(8), (byHoliday.get(x.line.taxNote.slice(8)) ?? 0) + sign * x.amount);
       }
       if (sign === 1 && s.taxExemptId) {
         exempt.push({ kind: "Sale", number: s.number, day: dateIn(at, tz), customer: s.customer?.name ?? "", certificate: s.taxExemptId, amountCents: taxableBase });
@@ -131,6 +138,8 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
   }
   // Exempt amounts of tickets are taxable lines that were not taxed: sum what an auditor would see.
   exempt.sort((a, b) => a.day.localeCompare(b.day) || a.number - b.number);
-  return { rates: rows, totals, exempt, exemptTotal: exempt.reduce((a, e) => a + e.amountCents, 0), stripe, stripeTotal: stripe.reduce((a, s) => a + s.taxCents, 0), oddTax };
+  const names = byHoliday.size ? new Map((await db.taxHoliday.findMany({ where: { shopId, id: { in: [...byHoliday.keys()] } }, select: { id: true, name: true } })).map((h) => [h.id, h.name])) : new Map<string, string>();
+  const holidays = [...byHoliday].map(([id, amountCents]) => ({ name: names.get(id) ?? "Tax holiday", amountCents }));
+  return { rates: rows, totals, holidays, exempt, exemptTotal: exempt.reduce((a, e) => a + e.amountCents, 0), stripe, stripeTotal: stripe.reduce((a, s) => a + s.taxCents, 0), oddTax };
 }
 
