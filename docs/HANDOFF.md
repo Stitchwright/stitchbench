@@ -962,8 +962,15 @@ REPO_CHECK_HEAP_MB; the OCR render is still on the main thread: do before REPO_U
 existing account's password; Assistant keys bound to their install; Assistant/top-up refunds and disputes handled;
 takedown form notices one strike per notice, more than 5 manuals wait for the owner; backup PUTs signed for size,
 unconfirmed swept, BACKUP_INSTALL_QUOTA_GB; plan-switch refunds don't cancel; sign-in lock per typed address. Hub
-tests all pass on scratch DBs. Program: not yet compiled or run (PC out of memory): after the restart run the full
-checks, tsc, build and the whole Playwright suite, then the owner merges both branches to main again.
+tests all pass on scratch DBs. Program, after the restart (7 Oct morning): tsc clean, unit tests, all 66 check scripts
+(three updated for the fixes), and the whole Playwright suite pass on a test build: 39 specs on :3300 with the test hub,
+the nine mail/text/Stripe specs on :3501 with the mocks, estimate-links' no-PUBLIC_URL run, and assistant with the
+Anthropic stand-in (`scripts/local-test/.run/*.sh|ps1` were the runners, not committed). Found and fixed on the way: the
+build script lacked STITCH_TEST_BUILD=1; fabric.spec's back-dated sales took receipt numbers past the shop's counter (the
+next real sale collided: register, gift-cards, clubs and modules specs failed until fixed in 5d21ade). Flaky, passes on
+rerun: estimate-links' text reply (worker timing); inventory's community most-used after a second run within the hour
+(the hub's usage-report limit). campaigns' text test skips before noon Eastern. Next: the owner merges both branches to
+main again.
 Open choice: a cart mixing scanned returns with new items still taxes all at today's rate (one rate per sale).
 
 ## 2p. The next test batch (what to run before trusting the pages)
