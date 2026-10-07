@@ -49,6 +49,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "KitSeriesMember", field: "customerId", label: ["Block of the Month sign-up", "Block of the Month sign-ups"] },
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
+  { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -299,6 +300,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const g of await tx.giftCard.findMany({ where: { shopId, customerId: c.id, status: "active", balanceCents: { gt: 0 } }, select: { kind: true, balanceCents: true } })) {
     out.push(`${g.kind === "credit" ? "Store credit" : "A gift card"} of ${money(g.balanceCents)} is still owed. Pay it out or let them spend it first.`);
   }
+  for (const l of await tx.layaway.findMany({ where: { shopId, customerId: c.id, status: "OPEN" }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Layaway #${l.number} is still being paid for. Finish or cancel it first.`);
+  }
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -374,6 +378,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(clubsIn, ["club membership", "club memberships"], `deleted${cards ? `; ${cards === 1 ? "their card subscription is" : "their card subscriptions are"} stopped at Stripe first (if that fails, nothing is deleted)` : ""}; the club payments already in the register's books stay`);
   add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
+  add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }

@@ -298,10 +298,10 @@ export default async function SettingsPage() {
       )}
 
       {admin && shop.sellsRetail && (
-        <Section title="Selling machines">
-          <p className="muted mb-2 text-sm">Your service plans (free cleanings, extended warranty) and each maker&apos;s warranty as you want it shown on receipts and tickets.</p>
+        <Section title="Selling">
+          <p className="muted mb-2 text-sm">Layaway (deposit, payments, cancelling), your service plans (free cleanings, extended warranty) and each maker&apos;s warranty as you want it shown.</p>
           <Link href="/settings/sales" className="btn btn-sm">
-            Plans and warranties
+            Layaway, plans and warranties
           </Link>
         </Section>
       )}

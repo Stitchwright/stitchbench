@@ -4,7 +4,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { ABANDON_STAGE_LABEL } from "@/lib/constants";
-import { ticketNo } from "@/lib/format";
+import { money, ticketNo } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -14,6 +14,7 @@ import { scheduleFor } from "@/lib/notices/vars";
 import { markBackAtCounter } from "@/actions/notices";
 import { ActionButton } from "@/components/action-form";
 import { REGISTER_AFTER_DAYS } from "@/lib/units/units";
+import { listLayaways } from "@/lib/layaway";
 
 const WEEK = 7 * 86_400_000;
 const SHOWN = 5;
@@ -80,6 +81,31 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         </Link>
       ),
     });
+  }
+
+  // Layaways behind on their payments (or past the last day).
+  if (await db.layaway.count({ where: { shopId, status: "OPEN" } })) {
+    const late = (await listLayaways(shopId, "OPEN")).filter((l) => l.behindCents > 0);
+    for (const l of late.slice(0, SHOWN)) {
+      lines.push({
+        key: `layaway-${l.id}`,
+        node: (
+          <Link href={`/layaways/${l.id}`} className="link">
+            Layaway #{l.number}{l.customer ? ` for ${l.customer.name}` : ""} is {money(l.behindCents)} behind on payments
+          </Link>
+        ),
+      });
+    }
+    if (late.length > SHOWN) {
+      lines.push({
+        key: "layaway-more",
+        node: (
+          <Link href="/layaways" className="link">
+            and {late.length - SHOWN} more layaways behind
+          </Link>
+        ),
+      });
+    }
   }
 
   if (gate !== "hidden") {

@@ -97,6 +97,7 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
         const a = x.amount;
         if (x.kind === "GIFT_CARD") post(one, acct(x.line.giftCardId && creditCards.has(x.line.giftCardId) ? "creditLiability" : "giftLiability"), -sign * a);
         else if (x.kind === "TRADE_IN") post(one, acct("tradeIns"), -sign * a);
+        else if (x.kind === "LAYAWAY") post(one, acct("customerDeposits"), -sign * a);
         else if (x.kind === "REPAIR") post(one, acct("dueToPartners"), -sign * a);
         else if (!cfg.netDiscounts && x.discount > 0 && x.line.qty * x.line.unitPriceCents > 0) {
           post(one, salesAccount(x.kind), -sign * (a + x.discount));

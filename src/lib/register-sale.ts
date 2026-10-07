@@ -14,6 +14,7 @@ import { normalizeTerms } from "@/lib/partner-terms";
 import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, ALL_TENDER_METHODS, type Tender } from "@/lib/register-math";
 import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/units/sale-units";
 import { applyPlanLine, endPlansOf, preparePlanLine, type PlanLineInput, type PreparedPlan } from "@/lib/units/plans";
+import { afterLayawaySale, beforeLayawayLines, voidLayawaySale, type LayawayHook } from "@/lib/layaway-hooks";
 import type { TradeInInput } from "@/lib/units/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
@@ -51,6 +52,8 @@ export type SaleLineInput = {
   giftCard?: CardLine | null;
   /** The shop's service plan sold for a machine on this sale or one of the customer's. */
   servicePlan?: PlanLineInput | null;
+  /** Layaway money (src/lib/layaway.ts only, with opts.layaway): a payment or the payments used up / given back, or its cancel fee. */
+  layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
 };
 
 export type SaleInput = {
@@ -94,9 +97,17 @@ function saleByKey(shopId: string, clientKey: string | null) {
  * `paidOnline`: the books write for an online order the customer has already paid (online-shop.ts only, never an
  * action). Money taken is always booked, so the lapsed / moving gate is skipped for it.
  */
-export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: { paidOnline?: boolean } = {}): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
+export async function completeSaleAs(
+  user: CurrentUser,
+  input: SaleInput,
+  opts: { paidOnline?: boolean; layaway?: LayawayHook } = {},
+): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
+    // Layaway money and its held items come only from src/lib/layaway.ts; the items' prices were settled when it began.
+    const lay = opts.layaway ?? null;
+    if (!lay && input.lines.some((l) => l.layawayKind)) throw new UserError("A line can only be one thing.");
+    const priceRole: CurrentUser["role"] = lay ? "OWNER" : user.role;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
     const made = await saleByKey(shopId, clientKey);
@@ -133,7 +144,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // Machines sold from stock and trade-ins, checked and worded by the unit hooks (by line index).
     const units = await prepareUnitLines({
       shopId,
-      role: user.role,
+      role: priceRole,
+      heldFor: lay?.mode === "pickup" ? lay.id : null,
       customerId: input.customerId ?? null,
       lines: input.lines.map((l) => ({
         stockUnitId: l.stockUnitId ?? null,
@@ -227,7 +239,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         const total = Math.abs(roundCents(unitLine.qty * unitLine.unitPriceCents));
         if (unitLine.unitPriceCents > MAX_MONEY || total > MAX_MONEY) throw new UserError(`${unitLine.description} comes to more than $100,000. Check the price.`);
         let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
-        if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+        if (priceRole === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
         disc = unitLine.discountable ? Math.min(disc, total) : 0;
         return {
           partId: null,
@@ -275,12 +287,12 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       if (part) {
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
         if (part.unit === "yd" && !inEighths(qty)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
-        if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+        if (priceRole === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
         // A tech can type the price of an item that has none, but not leave it free.
-        if (user.role === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
+        if (priceRole === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
       }
       // A discount is a price change too.
-      if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+      if (priceRole === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
       if (unit > MAX_MONEY || Math.abs(qty * unit) > MAX_MONEY) {
         throw new UserError(`${part?.partNumber ?? (l.description || "A line")} comes to more than $100,000. Check the price and quantity.`);
       }
@@ -299,9 +311,10 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         unit: part?.unit ?? null,
         unitPriceCents: unit,
         discountCents: disc,
-        // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc line only.
-        taxable: job ? false : part ? true : Boolean(l.taxable),
-        discountable: !job,
+        // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc
+        // line only. Layaway money is never taxed nor discounted (it isn't a sale).
+        taxable: job || l.layawayKind ? false : part ? true : Boolean(l.taxable),
+        discountable: !job && !l.layawayKind,
         costCents: part?.costCents ?? null,
         costTenThou: part ? fineCost(part.costCents, part.costTenThou) : null,
         consignLinkId: part?.consignLinkId ?? null,
@@ -366,6 +379,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         const number = sh.nextSaleNumber - 1;
         const actor = actorOf(user);
         const cards: Issued[] = [];
+        // A pick-up or a cancel: the layaway is finished and its held items back on the shelf, so the lines can sell them.
+        if (lay) await beforeLayawayLines(tx, { shopId, hook: lay, user, at });
         const sale = await tx.sale.create({
           data: {
             shopId,
@@ -392,12 +407,13 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           void discountable;
           const kind = saleLineKind({
             ...row,
+            kind: input.lines[i].layawayKind ?? null,
             giftCardId: input.lines[i].giftCard ? "pending" : null,
             tradeInUnitId: tradeIn ? "pending" : null,
             machinePlanId: planLines.has(i) ? "pending" : null,
             partKind: row.partId ? parts.get(row.partId)?.kind : null,
           });
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind, layawayId: lay?.id ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
@@ -496,9 +512,10 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           }
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
+        if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
         // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
         const label = `Sale #${number}`;
-        if (lines.some((l) => l.qty < 0)) {
+        if (lines.some((l, i) => l.qty < 0 && !input.lines[i].layawayKind)) {
           await audit(tx, actor, { action: "sale.return", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, amountCents: totals.total, reason: input.note?.slice(0, 200) || null });
         }
         const lineDiscounts = lines.reduce((a, l) => a + (l.discountCents > 0 ? l.discountCents : 0), 0);
@@ -565,6 +582,9 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at, saleAt: sale.createdAt });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.
     await unpayClubSale(tx, shopId, sale.id, at);
+    // A layaway's pick-up or cancel voided: the layaway is open again and its items held again (after the lines below
+    // put them back on the shelf); a payment can't be voided once the layaway is finished.
+    const layawayVoid = sale.lines.some((l) => l.layawayId);
     // A quilt collected on this sale is back on the shelf (ready, not collected).
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
     for (const l of sale.lines) {
@@ -604,6 +624,7 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
         await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, at: at.toISOString() }, tx, false);
       }
     }
+    if (layawayVoid) await voidLayawaySale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
   });
 }
 

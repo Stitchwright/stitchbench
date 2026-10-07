@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
+import { layawaySettings } from "@/lib/layaway";
+import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader } from "@/components/ui";
@@ -43,6 +45,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const plans = await db.servicePlan.count({ where: { shopId: user.shopId } });
   const unitKinds =
     units + plans > 0 ? (await shopKinds(user.shopId)).usable.map((k) => ({ key: k.key, label: k.label, types: k.types, brands: k.brands, modelHint: k.modelHint })) : null;
+  // Layaway: the shop's defaults, and today in its zone (the payment plan's first day).
+  const lw = await layawaySettings(user.shopId);
+  const layaway = { depositPct: lw.depositPct, days: lw.days, every: lw.every, today: ymdOf(new Date(), await shopTimeZone(user.shopId)) };
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
   const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
@@ -59,6 +64,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
             <Link href="/register/gift-cards" className="btn">
               Gift cards
             </Link>
+            <Link href="/layaways" className="btn">
+              Layaways
+            </Link>
             <Link href="/register/sales" className="btn">
               Sales
             </Link>
@@ -72,7 +80,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} preload={preload} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} preload={preload} />
     </div>
   );
 }

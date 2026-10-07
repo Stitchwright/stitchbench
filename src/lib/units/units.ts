@@ -157,7 +157,7 @@ function machineMatch(q: string | null): Prisma.MachineWhereInput | undefined {
 export async function listUnits(shopId: string, tab: string | null, q: string | null): Promise<UnitRow[]> {
   const t: UnitTab = isUnitTab(tab) ? tab : "stock";
   const where: Prisma.StockUnitWhereInput = { shopId, machine: machineMatch(q) };
-  if (t === "stock") where.status = "IN_STOCK";
+  if (t === "stock") where.status = { in: ["IN_STOCK", "HELD"] };
   else if (t === "sold") where.status = "SOLD";
   else if (t === "off") where.status = "REMOVED";
   else Object.assign(where, { status: "SOLD", condition: { in: ["NEW", "OPEN_BOX"] }, registeredAt: null });
