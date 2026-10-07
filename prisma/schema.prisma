@@ -784,6 +784,9 @@ model Part {
   // this rounded to cents and is what margins and exports read. Empty on older parts: costCents is then exact.
   costTenThou     Int?
   priceCents      Int?
+  // The maker's minimum advertised price (shop-features-round-2-design.md 9.3): below it, the online shop shows this price
+  // and "Add to cart to see our price", and the cart shows the real one
+  mapCents        Int?
   supplier        String?
   notes           String?
   createdAt       DateTime      @default(now())
@@ -2032,6 +2035,7 @@ model StockUnit {
   condition       String    @default("NEW") // NEW | OPEN_BOX | REFURB | USED
   costCents       Int? // what it cost the shop (a trade-in: the credit given)
   priceCents      Int? // asking price
+  mapCents        Int? // the maker's minimum advertised price (9.3): an asking price below it is never advertised
   warrantyMonths  Int?
   warrantyBy      String? // who stands behind it: the maker's name, or the shop
   soldLineId      String? // SaleLine that sold it (kept after a return, until it sells again)

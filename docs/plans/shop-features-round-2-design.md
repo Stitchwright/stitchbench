@@ -1282,3 +1282,21 @@ Decisions made while building:
 - Owners and admins keep the list (it is marketing money); techs can read it.
 - The proof is a photo (JPEG, PNG, WebP, HEIC) or a PDF, 5 MB at most, as many as needed. Nothing is booked when the ad
   is paid (that is the shop's own bill); the books get the money back when it comes in.
+
+**`map-prices` (9.3, 7 Oct 2026).** Migration `20261024200000_map_prices` (`Part.mapCents`, `StockUnit.mapCents`).
+Code: `src/lib/map-math.ts` (`belowMap`), `src/lib/map-prices.ts` (`setMapFor`, `mapProblems`), `src/actions/map-prices.ts`,
+`src/components/map-price.tsx` (the item's and the machine's **Minimum advertised price** box with its warning, and
+`MapWarnings`); the online shop's catalog and item page show the minimum and "Add to cart to see our price" when the
+real price is lower (`shownPrice` in `src/lib/shop/online-shop.ts`; the real price is never in those pages), the cart
+shows the real one. The list of prices advertised below a minimum shows on Settings → Selling → Sales (promotions on now
+or coming that bring an item or machine under) and on a new or draft campaign (everything: the item's own price and
+the sales). Check: `scripts/checks/map-prices.check.ts` (5 groups); `online-shop` still passes. Spec:
+`tests/map-prices.spec.ts`.
+Decisions made while building:
+- The price at the counter and in the cart may be below the minimum (that is how MAP works); only advertising is
+  checked. The register is not changed.
+- Campaign emails are free text, so the program doesn't read prices out of them: the draft page lists the items whose
+  price or sale price is under a minimum, as a reminder not to put those prices in.
+- Machines for sale aren't in the online shop yet; their minimum shows on the machine's page and in the list. The
+  Google and Meta feeds (4.1, 4.2, phase 3) should leave out, or show at the minimum, anything `belowMap`.
+- Fabric by the yard gets no minimum box (makers don't set MAP on fabric).
