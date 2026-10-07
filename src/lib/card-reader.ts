@@ -24,7 +24,7 @@ type Intent = {
   amount_received?: number;
   status: string;
   metadata?: Record<string, string>;
-  latest_charge?: { payment_method_details?: { card_present?: { last4?: string; brand?: string } } } | string | null;
+  latest_charge?: { amount_refunded?: number; refunded?: boolean; payment_method_details?: { card_present?: { last4?: string; brand?: string } } } | string | null;
   last_payment_error?: { message?: string; code?: string } | null;
 };
 type Reader = { id: string; label?: string; device_type?: string; status?: string; action?: { status?: string; failure_message?: string; process_payment_intent?: { payment_intent?: string } } | null };
@@ -200,10 +200,13 @@ export async function prepareReaderTenders(shopId: string, tenders: { method: st
     const p = await db.cardPayment.findFirst({ where: { intentId: t.stripeIntent!, shopId } });
     if (!p) throw new UserError("That card payment isn't one of this shop's.");
     if (p.saleId) throw new UserError("That card payment is already on another sale.");
+    if (p.refundedCents > 0) throw new UserError("That card payment was refunded. Take it on the reader again.");
     const key = await keyOf(shopId);
     const pi = await stripeCall<Intent>(key, "GET", `/v1/payment_intents/${encodeURIComponent(p.intentId)}?expand[]=latest_charge`);
     if (pi.metadata?.shopId !== shopId || pi.status !== "succeeded") throw new UserError("That card payment wasn't approved. Take it on the reader again.");
-    if ((pi.amount_received ?? pi.amount) !== t.amountCents || p.amountCents !== t.amountCents) throw new UserError("The card payment's amount doesn't match. Take it on the reader again.");
+    const charge = typeof pi.latest_charge === "object" && pi.latest_charge ? pi.latest_charge : null;
+    if ((charge?.amount_refunded ?? 0) > 0 || charge?.refunded) throw new UserError("That card payment was refunded. Take it on the reader again.");
+    if ((pi.amount_received ?? pi.amount) - (charge?.amount_refunded ?? 0) !== t.amountCents || p.amountCents !== t.amountCents) throw new UserError("The card payment's amount doesn't match. Take it on the reader again.");
     if (out.includes(p.intentId)) throw new UserError("The same card payment is on the sale twice.");
     out.push(p.intentId);
     // The receipt says which card, as Stripe saw it.
@@ -217,7 +220,7 @@ export async function prepareReaderTenders(shopId: string, tenders: { method: st
 /** In the sale's transaction: the payments now belong to it (once). */
 export async function tieReaderPayments(tx: Tx, shopId: string, saleId: string, intentIds: string[]) {
   for (const id of intentIds) {
-    const r = await tx.cardPayment.updateMany({ where: { shopId, intentId: id, saleId: null }, data: { saleId } });
+    const r = await tx.cardPayment.updateMany({ where: { shopId, intentId: id, saleId: null, refundedCents: 0 }, data: { saleId } });
     if (!r.count) throw new UserError("That card payment is already on another sale.");
   }
 }
