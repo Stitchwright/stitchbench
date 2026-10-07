@@ -273,6 +273,7 @@ in, never ahead of it. A step that fails its check (in brackets) is stopped and 
 |---|---|---|---|
 | $250 (about 10) | Once: a small banner and tablecloth for visits and hop tables; a tripod and a small light for videos | $180 once | Better videos and tables |
 | $500 (about 20) | 500 more flyers; Mailchimp paid tier only if the list passes 250 | $50-75 a month | Visits still win trials |
+| $750 (about 25-30) | Once: a test machine for builds and the browser tests (the owner's Surface Pro has 8 GB soldered in, so it can't be upgraded): a mini PC with 32 GB of memory (est. $400-600), or a cloud runner for the test suite | $400-600 once | The full test run takes under an hour, and the Surface stays free for work |
 | $1,000 (about 35-40) | Facebook ads test: test-shop story videos in the route's states | $100-150 a month | Under $150 per trial, or stop |
 | $2,000 (about 70) | Trade press: a FabShop News quarter page ($650) or a sponsor slot at FabShop's Virtual Schoolhouse, only if a free story pitch didn't land; walk VDTA or AQS Hartford as visitors | $650 once plus travel | Trials named "saw it in FabShop" |
 | $3,000 (about 100) | A trade-show booth: AQS QuiltWeek Hartford (about $1,200 booth, est.) or VDTA/SDTA (dealers) | $1,500-2,500 once with travel and the kit | 10+ trials from the show |
