@@ -60,7 +60,12 @@ async function main() {
     assert.deepEqual([e3.basis, e3.startCents], [null, null]);
     const eb = await tradeInEstimate(b.shopId, { kind: "sewing", brand: "Janome", model: "MC6700P" });
     assert.equal(eb.medianCents, 999_900, "each company's own sales");
-    ok("the expected price: used and refurbished sales of the model (else the brand), the days, less 30%; this company's only");
+    // The shop's own rule (Shop.tradeInLessPct, Settings -> Selling, phase 1's trade-up) sets the percent.
+    await db.shop.update({ where: { id: a.shopId }, data: { tradeInLessPct: 40 } });
+    const e4 = await tradeInEstimate(a.shopId, { kind: "sewing", brand: "Janome", model: "MC6700P" });
+    assert.deepEqual([e4.lessPct, e4.startCents], [40, 36_000], "less the shop's 40%");
+    await db.shop.update({ where: { id: a.shopId }, data: { tradeInLessPct: 30 } });
+    ok("the expected price: used and refurbished sales of the model (else the brand), the days, less the shop's percent (30 by default); this company's only");
 
     // ===== 3. the note =====
     const photo = { mediaType: "image/jpeg" as const, data: PHOTO };
