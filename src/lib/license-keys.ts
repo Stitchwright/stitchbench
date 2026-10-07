@@ -12,4 +12,5 @@ export const LICENSE_PUBLIC_KEYS: PublicKeys = {
   // k1: { x: "...", scope: "any" },     <- the owner adds this line from `npm run license:keygen -- --kid k1` before the first release
   // h1: { x: "...", scope: "hosted" },  <- and this one from `npm run license:keygen -- --kid h1 --hosted`
   // hub1: { x: "...", scope: "hub" },   <- and this one from `npm run license:keygen -- --kid hub1 --hub` (its private half is the hub's HUB_LICENSE_KEY)
+  hub1: { x: "sygoPzh8Xea3FUeexp8YpMEdcbJgdef7pNwhRJKE7hg", scope: "hub" },
 };
