@@ -60,6 +60,9 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
                 New kit
               </Link>
             )}
+            <Link href="/fabric/quilt" className="btn">
+              Plan a quilt
+            </Link>
             <Link href="/fabric/collection" className={tab === "kits" ? "btn" : "btn btn-primary"}>
               Add a collection
             </Link>

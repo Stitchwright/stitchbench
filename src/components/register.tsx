@@ -111,6 +111,7 @@ export function Register({
   lenders = [],
   promotions = NO_PROMOS,
   preload,
+  preloadItems,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -127,6 +128,8 @@ export function Register({
   /** The promotions in force today (percent or amount off, the price including the tax). */
   promotions?: Promo[];
   preload?: BookingDue | null;
+  /** Opened from the quilt planner's "Add all to the sale": each item with its quantity (yards for fabric). */
+  preloadItems?: { item: RegisterItem; qty: number }[];
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -221,7 +224,7 @@ export function Register({
   };
 
   /** An item scanned or picked, with the customer's vacuum it was bought for when the Vac Shop's picker found it. */
-  function addItem(it: RegisterItem, machineId: string | null = null) {
+  function addItem(it: RegisterItem, machineId: string | null = null, qtyIn?: number) {
     const sign = returnMode ? -1 : 1;
     // A machine for sale is sold once, as one line of 1.
     if (it.stockUnitId) {
@@ -249,7 +252,7 @@ export function Register({
           unit: it.unit,
           kind: it.kind,
           brand: it.brand ?? null,
-          qty: sign * (it.unit === "yd" ? 1 : 1),
+          qty: sign * (qtyIn ?? 1),
           unitPriceCents: it.priceCents ?? 0,
           priced: it.priceCents != null,
           onHand: it.qtyOnHand,
@@ -341,6 +344,20 @@ export function Register({
     preloaded.current = true;
     addBooking(preload, false);
     router.replace("/register");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
+  // Opened from the quilt planner's "Add all to the sale": its items go on the sale once, the same way.
+  const itemsLoaded = useRef(false);
+  useEffect(() => {
+    if (!preloadItems?.length || itemsLoaded.current) return;
+    // After the first paint (and once only, however often the effect runs in development).
+    const t = setTimeout(() => {
+      if (itemsLoaded.current) return;
+      itemsLoaded.current = true;
+      for (const p of preloadItems) addItem(p.item, null, p.qty);
+      router.replace("/register");
+    }, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 

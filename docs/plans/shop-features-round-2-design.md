@@ -1168,3 +1168,24 @@ Decisions made while building:
   meetings. Anyone who can edit the field can draft it; the words never change a price.
 - `AssistantSettings.marketingOn` (on by default) switches all four off together.
 - Browser test needed: an item's Draft it and post, a new class's Draft it, a new campaign's arrivals email.
+
+**`quilt-planner` (5.3, no AI, 7 Oct 2026).** Code: the yards in `src/lib/fabric-math.ts` (`parseYards`,
+`parsePatternNeeds`, `patternNeedsText`, `plainQuiltPlan`, `plainQuiltProblem`, `QUILT_SIZES`, `roundUpEighth`),
+`src/lib/quilt.ts` (a pattern's yardage, the planner's lists, `pullListItems`), `src/actions/quilt.ts`
+(`savePatternYardage`), **Yardage on the back** on a pattern's page (`src/components/pattern-yardage.tsx`), the planner
+at Fabric → **Plan a quilt** (`/fabric/quilt`, `src/components/quilt-planner.tsx`). The register takes
+`?items=id:qty,...` (the pull list goes on the sale once, then the address goes back to /register) and the kit builder
+takes `?lines=...&pattern=...&name=...`. Check: `scripts/checks/quilt-planner.check.ts` (4 groups). Spec:
+`tests/quilt-planner.spec.ts`.
+Decisions made while building:
+- The back of a pattern is typed as she reads it, one size a line ("Throw: background 2 1/4 yd, focus 1 yd"); saving
+  replaces the pattern's yardage; anything it can't read is named and nothing is saved.
+- A plain quilt is squares: blocks across and down rounded to whole blocks (the finished size shown follows), cut with
+  1/4" seams, about 40" usable across the fabric, an eighth added to each fabric for straightening, the background's
+  share and the rest spread evenly; border and 2 1/2" binding strips; backing 4" bigger all round, pieced whichever way
+  takes less. Every part rounds up to the eighth. Block patterns other than squares use a pattern's own yardage.
+- A part only offers fabrics with enough yards on the bolt; the same fabric for two parts is one line on the sale, and
+  if the bolt can't cover both the list says so and Add all to the sale waits.
+- From a pattern, the pattern itself is on the sale and in the kit.
+- Browser test needed: a pattern's yardage (save, a line it can't read), the planner from a pattern (yards, picks, the
+  pull list's total, Make it a kit, Add all to the sale), a plain quilt's yards.

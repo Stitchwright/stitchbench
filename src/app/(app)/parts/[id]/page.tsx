@@ -8,6 +8,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { ListingCard } from "@/components/shop/listing-card";
+import { PatternYardage } from "@/components/pattern-yardage";
 import { PartFields } from "@/components/part-fields";
 import { addPartSource, moveStock, preferPartSource, removePartSource, updatePart } from "@/actions/parts";
 import { addPartToCrossRef } from "@/actions/xref";
@@ -178,6 +179,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
           {p.kind !== "MACHINE" && p.kind !== "FABRIC" && <FitsSection shopId={user.shopId} partId={p.id} />}
           {/* The shop's own color matches (shop-features-round-2-design.md 2.2), for items with a color. */}
           {shopFlags.sellsRetail && (p.colorNumber || p.colorName || p.colorHex || typeOf(p) === "thread") && <SameColor shopId={user.shopId} partId={p.id} />}
+          {p.kind === "PATTERN" && shopFlags.sellsRetail && <PatternYardage shopId={user.shopId} partId={p.id} />}
           {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} drafting={marketingEntry?.show ? { unavailable: marketingEntry.unavailable } : null} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
