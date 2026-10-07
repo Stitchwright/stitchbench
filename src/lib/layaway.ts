@@ -128,7 +128,7 @@ async function taxToday(shopId: string, l: LayawayRow): Promise<{ price: number;
   const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true, timeZone: true } }), await storeOfRow(shopId, l.locationId));
   const exempt = exemptCertificate(l.customer);
   // A tax holiday today, or on the day the layaway began, takes the tax off what it covers (as the pick-up sale will).
-  const holidays = exempt ? [] : await holidaysOn(shopId, [ymdOf(new Date(), shop.timeZone), ymdOf(l.startedAt, shop.timeZone)]);
+  const holidays = exempt ? [] : await holidaysOn(shopId, [ymdOf(new Date(), shop.timeZone), ymdOf(l.startedAt, shop.timeZone)], l.locationId);
   const partIds = l.lines.map((x) => x.partId).filter((x): x is string => !!x);
   const kinds = new Map(holidays.length && partIds.length ? (await db.part.findMany({ where: { shopId, id: { in: partIds } }, select: { id: true, kind: true } })).map((p) => [p.id, p.kind as string]) : []);
   const lines = l.lines.map((x) => {
@@ -276,7 +276,7 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
   const here = await currentStore(user);
   const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } }), here);
   // The total the plan splits: today's tax, less what a tax holiday today takes off.
-  const holidays = exempt ? [] : await holidaysOn(shopId, [today]);
+  const holidays = exempt ? [] : await holidaysOn(shopId, [today], here?.id ?? null);
   const t = saleTotals(
     rows.map((r, i) => {
       const line = { qty: r.qty as number, unitPriceCents: r.unitPriceCents as number, discountCents: r.discountCents as number, taxable: true };

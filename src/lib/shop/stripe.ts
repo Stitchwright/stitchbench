@@ -123,6 +123,11 @@ export async function retrieveSession(key: string, id: string, o: { lines?: bool
   return call<StripeSession>(key, "GET", `/v1/checkout/sessions/${encodeURIComponent(id)}${o.lines ? "?expand[]=line_items" : ""}`);
 }
 
+/** Closes an open payment page so it can't be paid any more (an already closed or paid one is left as it is). */
+export async function expireSession(key: string, id: string): Promise<void> {
+  await call<unknown>(key, "POST", `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`, {}, `expire:${id}`);
+}
+
 export type StripeRefund = { id: string; amount: number; status: string };
 
 /** Refunds part or all of a payment. `amountCents` omitted: the rest of it. */

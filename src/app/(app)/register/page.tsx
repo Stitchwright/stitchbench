@@ -64,7 +64,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const lw = await layawaySettings(user.shopId);
   const layaway = { depositPct: lw.depositPct, days: lw.days, every: lw.every, today: ymdOf(new Date(), await shopTimeZone(user.shopId)) };
   // A sales tax holiday in force today: the register shows it and leaves the tax off what it covers.
-  const holiday = (await holidaysOn(user.shopId, [layaway.today]))[0] ?? null;
+  const holiday = (await holidaysOn(user.shopId, [layaway.today], here?.id ?? null))[0] ?? null;
   // Lenders offered for financing (Settings → Selling): the Financing payment button.
   const lenders = (await listLenders(user.shopId, true)).map((l) => ({ id: l.id, name: l.name }));
   // Promotions in force today (Settings → Selling): the register shows them on the lines they cover.

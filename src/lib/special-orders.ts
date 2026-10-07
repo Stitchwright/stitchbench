@@ -534,6 +534,7 @@ export async function cancelSpecialOrderAs(user: CurrentUser, a: { id: string; r
       if (!r.count) throw new UserError("It just changed. Look again.");
       await releaseHeld(tx, user.shopId, o, user.id, now, "cancelled");
     });
+    await (await import("@/lib/pay-links")).cancelLinksFor(user.shopId, { specialOrderId: o.id }, `special order ${o.number} was cancelled`, now);
     return { saleId: null, backCents: 0, keptCents: 0 };
   }
   const lines =
@@ -549,6 +550,7 @@ export async function cancelSpecialOrderAs(user: CurrentUser, a: { id: string; r
     { customerId: o.customerId, lines, tenders: rule === "keep" ? [] : [{ method, amountCents: -paid }], clientKey: a.clientKey ?? null, note: note ? `Cancelled: ${note}` : null },
     { internal: true, specialOrder: { mode: "cancel", id: o.id, prevStatus: o.status } },
   );
+  await (await import("@/lib/pay-links")).cancelLinksFor(user.shopId, { specialOrderId: o.id }, `special order ${o.number} was cancelled`, now);
   if (rule === "keep") await audit(db, actorOf(user), { action: "specialorder.keep", subjectType: "SpecialOrder", subjectId: o.id, subjectLabel: `Special order ${o.number}`, amountCents: paid, reason: note });
   return { saleId: sale.saleId, backCents: rule === "keep" ? 0 : paid, keptCents: rule === "keep" ? paid : 0 };
 }

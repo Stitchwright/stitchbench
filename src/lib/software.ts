@@ -78,6 +78,32 @@ export async function codesOnHand(shopId: string, partId: string): Promise<numbe
   return db.softwareCode.count({ where: { shopId, partId, usedById: null } });
 }
 
+/**
+ * An online order or a pay link the customer has paid (the sale must book): software sold as one licence a line, each
+ * taking a code from the shop's stock while there are some, the rest "Add the code later" (never refused).
+ */
+export async function softwarePaidLines<L extends { partId?: string | null; qty: number; software?: SoftwareLineInput | null }>(shopId: string, lines: L[]): Promise<L[]> {
+  const ids = [...new Set(lines.map((l) => l.partId).filter((x): x is string => !!x))];
+  const soft = ids.length ? await db.part.findMany({ where: { shopId, id: { in: ids }, kind: "SOFTWARE" }, select: { id: true } }) : [];
+  if (!soft.length) return lines;
+  const have = new Map<string, number>();
+  for (const p of soft) have.set(p.id, await codesOnHand(shopId, p.id));
+  const out: L[] = [];
+  for (const l of lines) {
+    if (!l.partId || !have.has(l.partId) || !(Number(l.qty) > 0)) {
+      out.push(l);
+      continue;
+    }
+    const n = Math.max(1, Math.round(Number(l.qty)));
+    for (let k = 0; k < n; k++) {
+      const left = have.get(l.partId)!;
+      have.set(l.partId, left - 1);
+      out.push({ ...l, qty: 1, software: { ...(l.software ?? {}), later: l.software?.code ? false : left <= 0 } });
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // At the register (register-sale.ts calls these inside its transaction)
 // ---------------------------------------------------------------------------------------------------------------

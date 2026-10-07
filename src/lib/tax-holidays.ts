@@ -13,17 +13,23 @@ import { HOLIDAY_KINDS, HOLIDAY_PRESETS, presetByKey, type Holiday } from "@/lib
 
 const SELECT = { id: true, name: true, kinds: true, maxUnitCents: true, firstDay: true, lastDay: true } as const;
 
-export type HolidayRow = Holiday & { preset: string | null; active: boolean };
+export type HolidayRow = Holiday & { preset: string | null; active: boolean; locationIds: string[] };
 
 export async function listHolidays(shopId: string): Promise<HolidayRow[]> {
-  return db.taxHoliday.findMany({ where: { shopId }, orderBy: { firstDay: "desc" }, select: { ...SELECT, preset: true, active: true } });
+  return db.taxHoliday.findMany({ where: { shopId }, orderBy: { firstDay: "desc" }, select: { ...SELECT, preset: true, active: true, locationIds: true } });
 }
 
-/** The active holidays covering any of these days (a sale's day; a layaway's start too). */
-export async function holidaysOn(shopId: string, days: string[]): Promise<Holiday[]> {
+/**
+ * The active holidays covering any of these days (a sale's day; a layaway's start too) at this store (null: the main
+ * store). A holiday names the stores it covers (stores can be in different states); none named: every store.
+ */
+export async function holidaysOn(shopId: string, days: string[], storeId: string | null): Promise<Holiday[]> {
   const ds = [...new Set(days.filter(Boolean))];
   if (!ds.length) return [];
-  return db.taxHoliday.findMany({ where: { shopId, active: true, OR: ds.map((d) => ({ firstDay: { lte: d }, lastDay: { gte: d } })) }, select: SELECT, orderBy: { firstDay: "asc" } });
+  const rows = await db.taxHoliday.findMany({ where: { shopId, active: true, OR: ds.map((d) => ({ firstDay: { lte: d }, lastDay: { gte: d } })) }, select: { ...SELECT, locationIds: true }, orderBy: { firstDay: "asc" } });
+  if (!rows.some((h) => h.locationIds.length)) return rows.map(({ locationIds, ...h }) => (void locationIds, h));
+  const at = storeId ?? (await db.location.findFirst({ where: { shopId, main: true }, select: { id: true } }))?.id ?? null;
+  return rows.filter((h) => !h.locationIds.length || (at != null && h.locationIds.includes(at))).map(({ locationIds, ...h }) => (void locationIds, h));
 }
 
 /** Adds (id null) or changes a holiday; owner or admin. */
@@ -41,7 +47,15 @@ export async function saveHolidayFor(user: CurrentUser, id: string | null, fd: F
   const kinds = fd.getAll("kinds").map(String).filter((k) => known.has(k));
   if (!kinds.length) throw new UserError("Tick what it covers.");
   const preset = presetByKey(str(fd.get("preset")))?.key ?? null;
-  const data = { name, firstDay, lastDay, kinds, maxUnitCents: centsField(fd.get("maxUnitCents"), "The price limit"), preset, active: id ? fd.get("active") === "on" : true };
+  // The stores it covers (more than one store: the form lists them); every store ticked is saved as "every store".
+  let locationIds: string[] = [];
+  if (fd.get("storesShown") === "1") {
+    const open = (await db.location.findMany({ where: { shopId: user.shopId, active: true }, select: { id: true } })).map((l) => l.id);
+    const picked = [...new Set(fd.getAll("stores").map(String))].filter((s) => open.includes(s));
+    if (!picked.length) throw new UserError("Tick the stores it covers.");
+    locationIds = picked.length === open.length ? [] : picked;
+  }
+  const data = { name, firstDay, lastDay, kinds, maxUnitCents: centsField(fd.get("maxUnitCents"), "The price limit"), preset, locationIds, active: id ? fd.get("active") === "on" : true };
   if (!id) return (await db.taxHoliday.create({ data: { shopId: user.shopId, ...data }, select: { id: true } })).id;
   const r = await db.taxHoliday.updateMany({ where: { id, shopId: user.shopId }, data });
   if (!r.count) throw new UserError("Tax holiday not found.");

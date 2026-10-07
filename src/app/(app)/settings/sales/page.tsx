@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/session";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { ymdOf } from "@/lib/zoned";
 import { listHolidays } from "@/lib/tax-holidays";
+import { activeStores } from "@/lib/stores";
 import { HOLIDAY_KINDS, HOLIDAY_PRESETS, holidayDays, presetByKey } from "@/lib/tax-holiday-math";
 import { deleteHoliday } from "@/actions/tax-holidays";
 import { saveLender } from "@/actions/financing";
@@ -131,6 +132,9 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
   const today = ymdOf(new Date(), tz);
   const year = Number(today.slice(0, 4));
   const preset = presetByKey(sp.preset);
+  // More than one store: a tax holiday names the stores it covers (stores can be in different states).
+  const open = await activeStores(user.shopId);
+  const stores = open.length > 1 ? open.map((s) => ({ id: s.id, name: s.name, address: s.address })) : [];
   return (
     <div className="max-w-3xl space-y-6">
       <PageHeader title="Selling" sub="Sales tax holidays, how layaways work at your shop, what you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
@@ -226,12 +230,15 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
                     {h.maxUnitCents != null ? ` · up to ${money(h.maxUnitCents)} each` : ""}
                   </span>
                 </div>
-                <p className="muted text-sm">Covers: {HOLIDAY_KINDS.filter((k) => h.kinds.includes(k.key)).map((k) => k.label.toLowerCase()).join(", ")}</p>
+                <p className="muted text-sm">
+                  Covers: {HOLIDAY_KINDS.filter((k) => h.kinds.includes(k.key)).map((k) => k.label.toLowerCase()).join(", ")}
+                  {stores.length > 1 && h.locationIds.length ? ` · at ${stores.filter((s) => h.locationIds.includes(s.id)).map((s) => s.name).join(", ")}` : ""}
+                </p>
                 {admin && (
                   <details className="mt-2">
                     <summary className="link cursor-pointer text-sm">Change</summary>
                     <div className="mt-2 space-y-2">
-                      <TaxHolidayForm h={h} year={year} prefix={`th-${h.id}`} />
+                      <TaxHolidayForm h={h} year={year} prefix={`th-${h.id}`} stores={stores} />
                       <ActionButton action={deleteHoliday.bind(null, h.id)} className="btn btn-sm" success="Removed">
                         Remove
                       </ActionButton>
@@ -256,7 +263,7 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
                 A blank form
               </Link>
             </p>
-            <TaxHolidayForm key={preset?.key ?? "blank"} preset={preset} year={year} prefix="th-new" />
+            <TaxHolidayForm key={preset?.key ?? "blank"} preset={preset} year={year} prefix="th-new" stores={stores} />
           </div>
         )}
       </Section>

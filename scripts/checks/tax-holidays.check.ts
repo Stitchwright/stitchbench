@@ -71,8 +71,8 @@ async function main() {
     await expectError("nothing ticked", () => saveHolidayFor(user(a), null, form({ name: "X", firstDay: today, lastDay: today })), /Tick what it covers/);
     await expectError("backwards", () => saveHolidayFor(user(a), null, form({ name: "X", firstDay: today, lastDay: addDays(today, -1), kinds: ["FABRIC"] })), /before the first/);
     const hid = await saveHolidayFor(user(a), null, form({ name: "Massachusetts sales tax holiday", preset: "MA", firstDay: today, lastDay: addDays(today, 1), kinds: GOODS_KINDS, maxUnitCents: "$2,500" }));
-    assert.equal((await holidaysOn(a.shopId, [today]))[0]?.id, hid);
-    assert.deepEqual(await holidaysOn(a.shopId, [addDays(today, 2)]), []);
+    assert.equal((await holidaysOn(a.shopId, [today], null))[0]?.id, hid);
+    assert.deepEqual(await holidaysOn(a.shopId, [addDays(today, 2)], null), []);
     ok("a holiday is saved by an owner (price typed as $2,500), checked for its days and kinds, and found by date");
 
     // 3. A sale on the holiday.
@@ -96,6 +96,14 @@ async function main() {
     assert.ok(machine.taxable && machine.taxNote === null, "$3,000 machine: over the limit, taxed in full");
     assert.equal(sale.taxCents, Math.round(((500 + 300_000) * 625) / 10_000));
     ok("on the holiday: the fabric untaxed with the holiday on its line, the pins charged anyway, the $3,000 machine taxed in full");
+
+    // 3b. A sale the program builds (a print job, rent, event money: tenderExact) on the holiday: its one payment is the
+    // sale's own total, the holiday taken off (it used to be sized at the shop's rate and refused as "Still due").
+    const pj = await completeSaleAs(user(a), { lines: [{ description: "Print job", qty: 1, unitPriceCents: 2000, taxable: true }], tenders: [] }, { tenderExact: { method: "CASH", amountCents: 0 } });
+    const pjSale = await db.sale.findUniqueOrThrow({ where: { id: pj.saleId } });
+    assert.equal(pj.totalCents, 2000);
+    assert.deepEqual(pjSale.tenders, [{ method: "CASH", amountCents: 2000, note: null, cardNumber: null }].map(({ cardNumber, ...t }) => (void cardNumber, t)));
+    ok("a program-built sale on the holiday: one payment for exactly its total (tax off what the holiday covers)");
 
     // 4. A receipt return gives the fabric back tax free; an exempt customer's lines say exempt.
     const r1 = await completeSaleAs(user(a), { customerId: cust.id, returnOfSaleId: s1.saleId, lines: [{ partId: fabric.id, description: "", qty: -1, unitPriceCents: 1200, taxable: true }], tenders: cash(-1200) });
@@ -126,7 +134,7 @@ async function main() {
     // 6. The tax report lists the holiday's sales apart.
     const rep = await taxReport(a.shopId, NY, new Date(Date.now() - 86_400_000), new Date(Date.now() + 86_400_000));
     const hol = rep.holidays.find((x) => x.name === "Massachusetts sales tax holiday");
-    assert.equal(hol?.amountCents, 2400 - 1200 + 10_000, "the fabric sold less the one returned, and the layaway's pick-up");
+    assert.equal(hol?.amountCents, 2400 - 1200 + 2000 + 10_000, "the fabric sold less the one returned, the print job, and the layaway's pick-up");
     ok("the tax report lists what was sold tax free on the holiday, returns netted in");
 
     // 7. The yearly reminder, and removing a used holiday.
@@ -142,12 +150,31 @@ async function main() {
     assert.ok(kept && !kept.active, "sales were made under it: switched off, not deleted");
     ok("'confirm the dates' from two weeks before August until this year's is set; a used holiday is switched off, not deleted");
 
+    // 7b. Stores in different states: a holiday names its stores; a preset ticks the stores in its state.
+    const fl = await db.location.create({ data: { shopId: a.shopId, name: "Florida", address: "2 Gulf Rd, Naples FL 34102", taxRatePct: 6 } });
+    const main = await db.location.findFirst({ where: { shopId: a.shopId, main: true } });
+    const boston = main ?? (await db.location.create({ data: { shopId: a.shopId, name: "Main store", main: true, address: "1 Main St, Boston, MA 02110" } }));
+    await db.location.update({ where: { id: boston.id }, data: { address: "1 Main St, Boston, MA 02110" } });
+    const { storesInState } = await import("@/lib/tax-holiday-math");
+    assert.deepEqual(storesInState([boston, fl], presetByKey("MA")!).map((s) => s.id), [boston.id], "the MA preset ticks the Boston store");
+    await expectError("no store ticked", () => saveHolidayFor(user(a), null, form({ name: "MA only", firstDay: today, lastDay: today, kinds: ["FABRIC"], storesShown: "1" })), /Tick the stores/);
+    const maOnly = await saveHolidayFor(user(a), null, form({ name: "MA only", firstDay: `${year + 1}-08-08`, lastDay: `${year + 1}-08-09`, kinds: ["FABRIC"], storesShown: "1", stores: [boston.id] }));
+    assert.deepEqual((await holidaysOn(a.shopId, [`${year + 1}-08-08`], boston.id)).map((h) => h.id), [maOnly], "at the Boston store");
+    assert.deepEqual((await holidaysOn(a.shopId, [`${year + 1}-08-08`], null)).map((h) => h.id), [maOnly], "null is the main store");
+    assert.deepEqual(await holidaysOn(a.shopId, [`${year + 1}-08-08`], fl.id), [], "not at the Florida store");
+    const both = await saveHolidayFor(user(a), null, form({ name: "Both", firstDay: `${year + 1}-09-01`, lastDay: `${year + 1}-09-01`, kinds: ["FABRIC"], storesShown: "1", stores: [boston.id, fl.id] }));
+    assert.deepEqual((await db.taxHoliday.findUniqueOrThrow({ where: { id: both } })).locationIds, [], "every store ticked: every store");
+    await expectError("B's store", () => saveHolidayFor(user(b), null, form({ name: "X", firstDay: today, lastDay: today, kinds: ["FABRIC"], storesShown: "1", stores: [fl.id] })), /Tick the stores/);
+    await db.taxHoliday.deleteMany({ where: { id: { in: [maOnly, both] } } });
+    await db.location.delete({ where: { id: fl.id } });
+    ok("stores in different states: a holiday covers the stores ticked (the MA preset ticks the MA store), none ticked refused, all ticked is every store");
+
     // 8. Tenant.
     await expectError("B changes A's", () => saveHolidayFor(user(b), hid, form({ name: "Mine", firstDay: today, lastDay: today, kinds: ["FABRIC"] })), /not found/);
     await deleteHolidayFor(user(b), hid);
     assert.ok(await db.taxHoliday.findUnique({ where: { id: hid } }), "B's delete touches nothing of A's");
     assert.deepEqual(await listHolidays(b.shopId), []);
-    assert.deepEqual(await holidaysOn(b.shopId, [`${year}-08-08`]), []);
+    assert.deepEqual(await holidaysOn(b.shopId, [`${year}-08-08`], null), []);
     ok("tenant: B can't change or remove A's holidays, nor see them");
   } finally {
     await cleanup();

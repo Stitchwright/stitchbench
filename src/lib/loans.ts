@@ -266,13 +266,16 @@ export async function backFor(user: CurrentUser, loanId: string, a: { conditionB
   const keep = Math.max(0, Math.min(held, Math.round(Number(a.keepCents ?? 0)) || 0));
   if (keep && user.role === "TECH") throw new UserError("Only an owner or admin can keep a deposit.");
   const unit = await db.stockUnit.findFirst({ where: { id: loan.unitId, shopId }, include: { machine: true } });
-  const mark = async () => {
-    const r = await db.unitLoan.updateMany({ where: { id: loan.id, shopId, backAt: null }, data: { backAt: now, conditionBack: a.conditionBack?.trim().slice(0, 200) || "Good" } });
-    if (!r.count) throw new UserError("It was just marked back. Look again.");
+  // Marked back first, once (a second tap, or the form sent twice, stops here: the deposit is given back once).
+  const r = await db.unitLoan.updateMany({ where: { id: loan.id, shopId, backAt: null }, data: { backAt: now, conditionBack: a.conditionBack?.trim().slice(0, 200) || "Good" } });
+  if (!r.count) throw new UserError("It was just marked back. Look again.");
+  const noted = async () => {
     if (unit) await db.stockUnit.update({ where: { id: unit.id }, data: { events: pushEvent(unit.events, { at: now.toISOString(), note: `Back${a.conditionBack ? `: ${a.conditionBack.slice(0, 100)}` : ""} (${user.name})` }) } });
+    // Rent still waiting on a pay link for this rental can't be paid now.
+    if (loan.kind === "RENTAL") await (await import("@/lib/pay-links")).cancelLinksFor(shopId, { loanId: loan.id }, "the rental ended", now);
   };
   if (!held) {
-    await mark();
+    await noted();
     return { saleId: null, backCents: 0, keptCents: 0 };
   }
   const back = held - keep;
@@ -290,8 +293,12 @@ export async function backFor(user: CurrentUser, loanId: string, a: { conditionB
       clientKey: a.clientKey ?? null,
     },
     { internal: true },
-  );
-  await mark();
+  ).catch(async (e) => {
+    // The deposit didn't go back: it is out again, to try once more.
+    await db.unitLoan.updateMany({ where: { id: loan.id, shopId, backAt: now }, data: { backAt: null, conditionBack: null } });
+    throw e;
+  });
+  await noted();
   if (keep) await audit(db, actorOf(user), { action: "loan.keep", subjectType: "UnitLoan", subjectId: loan.id, subjectLabel: desc, amountCents: keep, reason: a.conditionBack ?? null });
   return { saleId: sale.saleId, backCents: back, keptCents: keep };
 }

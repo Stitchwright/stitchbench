@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import { cancelPayLinkFor, makePayLinkFor, openPayLink, payLinkProblem, payLinksFor, resendPayLinkFor } from "@/lib/pay-links";
+import { cancelSpecialOrderAs, takeSpecialOrderAs } from "@/lib/special-orders";
 import { expireStaleOrders, handleWebhook, orderByToken, saveShopSettingsFor } from "@/lib/shop/online-shop";
 import { signWebhook } from "@/lib/shop/stripe";
 import { checkShop, cleanup, clearKick, messagingFor, withSink } from "./lib";
@@ -136,7 +137,40 @@ async function main() {
     await expectError("paying a taken back link", () => openPayLink(tokenOf(r4.link), now), /cancelled/);
     const list = await payLinksFor(a.shopId);
     assert.equal(list.length, 4);
+    // (5b's links are counted after.)
     ok("a link past its day is cancelled (not by the two-hour rule); sent again; taken back and then refused");
+
+    // 5b. Links toward a special order (review fix): cancelled with the order; one paid after is refunded; one paid
+    // while the order closed under it (the sale can't be booked) is refunded at once and the shop told.
+    const so1 = await takeSpecialOrderAs(a.user, { customerId: jane.id, partId: part.id, qty: 1, priceCents: 4000, depositCents: 0 });
+    const sl1 = await makePayLinkFor(a.user, { customerId: jane.id, lines: [{ description: "Deposit", unitPriceCents: 1000, specialOrderId: so1.id }], send: "none" }, { now, trusted: true });
+    await openPayLink(tokenOf(sl1.link), now);
+    const sl1Sid = (await db.webOrder.findUniqueOrThrow({ where: { id: sl1.orderId } })).stripeSessionId!;
+    await cancelSpecialOrderAs(a.user, { id: so1.id });
+    const sl1After = await db.webOrder.findUniqueOrThrow({ where: { id: sl1.orderId } });
+    assert.equal(sl1After.status, "CANCELLED", "the order's link is taken back with it");
+    assert.match(sl1After.staffNote ?? "", /was cancelled/);
+    const late = await mock.pay(sl1Sid);
+    const lb = JSON.stringify({ id: "evt_pl_late", type: "checkout.session.completed", data: { object: late } });
+    await handleWebhook(a.shopId, lb, signWebhook(lb, WHSEC), now);
+    assert.ok(mock.refunds.some((r) => r.payment_intent === late.payment_intent && r.amount === 1000), `paid anyway: refunded ${JSON.stringify(mock.refunds.slice(-2))} ${late.payment_intent}`);
+    const so2 = await takeSpecialOrderAs(a.user, { customerId: jane.id, partId: part.id, qty: 1, priceCents: 4000, depositCents: 0 });
+    const sl2 = await makePayLinkFor(a.user, { customerId: jane.id, lines: [{ description: "Deposit", unitPriceCents: 1000, specialOrderId: so2.id }], send: "none" }, { now, trusted: true });
+    await openPayLink(tokenOf(sl2.link), now);
+    const sl2Sid = (await db.webOrder.findUniqueOrThrow({ where: { id: sl2.orderId } })).stripeSessionId!;
+    await db.specialOrder.update({ where: { id: so2.id }, data: { status: "CANCELLED" } });
+    const raced = await mock.pay(sl2Sid);
+    const rb = JSON.stringify({ id: "evt_pl_race", type: "checkout.session.completed", data: { object: raced } });
+    await handleWebhook(a.shopId, rb, signWebhook(rb, WHSEC), now);
+    const sl2After = await db.webOrder.findUniqueOrThrow({ where: { id: sl2.orderId } });
+    assert.ok(sl2After.status === "CANCELLED" && !sl2After.saleId && sl2After.refundedCents === 1000, `not booked: refunded at once ${JSON.stringify(sl2After)}`);
+    assert.match(sl2After.staffNote ?? "", /couldn't be booked.*refunded/);
+    const so3 = await takeSpecialOrderAs(a.user, { customerId: jane.id, partId: part.id, qty: 1, priceCents: 4000, depositCents: 0 });
+    const sl3 = await makePayLinkFor(a.user, { customerId: jane.id, lines: [{ description: "Deposit", unitPriceCents: 1000, specialOrderId: so3.id }], send: "none" }, { now, trusted: true });
+    await db.specialOrder.update({ where: { id: so3.id }, data: { status: "DONE" } });
+    await expectError("a link whose order closed", () => openPayLink(tokenOf(sl3.link), now), /can't be paid any more/);
+    assert.equal((await db.webOrder.findUniqueOrThrow({ where: { id: sl3.orderId } })).status, "CANCELLED");
+    ok("a special order's link: taken back when the order is cancelled (paid anyway: refunded); paid while it closed: refunded at once, the shop told; checked again at Pay");
 
     // 6. Tenant.
     const r5 = await makePayLinkFor(a.user, { customerId: jane.id, lines: [line], send: "none" }, { now });
