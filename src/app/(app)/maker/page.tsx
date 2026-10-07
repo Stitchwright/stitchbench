@@ -13,16 +13,18 @@ export default async function MakerHome() {
   const user = await requireUser();
   const s = await makerPageState(user);
   const shopId = user.shopId;
-  const [printers, cutters, supplies, due] = await Promise.all([
+  const [printers, cutters, supplies, due, jobs] = await Promise.all([
     db.stockUnit.count({ where: { shopId, status: "IN_STOCK", machine: { kind: { in: ["3d-printer", "resin-printer"] } } } }),
     db.stockUnit.count({ where: { shopId, status: "IN_STOCK", machine: { kind: { in: ["craft-cutter", "die-cutter", "laser-cutter"] } } } }),
     db.part.count({ where: { shopId, itemType: { in: SUPPLY_TYPES }, qtyOnHand: { gt: 0 } } }),
     s.gate === "none" ? Promise.resolve(0) : suppliesDueCount(shopId),
+    db.makeJob.count({ where: { shopId, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } } }),
   ]);
   const cards: { href: string; title: string; text: string; count: string }[] = [
     { href: "/units?kind=3d-printer#add", title: "3D printers for sale", text: "Filament and resin printers with serials, warranties, owner's classes and starter bundles.", count: `${printers} in stock` },
     { href: "/units?kind=craft-cutter#add", title: "Cutters and lasers for sale", text: "Craft cutters, fabric die cutters and laser cutters.", count: `${cutters} in stock` },
     { href: "/parts?kind=SUPPLY", title: "Supplies", text: "Filament, resin, blades, mats, vinyl, laser stock and dies, each with its own details and colors.", count: `${supplies} on the shelf` },
+    { href: "/maker/jobs", title: "Print and cut jobs", text: "A customer's file printed or cut on your machines: quoted, approved, made, collected and paid.", count: `${jobs} open` },
     { href: "/maker/space", title: "Maker-space time", text: "Customers certified on your laser or printer book it by the hour.", count: "" },
     { href: "/maker/supplies", title: "Supplies due", text: "Printer and cutter owners probably running low, to call or remind.", count: `${due} due` },
   ];

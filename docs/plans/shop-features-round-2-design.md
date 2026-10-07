@@ -1218,3 +1218,32 @@ Decisions made while building:
 - Material used is rung up at the register beside the booking (no separate material log).
 - Browser test needed: a customer's Certified on (certify, take off), Calendar → Types with a machine, /maker/space
   (set up, coming up, who is certified), booking a laser hour for a certified and an uncertified customer.
+
+**`make-jobs` (6.5, Maker Shop module, 7 Oct 2026).** Migration `20261021000000_make_jobs` (`MakeJob` with the file as
+bytes, carried by the company file and the customer merge and delete; `Shop.nextMakeJobNumber`, `makeRateCents` $20,
+`makeSetupCents` $5, `makeNeverCut` "PVC, vinyl"; `EstimateLink.makeJobId`). Code: `src/lib/make-jobs-math.ts` (pure:
+words, steps, material by the gram / ml / sheet, the price, the never-cut check), `src/lib/make-jobs.ts`,
+`src/actions/make-jobs.ts`, `src/components/maker/job-form.tsx` (the price shown as it is typed), Maker Shop → **Print
+and cut jobs** (`/maker/jobs`: open, Take a job, finished lately, Job prices), the job's page (`/maker/jobs/[id]`: the
+next step as the one main button, Collected and paid, Send the quote, the file, Change the job, Turn it down), the job
+slip (`/maker/jobs/[id]/print`, with "We decide what we'll print or cut"), the file download
+(`/api/maker/jobs/[id]/file`); the estimate link (`src/lib/estimate-links.ts`) learned print and cut jobs (approving
+moves the job to Approved); voiding the collecting sale puts the job back to Ready (`register-sale.ts`). Check:
+`scripts/checks/make-jobs.check.ts` (7 groups); `estimate-links`, `customer-merge` (jobs seeded), `move-export`,
+`longarm`, `base-license` still pass.
+Decisions made while building:
+- Statuses and kinds are text (as the machines-for-sale ones are), not new enums.
+- Material is priced from the item: filament by the gram (its price over the spool's weight), resin by the ml (over the
+  bottle), laser stock and vinyl by the sheet; it is billed as a line on the sale and does not take stock off the shelf
+  (grams of a spool can't be counted in whole items). A material the customer brings is named in words, unpriced.
+- A tech takes jobs at the shop's rate and set-up fee; owners and admins may change them per job.
+- The laser's never-cut list (Job prices) refuses a job whose material names one of its words, from stock or typed.
+- The Ready message goes when Marketing is on (an order-notice style text or email); otherwise call them.
+- The customer's file is kept until 30 days after the job ends (collected, cancelled or turned down) and then deleted
+  (the job keeps its name); deleting happens when Maker Shop's job pages are opened, and a file past its days can't be
+  downloaded. A worker sweep for every company (`purgeJobFiles(null)`) is ready to be called if wanted.
+- Not built: the customer's online job request (the design's "online request" wording is on the job slip and the
+  quote's note), and a jobs list on the customer's page.
+- Browser test needed: /maker/jobs (Take a job with a file and the live price, a tech's form, the never-cut refusal),
+  a job's page through Approved, Printing, Ready, Collected (and a void), Send the quote and answering it on /e/...,
+  Turn it down, the slip, the file download.
