@@ -6,7 +6,7 @@ import { Menu, X } from "lucide-react";
 
 /**
  * The sidebar's top on a phone is the logo, the search and a Menu button; the full menu opens under it (a disclosure
- * button, Escape closes it, and it closes on navigation). From md up the menu is always shown and the button is gone.
+ * button, Escape closes it, and it closes on navigation). From 1100px wide (the side breakpoint) the menu is always shown and the button is gone.
  */
 export function AppHeader({ logo, search, children }: { logo: React.ReactNode; search: React.ReactNode; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -25,12 +25,12 @@ export function AppHeader({ logo, search, children }: { logo: React.ReactNode; s
   }, [open]);
   return (
     <>
-      <div className="flex items-center gap-3 px-4 py-2 md:block md:py-0">
-        <div className="max-w-[8.5rem] shrink-0 md:max-w-none md:py-5">{logo}</div>
-        <div className="min-w-0 flex-1 md:flex-none">{search}</div>
+      <div className="flex items-center gap-3 px-4 py-2 side:block side:py-0">
+        <div className="max-w-[8.5rem] shrink-0 side:max-w-none side:py-5">{logo}</div>
+        <div className="min-w-0 flex-1 side:flex-none">{search}</div>
         <button
           type="button"
-          className="btn btn-sm shrink-0 md:hidden"
+          className="btn btn-sm shrink-0 side:hidden"
           aria-expanded={open}
           aria-controls={id}
           onClick={() => setOpen((o) => !o)}
@@ -39,7 +39,7 @@ export function AppHeader({ logo, search, children }: { logo: React.ReactNode; s
           Menu
         </button>
       </div>
-      <div id={id} className={open ? "block" : "hidden md:block"}>
+      <div id={id} className={open ? "block" : "hidden side:block"}>
         {children}
       </div>
     </>

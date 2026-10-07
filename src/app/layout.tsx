@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Source_Sans_3, IBM_Plex_Mono } from "next/font/google";
-import { Toaster } from "sonner";
+import { AppToaster } from "@/components/app-toaster";
 import "./globals.css";
 
 const body = Source_Sans_3({ variable: "--font-body", subsets: ["latin"] });
@@ -18,7 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={`${body.variable} ${code.variable} h-full antialiased`}>
       <body className="min-h-full">
         {children}
-        <Toaster position="bottom-right" richColors />
+        <AppToaster />
       </body>
     </html>
   );
