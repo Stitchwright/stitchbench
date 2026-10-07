@@ -31,6 +31,7 @@ import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { VacUnitTools } from "@/components/vac/unit-tools";
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
+import { receiptStands } from "@/lib/sale-return";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
 import type { TradeInInput, VacCartLine } from "@/lib/vac/types";
 
@@ -64,10 +65,19 @@ type CartLine = {
   appointmentId?: string;
   /** A gift card sold, loaded or paid out on this line: untaxed, never discounted, one at a time (the server prices a payout). */
   giftCard?: { mode: "new" | "printed" | "load" | "cashout"; number?: string };
+  /** The sale a scanned receipt brought this return line back from. */
+  fromSale?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
 const EMPTY_CUSTOMER: NewCustomer = { name: "", phone: "", email: "", address: "" };
+
+/** What a scanned receipt left out because it has its own way back (which settles the booking or the vacuum too). */
+function leftOut(s: SaleForReturn): string {
+  const booking = s.skippedBookingLines ? " A class or appointment on it was left out: refund it with Classes & appointments while returning." : "";
+  const unit = s.skippedUnitLines ? " A vacuum or trade-in on it was left out: take a vacuum back with Return a vacuum; void the sale to undo a trade-in." : "";
+  return booking + unit;
+}
 
 const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
@@ -94,7 +104,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [returnMode, setReturnMode] = useState(false);
-  // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the same).
+  // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the
+  // same), while every return line on it came from that receipt (receiptOf below).
   const [returnOf, setReturnOf] = useState<{ id: string; taxRatePct: number } | null>(null);
   const [results, setResults] = useState<RegisterItem[]>([]);
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
@@ -155,7 +166,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
-  const receiptRate = returnOf && lines.length > 0 && lines.every((l) => l.qty < 0) ? returnOf.taxRatePct : null;
+  const receiptOf = returnOf && receiptStands(returnOf.id, cart) ? returnOf : null;
+  const receiptRate = receiptOf && lines.every((l) => l.qty < 0) ? receiptOf.taxRatePct : null;
   const t = saleTotals(lines, orderDiscountCents, receiptRate ?? ratePct, tenders);
   const refund = t.total < 0;
   // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
@@ -341,7 +353,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.`
           : sale.skippedCardLines
             ? `Sale #${sale.number} only sold or paid out a gift card. Void the sale to take a card sale back.`
-            : `Sale #${sale.number} has nothing to return.`,
+            : sale.skippedBookingLines || sale.skippedUnitLines
+              ? `Sale #${sale.number} has nothing to return from the receipt.${leftOut(sale)}`
+              : `Sale #${sale.number} has nothing to return.`,
       );
       return;
     }
@@ -360,6 +374,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         priced: true,
         discountPct: 0,
         taxable: l.taxable,
+        fromSale: sale.id,
       })),
     ]);
     setReturnMode(true);
@@ -372,7 +387,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       toast.message(`Sale #${sale.number} was paid with ${back.kind === "credit" ? "store credit" : "a gift card"} (${money(back.amountCents)}). Press ${back.kind === "credit" ? "Store credit" : "Gift card"} to refund it onto the same card.`);
     }
     toast.success(
-      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}${sale.skippedCardLines ? " A gift card on it was left out: void the sale or pay the card out to take that back." : ""}`,
+      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}${sale.skippedCardLines ? " A gift card on it was left out: void the sale or pay the card out to take that back." : ""}${leftOut(sale)}`,
     );
   }
 
@@ -578,7 +593,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     const sale = {
       customerId: customer?.id ?? null,
       chargeTax: Boolean(exemptCert) && chargeTax,
-      returnOfSaleId: returnOf?.id ?? null,
+      returnOfSaleId: receiptOf?.id ?? null,
       lines: lines.map((l) => ({
         giftCard: l.giftCard ?? null,
         partId: l.partId ?? null,
@@ -687,7 +702,16 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           {vac && vac !== "off" && (
             <VacUnitTools vac={vac} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />
           )}
-          <button type="button" className={`btn btn-sm ${returnMode ? "btn-primary" : ""}`} aria-pressed={returnMode} onClick={() => setReturnMode((r) => !r)}>
+          <button
+            type="button"
+            className={`btn btn-sm ${returnMode ? "btn-primary" : ""}`}
+            aria-pressed={returnMode}
+            onClick={() => {
+              // Stopping returns lets go of the scanned receipt: its rate no longer applies.
+              if (returnMode) setReturnOf(null);
+              setReturnMode(!returnMode);
+            }}
+          >
             <Undo2 size={14} aria-hidden /> {returnMode ? "Stop returning" : "Return an item"}
           </button>
         </div>

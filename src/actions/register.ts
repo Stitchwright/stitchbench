@@ -11,7 +11,7 @@ import { codeKeys, numberKey } from "@/lib/parts";
 import { sameText } from "@/lib/input";
 import { lineNet, type Tender } from "@/lib/register-math";
 import type { Issued } from "@/lib/gift-card-number";
-import { splitForReturn } from "@/lib/sale-return";
+import { returnSkip, splitForReturn } from "@/lib/sale-return";
 import { registerUnitHits } from "@/lib/vac/sale-units";
 import { FIRST_PHOTO, viewItem, type RegisterItem } from "@/lib/register-item";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -171,6 +171,12 @@ export type SaleForReturn = {
   /** Gift cards sold, loaded or paid out on it, left out: a card's money comes back through the card itself (void the
    * sale, or pay the card out), never as a plain refund line that would leave the card spendable. */
   skippedCardLines: number;
+  /** Class seats and appointments, left out: refund them through "Return an item" > Classes & appointments, which
+   * settles the booking with the money. */
+  skippedBookingLines: number;
+  /** Vacuums sold from stock and trade-ins, left out: through "Return an item" > Machines for sale, which takes the unit
+   * back with the money. */
+  skippedUnitLines: number;
   /** Gift cards and store credit the sale was paid with: the default way back is onto the same card. */
   cardsPaid: { number: string; kind: "gift" | "credit"; amountCents: number }[];
 };
@@ -188,15 +194,11 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
   });
   if (!sale) return null;
   const lines: SaleReturnLine[] = [];
-  let skippedRepairLines = 0;
-  let skippedCardLines = 0;
+  const skipped = { repair: 0, card: 0, booking: 0, unit: 0 };
   for (const l of sale.lines) {
-    if (l.repairJobId) {
-      skippedRepairLines++;
-      continue;
-    }
-    if (l.giftCardId) {
-      skippedCardLines++;
+    const skip = returnSkip(l);
+    if (skip) {
+      skipped[skip]++;
       continue;
     }
     // What the line actually charged (its own discount folded in), split into whole-cent unit prices that refund
@@ -212,7 +214,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     const c = cards.find((x) => x.id === t.cardId);
     return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
   });
-  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines, skippedCardLines, cardsPaid };
+  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines: skipped.repair, skippedCardLines: skipped.card, skippedBookingLines: skipped.booking, skippedUnitLines: skipped.unit, cardsPaid };
 }
 
 /** `taxExemptId`: the certificate number when the customer is tax exempt now (null: not; absent: not looked up yet). */
