@@ -17,10 +17,24 @@ export const FEATURES = {
   match_columns: { label: "Match the columns (inventory import)", cls: "read", group: "parts" },
   read_label: { label: "Read the bolt label", cls: "read", group: "fabric" },
   tag_fabric: { label: "Color and theme tags", cls: "read", group: "fabric" },
+  // Phase 4 (shop-features-round-2-design.md section 5)
+  ask_shop: { label: "Ask your shop", cls: "suggest", group: "ask" },
+  draft_arrivals: { label: "Draft: new arrivals email", cls: "draft", group: "marketing" },
+  draft_class: { label: "Draft: class blurb", cls: "draft", group: "marketing" },
+  draft_product: { label: "Draft: online description", cls: "draft", group: "marketing" },
+  draft_post: { label: "Draft: social post", cls: "draft", group: "marketing" },
+  quilt_pick: { label: "Quilt: suggest coordinates", cls: "suggest", group: "quilt" },
+  trade_in_note: { label: "Trade-in condition note", cls: "read", group: "plate" },
+  draft_pickup: { label: "Draft: pickup sheet", cls: "draft", group: "draft" },
+  explain_insight: { label: "Fabric insight in words", cls: "draft", group: "fabric" },
+  customer_question: { label: "Customer question sorted", cls: "suggest", group: "customers" },
 } as const satisfies Record<string, { label: string; cls: ModelClass; group: FeatureGroup }>;
 
 export type FeatureId = keyof typeof FEATURES;
-export type FeatureGroup = "draft" | "causes" | "plate" | "manuals" | "parts" | "fabric";
+export type FeatureGroup = "draft" | "causes" | "plate" | "manuals" | "parts" | "fabric" | "ask" | "marketing" | "quilt" | "customers";
+/** The groups with a switch on Settings → Assistant (customer answers have their own page, Settings → Customer questions). */
+export const SWITCH_GROUPS = ["draft", "causes", "plate", "manuals", "parts", "fabric", "ask", "marketing", "quilt"] as const;
+export type SwitchGroup = (typeof SWITCH_GROUPS)[number];
 export const FEATURE_IDS = Object.keys(FEATURES) as FeatureId[];
 export const isFeature = (s: unknown): s is FeatureId => typeof s === "string" && Object.hasOwn(FEATURES, s);
 
@@ -36,7 +50,14 @@ export const GROUP_LABEL: Record<FeatureGroup, { label: string; blurb: string }>
   parts: { label: "Parts helpers", blurb: "\"Looks like\" suggestions on a part, \"Parts this job usually needs\" on a ticket, and \"Match the columns\" on the inventory import. Part numbers, descriptions and column headings only; never a customer." },
   fabric: { label: "Fabric helpers", blurb: "A photo of a bolt label fills in a new fabric (number, color, maker, width, content), and a fabric's swatch picture gets color and theme tags. Only the picture is sent; never a customer." },
   manuals: { label: "Ask the manuals", blurb: "On a model page or ticket: answers a question from the text of your own indexed manuals, citing the pages. Only the few matching pages go to the model." },
+  ask: { label: "Ask your shop", blurb: "On Reports: a question in your own words picks one of your reports; the program works out the numbers and the Assistant says them in two sentences. Item names and counts only; never a customer." },
+  marketing: { label: "Marketing drafts", blurb: "Draft it buttons for a new arrivals email, a class blurb, an item's online description and a social post, in your shop's voice. Nothing is sent by itself." },
+  quilt: { label: "Quilt from your stock", blurb: "In the quilt planner: suggests fabrics from your own stock to go with the customer's focus fabric. The program works out the yards and checks every pick is on the shelf." },
+  customers: { label: "Customers' typed questions", blurb: "On your booking page: sorts a typed question into ticket status, hours, classes or booking, or passes it to you. Answers come only from your records." },
 };
+
+/** Typed customer questions a day, at most (Settings → Customer questions; the buttons are free). */
+export const DEFAULT_CUSTOMER_CAP = 20;
 
 /** Calls the shop's own plan allows each month before the hub says so (the hub's count is the authority). */
 export const DEFAULT_MONTHLY_CALLS = 300;

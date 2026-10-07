@@ -10,6 +10,8 @@ export type TradeInInput = {
   /** A vacuum's answers; null for any other kind. */
   bagged: "Bagged" | "Bagless" | null;
   bagType: string | null;
+  /** The condition note (the trade-in helper's draft, changed by staff): kept on the machine, never on a receipt. */
+  note?: string | null;
 };
 
 /** A plan sold at the register for a machine: on this sale (stockUnitId) or one of the customer's (machineId). */

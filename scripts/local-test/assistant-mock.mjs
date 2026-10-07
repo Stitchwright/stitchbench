@@ -12,6 +12,23 @@ const answer = (rec) => {
     return JSON.stringify({ found: true, answer: `Loosen the timing screw and set the hook to the needle [${ref}].`, sources: [ref] });
   }
   if (rec.system.startsWith("You help the staff")) return "We replaced the bobbin case and reset the hook timing, then tested the stitch.";
+  // Phase 4 (shop-features-round-2-design.md section 5): Ask your shop picks best sellers and words the first row.
+  if (rec.system.startsWith("You pick which")) return /unicorn/i.test(rec.userText) ? '{"report":"none"}' : '{"report":"best_sellers","from":"2020-01-01","to":"2099-12-31","kind":"FABRIC","collection":"Kona Solids","top":5}';
+  if (rec.system.startsWith("You answer a shop owner")) return `The best seller was ${/1\. ([^\n]+)/.exec(rec.userText)?.[1] ?? "nothing"}.`;
+  // Marketing drafts.
+  if (rec.system.includes("email to the shop's customers")) return "Subject: New fabric is in\n\nHi {first_name},\n\nFresh fabric just arrived.\n\n{shop_name}";
+  if (rec.system.includes("describing this class")) return "Learn to bind a quilt in one evening.";
+  if (rec.system.includes("online store")) return "A soft quilting cotton in a deep navy.";
+  if (rec.system.includes("social media post")) return "New in! Come see us. #quilting";
+  if (rec.system.includes("sheet a customer takes home")) return '{"whatWeDid":"We cleaned, oiled and retimed your machine.","tips":[1,2]}';
+  if (rec.system.startsWith("You turn a fabric shop's own numbers")) return JSON.stringify({ lines: [...rec.userText.matchAll(/\[(c\d+)\]/g)].map((m) => ({ ref: m[1], text: `In words: card ${m[1]}.` })) });
+  if (rec.system.startsWith("You sort a customer's question")) return /open|hours/i.test(rec.userText) ? '{"topic":"hours","ticket":null}' : '{"topic":"person","ticket":null}';
+  if (rec.system.startsWith("You look at photos of a used machine")) return "Light scratches on the bed, bobbin cover missing.";
+  // Quilt from stock: the first fabric on the list for every part asked.
+  if (rec.system.startsWith("You help a quilt shop pick")) {
+    const roles = [...rec.userText.matchAll(/^- (.+): needs /gm)].map((m) => m[1]);
+    return JSON.stringify({ picks: roles.map((role) => ({ role, ref: "f1", why: "Calm and creamy beside the focus" })) });
+  }
   return "unexpected request";
 };
 

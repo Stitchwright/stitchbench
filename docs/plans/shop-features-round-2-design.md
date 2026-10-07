@@ -1247,3 +1247,193 @@ Decisions made while building:
 - Browser test needed: /maker/jobs (Take a job with a file and the live price, a tech's form, the never-cut refusal),
   a job's page through Approved, Printing, Ready, Collected (and a void), Send the quote and answering it on /e/...,
   Turn it down, the slip, the file download.
+
+**Phase 4 schema (7 Oct 2026, branch `phase4-ai`).** One migration for the whole phase,
+`20261022000000_phase4_ai`: `AssistantSettings.askOn`, `marketingOn`, `quiltOn` (on), `customerOn` (off),
+`customerDailyCap` (20); `Shop.openHours`, `hoursNote`, `statusKeyHash`, `statusKeyAt`; `Ticket.pickupWhat`,
+`pickupTips`; tables `PatternNeed`, `CareTip`, `CustomerQuestion` (all three carried by the company file; the status key
+is left out of it: the owner makes a new one after a move). The Assistant's new feature ids are in
+`src/lib/assistant/features.ts` with their groups; `groupOn` in `client.ts` reads each group's switch (no settings row:
+everything on except customer answers). Settings → Assistant shows a switch for Ask your shop, Marketing drafts and
+Quilt from your stock; customer answers have their own page (below).
+
+**`ask-your-shop` (5.1, 7 Oct 2026).** Code: the report registry `src/lib/reports/registry-defs.ts` (pure: ten reports
+and their settings, `checkChoice`) and `src/lib/reports/registry.ts` (`runReport`: best sellers, slow items, sales by
+kind, margins, waited for parts, tickets by status, class fill, gift cards owed, discounts given, machines for sale);
+the prompts `src/lib/assistant/ask-prompt.ts`; the body `src/lib/assistant/ask.ts` (`askShop`); the action
+`askYourShop`; the box `src/components/assistant/ask-shop.tsx` at the top of Reports. Check:
+`scripts/checks/ask-your-shop.check.ts` (6 groups; the shared stand-in hub for the phase is
+`scripts/checks/assistant-hub.ts`). Spec: `tests/ask-your-shop.spec.ts` (the spec mock
+`scripts/local-test/assistant-mock.mjs` answers the new prompts).
+Decisions made while building:
+- A question is **two calls**, both logged as `ask_shop` and counted: one to pick the report and its settings, one to
+  word the answer from the report's rows. The box says so. A question no report covers costs the one call. If the
+  wording call fails, the table still shows with the reason.
+- The model's pick is checked by the program: an unknown report is "can't answer"; dates must be real days, at most
+  today and five years back (none given: this year so far; from after to: swapped); kind and collection only from the
+  lists (a collection matched in any case); top N 1 to 50. Settings a report doesn't take are dropped.
+- Only item names, part descriptions, machine models, ticket numbers and class titles reach the model; there is no
+  customer report in the registry (Top customers stays off it), and the question is redacted like any typed text.
+- Owners and admins only, like Reports. "Special orders waiting" and "discounts by price group" join the registry
+  when `special-orders` and `price-groups` (phase 1) land; "at the Florida store" when `locations` does.
+- Browser test needed: Reports with the Assistant off (no box), a question (answer, table, Open this report), a question
+  nothing covers (the list), the switch off.
+
+**`marketing-drafts` (5.2, 7 Oct 2026).** Code: the requests `src/lib/assistant/marketing-prompt.ts`, the bodies
+`src/lib/assistant/marketing.ts` (`draftArrivals`, `draftClassBlurb`, `draftProductText`, `draftSocialPost`), the actions
+`draftArrivalsEmail`, `draftClassText`, `draftItemText`, `draftPostText`, and `src/components/assistant/marketing-drafts.tsx`
+(`DraftFill`: "Draft it" that fills the field and then offers "Try again" with a few words; `PostDraft`: the post with a
+Copy button). Where: a new campaign ("Let the Assistant start it": a new arrivals email from the last N days, and a post
+about them), the class form's "About the class" (new and saved classes) and a post on the class page, the item page's
+Online shop card (the text for customers, and a post). Check: `scripts/checks/marketing-drafts.check.ts` (6 groups).
+Spec: `tests/marketing-drafts.spec.ts`.
+Decisions made while building:
+- "New arrivals" are the items with stock received (`StockMove` RECEIVED) in the last N days (14 by default, at most 90),
+  most received first, up to 30; a partner's consigned stock and machine models are left out. Nothing received: refused
+  in words before any call.
+- The email keeps `{first_name}` and `{shop_name}` for the campaign to fill in; the subject comes back on its own line.
+  Pictures are not put in the email (campaign emails are plain text today); the items' names, makers, colors and prices
+  are.
+- A new class is drafted from the form as typed (it isn't saved yet); a saved class adds its first meeting and how many
+  meetings. Anyone who can edit the field can draft it; the words never change a price.
+- `AssistantSettings.marketingOn` (on by default) switches all four off together.
+- Browser test needed: an item's Draft it and post, a new class's Draft it, a new campaign's arrivals email.
+
+**`quilt-planner` (5.3, no AI, 7 Oct 2026).** Code: the yards in `src/lib/fabric-math.ts` (`parseYards`,
+`parsePatternNeeds`, `patternNeedsText`, `plainQuiltPlan`, `plainQuiltProblem`, `QUILT_SIZES`, `roundUpEighth`),
+`src/lib/quilt.ts` (a pattern's yardage, the planner's lists, `pullListItems`), `src/actions/quilt.ts`
+(`savePatternYardage`), **Yardage on the back** on a pattern's page (`src/components/pattern-yardage.tsx`), the planner
+at Fabric → **Plan a quilt** (`/fabric/quilt`, `src/components/quilt-planner.tsx`). The register takes
+`?items=id:qty,...` (the pull list goes on the sale once, then the address goes back to /register) and the kit builder
+takes `?lines=...&pattern=...&name=...`. Check: `scripts/checks/quilt-planner.check.ts` (4 groups). Spec:
+`tests/quilt-planner.spec.ts`.
+Decisions made while building:
+- The back of a pattern is typed as she reads it, one size a line ("Throw: background 2 1/4 yd, focus 1 yd"); saving
+  replaces the pattern's yardage; anything it can't read is named and nothing is saved.
+- A plain quilt is squares: blocks across and down rounded to whole blocks (the finished size shown follows), cut with
+  1/4" seams, about 40" usable across the fabric, an eighth added to each fabric for straightening, the background's
+  share and the rest spread evenly; border and 2 1/2" binding strips; backing 4" bigger all round, pieced whichever way
+  takes less. Every part rounds up to the eighth. Block patterns other than squares use a pattern's own yardage.
+- A part only offers fabrics with enough yards on the bolt; the same fabric for two parts is one line on the sale, and
+  if the bolt can't cover both the list says so and Add all to the sale waits.
+- From a pattern, the pattern itself is on the sale and in the kit.
+- Browser test needed: a pattern's yardage (save, a line it can't read), the planner from a pattern (yards, picks, the
+  pull list's total, Make it a kit, Add all to the sale), a plain quilt's yards.
+
+**`quilt-from-stock` (5.3, AI, 7 Oct 2026).** Code: `src/lib/assistant/quilt-prompt.ts` (the request, `parseQuiltPicks`),
+`src/lib/assistant/quilt.ts` (`quiltPick`, `quiltCandidates`), `src/lib/quilt-thread.ts` (pure: swatch distance, color
+words, `bestThreads`), `threadMatchesFor` in `src/lib/quilt.ts`, the actions `suggestCoordinates` (assistant) and
+`threadsToMatch` (quilt), and `src/components/quilt-assist.tsx` (`SuggestCoordinates`, `ThreadToMatch`) in the planner.
+Check: `scripts/checks/quilt-from-stock.check.ts` (5 groups). Spec: `tests/quilt-from-stock.spec.ts`.
+Decisions made while building:
+- The focus fabric is the pick for the part she names ("Her focus fabric is the Focus"), or a photo of what she brought.
+  A photo is tagged first with the existing swatch tagger (`tag_fabric`, one call, the picture only), so the picks call
+  carries words, not the picture: **the hub needs no change** for this. A photo costs two calls; a shelf fabric one.
+- Candidates: this company's fabric by the yard in stock with at least the smallest empty part's yards, not consigned,
+  not the focus itself, at most 80, the same collection first, then shared color tags. Swatch thumbnails are not sent
+  (the hub takes one picture a call); names, tags, collection and yards are.
+- The program keeps a pick only if the part was asked for, the reference was on the list, and the bolt has the yards
+  (a fabric for two parts must cover both); each part once. The rest are dropped. Nothing is chosen for her: the picks
+  fill the empty parts' choices with the reason under each, and she changes any.
+- A focus fabric with no color tags and no collection is refused with the way to fix it (tag it on its page).
+- Thread to match needs no Assistant: threads on the shelf (2.1 thread fields or a THREAD item) whose swatch is within
+  reach of the fabric's or whose color words match its tags (navy finds blue, cream finds ivory), best three per fabric;
+  a ticked thread joins the pull list, the sale and the kit (one spool each).
+- `AssistantSettings.quiltOn` (on by default) hides Suggest coordinates.
+- Browser test needed: the planner with the Assistant (Suggest coordinates fills the empty part with its reason), a
+  photo of what she brought, Thread to match ticked into the pull list.
+
+**`trade-in-helper` (5.4, 7 Oct 2026).** Code: `src/lib/units/trade-in-value.ts` (`tradeInEstimate`, the rule
+`TRADE_IN_LESS_PCT`), `src/lib/assistant/trade-in-prompt.ts` and `trade-in.ts` (`tradeInNote`), the actions
+`tradeInValue` (units) and `draftTradeInNote` (assistant), `src/components/units/trade-in-helper.tsx` on the register's
+trade-in step; `TradeInInput.note` is kept on the machine for sale (`StockUnit.note`). Check:
+`scripts/checks/trade-in-helper.check.ts` (4 groups); `machine-sales` and `vac-units` still pass. Spec:
+`tests/trade-in-helper.spec.ts`.
+Decisions made while building:
+- **What is it worth?** works without the Assistant: this company's used and refurbished units of the same model (by
+  model key and kind) that sold, what the buyer paid and how many days they took; with none, the same brand and kind;
+  with none of those, it says so. The number to start from is the middle price less the rule, to the dollar; "Use" puts
+  it in the credit, which she changes freely.
+- The rule is 30% (`TRADE_IN_LESS_PCT`) until `trade-up` (1.9, phase 1) lands with `Shop.tradeInLessPct`; at merge,
+  `tradeInEstimate` should read that setting instead of the constant (one line).
+- **Draft a condition note** (Assistant on, "Read the plate" switch on): up to four condition photos are put side by
+  side in one JPEG in the browser (each cell 512 px, quality lowered until it is under the hub's size), one
+  `trade_in_note` call (read class). The plate photo isn't on the register's trade-in step today, so it isn't sent.
+- The note is staff only: kept on the machine for sale's own note (shown on its page), never on a receipt or sale line.
+- **Hub change needed:** add `"trade_in_note"` to `PHOTO_FEATURES` in the hub's `src/assistant.mjs` (and its refusal
+  wording "Only the plate, bolt-label and swatch readers take a photo" to include the trade-in note). Without it the hub
+  refuses the call with a 400 and the button shows that message.
+- Browser test needed: the trade-in step's What is it worth? and Use, condition photos and Draft a condition note, a
+  trade-in rung up with its note (the unit page shows it).
+
+**`pickup-sheet-and-insight-words` (5.5, 7 Oct 2026).** Code: `src/lib/care-tips-starters.ts` (starter tips per kind),
+`src/lib/care-tips.ts` (the shop's tips, the sheet saved), `src/actions/care-tips.ts`, Settings → **Care tips**
+(`/settings/care-tips`, remove with Undo), the ticket's **Pickup sheet** (`src/components/slots/pickup-sheet.tsx`,
+`src/components/pickup-sheet.tsx`) printed on the invoice ("What we did", "Caring for your {machine}");
+`src/lib/assistant/pickup-prompt.ts` and `pickup.ts` (`draftPickup`), `src/lib/assistant/insight-words.ts` (the cards
+and their request) with `explainInsight`, the actions `draftPickupSheet` and `explainFabricInsight`, and "At a glance"
+(`src/components/assistant/insight-words.tsx`) on Fabric → What sells and Slow fabric. Check:
+`scripts/checks/pickup-sheet.check.ts` (5 groups). Spec: `tests/pickup-sheet.spec.ts`.
+Decisions made while building:
+- The sheet shows on a ticket once it is ready (ready in truck, ready for pickup, collected) or already has words; anyone
+  who can work on the ticket can write and save it, with or without the Assistant. The tips ticked are copied as printed
+  (a later edit of the list doesn't change a sheet already given).
+- "Draft the pickup sheet" (group Draft it, `draft_pickup`): the ticket as the drafts see it (no customer, no internal
+  notes) and the shop's tips for the machine's kind, numbered; the model returns the words and up to three numbers; a
+  number not on the list is dropped. With no work done, diagnosis or lines it refuses before any call.
+- Starter tips exist for sewing machines, vacuums, stand mixers and 3D and resin printers; a shop's own kind starts
+  empty. Tips are the owner's and admins'; everyone reads them.
+- Words on fabric insight: the program makes up to six cards from its own numbers (What sells: the three fastest
+  collections, the fastest color, the slowest collection with stock; Slow fabric: clearance and markdown stages, the
+  color tag and the collection with the most slow fabrics) and shows them without the Assistant; "Say it in words"
+  (group Fabric helpers, `explain_insight`) adds one sentence to each. The sentences aren't stored.
+- Browser test needed: Care tips (starters, a tip of her own, remove and Undo), a ready ticket's pickup sheet (draft,
+  save, the invoice), Fabric → What sells and Slow fabric with "At a glance" and Say it in words.
+
+**`customer-answers` (5.6, 7 Oct 2026).** Code: `src/lib/customer-answers-words.ts` (pure: a sentence per ticket
+status, hours in words, forgiving ticket and phone input, the sorting request and its reading),
+`src/lib/customer-answers.ts` (the answers, typed questions with the day's cap, "for a person", the staff list, the
+settings), the public route `POST /api/book/{slug}/ask`, **Questions?** on the booking page
+(`src/components/book/customer-answers.tsx`), Settings → **Customer questions** (`/settings/customer-questions`: the
+switch with its warning, typed questions a day, opening hours and a line under them) and the **Customer questions** list
+(`/customer-questions`: Answered with Undo), `src/actions/customer-answers.ts`. Check:
+`scripts/checks/customer-answers.check.ts` (6 groups). Spec: `tests/customer-answers.spec.ts`.
+Decisions made while building:
+- Off until an owner or admin turns it on (`AssistantSettings.customerOn`); the public route answers 404 while off, and
+  a read-only (lapsed) company's answers pause like its booking. The buttons need no Assistant and cost nothing; they
+  show on the booking page even when online booking itself is off (then "Book a drop-off" says to call).
+- Is my machine ready: the ticket number and the last four digits of the phone on the ticket's customer; a wrong
+  number, wrong digits or another company's ticket all get the same "We couldn't find a ticket..." (nothing is given
+  away). The answer is a fixed sentence per status: never a price, what was found, or a date promised. Ticket lookups
+  have their own tighter rate limit (10 per address per 10 minutes).
+- Hours come from the shop's opening hours (new: `Shop.openHours`, `hoursNote`, typed on the settings page), in words
+  ("Monday to Friday, 9:30 am to 5 pm"); none typed: "Call us at ... for our hours." Classes list the online classes
+  with seats left, never the fee; a full class is left out.
+- Typed questions (Assistant on and its customers' switch on): one `customer_question` call (suggest) sorts the
+  question into status, hours, classes, drop-off or a person and pulls out a ticket number; the program answers from the
+  records (a status question asks for the last four digits). Anything unclear goes to a person. At most
+  `customerDailyCap` (20) a day, counted from the call log in the shop's day; past it, or with no Assistant or the hub
+  down, the box says to use the buttons or leave the question, with no call. The call is logged with no person.
+- "For a person" saves the question with her name and a phone or email (one is needed) to `CustomerQuestion`; the list
+  is everyone's; Answered records who and when, Undo puts it back.
+- Browser test needed: Settings → Customer questions (on, hours), the public page signed out (Hours, Is my machine
+  ready? wrong and right digits, leave a question, a typed question with the Assistant), the staff list.
+
+**`status-link` (5.6, 7 Oct 2026).** Code: `makeStatusKeyFor`, `removeStatusKeyFor`, `shopForKey` in
+`src/lib/customer-answers.ts`, the routes `src/app/api/public/v1/[slug]/[what]/route.ts`, the "A phone-answering
+service" section of Settings → Customer questions (`src/components/status-key.tsx`); `/api/public/` added to the public
+links address's lists (`src/lib/links-host.ts`, `desktop/links-gate.mjs`). Check: `scripts/checks/status-link.check.ts`
+(4 groups); `links-gate` and `move-export` still pass. Spec: `tests/status-link.spec.ts`. Committed together with
+`customer-answers` (they share the answers and the settings page).
+Decisions made while building:
+- The link is `{PUBLIC_URL}/api/public/v1/{booking slug}`; the service sends `Authorization: Bearer sbk_...`. The key is
+  shown once, kept as a sha256 hash (`Shop.statusKeyHash`), compared in constant time; a new key stops the old, and
+  "Turn the status link off" removes it. The key isn't carried by the company file (made again after a move).
+- Endpoints: `GET status?ticket=&phone=` (the last four digits are enough), `GET hours`, `GET classes`, `GET dropoff`
+  (the next open times of what can be booked online), `POST book` (`typeId`, `startsAt`, `name`, `phone`: an online
+  booking like the public page's, noted "Booked by the phone-answering service", refused in words while online booking
+  is off). Anything else is a 404; no key, a wrong key or another company's key is a 401. JSON with an `answer`
+  sentence the service can read out. No Assistant, nothing counted.
+- It works whether or not the booking-page answers are switched on: making a key is the shop's choice to turn it on.
+- Rate limits: 120 a minute per address, 2,000 an hour per shop, 300 ticket lookups an hour per shop.
+- No phone service is built or chosen (question 3); the first interested shop's service is tested against this.
