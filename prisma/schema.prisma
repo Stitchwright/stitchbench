@@ -266,6 +266,8 @@ model Shop {
   priceChanges      PriceChange[]
   liveSales         LiveSale[]
   liveClaims        LiveClaim[]
+  eventPayments     EventPayment[]
+  eventDraws        EventDraw[]
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
@@ -2278,28 +2280,41 @@ model JobLease {
 
 // A class, workshop or club: one or more meetings, a seat limit, a fee rung up at the register.
 model ShopClass {
-  id          String         @id @default(cuid())
-  shopId      String
-  shop        Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  teacher     String?
-  location    String?
-  supplies    String? // supply list: on the roster, the sign-up message and the reminder
-  feeCents    Int            @default(0)
-  taxable     Boolean        @default(false)
-  seats       Int
-  waitlist    Boolean        @default(true)
-  remind      String         @default("every") // day-before reminders: every | first (meeting only) | never
-  status      String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
-  online      Boolean        @default(false) // customers may sign up themselves on /book/{slug}
-  firstAt     DateTime? // first and last meeting, kept in step by the actions (for lists)
-  lastAt      DateTime?
-  createdById String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  meetings    ClassMeeting[]
-  enrollments Enrollment[]
+  id                String         @id @default(cuid())
+  shopId            String
+  shop              Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  teacher           String?
+  location          String?
+  supplies          String? // supply list: on the roster, the sign-up message and the reminder
+  feeCents          Int            @default(0)
+  taxable           Boolean        @default(false)
+  seats             Int
+  waitlist          Boolean        @default(true)
+  remind            String         @default("every") // day-before reminders: every | first (meeting only) | never
+  status            String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
+  online            Boolean        @default(false) // customers may sign up themselves on /book/{slug}
+  firstAt           DateTime? // first and last meeting, kept in step by the actions (for lists)
+  lastAt            DateTime?
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  // Events (shop-features-round-2-design.md 4.5): CLASS | EVENT (a trunk show, sew-in) | RETREAT; the early-bird price
+  // until a day (YYYY-MM-DD, the shop's zone), a deposit each (refundable or not) with the balance due this many days
+  // before the first day, the choices with their prices ([{ key, label, options: [{ label, cents }] }], plus a
+  // "dietary" ask), and the price at the door. src/lib/events-math.ts.
+  kind              String         @default("CLASS")
+  earlyCents        Int?
+  earlyUntil        String?
+  depositCents      Int?
+  depositRefundable Boolean        @default(false)
+  balanceDays       Int            @default(60)
+  choices           Json?
+  doorCents         Int?
+  meetings          ClassMeeting[]
+  enrollments       Enrollment[]
+  draws             EventDraw[]
 
   @@index([shopId, firstAt])
 }
@@ -2322,18 +2337,18 @@ model ClassMeeting {
 // Someone signed up for a class (or waiting for a seat). One row per sign-up: signing up again after a cancel makes a
 // new row. Paid and refunded at the register.
 model Enrollment {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   shopId        String
-  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   classId       String
-  shopClass     ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  shopClass     ShopClass      @relation(fields: [classId], references: [id], onDelete: Cascade)
   customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   name          String // the customer's name when they signed up (the roster keeps it)
   attendee      String? // who's coming when it isn't the customer (a child, a friend)
-  status        String    @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
+  status        String         @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
   feeCents      Int // the price for this person
-  taxable       Boolean   @default(false)
+  taxable       Boolean        @default(false)
   paidCents     Int?
   paidAt        DateTime?
   paidLineId    String? // the register sale line that paid it
@@ -2341,13 +2356,18 @@ model Enrollment {
   refundedAt    DateTime?
   refundLineId  String?
   note          String?
-  source        String    @default("counter") // counter | online
+  source        String         @default("counter") // counter | online
   // An owner's class that came with a machine bought here (the StockUnit id, plain): the seat is free
   creditUnitId  String?
   cancelledAt   DateTime?
   createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  // Events (4.5): what she chose ({ room: "Single", meals: "All meals", dietary: "gluten free" }) and when she came in
+  // the door; payments toward an event (deposit, balance) are EventPayment rows beside the one-payment paidAt above.
+  choices       Json?
+  checkedInAt   DateTime?
+  eventPayments EventPayment[]
 
   @@index([classId, customerId])
   @@index([shopId, customerId])
@@ -3269,4 +3289,42 @@ model LiveClaim {
 
   @@index([liveSaleId, status])
   @@index([shopId, status, partId])
+}
+
+// A payment toward an event sign-up (shop-features-round-2-design.md 4.5): a deposit or the balance, taken at the counter
+// (a register sale, saleId) or by a pay link (webOrderId; paidAt is set when she pays). kind DEPOSIT | BALANCE | PAYMENT.
+model EventPayment {
+  id           String     @id @default(cuid())
+  shopId       String
+  shop         Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  kind         String     @default("PAYMENT")
+  amountCents  Int
+  saleId       String?
+  webOrderId   String?
+  paidAt       DateTime?
+  cancelledAt  DateTime?
+  createdById  String?
+  createdAt    DateTime   @default(now())
+
+  @@index([enrollmentId])
+  @@index([shopId, webOrderId])
+}
+
+// A door prize drawn at an event (4.5): who, for which prize, and whether she was there (a draw again keeps the first,
+// marked not present).
+model EventDraw {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  classId      String
+  shopClass    ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  name         String
+  prize        String
+  drawnAt      DateTime  @default(now())
+  present      Boolean   @default(true)
+
+  @@index([classId, drawnAt])
 }

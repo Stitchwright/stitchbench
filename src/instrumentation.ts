@@ -10,6 +10,7 @@ export async function register() {
     moveSweepTimer?: NodeJS.Timeout;
     auditTimer?: NodeJS.Timeout;
     offsiteTimer?: NodeJS.Timeout;
+    eventTimer?: NodeJS.Timeout;
   };
   if (g.hubTimer) return;
   const { syncHub } = await import("@/lib/hub");
@@ -36,6 +37,11 @@ export async function register() {
     setTimeout(messages, 15_000);
     const secs = Number(process.env.MESSAGE_WORKER_SECONDS);
     g.messageTimer = setInterval(messages, (Number.isFinite(secs) && secs >= 2 ? secs : 30) * 1000);
+    // Events' "balance due" reminders (shop-features-round-2-design.md 4.5): once an hour is plenty (each is sent once).
+    const { runEventReminders } = await import("@/lib/events");
+    const reminders = () => runEventReminders().catch((e) => console.error("event reminders:", e instanceof Error ? e.message : e));
+    setTimeout(reminders, 60_000);
+    g.eventTimer = setInterval(reminders, 3600_000);
   }
   // Manual downloads into the library (HANDOFF item 12), one file at a time. Only where there is a library to download
   // into (LIBRARY_DIR: the Windows program; hosted installs have none), and MANUAL_DOWNLOADS=off stops it anywhere.

@@ -139,6 +139,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ShopClass", key: "id" },
   { t: "ClassMeeting", key: "id" }, // -> ShopClass
   { t: "Enrollment", key: "id" }, // -> ShopClass, Customer
+  { t: "EventPayment", key: "id" }, // -> Enrollment (events' deposits and balances, 4.5; sale and web order ids are plain)
+  { t: "EventDraw", key: "id" }, // -> ShopClass (door prize draws; the enrollment id is plain)
   { t: "AppointmentType", key: "id" },
   { t: "Appointment", key: "id" }, // -> AppointmentType, Customer, User
   { t: "Shift", key: "id" }, // -> User
