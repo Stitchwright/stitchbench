@@ -5,7 +5,7 @@ import { fmtDateTime } from "@/lib/format";
 import { todayIn } from "@/lib/time-zone";
 import { getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
-import { fmtYmd, MODULE_SALES, MODULE_SALES_NOTE, MODULES, PAID_MODULE_IDS, planLabel, salesMailto, SETTINGS_ACCOUNT_HREF, type KeyView, type ModuleState } from "@/lib/module-info";
+import { fmtYmd, programName, MODULE_SALES, MODULE_SALES_NOTE, MODULES, PAID_MODULE_IDS, planLabel, salesMailto, SETTINGS_ACCOUNT_HREF, type KeyView, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
@@ -158,7 +158,7 @@ export default async function ModulesPage() {
 
       <Section title="Modules">
         <p className="muted mb-3 text-sm">
-          Extra parts of StitchBench you can add, paid monthly or yearly. When one ends, nothing is deleted: you can still look at and export what&apos;s there
+          Extra parts of {programName()} you can add, paid monthly or yearly. When one ends, nothing is deleted: you can still look at and export what&apos;s there
           and finish work already in, but new work in it stops. The program itself is licensed through your{" "}
           <Link href={SETTINGS_ACCOUNT_HREF} className="link">
             StitchHub account
@@ -198,7 +198,7 @@ export default async function ModulesPage() {
               {modules.unknownModules.map((name) => (
                 <tr key={`unknown-${name}`}>
                   <td colSpan={admin ? 4 : 3} className="muted text-sm">
-                    {name}: needs a newer version of StitchBench
+                    {name}: needs a newer version of {programName()}
                   </td>
                 </tr>
               ))}

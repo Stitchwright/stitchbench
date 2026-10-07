@@ -39,7 +39,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const act = (a: Parameters<typeof orderAction>[1]) => orderAction.bind(null, o.id, a);
   const beforeShipping = ["REQUESTED", "ACCEPTED", "PAID"].includes(o.status);
   // The buyer rates the seller once it has shipped; the seller rates the buyer once they've paid.
-  const canRate = buyer ? ["SHIPPED", "RECEIVED"].includes(o.status) : ["PAID", "SHIPPED", "RECEIVED"].includes(o.status);
+  // The seller rates the buyer once the buyer said "Payment sent" or the order shipped (the hub refuses it on a "Mark paid" alone).
+  const canRate = buyer ? ["SHIPPED", "RECEIVED"].includes(o.status) : ["SHIPPED", "RECEIVED"].includes(o.status) || (o.status === "PAID" && !!o.buyerPaidNote);
   const mine = o.ratings?.[o.role] ?? null;
   // A received purchase (or a shipped sale of a listing with a part number) that isn't in the parts stock: the box was
   // left unticked, or the stock change failed after the hub had the step.

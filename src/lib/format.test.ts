@@ -1,7 +1,7 @@
 // Unit tests for money typed by people, the CSV files the shop downloads and page addresses (npm run test:unit).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { money, toCents } from "./format";
+import { costText, money, moneyCost, parseCost, tenThouToCents, toCents } from "./format";
 import { csvCell, csvResponse } from "./csv";
 import { firstValues } from "./search-params";
 
@@ -67,4 +67,26 @@ test("a CSV download starts with a UTF-8 byte order mark so Excel reads accents,
 
 test("a parameter repeated in the address is read as its first value", () => {
   assert.deepEqual(firstValues({ q: ["a", "b"], show: "paid", x: undefined }), { q: "a", show: "paid", x: undefined });
+});
+
+test("a supplier's cost keeps four decimals, and costCents is that rounded", () => {
+  assert.equal(parseCost("0.125"), 1250);
+  assert.equal(parseCost("$12.5"), 125000);
+  assert.equal(parseCost("1,000.0001"), 10_000_001);
+  assert.equal(parseCost("0.00005"), 1);
+  assert.equal(parseCost("0.00004"), 0);
+  assert.equal(parseCost(""), null);
+  assert.equal(parseCost("1,50"), null);
+  assert.equal(parseCost("1e3"), null);
+  assert.equal(parseCost("999999999"), null);
+  assert.equal(tenThouToCents(1250), 13);
+  assert.equal(tenThouToCents(1249), 12);
+  assert.equal(tenThouToCents(125000), 1250);
+  assert.equal(costText(13, 1250), "0.125");
+  assert.equal(costText(1250, 125000), "12.50");
+  assert.equal(costText(1250, null), "12.50");
+  // A newer costCents set elsewhere wins over a stale finer figure.
+  assert.equal(costText(500, 1250), "5.00");
+  assert.equal(moneyCost(13, 1250), "$0.125");
+  assert.equal(moneyCost(null, null), "");
 });

@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { ADJUSTMENTS, ADJ_NAME, valueRange } from "@/lib/adjustments";
 import type { SettingRowT } from "@/lib/model-info";
+import type { TestLinks } from "@/lib/service-modes";
 import { ManualFigure } from "@/components/manual-figure";
+import { LinkedText } from "@/components/service-modes";
 
-/** Factory timing and core adjustments for a model, grouped the way a tech works, each with its manual figure. */
-export function FactorySettings({ settings, brand }: { settings: SettingRowT[]; brand: string }) {
+/**
+ * Factory timing and core adjustments for a model, grouped the way a tech works, each with its manual figure. A setting's
+ * "test mode NN" links to that test in the model's test-mode card (`testLinks`, from withTestLinks).
+ */
+export function FactorySettings({ settings, brand }: { settings: (SettingRowT & { testLinks?: TestLinks })[]; brand: string }) {
   if (!settings.length)
     return (
       <p className="muted text-sm">
@@ -28,11 +33,17 @@ export function FactorySettings({ settings, brand }: { settings: SettingRowT[]; 
               {rows.map((s) => (
                 <li key={s.id} className="py-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div className="font-semibold">{s.label || ADJ_NAME[s.adjustment]}</div>
+                    <div className="font-semibold">{s.label ? <LinkedText text={s.label} link={s.testLinks?.label} /> : ADJ_NAME[s.adjustment]}</div>
                     <div className="num text-lg font-semibold">{valueRange(s.valueMin, s.valueMax, s.unit) || s.valueText}</div>
                   </div>
                   <div className="mt-1 space-y-0.5 text-sm">
-                    {s.valueText && <div className="muted">&ldquo;{s.valueText}&rdquo;</div>}
+                    {s.valueText && (
+                      <div className="muted">
+                        &ldquo;
+                        <LinkedText text={s.valueText} link={s.testLinks?.valueText} />
+                        &rdquo;
+                      </div>
+                    )}
                     {s.reference && (
                       <div>
                         <span className="label">Measured</span> {s.reference}
@@ -40,7 +51,7 @@ export function FactorySettings({ settings, brand }: { settings: SettingRowT[]; 
                     )}
                     {s.conditions && (
                       <div>
-                        <span className="label">When</span> {s.conditions}
+                        <span className="label">When</span> <LinkedText text={s.conditions} link={s.testLinks?.conditions} />
                       </div>
                     )}
                     {s.tools && (
@@ -50,7 +61,7 @@ export function FactorySettings({ settings, brand }: { settings: SettingRowT[]; 
                     )}
                     {s.confidence && s.confidence !== "high" && (
                       <div>
-                        <span className="pill tone-wait">{s.confidence} confidence</span> {s.notes}
+                        <span className="pill tone-wait">{s.confidence} confidence</span> {s.notes && <LinkedText text={s.notes} link={s.testLinks?.notes} />}
                       </div>
                     )}
                     <div className="muted text-xs">

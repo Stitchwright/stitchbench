@@ -1,6 +1,6 @@
 // The Day and Week views (scheduling-messaging-design.md 12.2). Server component: it gets the items and draws them.
 // Day: hour rows from the earliest opening or item to the latest, each item a card, one "+" per empty hour. Week:
-// seven columns from the xl width, one list per day below that; each item one line with its tone as a left border.
+// seven columns from the xl width, one list per day below that (an item wraps to the full title); each item one line from xl, with its tone as a left border.
 import Link from "next/link";
 import type { CalItem } from "@/lib/calendar";
 import { APPOINTMENT_STATUS_LABEL } from "@/lib/constants";
@@ -86,7 +86,7 @@ export function WeekView({ fromYmd, items, tz }: { fromYmd: string; items: CalIt
         </Link>
         {list.length === 0 && <div className="muted text-xs">Nothing</div>}
         {list.map((it) => (
-          <Link key={`${it.kind}:${it.id}`} href={it.href} className={`block truncate rounded bg-surface px-2 py-1 text-xs ${TONE_BORDER[it.tone]} ${it.struck ? "line-through muted" : ""}`} title={`${it.title}${it.sub ? ` · ${it.sub}` : ""}`}>
+          <Link key={`${it.kind}:${it.id}`} href={it.href} className={`block break-words rounded bg-surface px-2 py-1 text-xs xl:truncate ${TONE_BORDER[it.tone]} ${it.struck ? "line-through muted" : ""}`} title={`${it.title}${it.sub ? ` · ${it.sub}` : ""}`}>
             {fmtTime(it.start, tz).replace(" ", "")} {it.title}
             {it.sub ? ` · ${it.sub}` : ""}
           </Link>

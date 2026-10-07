@@ -242,11 +242,36 @@ your password in **Settings**, and add your people under **Settings → People**
 | `PUBLIC_URL` | the site's own https address, for customer links (estimate approval, unsubscribe) |
 | `SETTINGS_KEY` | a second long random secret: the mail password and Twilio secret are sealed with it (required before a shop can save them) |
 | `MESSAGES`, `MESSAGE_WORKER_SECONDS`, `MESSAGE_BATCH`, `READY_NOTICE_DELAY_SECONDS`, `SMTP_ALLOW_HOSTS` | optional; see **Messages** below |
+| `PLATFORM_SMTP_URL`, `PLATFORM_MAIL_FROM` | optional: the mailbox the sign-in page's **Forgot your password?** sends its link from (`smtps://user:pass@host:465`, or `smtp://…:587` for STARTTLS), one use, one hour. Without them the page says to ask the administrator, who makes an owner a **Reset link** on the Companies page (staff are reset by their owner in Settings → People) |
+| `APP_URL` | optional: this site's own https address for those links (defaults to `PUBLIC_URL` unless `PUBLIC_LINKS_ONLY`, then Railway's public domain); never taken from a request |
+| `PLATFORM_API_TOKEN` | optional: 32+ random characters, the same variable on StitchHub (with `HOSTED_STITCHSHOP_URL` / `HOSTED_STITCHBENCH_URL` there pointing here). Lets a verified StitchHub account **Start a hosted shop**: the hub calls `POST /api/platform/companies` with it (https only, `TRUST_PROXY=true` on Railway), the company and its owner (the account's email) are made, show "Started from StitchHub" on Companies, and the owner chooses a password through a 24-hour link the hub shows once. Unset: the route doesn't exist |
 
 ### Manuals on the hosted version
 The server can't see your PCs. Each tech connects their manuals folder once in the browser (**My manuals →
 Connect folder**, in Chrome or Edge), and StitchBench opens manuals from that PC. Manual figures come from the
 community hub, or are drawn from the tech's own copy.
+
+**The manual repository on the hosted version** (the hub's community library; see the hub's README). A tech can
+download a repository manual and offer one of their own files straight from the browser: the page reads the file from
+the connected folder, checks and hashes it, and sends it to the hub's R2 storage on a short-lived address the hub
+gives it, so the file never passes through this server and the install key never reaches the browser. That needs
+**CORS on the hub's R2 bucket** (Cloudflare dashboard, the bucket's Settings, CORS policy), allowing this site's own
+address (and the other hosted address, if there is one):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://<this app's address>", "https://<the other hosted app's address>"],
+    "AllowedMethods": ["GET", "PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Without it the browser can't read a download or send an offer; the buttons then say the storage couldn't be reached.
+On the Windows program none of this is needed (the program itself sends and fetches). Offers stay off until the hub's
+owner switches `REPO_UPLOADS` on; until then the program says "The manual repository opens soon."
 
 ### Backups
 Turn on database backups for the Postgres service in the Railway dashboard (on plans that include them). For your
@@ -364,6 +389,17 @@ In StitchBench, go to **Settings → Community hub**, paste the invite code (or 
 and press **Join**. StitchBench then syncs every 10 minutes. **Community chat** in the menu opens the community's
 Discord.
 
+The hub also holds a **manual repository**: manuals other shops offered, which show with the manual links (**Manual
+links**, and each model page) with a **Download** button that files the PDF in your library under its usual name
+(`Category\Brand\Brand_Model_DocType_Year.pdf`), checked against the hub's checksum. **Download everything** includes the
+repository and says how many files and how many GB first; it stops when less than 5 GB is free on the library's disk.
+To offer one of your own manuals (owner or admin; techs only when the owner turns on **Techs may offer manuals** in
+Settings → Community hub): open the model page, **Manual links → Offer one of your manuals to the repository**, or
+use an `_inbox` file under **Manual links → Manual repository**. Each file is its own offer with its own ticked
+statement; nothing is ever offered automatically. The hub's owner reviews each file before other shops can download it.
+If a copyright notice removes a manual you downloaded, the model page marks your copy and offers **Delete my copy**;
+the program never deletes it for you.
+
 ---
 
 ## Your StitchHub account
@@ -394,6 +430,121 @@ program that never connects to any hub keeps working as it always has.
 
 **A forgotten owner password on the Windows program**: the tray menu's **Reset a password...** lists the logins; pick
 one and a new password is made and shown once, on the shop PC's own screen. It needs the PC and nothing else.
+
+---
+
+## Moving a company
+
+A company can move from one install to another and keep everything: from the hosted service to a shop PC (or its
+own Railway), from a shop PC to the hosted service, or from one PC to a new one. Everything comes with the same ids,
+so tickets, photos, partner records, license keys and the StitchHub connection carry on as they were.
+
+**On the install the company leaves** (the owner, **Settings → Company → Move this company**):
+1. Read what the file holds (everything: customers, machines, tickets, photos, parts and stock, sales, messages and
+   consent records, classes, appointments, shifts, online orders, partner records, and every login with its password
+   hash), tick the box, and press **Prepare the move file**. From that moment this copy is **read-only**: everyone can
+   still look things up, print, export, finish open work and take payments, but nothing new is written here, so
+   nothing entered after the file was taken can be lost. **Cancel the move** lifts it at any time.
+2. If the install is on StitchHub, it asks the hub for a **move token** and puts it in the file (the Settings card
+   says so). If the hub can't be reached just then, the move goes on and the card says the file has no token:
+   download it again once the hub answers to get one.
+3. **Download the move file** (`<company>-<date>.stitchmove.ndjson.gz`). It downloads only over https or on the
+   program's own PC.
+
+**The file is the whole company.** Treat it as you would a backup (see [Backups and restore](#backups-and-restore)):
+whoever has it has the shop, including every login's password hash (crackable offline) and the move token. Carry it
+on a drive you keep, not by email, and delete it once the company is running on the new install.
+
+**On the install the company goes to:**
+- **A new Windows PC**: install the program; on the first-run page choose **Restore a company from a move file** (or
+  the tray's **Restore a company from a move file...**) and pick the file. The program reads it from disk, checks every
+  line first (nothing is added if anything is wrong, and it says why), then brings it in. A PC that already has its
+  company takes another only when it is set up to host several (`platformAdminEmails` in the settings file).
+- **The hosted service, or your own Railway**: the StitchBench administrator (`PLATFORM_ADMIN_EMAILS`) uses
+  **Companies → Import a company** and chooses the file; it uploads in parts (a dropped connection carries on where it
+  stopped), then imports.
+- **From a terminal** (a server with no browser): `npx tsx scripts/move/import.ts <file> [--into DATABASE_URL]`.
+
+Everyone then signs in on the new install with the same email and password as before. The summary says what to
+**enter again**, because secrets are never put in the file: the mail password (Settings → Messages → Email), the
+Twilio auth token (Settings → Messages → Texts), the Stripe secret key and webhook secret (Settings → Online shop:
+the webhook address is the new install's now), and estimate links still waiting for a customer's answer (send them
+again from the ticket). Email and texts stay off and marketing is on hold until then. Online booking and the online
+shop answer at the new install's address: give customers the new link (if another company there already uses the
+booking address, it is cleared and you choose a new one). Modules the hosted administrator switched on need a license
+key on a Windows PC: ask for one before you move. The manual library is the PC's folder, not in the file: copy
+`C:\Manuals` to the new PC, or connect the folder again on the hosted service.
+
+**StitchHub.** When the company was on a hub, the new install hands the hub the move token right after the import:
+the hub then has the company there, and its partner links, marketplace listings and orders, ratings, shared notes and
+parts-usage counts follow it. A new install that isn't on any hub yet joins the company's hub as part of this, with
+no invite. Partner messages sent while the company was on its way are picked up once. **Partner shops see nothing
+change**: same partnership, same name, same terms; the hub simply delivers to the new install. If the hub couldn't be
+reached at that moment, the import still stands and the summary says so: press **Re-point the hub** (Settings →
+Company on the new install, or Companies for the administrator) once it answers. If the file has no token (made while
+the hub was down), or the new install is on a different hub, the hub admin moves the company by hand (StitchHub admin
+page → **Moves → Move this shop**). A move token works once and for 14 days.
+
+**The old copy.** At its next sync the install the company left hears from the hub that it moved, and every page says
+"This company moved to <the new install> on <date>. This copy is read-only; delete it after <date + 30 days>." (An
+install that isn't on a hub can't hear it: once the company runs on the new install, the owner presses **The move is
+done** in Settings → Company to get the same notice.) Keep the old copy 30 days in case the move has to be undone;
+nothing deletes it by itself. Then:
+- **Hosted**: the StitchBench administrator deletes it under **Companies → Moved away**, typing the company's name.
+- **Windows**: the tray's **Remove the moved company...** (a backup is made first). A PC whose only company moved can
+  also simply be uninstalled.
+
+A company that comes back to an install it left is imported again the same way, after its old copy there has been
+deleted (a move never merges two copies).
+
+## Off-site backup
+
+The nightly backup above stays on the shop PC. Off-site backup keeps a second copy of the company somewhere else,
+**locked with a key only the owner holds**, so losing the PC (fire, theft, a dead disk) doesn't lose the company. It is
+**off until the owner turns it on**, in **Settings → Off-site backup** (owner or admin):
+
+1. **Make my recovery key.** The program keeps only the public half. The private half is shown once as a recovery sheet
+   (52 characters in 13 groups of four): print it and keep it away from the shop computer. Nobody can open the backups
+   without it, not even us, and a lost sheet can't be printed again (a new key starts a new set of backups; the old ones
+   stay closed).
+2. **Type the key back** from the sheet. Backups switch on only when it is right.
+3. **Where it goes**: with StitchHub (it arranges the storage; the files go straight to it and the hub can't read them),
+   a folder (a USB disk, a OneDrive or Dropbox folder), or a bucket of your own (R2, B2, Wasabi, S3 or MinIO: address,
+   bucket, region and keys; the secret key is kept for this company only and isn't shown again).
+
+A backup runs every night after 2 am shop time (and at start-up when one was missed). Pictures go once each; the rest
+every night. The last 14 days, 8 Sundays and 12 months are kept. **Back up off-site now** and **Test my recovery key**
+(type the key; the newest backup is opened and its row counts shown beside today's: do this twice a year) are on the same
+page. `OFFSITE=off` in the environment stops the schedule on a server.
+
+**Restore.** The backup is an ordinary company move file once opened. On the StitchHub account page the owner makes a
+**restore code** (24 hours); the command line takes it and the recovery key:
+
+    npm run check scripts/offsite/restore.ts --hub https://<hub> --code shr_... --key ABCD-EFGH-... --import
+    npm run check scripts/offsite/restore.ts --folder D:/Backups/StitchBench --key ABCD-EFGH-... --import
+
+`--list` shows the backups first; `--backup <name>` picks one; without `--import` it writes the move file to import
+by hand (Companies, or the Windows first run). The importer's rules apply: the company must not already be on this install.
+Restoring with a restore code from the hub also takes the company over on the hub. The mail password, Twilio token and Stripe
+keys are never in a backup: enter them again.
+
+**For the hub's operator** (hub migration `050_backups.sql`): `BACKUP_S3_ENDPOINT` (for R2,
+`https://<account>.r2.cloudflarestorage.com`), `BACKUP_S3_BUCKET`, `BACKUP_S3_KEY_ID`, `BACKUP_S3_SECRET`,
+`BACKUP_S3_REGION` (`auto` for R2), and `BACKUP_QUOTA_GB` (25 by default, per company). Without them the hub answers
+"Off-site backup storage isn't set up on this hub yet."
+
+## Reports, sales tax and the bookkeeping export
+
+**Reports** (owner and admin) show sales by day, week or month, by category and how it was paid, tickets, top customers, the
+gift card and store credit liability, and the **sales tax report** (by rate charged, with tax-exempt sales listed with their
+certificate numbers); each has **Download CSV**. A customer marked **tax exempt** (a certificate number, and the last day it is
+good, on the customer's page; owner and admin only) isn't charged tax at the register or on a new ticket, and the sale or
+ticket keeps the certificate number; the cashier can tick **Charge tax anyway**.
+
+**Bookkeeping** (Reports → Bookkeeping, names in Settings → Bookkeeping) makes one summary journal entry per day, as a CSV
+for QuickBooks Online's journal import or an IIF for QuickBooks Desktop. Each day balances to the cent. Cost of goods and
+inventory aren't in it. **Mark exported through** a day so the next export starts after it. The CSV's column headings are
+QuickBooks Online's journal-entry template as we know it: have your bookkeeper try a week before relying on it.
 
 ---
 

@@ -15,6 +15,8 @@ export type RegisterItem = {
   consigned: boolean;
   /** "used", "compatible, not genuine Brother"...: what the receipt will say about it, empty for a new, genuine item. */
   disclosure: string;
+  /** The item's first picture (a fabric's swatch): served by /api/parts/photo/{photoId}. */
+  photoId?: string | null;
   /** A vacuum in stock (Vac Shop): the register sells it as one unit line. */
   stockUnitId?: string | null;
 };
@@ -31,6 +33,7 @@ export const viewItem = (p: {
   brand: string | null;
   condition: PartCondition;
   origin: PartOrigin;
+  photos?: { id: string }[];
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -41,4 +44,8 @@ export const viewItem = (p: {
   kind: p.kind,
   consigned: Boolean(p.consignLinkId),
   disclosure: disclosure(p),
+  photoId: p.photos?.[0]?.id ?? null,
 });
+
+/** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */
+export const FIRST_PHOTO = { photos: { select: { id: true }, orderBy: { sortOrder: "asc" as const }, take: 1 } };

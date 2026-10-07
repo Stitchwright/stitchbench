@@ -64,7 +64,7 @@ export default async function MostUsed({ searchParams }: { searchParams: Promise
       });
   } else if (joined) {
     try {
-      top = (await (await hubFetch(`/v1/usage/top?months=${months}&limit=200${brand ? `&brand=${encodeURIComponent(brand)}` : ""}`, { quick: true })).json()) as Top;
+      top = (await (await hubFetch(`/v1/usage/top?months=${months}&limit=200${brand ? `&brand=${encodeURIComponent(brand)}` : ""}`, { quick: true, shopRef: user.shopId })).json()) as Top;
     } catch (e) {
       topError = e instanceof Error ? e.message : "Couldn't reach the community hub.";
     }

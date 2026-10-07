@@ -30,19 +30,24 @@ import {
   markReadyFor,
   MAX_LINES,
   orderByToken,
+  orderNeedsAttention,
   orderNoticeStillWanted,
   ordersFor,
   parseCart,
   priceCart,
   publicPhoto,
   publicStore,
+  refuseVoidOfOnlineSale,
   removePhotoFor,
+  retryOrderFor,
   saveListingFor,
   saveShopSettingsFor,
   shopSettings,
   startCheckout,
   type OrderItem,
 } from "@/lib/shop/online-shop";
+import { addDaysYmd } from "@/lib/license";
+import { grantDevLicense } from "../license/dev";
 import { MOCK_TAX_RATE, startStripeMock } from "../test-mail/stripe-mock.mjs";
 import { checkShop, cleanup, clearKick, messagingFor, withSink } from "./lib";
 import { expectNotFound, RUN } from "./tenant";
@@ -483,7 +488,57 @@ async function main() {
     assert.equal((await db.webOrder.findUniqueOrThrow({ where: { id: o6.id } })).status, "PENDING");
     ok("tenant: another company's orders, parts and photos are not found; a shop's webhook can't confirm another shop's order");
 
+    // 11b. Money taken is always booked, and a half-finished payment can be tried again.
+    const ymd = (d: number) => addDaysYmd(new Date().toISOString().slice(0, 10), d);
+    await db.part.update({ where: { id: foot.id }, data: { qtyOnHand: 5 } });
+    // (a) The company lapsed between checkout and payment: the sale is still made (the customer's money is taken).
+    const r9 = await startCheckout({ slug: slugA, cart: cartWith(new Map(), foot.id, 1), customer: cust("Lena Lapsed", null, "lena@example.test"), fulfil: "pickup", address: null, note: null }, now);
+    const o9 = await db.webOrder.findUniqueOrThrow({ where: { id: r9.orderId } });
+    const lapsed = await grantDevLicense(a.shopId, ["base"], { from: ymd(-60), until: ymd(-20), grace: 14, plan: "m", issuedAt: new Date(Date.now() - 60 * 86_400_000) });
+    await mock.pay(o9.stripeSessionId!);
+    await confirmFromReturn(r9.token, now);
+    const p9 = await db.webOrder.findUniqueOrThrow({ where: { id: o9.id } });
+    assert.ok(p9.status === "PAID" && p9.saleId && !orderNeedsAttention(p9), `a lapsed company's paid order is booked: ${p9.staffNote}`);
+    assert.equal((await db.sale.findUniqueOrThrow({ where: { id: p9.saleId! } })).clientKey, `web-${o9.id}`);
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: foot.id } })).qtyOnHand, 4, "stock taken");
+    // The register's void refuses an online order's sale (with the link, and with the link lost): cancel the order instead.
+    await expectError("void an online sale", () => refuseVoidOfOnlineSale(a.shopId, p9.saleId!), /Online orders page/);
+    await db.webOrder.update({ where: { id: o9.id }, data: { saleId: null } });
+    await expectError("void an online sale by its key", () => refuseVoidOfOnlineSale(a.shopId, p9.saleId!), /Online orders page/);
+    // A cancel finds the sale by its key when the order never got the link: refunded in full, sale voided, stock back.
+    await db.license.deleteMany({ where: { shopId: a.shopId } });
+    await cancelOrderFor(a.user, o9.id, "check");
+    assert.equal((await db.sale.findUniqueOrThrow({ where: { id: p9.saleId! } })).status, "VOIDED");
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: foot.id } })).qtyOnHand, 5);
+    assert.equal((await db.webOrder.findUniqueOrThrow({ where: { id: o9.id } })).refundedCents, o9.totalCents);
+    void lapsed;
+    // (b) The refund fails after the sale exists: the sale link is kept, the order says it needs attention, Try again finishes it once.
+    const r10 = await startCheckout({ slug: slugA, cart: cartWith(new Map(), foot.id, 2), customer: cust("Ruth Refund", null, "ruth@example.test"), fulfil: "pickup", address: null, note: null }, now);
+    await db.part.update({ where: { id: foot.id }, data: { qtyOnHand: 1 } });
+    const o10 = await db.webOrder.findUniqueOrThrow({ where: { id: r10.orderId } });
+    const sess10 = (await mock.pay(o10.stripeSessionId!))!;
+    const goodBase = process.env.STRIPE_API_BASE;
+    process.env.STRIPE_API_BASE = "http://127.0.0.1:1";
+    await applyPayment(o10.id, { sessionId: o10.stripeSessionId!, intent: sess10.payment_intent });
+    process.env.STRIPE_API_BASE = goodBase;
+    const f10 = await db.webOrder.findUniqueOrThrow({ where: { id: o10.id } });
+    assert.ok(f10.status === "PAID" && orderNeedsAttention(f10) && f10.saleId, `needs attention, sale link kept: ${f10.staffNote}`);
+    assert.equal(f10.refundedCents, 0);
+    await expectError("ready while it needs attention", () => markReadyFor(a.user, o10.id), /Try again/);
+    await expectError("a tech", () => retryOrderFor({ ...a.user, role: "TECH" }, o10.id), /owner or admin/);
+    await retryOrderFor(a.user, o10.id);
+    const d10 = await db.webOrder.findUniqueOrThrow({ where: { id: o10.id } });
+    const one10 = saleTotals([{ qty: 1, unitPriceCents: 2999, taxable: true }], 0, 6.35).total;
+    assert.ok(d10.status === "PAID" && !orderNeedsAttention(d10) && d10.saleId === f10.saleId, "finished, the same sale");
+    assert.equal(d10.refundedCents, o10.totalCents - one10);
+    assert.equal(mock.refunds.filter((r) => r.payment_intent === sess10.payment_intent).length, 1, "one refund");
+    assert.equal(await db.sale.count({ where: { shopId: a.shopId, clientKey: `web-${o10.id}` } }), 1, "one sale");
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: foot.id } })).qtyOnHand, 0, "stock taken once");
+    await expectError("nothing to retry", () => retryOrderFor(a.user, o10.id), /doesn't need another try/);
+    ok("a paid order is always booked (lapsed company too); a failed refund keeps the sale link and the order says 'Needs attention'; Try again finishes it once; the register can't void an online sale; a cancel finds the sale by its key");
+
     // 12. Stripe Tax: shipped orders taxed at checkout by Stripe, pickup at the rate; the sale records Stripe's tax; a short line keeps its share.
+    process.env.SHOP_PLATFORM_PAYMENTS = "on";
     process.env.STRIPE_SECRET_KEY = "sk_test_platform1234567";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_platform1234567";
     await expectError(
@@ -491,6 +546,7 @@ async function main() {
       () => saveShopSettingsFor(a.user, base({ slug: slugA, on: "on", shipping: "on", shipRate: "6.00", payVia: "platform", taxVia: "stripe" })),
       /own Stripe account only/,
     );
+    delete process.env.SHOP_PLATFORM_PAYMENTS;
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
     await saveShopSettingsFor(a.user, base({ slug: slugA, on: "on", shipping: "on", shipRate: "6.00", taxVia: "stripe", pickupNote: "Ring the bell." }));
@@ -528,7 +584,7 @@ async function main() {
     assert.ok(sale7.taxCents === keptTax7 && sale7.totalCents === keptTotal7 && sale7.subtotalCents === 3599, `the sale carries Stripe's tax (${sale7.taxCents} / ${sale7.totalCents})`);
     assert.ok(Math.abs(sale7.taxRatePct - (keptTax7 / 2999) * 100) < 0.01, "the effective rate recorded");
     assert.match(sale7.note ?? "", /tax by Stripe Tax/);
-    assert.deepEqual(sale7.tenders, [{ method: "ONLINE", amountCents: keptTotal7, note: "Online order #1007" }]);
+    assert.deepEqual(sale7.tenders, [{ method: "ONLINE", amountCents: keptTotal7, note: `Online order #${o7.number}` }]);
     const ref7 = mock.refunds.find((r) => r.payment_intent === paid7.stripeIntent);
     assert.equal(ref7?.amount, paid7.refundedCents);
     assert.equal((await orderByToken(r7.token))?.taxVia, "stripe");

@@ -5,6 +5,13 @@ import { figureId } from "@/lib/figures";
 import { shareFigure } from "@/lib/hub";
 import { formUpTo } from "@/lib/read-body";
 
+/** Whether the signed-in person may replace a stored figure (the figure's Redraw button asks). */
+export async function GET() {
+  const user = await sessionUser();
+  if (!user) return new Response("Sign in first.", { status: 401 });
+  return Response.json({ canReplace: await isInstallAdmin(user) });
+}
+
 export async function POST(req: Request) {
   const user = await sessionUser();
   if (!user) return new Response("Sign in first.", { status: 401 });
@@ -28,10 +35,13 @@ export async function POST(req: Request) {
     return new Response("Missing figure.", { status: 400 });
   }
   if (file.size > 1_500_000) return new Response("Figure too large.", { status: 413 });
-  // Only the exact figure a known factory setting shows is stored (same manual, page and box).
+  // Only the exact figure a known factory setting or test mode shows is stored (same manual, page and box).
   const id = figureId(sourcePath, page, box);
-  const settings = await db.factorySetting.findMany({ where: { sourcePath, figurePage: page }, select: { figureBox: true } });
-  if (!settings.some((s) => figureId(sourcePath, page, s.figureBox) === id)) return new Response("Unknown figure.", { status: 404 });
+  const known = await Promise.all([
+    db.factorySetting.findMany({ where: { sourcePath, figurePage: page }, select: { figureBox: true } }),
+    db.serviceMode.findMany({ where: { sourcePath, figurePage: page }, select: { figureBox: true } }),
+  ]);
+  if (!known.flat().some((s) => figureId(sourcePath, page, s.figureBox) === id)) return new Response("Unknown figure.", { status: 404 });
   const width = Number(form.get("width")) || 0;
   const height = Number(form.get("height")) || 0;
   const data = new Uint8Array(await file.arrayBuffer());
@@ -46,5 +56,5 @@ export async function POST(req: Request) {
   });
   // Offer it to the community hub too, so shops without this manual can see the figure.
   shareFigure(id, "image/jpeg", data, width, height).catch(() => {});
-  return Response.json({ id });
+  return Response.json({ id, replaced: replace });
 }

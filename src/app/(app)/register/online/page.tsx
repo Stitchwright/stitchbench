@@ -7,9 +7,9 @@ import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
 import { qtyText } from "@/lib/register-math";
-import { ORDER_STATUS_LABEL, ordersFor, type OrderItem, type OrderStatus } from "@/lib/shop/online-shop";
+import { ORDER_STATUS_LABEL, orderNeedsAttention, ordersFor, type OrderItem, type OrderStatus } from "@/lib/shop/online-shop";
 import { fmtWhen } from "@/lib/zoned";
-import { orderCancel, orderDone, orderNote, orderReady } from "@/actions/online-shop";
+import { orderCancel, orderDone, orderNote, orderReady, orderRetry } from "@/actions/online-shop";
 import { ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader } from "@/components/ui";
 
@@ -119,6 +119,11 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                     <Link href={`/register/sales/${o.saleId}`} className="btn btn-sm">
                       The sale
                     </Link>
+                  )}
+                  {admin && orderNeedsAttention(o) && (
+                    <ActionForm action={orderRetry.bind(null, o.id)} success="Done: the order is finished">
+                      <Submit className="btn btn-sm btn-primary">Try again</Submit>
+                    </ActionForm>
                   )}
                   {status === "PAID" && o.fulfil === "pickup" && (
                     <ActionForm action={orderReady.bind(null, o.id)} success="Marked ready; the customer hears">

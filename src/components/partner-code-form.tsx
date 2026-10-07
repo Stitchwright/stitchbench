@@ -71,6 +71,10 @@ export function PartnerCodeForm({ defaultSide, children }: { defaultSide: "repai
               <Copy size={14} aria-hidden />
             </button>
           </div>
+          <p className="muted text-sm">
+            This shop&apos;s signing key: <span className="mono" data-testid="partner-fingerprint">{result.fingerprint}</span>. The other shop sees theirs on the partnership&apos;s page; read the two to each other to be sure no one
+            stepped in between (the long code checks it for you).
+          </p>
         </div>
       )}
     </div>

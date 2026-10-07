@@ -25,7 +25,7 @@ test("community hub: links and shared notes", async ({ page }) => {
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD ?? "e2e-password-1");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   // Join with a member invite (the first sync pulls the whole link catalog). Leave first if a past run joined; leaving
   // is refused while partnerships or marketplace orders are open (other specs leave some), and then this run stays joined.
@@ -100,14 +100,14 @@ test("community hub: links and shared notes", async ({ page }) => {
   await twoTap(page, item.getByRole("button", { name: "Remove", exact: true }), "Remove for everyone?");
   await expect(page.getByRole("link", { name: title })).toHaveCount(0);
 
-  // Share a note from a machine; it goes to the hub and comes back as the community's copy.
+  // Offer a hint from a machine; it goes to the hub and comes back as the community's copy.
   await page.goto("/machines");
   await page.getByRole("link", { name: /Janome MC6700P/ }).first().click();
   const note = `Hub test note ${run}`;
-  await page.locator("summary", { hasText: "Share with other techs" }).click();
-  await page.locator("#share-title").fill(note);
-  await page.locator("#share-body").fill("Checks that notes go through the community hub.");
-  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.locator("summary", { hasText: "Offer a hint about this model" }).click();
+  await page.locator("#hint-title").fill(note);
+  await page.locator("#hint-body").fill("Checks that notes go through the community hub.");
+  await page.getByRole("button", { name: "Offer the hint", exact: true }).click();
   const shared = page.locator("li", { has: page.getByText(note, { exact: true }) });
   await expect(shared).toBeVisible();
   await expect(shared.getByText(/Sending to the community hub/)).toHaveCount(0);

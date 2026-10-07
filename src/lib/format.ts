@@ -19,6 +19,55 @@ export function toCents(v: FormDataEntryValue | string | null | undefined): numb
   return Number.isFinite(cents) && Math.abs(cents) <= 2_147_483_647 ? cents || 0 : null;
 }
 
+/**
+ * A supplier's unit cost in ten-thousandths of a dollar: "0.125" -> 1250. The same rules as toCents (ambiguous commas,
+ * powers and hex are refused), but up to 4 decimals are kept; anything finer is rounded to the 4th. `costCents` is
+ * this rounded to cents (tenThouToCents) and is what margins and exports read.
+ */
+export function parseCost(v: FormDataEntryValue | string | null | undefined): number | null {
+  if (v == null) return null;
+  const s = String(v).replace(/[$\s]/g, "");
+  if (!/^[-+]?(\d{1,3}(,\d{3})+|\d*)(\.\d*)?$/.test(s) || !/\d/.test(s)) return null;
+  const t = Math.round(Number(s.replace(/,/g, "")) * 10_000);
+  return Number.isFinite(t) && Math.abs(t) <= 2_147_483_647 ? t || 0 : null;
+}
+
+/** Ten-thousandths of a dollar as whole cents (half a cent rounds up). */
+export function tenThouToCents(t: number): number {
+  return Math.round(t / 100);
+}
+
+/**
+ * A stored cost as typed text: "0.125", "12.50". Uses the finer figure only while it still agrees with costCents (some
+ * other path may have set a new cost since), and never shows fewer than 2 decimals.
+ */
+export function costText(costCents: number | null | undefined, costTenThou: number | null | undefined): string {
+  if (costCents == null) return "";
+  if (costTenThou == null || tenThouToCents(costTenThou) !== costCents) return (costCents / 100).toFixed(2);
+  return (costTenThou / 10_000).toFixed(4).replace(/0{1,2}$/, "");
+}
+
+/**
+ * A part's unit cost in ten-thousandths of a dollar: the finer figure while it still agrees with costCents, otherwise
+ * costCents x 100 (an older part's cents are exact). Null when there is no cost.
+ */
+export function fineCost(costCents: number | null | undefined, costTenThou: number | null | undefined): number | null {
+  if (costCents == null) return null;
+  return costTenThou != null && tenThouToCents(costTenThou) === costCents ? costTenThou : costCents * 100;
+}
+
+/** What qty units cost, in cents, rounded once for the whole line (1000 buttons at $0.004 cost $4, not $0). */
+export function lineCostCents(qty: number, costCents: number | null | undefined, costTenThou: number | null | undefined): number {
+  return Math.round((qty * (fineCost(costCents, costTenThou) ?? 0)) / 100);
+}
+
+/** The cost for display: money() for whole cents, up to 4 decimals when the cost is finer than a cent. */
+export function moneyCost(costCents: number | null | undefined, costTenThou: number | null | undefined): string {
+  if (costCents == null) return "";
+  const t = costText(costCents, costTenThou);
+  return `${t.startsWith("-") ? "-" : ""}$${t.replace("-", "")}`;
+}
+
 export function ticketNo(n: number): string {
   return String(n).padStart(4, "0");
 }

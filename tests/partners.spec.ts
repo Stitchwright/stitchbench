@@ -44,10 +44,15 @@ test("a repair shop and its partner sewing shop", async ({ browser }) => {
   await r.locator("#kind").selectOption("NOTION");
   await r.locator("#price").fill("24.00");
   await r.locator("#wholesale").fill("14.00");
-  await r.getByLabel(/Offer to partner shops/).check();
   await r.locator("#qtyOnHand").fill("20");
   await r.getByRole("button", { name: "Add part" }).click();
   await expect(r.getByRole("heading", { name: new RegExp(pn) })).toBeVisible();
+  // Offering is a choice made per item on the part page (never a checkbox on the add form): to partner shops.
+  await r.locator("summary", { hasText: "Offer this part" }).click();
+  await r.getByLabel(/To my partner shops/).check();
+  await expect(r.locator("#offer-wholesale")).toHaveValue("14.00");
+  await r.getByRole("button", { name: "Offer it", exact: true }).click();
+  await expect(r.getByText("Offered to partner shops").first()).toBeVisible();
 
   // Set up StitchShop for the sewing shop: their company, owner login and the partnership, in one go.
   await r.goto("/partners");

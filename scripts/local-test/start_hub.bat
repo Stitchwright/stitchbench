@@ -10,5 +10,7 @@ set LINK_CHECKER=off
 rem The community most-used list shows a part once this many shops report it (3 on a real hub; the test hub has one).
 set USAGE_MIN_SHOPS=1
 set HUB_ALLOW_PRIVATE_LINKS=true
+rem No mailbox on this PC: account emails (the set-password link) are printed to .run\hub.log, where tests/account.spec.ts reads them.
+set MAIL_DEV_LOG=true
 if not exist "%~dp0.run" mkdir "%~dp0.run"
 node src/server.mjs > "%~dp0.run\hub.log" 2>&1

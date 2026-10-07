@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { gateFor } from "@/lib/module-gate";
+import { entryFor } from "@/lib/assistant/ui";
 import { needNotifyBy } from "@/lib/customer-input";
 import { PageHeader } from "@/components/ui";
 import { IntakeForm } from "@/components/intake-form";
@@ -9,10 +10,11 @@ import { IntakeForm } from "@/components/intake-form";
 export default async function NewRepair() {
   const user = await requireUser();
   // "How should we tell them": required while Marketing is on and a channel is ready; hidden while Marketing is hidden.
-  const [partners, needNotify, marketingGate] = await Promise.all([
+  const [partners, needNotify, marketingGate, plate] = await Promise.all([
     db.partnerLink.findMany({ where: { shopId: user.shopId, side: "retail", status: "ACTIVE" }, orderBy: { partnerName: "asc" } }),
     needNotifyBy(user.shopId),
     gateFor(user.shopId, "marketing"),
+    entryFor(user.shopId, "plate", { module: false }),
   ]);
   return (
     <div className="space-y-4">
@@ -26,7 +28,7 @@ export default async function NewRepair() {
           .
         </p>
       ) : (
-        <IntakeForm partners={partners.map((p) => ({ id: p.id, name: p.partnerName }))} notifyRequired={needNotify} marketingHidden={marketingGate === "hidden"} />
+        <IntakeForm partners={partners.map((p) => ({ id: p.id, name: p.partnerName }))} notifyRequired={needNotify} marketingHidden={marketingGate === "hidden"} plate={plate.show ? { unavailable: plate.unavailable } : null} />
       )}
     </div>
   );

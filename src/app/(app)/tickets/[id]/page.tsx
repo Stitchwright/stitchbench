@@ -1,3 +1,4 @@
+import { HistoryLink } from "@/components/history-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Trash2, Printer } from "lucide-react";
@@ -20,6 +21,7 @@ import { PartPicker } from "@/components/part-picker";
 import { PhotoStrip, PHOTO_SELECT } from "@/components/photo-strip";
 import { ModelPanel } from "@/components/model-panel";
 import { ModuleNotice } from "@/components/module-notice";
+import { HintForm } from "@/components/hint-form";
 import { IntakeFields } from "@/components/equipment/intake-fields";
 import { ReadingsPanel } from "@/components/equipment/readings-panel";
 import { DetailsList } from "@/components/equipment/details-list";
@@ -27,19 +29,11 @@ import { SitePanel } from "@/components/vac/site-panel";
 import { TicketEstimateSlot } from "@/components/slots/ticket-estimate";
 import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
+import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
+import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { UnitBadge } from "@/components/vac/unit-badge";
-import {
-  addLine,
-  addPayment,
-  removeAccessory,
-  removeLine,
-  removePayment,
-  saveAccessories,
-  saveIntake,
-  saveMeasurements,
-  saveTension,
-  saveTicketText,
-} from "@/actions/tickets";
+import { exemptCertificate } from "@/lib/tax-exempt";
+import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
 
 function inRange(v: number | null, min: number | null, max: number | null) {
@@ -90,6 +84,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const kind = await kindOf(user.shopId, m);
   const canWork = await canWorkOn(user.shopId, m.equipment, { intakeAt: t.intakeAt, status: t.status });
   const isSite = t.jobType === "SITE";
+  const exemptNow = Boolean(exemptCertificate(t.customer) ?? exemptCertificate(t.viaAccount));
   // Came in through a partner sewing shop (StitchShop)?
   const job = await db.repairJob.findUnique({ where: { ticketId: t.id } });
   const jobLink = job ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: job.linkId } } }) : null;
@@ -105,6 +100,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const measurable = settings.filter((x) => (x.valueMin != null || x.valueMax != null) && (x.unit === "mm" || x.unit === "deg"));
   const meas = (t.measurements ?? {}) as Record<string, { found?: number; left?: number }>;
   const spec = specs.find((s) => s.upperMinG != null || s.bobbinMinG != null);
+  // Payments that were removed stay on the ticket, each beside the negative one that undid it.
+  const reversed = new Set(t.payments.map((p) => p.reversesId).filter((x): x is string => !!x));
   const tot = ticketTotals(t.lines, t.payments, t.taxRatePct, t.tradeCommissionPct ?? t.viaAccount?.commissionPct, job?.commissionCents);
   const checklistItems = isSite ? INSTALL_CHECKLIST : checklistFor(kind, t.shop);
   const checklist = (t.checklist ?? {}) as Record<string, { done: boolean; by?: string; at?: string }>;
@@ -117,6 +114,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><HistoryLink role={user.role} type="Ticket" id={t.id} /></div>
       <PageHeader
         back={{ href: "/tickets", label: "Tickets" }}
         title={
@@ -181,9 +179,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               {jobLink?.partnerName ?? "partner"}
             </Link>
             : their tag <strong className="mono">{job.tag}</strong>, customer {job.customerName}
-            <div className="muted text-xs">
-              They see this ticket&apos;s status and bill. Set &quot;Waiting on customer OK&quot; and they call the customer.
-            </div>
+            <div className="muted text-xs">They see this ticket&apos;s status and bill. Set &quot;Waiting on customer OK&quot; and they call the customer.</div>
             {job.approval && (
               <span className={`pill ml-1 ${job.approval === "APPROVED" ? "tone-done" : "tone-bad"}`}>
                 customer {job.approval === "APPROVED" ? `approved${job.approvedCents != null ? ` up to ${money(job.approvedCents)}` : ""}` : "declined"}
@@ -323,6 +319,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             )}
           </Section>
 
+          <TicketAssistantSlot ticketId={t.id} user={user} canWork={canWork} partnerJob={job?.side === "repair"} />
+          <ManualsAsk user={user} brand={m.brand} model={m.model} ticketId={t.id} />
+
           <Section title={isSite ? "Install checklist" : "Service checklist"}>
             <fieldset disabled={!canWork} className="min-w-0">
               <Checklist ticketId={t.id} items={checklistItems} state={checklist} timeZone={tz} />
@@ -381,8 +380,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                       <tbody>
                         {measurable.map((x) => {
                           const r = meas[x.id] ?? {};
-                          const ok = (v?: number) =>
-                            v == null ? null : (x.valueMin == null || v >= x.valueMin) && (x.valueMax == null || v <= x.valueMax);
+                          const ok = (v?: number) => (v == null ? null : (x.valueMin == null || v >= x.valueMin) && (x.valueMax == null || v <= x.valueMax));
                           const unit = x.unit === "deg" ? "°" : "mm";
                           return (
                             <tr key={x.id}>
@@ -394,14 +392,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                               {(["found", "left"] as const).map((k) => (
                                 <td key={k}>
                                   <div className="flex items-center gap-1">
-                                    <input
-                                      name={`${k}:${x.id}`}
-                                      aria-label={`${x.label} as ${k}`}
-                                      defaultValue={r[k] ?? ""}
-                                      inputMode="decimal"
-                                      className="input num w-20"
-                                      placeholder={unit}
-                                    />
+                                    <input name={`${k}:${x.id}`} aria-label={`${x.label} as ${k}`} defaultValue={r[k] ?? ""} inputMode="decimal" className="input num w-20" placeholder={unit} />
                                     {ok(r[k]) === true && <span className="pill tone-ready">ok</span>}
                                     {ok(r[k]) === false && <span className="pill tone-bad">out</span>}
                                   </div>
@@ -466,7 +457,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <dl className="num mb-4 ml-auto grid max-w-xs grid-cols-2 gap-y-1 text-sm">
               <dt className="muted">Subtotal</dt>
               <dd className="text-right">{money(tot.subtotal)}</dd>
-              <dt className="muted">Tax ({t.taxRatePct}%)</dt>
+              <dt className="muted">{t.taxExemptId ? `Tax exempt (certificate ${t.taxExemptId})` : `Tax (${t.taxRatePct}%)`}</dt>
               <dd className="text-right">{money(tot.tax)}</dd>
               <dt className="font-semibold">Total</dt>
               <dd className="text-right font-semibold">{money(tot.total)}</dd>
@@ -481,6 +472,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 </>
               )}
             </dl>
+
+            {canWork && (t.taxExemptId || (exemptNow && t.taxRatePct > 0)) && (
+              <p className="no-print mb-3 text-right text-sm">
+                {t.taxExemptId ? (
+                  <ActionButton action={setTicketTax.bind(null, t.id, true)} className="link" confirm="Charge tax on this ticket after all?">
+                    Charge tax on this ticket
+                  </ActionButton>
+                ) : (
+                  <ActionButton action={setTicketTax.bind(null, t.id, false)} className="link" confirm="Take the tax off this ticket? The customer's exemption certificate is recorded on it.">
+                    Customer is tax exempt: take the tax off
+                  </ActionButton>
+                )}
+              </p>
+            )}
 
             {canWork && (
               <div className="grid gap-4 md:grid-cols-2">
@@ -544,17 +549,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             {t.payments.length > 0 && (
               <ul className="mb-4 divide-y divide-line text-sm">
                 {t.payments.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                  <li key={p.id} className={`flex items-center justify-between gap-3 py-2${reversed.has(p.id) ? " muted" : ""}`}>
                     <span>
                       {fmtDate(p.paidAt, tz)} · {PAYMENT_LABEL[p.method]}
+                      {reversed.has(p.id) && <span> · removed</span>}
                       {p.method === "INVOICE" && <span className="muted"> · billed to the account: owed until it&apos;s paid</span>}
                       {p.note && <span className="muted"> · {p.note}</span>}
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="num font-semibold">{money(p.amountCents)}</span>
-                      <ActionButton action={removePayment.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove payment">
-                        <Trash2 size={12} aria-label="Remove" />
-                      </ActionButton>
+                      {!p.reversesId && !reversed.has(p.id) && (
+                        <ActionButton action={removePayment.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove payment">
+                          <Trash2 size={12} aria-label="Remove" />
+                        </ActionButton>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -572,14 +580,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 <label htmlFor="amount" className="label">
                   Amount
                 </label>
-                <input
-                  id="amount"
-                  name="amount"
-                  inputMode="decimal"
-                  className="input num w-32"
-                  defaultValue={tot.balance > 0 ? (tot.balance / 100).toFixed(2) : ""}
-                  required
-                />
+                <input id="amount" name="amount" inputMode="decimal" className="input num w-32" defaultValue={tot.balance > 0 ? (tot.balance / 100).toFixed(2) : ""} required />
               </div>
               <div className="field">
                 <label htmlFor="method" className="label">
@@ -598,6 +599,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   Note
                 </label>
                 <input id="payNote" name="note" className="input" placeholder="check #, last 4..." />
+              </div>
+              <div className="field min-w-40">
+                <label htmlFor="payCard" className="label">
+                  Gift card or credit number
+                </label>
+                <input id="payCard" name="card" className="input mono" autoComplete="off" placeholder="only for gift card / store credit" />
               </div>
               <Submit>Record payment</Submit>
             </ActionForm>
@@ -632,6 +639,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </fieldset>
           </Section>
 
+          {/* A hint about the model for every shop on the hub: brand, model and the photos to tick, nothing from this ticket. */}
+          {!isSite && <HintForm hint={{ machineId: m.id, brand: m.brand, model: m.model, photos: m.photos }} />}
+
           {!isSite && (
             <Section title="Accessories">
               {t.accessories.length === 0 ? (
@@ -642,14 +652,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <ul className="space-y-1">
                     {t.accessories.map((a, i) => (
                       <li key={a + i} className="flex items-center gap-2">
-                        <input
-                          id={`acc-${i}`}
-                          type="checkbox"
-                          name="returned"
-                          value={a}
-                          className="check"
-                          defaultChecked={t.accessoriesReturned.includes(a)}
-                        />
+                        <input id={`acc-${i}`} type="checkbox" name="returned" value={a} className="check" defaultChecked={t.accessoriesReturned.includes(a)} />
                         <label htmlFor={`acc-${i}`} className="flex-1 text-sm">
                           {a}
                         </label>

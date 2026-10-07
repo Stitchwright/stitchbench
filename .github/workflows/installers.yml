@@ -1,7 +1,7 @@
 # Builds the Windows installers, "StitchBench Setup <version>.exe" and "StitchShop Setup <version>.exe", on GitHub's
 # Windows machines (Smart App Control on the shop PC blocks unsigned build tools). Run it from the Actions tab
 # (Windows installers -> Run workflow) or by pushing a tag like v1.4.1. Download the installers from the run's page;
-# they're kept for 7 days. Set the version in desktop/package.json first. The installers aren't code-signed yet.
+# they're kept for 7 days. Set the version in desktop/package.json first. They're unsigned unless signing is switched on (docs/CODE_SIGNING.md).
 name: Windows installers
 
 on:
@@ -63,12 +63,89 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run installer:stitchshop
 
+      # Signing off (the default): the installers are kept as they are. Signing on (repository variable
+      # SIGNING_ENABLED is "true"): the unsigned ones are handed to the "sign" job below, which has the Azure login.
       - name: Keep the installers
+        if: ${{ vars.SIGNING_ENABLED != 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: installers
           path: |
             desktop/dist/*.exe
             desktop/dist-stitchshop/*.exe
+          retention-days: 7
+          compression-level: 0
+
+      - name: Keep the unsigned installers for signing
+        if: ${{ vars.SIGNING_ENABLED == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers-unsigned
+          path: |
+            desktop/dist/*.exe
+            desktop/dist-stitchshop/*.exe
+          retention-days: 1
+          compression-level: 0
+
+  # Code signing with Azure Trusted Signing (now "Artifact Signing"); setup steps are in docs/CODE_SIGNING.md.
+  # Skipped unless the repository variable SIGNING_ENABLED is "true". It's a separate job so the build above, which
+  # runs every dependency's install scripts, never gets an OIDC token: only this job has id-token: write.
+  # Only the two outer installers are signed. The app's own StitchBench.exe inside them is not: the signing action is
+  # a composite action that signs a folder of files and can't be called per file from an electron-builder sign hook.
+  sign:
+    needs: build
+    if: ${{ vars.SIGNING_ENABLED == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installers-unsigned
+          path: unsigned
+
+      # Passwordless: GitHub OIDC to a Microsoft Entra app registration with a federated credential.
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Inputs per https://github.com/Azure/artifact-signing-action (README and action.yml at v2.0.0; the action
+      # was called azure/trusted-signing-action before it was renamed). files-folder-recurse finds both
+      # folders the artifact keeps (dist and dist-stitchshop).
+      - name: Sign the installers
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ vars.SIGNING_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}/unsigned
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Check the signatures
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem unsigned -Recurse -Filter *.exe
+          if ($files.Count -ne 2) { throw "Expected 2 installers, found $($files.Count)" }
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            Write-Host "$($f.Name): $($sig.Status), $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { throw "$($f.Name) is not validly signed: $($sig.Status)" }
+            if ($null -eq $sig.TimeStamperCertificate) { throw "$($f.Name) has no timestamp" }
+          }
+
+      - name: Keep the signed installers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers
+          path: unsigned/**/*.exe
           retention-days: 7
           compression-level: 0

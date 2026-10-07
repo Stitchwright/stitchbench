@@ -52,6 +52,8 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   CHECK: "Check",
   SHOP_COLLECTED: "Shop collected",
   INVOICE: "Invoice (on account)",
+  GIFT: "Gift card",
+  CREDIT: "Store credit",
   OTHER: "Other",
 };
 

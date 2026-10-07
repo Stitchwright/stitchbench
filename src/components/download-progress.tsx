@@ -53,7 +53,7 @@ function Job({ j, timeZone }: { j: JobProgress; timeZone: string }) {
           <ul className="mt-1 space-y-0.5">
             {j.problems.map((r) => (
               <li key={r.id}>
-                <span className={`pill ${r.status === "SKIPPED" ? "tone-neutral" : "tone-bad"}`}>{r.status === "SKIPPED" ? "Skipped" : "Failed"}</span> {r.brand} {r.models}: {r.title}
+                <span className={`pill ${r.status === "SKIPPED" ? "tone-neutral" : r.status === "QUEUED" ? "tone-wait" : "tone-bad"}`}>{r.status === "SKIPPED" ? "Skipped" : r.status === "QUEUED" ? "Waiting" : "Failed"}</span> {r.brand} {r.models}: {r.title}
                 {r.error && <span className="muted"> — {r.error}</span>}
               </li>
             ))}

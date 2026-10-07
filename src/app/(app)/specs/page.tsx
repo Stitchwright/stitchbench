@@ -8,14 +8,16 @@ import { PageHeader } from "@/components/ui";
 import { SpecsTable } from "@/components/model-panel";
 import { ManualFigure } from "@/components/manual-figure";
 import { withFigures } from "@/lib/model-info";
+import { modeAnchor, modesSharing, searchModes, withTestLinks } from "@/lib/service-modes";
+import { LinkedText, ServiceModes } from "@/components/service-modes";
 
 type SP = { q?: string; brand?: string; tab?: string; adj?: string };
 
 export default async function Specs({ searchParams }: { searchParams: Promise<SP> }) {
   await requireUser();
   const sp = firstValues(await searchParams);
-  const tab = sp.tab === "settings" ? "settings" : "tension";
-  const [tCount, sCount] = await Promise.all([db.tensionSpec.count(), db.factorySetting.count()]);
+  const tab = sp.tab === "settings" || sp.tab === "modes" ? sp.tab : "tension";
+  const [tCount, sCount, mCount] = await Promise.all([db.tensionSpec.count(), db.factorySetting.count(), db.serviceMode.count()]);
 
   return (
     <div className="space-y-6">
@@ -27,8 +29,11 @@ export default async function Specs({ searchParams }: { searchParams: Promise<SP
         <Link href="/specs?tab=settings" className={`btn ${tab === "settings" ? "btn-primary" : ""}`} aria-current={tab === "settings" ? "page" : undefined}>
           Timing and adjustments <span className="num opacity-80">{sCount}</span>
         </Link>
+        <Link href="/specs?tab=modes" className={`btn ${tab === "modes" ? "btn-primary" : ""}`} aria-current={tab === "modes" ? "page" : undefined}>
+          Test modes <span className="num opacity-80">{mCount}</span>
+        </Link>
       </nav>
-      {tab === "tension" ? <Tension sp={sp} /> : <Settings sp={sp} />}
+      {tab === "tension" ? <Tension sp={sp} /> : tab === "settings" ? <Settings sp={sp} /> : <Modes sp={sp} />}
     </div>
   );
 }
@@ -127,7 +132,9 @@ async function Settings({ sp }: { sp: SP }) {
         })
       : Promise.resolve([]),
   ]);
-  const rows = await withFigures(rawRows);
+  // "test mode 36" in a setting links to that test on the Test modes tab.
+  const [figured, modes] = await Promise.all([withFigures(rawRows), modesSharing(rawRows.flatMap((r) => r.modelKeys))]);
+  const rows = withTestLinks(figured, modes, (l) => `/specs?tab=modes&q=${encodeURIComponent(l.key)}#${modeAnchor(l.modeId, l.test)}`);
   return (
     <div className="space-y-4">
       <form className="flex flex-wrap gap-2">
@@ -190,13 +197,21 @@ async function Settings({ sp }: { sp: SP }) {
                     <div className="text-xs">{r.models}</div>
                   </td>
                   <td>
-                    <div className="font-semibold">{r.label}</div>
+                    <div className="font-semibold">
+                      <LinkedText text={r.label} link={r.testLinks.label} />
+                    </div>
                     <div className="muted text-xs">{ADJ_NAME[r.adjustment]}</div>
                   </td>
-                  <td className="num font-semibold whitespace-nowrap">{valueRange(r.valueMin, r.valueMax, r.unit) || r.valueText}</td>
+                  <td className="num font-semibold whitespace-nowrap">
+                    {valueRange(r.valueMin, r.valueMax, r.unit) || (r.valueText && <LinkedText text={r.valueText} link={r.testLinks.valueText} />)}
+                  </td>
                   <td className="min-w-56 text-xs">
                     {r.reference && <div>{r.reference}</div>}
-                    {r.conditions && <div className="muted">{r.conditions}</div>}
+                    {r.conditions && (
+                      <div className="muted">
+                        <LinkedText text={r.conditions} link={r.testLinks.conditions} />
+                      </div>
+                    )}
                     {r.tools && <div>Tools: {r.tools}</div>}
                   </td>
                   <td className="min-w-40 text-xs">
@@ -204,6 +219,85 @@ async function Settings({ sp }: { sp: SP }) {
                       {r.sourceFile}
                     </div>
                     <ManualFigure file={r.sourceFile} sourcePath={r.sourcePath} page={r.figurePage} box={r.figureBox} figureId={r.figureId} stored={r.figureStored} width={360} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+async function Modes({ sp }: { sp: SP }) {
+  const term = sp.q?.trim() ?? "";
+  const filtered = !!(term || sp.brand);
+  const [brands, found, all] = await Promise.all([
+    db.serviceMode.groupBy({ by: ["brand"], _count: { _all: true }, orderBy: { brand: "asc" } }),
+    filtered ? searchModes({ q: term, brand: sp.brand }) : Promise.resolve([]),
+    filtered
+      ? Promise.resolve([])
+      : db.serviceMode.findMany({
+          select: { id: true, brand: true, models: true, modelKeys: true, mode: true, confidence: true },
+          orderBy: [{ brand: "asc" }, { models: "asc" }, { mode: "asc" }],
+        }),
+  ]);
+  return (
+    <div className="space-y-4">
+      <p className="muted text-sm">
+        How to put a machine into its test, service or diagnostic mode and back out, and what the numbered tests do, in our own words with the manual page. Rows marked &ldquo;Check on the
+        machine&rdquo; haven&rsquo;t been tried on one yet.
+      </p>
+      <form className="flex flex-wrap gap-2">
+        <input type="hidden" name="tab" value="modes" />
+        <label htmlFor="mq" className="sr-only">
+          Model or brand
+        </label>
+        <input id="mq" name="q" defaultValue={term} className="input max-w-md" placeholder="Model or brand, e.g. CS6000i, MC6700P, NV1500D" />
+        <label htmlFor="mb" className="sr-only">
+          Brand
+        </label>
+        <select id="mb" name="brand" defaultValue={sp.brand ?? ""} className="select w-44">
+          <option value="">All brands</option>
+          {brands.map((b) => (
+            <option key={b.brand} value={b.brand}>
+              {b.brand} ({b._count._all})
+            </option>
+          ))}
+        </select>
+        <button className="btn btn-primary">Search</button>
+      </form>
+      {filtered ? (
+        found.length ? (
+          <div className="card card-pad">
+            <ServiceModes modes={found} />
+          </div>
+        ) : (
+          <p className="muted">No test mode on file for that. Most operator manuals don&rsquo;t describe one; the service manual usually does.</p>
+        )
+      ) : (
+        <div className="card scroll-x">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Model(s)</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              {all.map((m) => (
+                <tr key={m.id}>
+                  <td className="font-semibold whitespace-nowrap">{m.brand}</td>
+                  <td className="text-xs">
+                    <a href={`/specs?tab=modes&brand=${encodeURIComponent(m.brand)}&q=${encodeURIComponent(m.modelKeys[0] ?? m.models)}#${modeAnchor(m.id, null)}`} className="link">
+                      {m.models}
+                    </a>
+                  </td>
+                  <td className="text-xs">
+                    {m.mode}
+                    {m.confidence && m.confidence !== "high" && <span className="pill tone-wait ml-2">Check on the machine</span>}
                   </td>
                 </tr>
               ))}

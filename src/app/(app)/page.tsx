@@ -6,7 +6,8 @@ import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
 import { PAID_ELSEWHERE } from "@/lib/sales";
-import { startOfToday } from "@/lib/time-zone";
+import { monthRange, startOfToday } from "@/lib/time-zone";
+import { registerTakenCents } from "@/lib/register-day";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PartnerTodo } from "@/components/partner-todo";
 import { DashboardRunsSlot } from "@/components/slots/dashboard-runs";
@@ -31,8 +32,9 @@ export default async function Dashboard() {
   // A sewing shop without a repair bench starts at the register, before any of the bench's queries run.
   if (!shop.doesRepair) redirect("/register");
   const tz = await shopTimeZone(shopId);
+  const today = monthRange(null, null, tz); // the shop's own day, [start, end)
   const low = { shopId, qtyOnHand: { lte: db.part.fields.reorderAt } };
-  const [open, lowStock, lowCount, todayPay, kinds] = await Promise.all([
+  const [open, lowStock, lowCount, todayPay, todaySales, kinds] = await Promise.all([
     // Bench tickets only: central vac installs aren't in custody, on the status tiles or in the storage-fee list.
     db.ticket.findMany({
       where: { shopId, jobType: "BENCH", status: { in: OPEN_STATUSES } },
@@ -47,8 +49,11 @@ export default async function Dashboard() {
       where: { ticket: { shopId }, paidAt: { gte: startOfToday(tz) }, method: { notIn: PAID_ELSEWHERE } },
       _sum: { amountCents: true },
     }),
+    // Register sales, net of returns and voids, by the shop's own day: the Register sales total.
+    shop.sellsRetail ? registerTakenCents(shopId, today.start, today.end) : Promise.resolve(0),
     shopKinds(shopId),
   ]);
+  const takenToday = (todayPay._sum.amountCents ?? 0) + todaySales;
   // One "Check in a machine" button while only sewing machines come in; otherwise up to three: the shop's usual kind,
   // sewing, then the rest in the usual order.
   const checkIn: EquipmentKind[] = [];
@@ -66,8 +71,8 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Bench"
-        sub={`${custody} machine${custody === 1 ? "" : "s"} in our custody · ${open.length} open ticket${open.length === 1 ? "" : "s"} · ${money(todayPay._sum.amountCents ?? 0)} taken today`}
+        title={shop.sellsRetail ? shop.name : "Bench"}
+        sub={`${custody} machine${custody === 1 ? "" : "s"} in our custody · ${open.length} open ticket${open.length === 1 ? "" : "s"} · ${money(takenToday)} taken today`}
         actions={
           kinds.usable.length <= 1 ? (
             <Link href="/tickets/new" className="btn btn-primary">

@@ -48,7 +48,15 @@ export type Modules = {
   testBuild: boolean;
   /** Module names on verified keys that this version doesn't know ("needs a newer version of StitchBench"). */
   unknownModules: string[];
+  /**
+   * The company is being moved to another install (company-move-design.md section 7): Shop.movingAt is set, and this copy
+   * is read-only through the same gate as a lapsed program key, whatever the key says. Null when not moving.
+   */
+  moving: Moving | null;
 };
+
+/** at: the owner confirmed the move (Shop.movingAt); to: where it is going, then where it went; outAt: the hub (or the owner) said it moved. */
+export type Moving = { at: Date; to: string | null; outAt: Date | null };
 
 /**
  * Which program this is, by the same variables src/lib/shops.ts appName() reads (this file stays pure, so it reads them
@@ -86,6 +94,11 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
     label: "Marketing",
     href: "/messages",
     blurb: "Email and texts: reminders, ready-for-pickup notices, estimate links, service reminders, review requests and campaigns.",
+  },
+  assistant: {
+    label: "Assistant",
+    href: "/settings/assistant",
+    blurb: "Drafts the invoice and customer messages from a tech's notes, suggests likely causes from your own tickets and the community's gotchas, and reads a rating plate from a photo.",
   },
 };
 

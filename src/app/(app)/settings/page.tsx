@@ -5,28 +5,26 @@ import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { getModules } from "@/lib/modules";
+import { loginNotice } from "@/lib/plan";
 import { shopKinds } from "@/lib/equipment/shop";
 import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
-import {
-  addStarterServices,
-  addUser,
-  changePassword,
-  resetUserPassword,
-  saveChecklist,
-  savePriceListNote,
-  saveServiceItem,
-  saveShop,
-  setUserActive,
-  setUserRole,
-} from "@/actions/settings";
+import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
+import { saveFabricSettings } from "@/actions/fabric";
+import { saveOrderSettings } from "@/actions/fabric-orders";
+import { ORDER_FIELDS } from "@/lib/fabric-orders-math";
+import { saveKitSettings } from "@/actions/kits";
+import { KIT_FIELDS } from "@/lib/kits-math";
+import { INSIGHT_FIELDS } from "@/lib/fabric-insight-math";
 import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions/hub";
+import { setTechsOfferManuals } from "@/actions/manual-repository";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
+import { MoveSection } from "./move-section";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -66,7 +64,7 @@ function moduleLine(s: ModuleState) {
 }
 
 /** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
-async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: string }) {
+async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZone: string; owner?: { techsOffer: boolean } }) {
   const [s, links, notes, figures] = await Promise.all([db.hubState.findUnique({ where: { id: 1 } }), db.manualLink.count(), db.hubPost.count(), db.hubFigure.count()]);
   const joined = Boolean(s?.url && s.installKey);
   return (
@@ -94,6 +92,22 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
             </p>
           )}
           {s!.lastError && <p className="pill tone-bad inline-block">Last sync failed: {s!.lastError}</p>}
+          {owner && s!.scope === "member" && (
+            <div className="border-t border-line pt-3">
+              <div className="font-semibold">Manual repository</div>
+              <p className="muted">
+                Owners and admins can offer a manual from the library to the hub&apos;s repository, one file at a time. {s!.repoUploads === "soon" ? "The manual repository opens soon. " : ""}Strikes for copyright notices land on
+                this company&apos;s account, so techs can&apos;t offer unless you allow it.
+              </p>
+              <ActionButton
+                action={setTechsOfferManuals.bind(null, !owner.techsOffer)}
+                className="btn btn-sm mt-2"
+                success={owner.techsOffer ? "Techs can no longer offer manuals" : "Techs may offer manuals"}
+              >
+                {owner.techsOffer ? "Techs may offer manuals: on (turn off)" : "Techs may offer manuals: off (turn on)"}
+              </ActionButton>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <ActionButton action={syncCommunityHub} className="btn btn-sm" success="Synced with the hub">
               Sync now
@@ -108,13 +122,13 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
       ) : admin ? (
         <ActionForm action={joinCommunityHub} success="Joined the community hub" className="space-y-3">
           <p className="muted text-sm">
-            The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers,
-            tickets and prices never leave this StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
+            The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers, tickets and prices never leave this
+            StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
           </p>
           {s?.formerUrl && (
             <p className="muted text-sm">
-              This StitchBench left <span className="mono">{s.formerUrl}</span>. Joining that hub again (with its current invite) keeps this shop&apos;s
-              listings, orders and shared notes there as its own.
+              This StitchBench left <span className="mono">{s.formerUrl}</span>. Joining that hub again (with its current invite) keeps this shop&apos;s listings, orders and shared notes there as its
+              own.
             </p>
           )}
           <InviteInput />
@@ -138,10 +152,7 @@ async function CommunityHub({ admin, timeZone }: { admin: boolean; timeZone: str
           <Submit>Join</Submit>
         </ActionForm>
       ) : (
-        <p className="muted text-sm">
-          Not connected to a community hub. The shop owner or an admin can join one here (when several companies share this StitchBench, its
-          administrator does).
-        </p>
+        <p className="muted text-sm">Not connected to a community hub. The shop owner or an admin can join one here (when several companies share this StitchBench, its administrator does).</p>
       )}
     </Section>
   );
@@ -183,6 +194,8 @@ export default async function SettingsPage() {
   // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins while Marketing isn't hidden.
   const messagesGate = admin ? await gateFor(user.shopId, "marketing") : "hidden";
   const messaging = messagesGate !== "hidden" ? await messagingView(user.shopId) : null;
+  // The Solo plan's two logins (src/lib/plan.ts): a notice for the people who manage People, never a lock.
+  const logins = admin ? await loginNotice(user.shopId) : null;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -198,7 +211,7 @@ export default async function SettingsPage() {
       </Section>
 
       <div id="hub">
-        <CommunityHub admin={await isInstallAdmin(user)} timeZone={await shopTimeZone(user.shopId)} />
+        <CommunityHub admin={await isInstallAdmin(user)} timeZone={await shopTimeZone(user.shopId)} owner={user.role === "OWNER" ? { techsOffer: Boolean((await db.shop.findUnique({ where: { id: user.shopId }, select: { techsOfferManuals: true } }))?.techsOfferManuals) } : undefined} />
       </div>
 
       {admin && (
@@ -206,12 +219,11 @@ export default async function SettingsPage() {
           <Section title="What this company does">
             <ActionForm action={saveCompanyMode} success="Saved" className="space-y-3">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="doesRepair" defaultChecked={shop.doesRepair} className="check" /> Repairs machines (the StitchBench bench:
-                tickets, specs, manuals)
+                <input type="checkbox" name="doesRepair" defaultChecked={shop.doesRepair} className="check" /> Repairs machines (the StitchBench bench: tickets, specs, manuals)
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="sellsRetail" defaultChecked={shop.sellsRetail} className="check" /> Sells over the counter (the StitchShop
-                register: notions, fabric by the yard, accessories, repair pickups)
+                <input type="checkbox" name="sellsRetail" defaultChecked={shop.sellsRetail} className="check" /> Sells over the counter (the StitchShop register: notions, fabric by the yard,
+                accessories, repair pickups)
               </label>
               <div className="field">
                 <label htmlFor="receiptNote" className="label">
@@ -222,6 +234,9 @@ export default async function SettingsPage() {
               <Submit>Save</Submit>
             </ActionForm>
           </Section>
+          <div className="mt-6">
+            <MoveSection user={user} timeZone={shop.timeZone} />
+          </div>
         </div>
       )}
 
@@ -244,6 +259,13 @@ export default async function SettingsPage() {
               Online booking (Scheduling)
             </Link>
           </div>
+          {modules.states.assistant.status !== "off" && (
+            <div>
+              <Link href="/settings/assistant" className="link">
+                Assistant: switches, voice and what was sent
+              </Link>
+            </div>
+          )}
           {shop.sellsRetail && (
             <div>
               <Link href="/settings/shop" className="link">
@@ -263,6 +285,42 @@ export default async function SettingsPage() {
               Email and text settings
             </Link>
           </div>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Reports">
+          <p className="muted mb-2 text-sm">Sales by day, week or month, by category and how it was paid, tickets, top customers, the gift card liability and the sales tax report.</p>
+          <Link href="/reports" className="btn btn-sm">
+            Open Reports
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Bookkeeping">
+          <p className="muted mb-2 text-sm">The account names your bookkeeper uses, for the daily journal export to QuickBooks (Reports, Bookkeeping).</p>
+          <Link href="/settings/books" className="btn btn-sm">
+            Bookkeeping names
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Off-site backup">
+          <p className="muted mb-2 text-sm">A copy of this company, locked with a key only you hold, kept away from this computer. Off until you set it up.</p>
+          <Link href="/settings/offsite" className="btn btn-sm">
+            Off-site backup
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Audit log">
+          <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
+          <Link href="/settings/audit" className="btn btn-sm">
+            Open the audit log
+          </Link>
         </Section>
       )}
 
@@ -319,6 +377,10 @@ export default async function SettingsPage() {
             <a href="/api/export/payments" className="btn btn-sm">
               Repair payments (all dates)
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/audit" className="btn btn-sm">
+              Audit log
+            </a>
           </div>
         </Section>
       )}
@@ -355,6 +417,68 @@ export default async function SettingsPage() {
             ))}
             <div className="sm:col-span-2">
               <Submit>Save shop</Submit>
+            </div>
+          </ActionForm>
+        </Section>
+      )}
+
+      {admin && shop.sellsRetail && (
+        <Section title="Fabric">
+          <ActionForm action={saveFabricSettings} success="Saved" className="grid-form">
+            {(
+              [
+                ["fatQuarterMarkupPct", "Fat quarter markup over a quarter of the yard price (%)", String(shop.fatQuarterMarkupPct)],
+                ["halfYardMarkupPct", "Half yard markup over half the yard price (%)", String(shop.halfYardMarkupPct)],
+                ["remnantPricePct", "Remnant price as a percent of the yard price (never under cost + 5%)", String(shop.remnantPricePct)],
+                ["boltEndYards", "A bolt end is this many yards or fewer", String(shop.boltEndYards)],
+              ] as const
+            ).map(([k, label, v]) => (
+              <div key={k} className="field">
+                <label htmlFor={k} className="label">
+                  {label}
+                </label>
+                <input id={k} name={k} defaultValue={v} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <h3 className="sm:col-span-2 mt-2 text-sm font-semibold">What sells, slow fabric and markdowns</h3>
+            {INSIGHT_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={f.kind === "cents" ? String(shop[f.key] / 100) : String(shop[f.key])} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save fabric settings</Submit>
+            </div>
+          </ActionForm>
+          <ActionForm action={saveOrderSettings} success="Saved" className="grid-form mt-4">
+            <h3 className="sm:col-span-2 text-sm font-semibold">Reordering</h3>
+            {ORDER_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={String(shop[f.key])} inputMode="decimal" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save reordering settings</Submit>
+            </div>
+          </ActionForm>
+          <ActionForm action={saveKitSettings} success="Saved" className="grid-form mt-4">
+            <h3 className="sm:col-span-2 text-sm font-semibold">Kits</h3>
+            {KIT_FIELDS.map((f) => (
+              <div key={f.key} className="field">
+                <label htmlFor={f.key} className="label">
+                  {f.label}
+                </label>
+                <input id={f.key} name={f.key} defaultValue={String(shop[f.key])} inputMode="numeric" className="input num" />
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Submit>Save kit settings</Submit>
             </div>
           </ActionForm>
         </Section>
@@ -423,13 +547,7 @@ export default async function SettingsPage() {
                     <label className="sr-only" htmlFor={`sd-${s.id}`}>
                       Description
                     </label>
-                    <input
-                      id={`sd-${s.id}`}
-                      name="description"
-                      defaultValue={s.description ?? ""}
-                      className="input text-sm sm:col-span-6"
-                      placeholder="Description on the price list (optional)"
-                    />
+                    <input id={`sd-${s.id}`} name="description" defaultValue={s.description ?? ""} className="input text-sm sm:col-span-6" placeholder="Description on the price list (optional)" />
                   </ActionForm>
                 </li>
               ))}
@@ -486,6 +604,25 @@ export default async function SettingsPage() {
       {admin && (
         <Section title="People">
           <p className="muted mb-3 text-sm">Everyone signs in with their own email and password. Techs can run tickets; admins can also change prices and people.</p>
+          {logins?.over && (
+            <p className="pill tone-wait mb-3 inline-block whitespace-normal" data-testid="solo-over">
+              This company is on the Solo plan, which includes two people signed in, and {logins.active} people have access. Everyone keeps working and nothing is locked or lost.
+              To add someone or restore access, switch to the Shop plan on your StitchHub account (
+              <Link href={SETTINGS_ACCOUNT_HREF} className="underline">
+                Settings → Account
+              </Link>
+              ), or remove someone&apos;s access first.
+            </p>
+          )}
+          {logins?.full && (
+            <p className="muted mb-3 text-sm" data-testid="solo-full">
+              The Solo plan includes two people signed in, and both are in use. To add someone, switch to the Shop plan on your StitchHub account (
+              <Link href={SETTINGS_ACCOUNT_HREF} className="link">
+                Settings → Account
+              </Link>
+              ).
+            </p>
+          )}
           <ul className="mb-4 divide-y divide-line text-sm">
             {users.map((u) => (
               <li key={u.id} className="py-2">

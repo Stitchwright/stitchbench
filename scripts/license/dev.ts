@@ -25,6 +25,9 @@ export type DevKeyOpts = {
   issuedAt?: Date | string;
   name?: string;
   id?: string;
+  /** The login plan a hub key names (payload l: solo | shop) and a founding shop's price (fs); left out by default. */
+  loginPlan?: "solo" | "shop";
+  founding?: boolean;
 };
 
 /** A key signed with the development key. */
@@ -45,6 +48,8 @@ export function devLicenseKey(o: DevKeyOpts): string {
     u: until,
     g: o.grace ?? 14,
     t: (o.issuedAt ? new Date(o.issuedAt) : new Date()).toISOString(),
+    ...(o.loginPlan ? { l: o.loginPlan } : {}),
+    ...(o.founding ? { fs: true } : {}),
   };
   return encodeLicense(payload, crypto.createPrivateKey({ key: devKey.privateKeyPem, format: "pem" }));
 }

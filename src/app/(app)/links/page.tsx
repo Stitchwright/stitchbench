@@ -11,6 +11,8 @@ import { PageHeader, Empty } from "@/components/ui";
 import { ActionButton } from "@/components/action-form";
 import { ManualLinkItem } from "@/components/manual-links";
 import { DownloadProgress } from "@/components/download-progress";
+import { RepositoryPanel } from "@/components/repository-panel";
+import { repositoryTotals, sizeWords } from "@/lib/manual-repository";
 import { downloadAllManuals, downloadBrandManuals } from "@/actions/manual-downloads";
 
 const FILTERS = [
@@ -49,6 +51,9 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
     db.manualLink.groupBy({ by: ["status"], _count: { _all: true } }),
   ]);
   const n = Object.fromEntries(counts.map((c) => [c.status, c._count._all]));
+  // "Download everything" says how much it would fetch: the repository's files not yet here, and their size (design 5.3).
+  const repo = await repositoryTotals(await db.manualLink.findMany({ where: { origin: "repository" }, select: { id: true, origin: true, sha256: true, sha1: true, sizeBytes: true } }));
+  const everything = `Every link not yet in the library?${repo.files ? ` That includes ${repo.files.toLocaleString()} repository files, about ${sizeWords(repo.bytes)}.` : ""}`;
   const canDownload = libraryDir() != null;
   const qs = (s: string) => `/links?${new URLSearchParams({ ...(term ? { q: term } : {}), ...(s ? { status: s } : {}) })}`;
   // The search is a brand when every link shown carries it (Juki, Baby Lock): offer that brand's "download all".
@@ -70,6 +75,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
         </p>
       ) : (
         <>
+          <RepositoryPanel user={user} timeZone={tz} />
           <nav className="flex flex-wrap gap-2" aria-label="Link status">
             {FILTERS.map((f) => (
               <Link key={f.key} href={qs(f.key)} className={`btn btn-sm ${status === f.key ? "btn-primary" : ""}`} aria-current={status === f.key ? "page" : undefined}>
@@ -94,7 +100,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
                     <Download size={12} aria-hidden /> Download every {brand} link
                   </ActionButton>
                 )}
-                <ActionButton action={downloadAllManuals} className="btn btn-sm" confirm="Every link not yet in the library?" success="Queued: every working link not yet in the library">
+                <ActionButton action={downloadAllManuals} className="btn btn-sm" confirm={everything} success="Queued: every working link not yet in the library">
                   <Download size={12} aria-hidden /> Download everything not in the library
                 </ActionButton>
                 <span className="muted text-xs">

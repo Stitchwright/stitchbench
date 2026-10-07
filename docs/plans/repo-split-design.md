@@ -1,5 +1,7 @@
 # Splitting StitchBench and StitchShop: design (2 Oct 2026, for the owner)
 
+**Owner decision, 3 Oct 2026: not now.** One codebase stays; this plan is kept for if a reason to split appears (HANDOFF section 3 item 7).
+
 HANDOFF.md section 3 item 7 (the owner was given shape (b): one repository laid out as npm workspaces, `packages/core`
 plus `apps/stitchbench` and `apps/stitchshop`) and item 10 (a shop can move between hosted, Windows and self-hosted,
 which the split must not make harder). Nothing here is built. Where this document says "decided", the owner may still

@@ -285,7 +285,18 @@ a reason to buy. The intake helper (1.3) is the cheap third if the package has a
 after the hub's `hub-modules` metering exists. Order in the handoff: after the current scheduling and online packages
 are tested, since the ticket page and templates they touch must be stable first.
 
-## 4. Open questions, with recommended answers
+## 4. Decisions (3 Oct 2026: the owner took the recommended answer on every question below)
+
+Build the `assistant` package next in the queue: write-ups (1.1) and the bench assistant (1.2) with the shared plumbing
+(section 2), the intake helper (1.3) if the package has a spare day. The Assistant module at $15 a month / $150 a year
+with 300 calls; every call through the hub; no prompt text kept on the hub; serials only inside a plate photo; first
+names in drafts behind the per-company switch, off by default; the shop's voice sample; 20 free plate reads a month;
+manuals later, Windows first, on Opus 5.5; no AI barcode lookup (buy the UPCitemdb key); the cross-reference duplicate
+finder as an owner's script; no fallback when the hub is down; the privacy page says what is sent. One addition: the
+test-mode procedures extracted from the service manuals (HANDOFF item 15, `ServiceMode` seed data) are another source
+the bench assistant cites (`servicemode:<id>`), next to specs and factory settings. Each item below keeps its
+alternative for the record.
+
 
 1. **Price and allowance.** $15 a month / $150 a year with 300 calls, or fold the Assistant into a $35 base?
    Recommended: the module at $15 / 300. It keeps the $25 base promise, the owner's exposure is about $3.60 a shop a

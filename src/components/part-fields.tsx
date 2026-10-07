@@ -1,3 +1,4 @@
+import { costText } from "@/lib/format";
 import { CONDITIONS, CONDITION_OPTION, ORIGINS, ORIGIN_OPTION } from "@/lib/part-labels";
 
 type P = {
@@ -13,18 +14,24 @@ type P = {
   location: string | null;
   reorderAt: number;
   costCents: number | null;
+  costTenThou?: number | null;
   priceCents: number | null;
   supplier: string | null;
   notes: string | null;
   unit?: string | null;
   wholesaleCents?: number | null;
-  offerToPartners?: boolean;
+  collection?: string | null;
+  designer?: string | null;
+  colorTags?: string[];
+  boltYards?: number;
+  inPrint?: string;
 };
 
 const c2d = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
 
 /** `lockMoney`: what it costs, sells for and is offered to partner shops at is for an owner or admin to change. */
-export function PartFields({ part, withQty = false, defaultNumber, lockMoney = false }: { part?: P; withQty?: boolean; defaultNumber?: string; lockMoney?: boolean }) {
+/** `fabric`: the fabric fields (collection, designer, color tags, bolt size, in print) show too: for companies that sell retail. */
+export function PartFields({ part, withQty = false, defaultNumber, lockMoney = false, fabric = false }: { part?: P; withQty?: boolean; defaultNumber?: string; lockMoney?: boolean; fabric?: boolean }) {
   const locked = lockMoney ? { disabled: true, title: "Only an owner or admin can change this." } : {};
   return (
     <>
@@ -119,6 +126,44 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
         </label>
         <input id="brand" name="brand" defaultValue={part?.brand ?? ""} className="input" />
       </div>
+      {fabric && (
+        <>
+          <div className="field">
+            <label htmlFor="collection" className="label">
+              Collection (fabric)
+            </label>
+            <input id="collection" name="collection" defaultValue={part?.collection ?? ""} className="input" />
+          </div>
+          <div className="field">
+            <label htmlFor="designer" className="label">
+              Designer (fabric)
+            </label>
+            <input id="designer" name="designer" defaultValue={part?.designer ?? ""} className="input" />
+          </div>
+          <div className="field">
+            <label htmlFor="colorTags" className="label">
+              Color tags (fabric)
+            </label>
+            <input id="colorTags" name="colorTags" defaultValue={part?.colorTags?.join(", ") ?? ""} className="input" placeholder="blue, floral, batik" />
+          </div>
+          <div className="field">
+            <label htmlFor="boltYards" className="label">
+              Yards on a full bolt (fabric)
+            </label>
+            <input id="boltYards" name="boltYards" inputMode="decimal" defaultValue={part?.boltYards ?? 15} className="input num" />
+          </div>
+          <div className="field">
+            <label htmlFor="inPrint" className="label">
+              Still in print? (fabric)
+            </label>
+            <select id="inPrint" name="inPrint" defaultValue={part?.inPrint ?? "UNKNOWN"} className="select">
+              <option value="UNKNOWN">Don&apos;t know</option>
+              <option value="YES">Yes</option>
+              <option value="NO">No</option>
+            </select>
+          </div>
+        </>
+      )}
       <div className="field">
         <label htmlFor="fits" className="label">
           Fits models
@@ -141,7 +186,7 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
         <label htmlFor="cost" className="label">
           Cost each ($)
         </label>
-        <input id="cost" name="cost" inputMode="decimal" defaultValue={c2d(part?.costCents)} className="input num" {...locked} />
+        <input id="cost" name="cost" inputMode="decimal" defaultValue={costText(part?.costCents, part?.costTenThou)} className="input num" {...locked} />
       </div>
       <div className="field">
         <label htmlFor="price" className="label">
@@ -151,14 +196,10 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
       </div>
       <div className="field">
         <label htmlFor="wholesale" className="label">
-          Partner price ($, to partner sewing shops)
+          Partner price ($, what partner shops pay once it is offered to them)
         </label>
         <input id="wholesale" name="wholesale" inputMode="decimal" defaultValue={c2d(part?.wholesaleCents)} className="input num" {...locked} />
       </div>
-      <label className="flex items-center gap-2 self-end pb-2 text-sm">
-        <input type="checkbox" name="offerToPartners" defaultChecked={part?.offerToPartners ?? false} className="check" {...locked} /> Offer to partner shops
-        (in their catalog)
-      </label>
       <div className="field">
         <label htmlFor="reorderAt" className="label">
           Reorder when at or below

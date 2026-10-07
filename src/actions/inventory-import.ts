@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { isUserError } from "@/lib/user-error";
 import { requireAdmin, requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { actorOf, audit } from "@/lib/audit";
 import { lookupBarcode, type BarcodeInfo } from "@/lib/barcode-lookup";
 import { runImport, type ImportOptions as Options, type ImportRow as Row } from "@/lib/inventory-import";
 
@@ -29,6 +31,12 @@ export async function importItems(rows: ImportRow[], opts: ImportOptions): Promi
     const user = await requireAdmin();
     await requireBaseWritable(user);
     const result = await runImport(user.shopId, user.id, rows, opts);
+    await audit(db, actorOf(user), {
+      action: "import.items",
+      subjectType: "Items",
+      subjectLabel: `${result.added} added, ${result.updated} updated, ${result.skipped} skipped`,
+      changes: { added: [0, result.added], updated: [0, result.updated], skipped: [0, result.skipped] },
+    });
     revalidatePath("/parts", "layout");
     return result;
   } catch (e) {

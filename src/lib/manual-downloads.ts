@@ -10,15 +10,23 @@ import "server-only";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
+/**
+ * Joins library paths without the bundler seeing a pattern. Turbopack traces `path.join(root, a, b)` with a literal
+ * fallback ("Unsorted") as a file glob and packed the whole repository into the standalone build (807 MB instead of
+ * 147). Going through a spread the bundler can't follow keeps the trace to the code itself.
+ */
+const under = (...parts: string[]): string => path.join(...parts.map(String));
 import type { ManualLink } from "@/generated/prisma/client";
 import { UserError } from "@/lib/user-error";
 import { db } from "@/lib/db";
 import { brandKey, modelKey } from "@/lib/format";
-import { hubFetch, hubId, hubJoined } from "@/lib/hub";
+import { hubFetch, hubId, hubJoined, hubStatus } from "@/lib/hub";
 import { withLease } from "@/lib/lease";
 import { libraryDir, writeUnusedPdf } from "@/lib/library-dir";
 import { brandMatches } from "@/lib/model-info";
-import { fetchPublic, TooLarge } from "@/lib/safe-fetch";
+import { fetchPublic, storageUrlOk, TooLarge } from "@/lib/safe-fetch";
+import { freeBytes, isRepoLink, minFreeBytes, repositoryUrl, sizeWords } from "@/lib/manual-repository";
 
 const UA = "StitchBench (manual download for a repair shop's own library)";
 export const MAX_PDF = 300 * 1024 * 1024;
@@ -53,7 +61,9 @@ export class DownloadFailed extends UserError {
 
 // ---------- naming (the library's: Category\Brand\Brand_Model_DocType.pdf) ----------
 
-type LinkLike = Pick<ManualLink, "id" | "category" | "brand" | "models" | "modelKeys" | "docType" | "title" | "fileName" | "url">;
+// origin, sha256, sha1 and sizeBytes are the repository's (manual-repository-design.md 5.2): a repository row is filed by its
+// hub-composed name Brand_Model_DocType_Year.pdf, checked against its sha256 and matched by hash against what the library holds.
+type LinkLike = Pick<ManualLink, "id" | "category" | "brand" | "models" | "modelKeys" | "docType" | "title" | "fileName" | "url"> & Partial<Pick<ManualLink, "origin" | "sha256" | "sha1" | "sizeBytes">>;
 
 const fileSafe = (s: string) => s.replace(/[^\w\-+.() ]+/g, "_").trim();
 const folderSafe = (s: string) => s.replace(/[^\w\- ]+/g, "").trim();
@@ -90,24 +100,27 @@ export function libraryDocId(relPath: string): string {
 }
 
 const toRel = (...parts: string[]) => parts.join("\\");
-const toFull = (root: string, rel: string) => path.join(root, ...rel.split("\\"));
+const toFull = (root: string, rel: string) => under(root, ...rel.split("\\"));
 
 // ---------- is it here already? ----------
 
-export type HaveIndex = { byLink: Map<string, string>; byFile: Map<string, string>; done: Map<string, string>; folders: Map<string, Promise<{ category: string; brand: string }>> };
+export type HaveIndex = { byLink: Map<string, string>; byFile: Map<string, string>; bySha: Map<string, string>; done: Map<string, string>; folders: Map<string, Promise<{ category: string; brand: string }>> };
 
 /** One read of what the library already holds, for checking many links. Paths are relative, backslashes. */
 export async function haveIndex(): Promise<HaveIndex> {
-  const docs = await db.libraryDoc.findMany({ select: { path: true, file: true, linkId: true } });
+  const docs = await db.libraryDoc.findMany({ select: { path: true, file: true, linkId: true, sha256: true, sha1: true } });
   const byLink = new Map<string, string>();
   const byFile = new Map<string, string>();
+  const bySha = new Map<string, string>();
   for (const d of docs) {
     if (d.linkId) byLink.set(d.linkId, d.path);
     byFile.set(d.file.toLowerCase(), d.path);
+    if (d.sha256) bySha.set(d.sha256, d.path);
+    if (d.sha1) bySha.set(d.sha1, d.path);
   }
   const done = new Map<string, string>();
   for (const r of await db.manualDownload.findMany({ where: { status: "DONE", path: { not: null } }, select: { linkId: true, path: true } })) done.set(r.linkId, r.path!);
-  return { byLink, byFile, done, folders: new Map() };
+  return { byLink, byFile, bySha, done, folders: new Map() };
 }
 
 /** filingFolders, remembered per category + brand while one index is in use (thousands of links share a few folders). */
@@ -128,7 +141,9 @@ function foldersFor(l: LinkLike, idx: HaveIndex) {
  */
 export async function alreadyHave(l: LinkLike, root: string, idx: HaveIndex): Promise<string | null> {
   const onDisk = (rel: string | undefined) => (rel && fs.existsSync(toFull(root, rel)) ? rel : null);
-  const hit = onDisk(idx.byLink.get(l.id)) ?? onDisk(l.fileName ? idx.byFile.get(l.fileName.toLowerCase()) : undefined) ?? onDisk(idx.done.get(l.id));
+  // A file held under another name (a sha256 or sha1 the library knows) counts too: it is not fetched again.
+  const byHash = onDisk((l.sha256 ? idx.bySha.get(l.sha256) : undefined) ?? (l.sha1 ? idx.bySha.get(l.sha1) : undefined));
+  const hit = onDisk(idx.byLink.get(l.id)) ?? byHash ?? onDisk(l.fileName ? idx.byFile.get(l.fileName.toLowerCase()) : undefined) ?? onDisk(idx.done.get(l.id));
   if (hit) return hit;
   if (!canFile(l)) return null;
   const f = await foldersFor(l, idx);
@@ -141,6 +156,7 @@ export type Saved = { path: string; filed: boolean };
 
 /** Fetch the link (public web only, redirects re-checked, cut off at MAX_PDF) and file the PDF. Throws DownloadFailed. */
 export async function downloadLink(l: LinkLike, root: string): Promise<Saved> {
+  if (isRepoLink(l)) return downloadRepositoryLink(l, root);
   let got: Awaited<ReturnType<typeof fetchPublic>>;
   try {
     got = await fetchPublic(l.url, { headers: { "User-Agent": UA, Accept: "application/pdf,*/*" }, timeoutMs: FETCH_MS, maxBytes: MAX_PDF });
@@ -156,22 +172,70 @@ export async function downloadLink(l: LinkLike, root: string): Promise<Saved> {
   return fileDownload(l, root, data);
 }
 
+/** Said when a run should stop and leave the row queued: no room on the disk, or the hub said "later". */
+export class HoldQueue extends DownloadFailed {
+  constructor(
+    message: string,
+    readonly retryAfterMs: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * One repository file (design 5.3): the hub's short-lived URL (by manual id), fetched from R2's own host with the SSRF
+ * guard, checked as a PDF and against the feed's sha256 (a mismatch saves nothing), then filed like any download:
+ * Category\Brand\Brand_Model_DocType_Year.pdf with the sidecar and the LibraryDoc row. Below the free-space floor nothing is
+ * fetched. The hub's 429 puts the row back for the next hour; a 404 means it was removed meanwhile.
+ */
+export async function downloadRepositoryLink(l: LinkLike, root: string): Promise<Saved> {
+  const free = await freeBytes(root);
+  const need = (l.sizeBytes ?? 0) + minFreeBytes();
+  if (free != null && free < need) throw new HoldQueue(`Stopped: less than ${sizeWords(minFreeBytes())} free on the library's disk (${sizeWords(free)} left). Free some space; the queue carries on by itself.`, 60 * MIN);
+  let target: Awaited<ReturnType<typeof repositoryUrl>>;
+  try {
+    target = await repositoryUrl(l.id);
+  } catch (e) {
+    const st = hubStatus(e);
+    if (st === 429) throw new HoldQueue("The hub asked this program to slow down. It carries on in an hour.", 60 * MIN);
+    if (st === 404) throw new DownloadFailed("That manual isn't in the repository any more (it may have been removed).");
+    if (e instanceof UserError) throw new DownloadFailed(e.message);
+    throw new DownloadFailed("The hub didn't answer. It will be tried again later.");
+  }
+  if (!storageUrlOk(target.url)) throw new DownloadFailed("The hub gave a download address this program won't use.");
+  let got: Awaited<ReturnType<typeof fetchPublic>>;
+  try {
+    got = await fetchPublic(target.url, { headers: { "User-Agent": UA, Accept: "application/pdf" }, timeoutMs: FETCH_MS, maxBytes: MAX_PDF });
+  } catch (e) {
+    if (e instanceof TooLarge) throw new DownloadFailed("That file is too large to download here.");
+    throw new DownloadFailed("The repository's storage didn't answer. It will be tried again later.");
+  }
+  if (!got.response.ok || !got.body) throw new DownloadFailed(`The repository's storage answered ${got.response.status}. Try again later.`);
+  const data = got.body;
+  if (data.subarray(0, 5).toString("latin1") !== "%PDF-") throw new DownloadFailed("What came back isn't a PDF; nothing was saved.");
+  const want = l.sha256 ?? target.sha256;
+  const have = crypto.createHash("sha256").update(data).digest("hex");
+  if (want && have !== want) throw new DownloadFailed("The file that came back isn't the one the hub described (its checksum differs); nothing was saved.");
+  return fileDownload(l, root, data, { sha256: have });
+}
+
 /** Write the PDF where it belongs, with its sidecar, and the LibraryDoc row when filed by model. */
-export async function fileDownload(l: LinkLike, root: string, data: Buffer): Promise<Saved> {
+export async function fileDownload(l: LinkLike, root: string, data: Buffer, hash?: { sha256: string }): Promise<Saved> {
   const stem = linkStem(l);
-  const sidecar = { linkId: l.id, url: l.url, title: l.title, brand: l.brand, models: l.models, docType: l.docType, downloadedAt: new Date().toISOString() };
+  const sha256 = hash?.sha256 ?? crypto.createHash("sha256").update(data).digest("hex");
+  const sidecar = { linkId: l.id, url: l.url, title: l.title, brand: l.brand, models: l.models, docType: l.docType, sha256, ...(isRepoLink(l) ? { origin: "repository", sha1: l.sha1 ?? null } : {}), downloadedAt: new Date().toISOString() };
   if (!canFile(l)) {
-    const inbox = path.join(root, "_inbox");
+    const inbox = under(root, "_inbox");
     await fs.promises.mkdir(inbox, { recursive: true });
     const name = await writeUnusedPdf(inbox, stem, data);
-    await fs.promises.writeFile(path.join(inbox, `${name}.json`), JSON.stringify(sidecar, null, 2));
+    await fs.promises.writeFile(under(inbox, `${name}.json`), JSON.stringify(sidecar, null, 2));
     return { path: toRel("_inbox", name), filed: false };
   }
   const f = await filingFolders(l);
-  const dir = path.join(root, f.category, f.brand);
+  const dir = under(root, f.category, f.brand);
   await fs.promises.mkdir(dir, { recursive: true });
   const name = await writeUnusedPdf(dir, stem, data);
-  await fs.promises.writeFile(path.join(dir, `${name}.json`), JSON.stringify(sidecar, null, 2));
+  await fs.promises.writeFile(under(dir, `${name}.json`), JSON.stringify(sidecar, null, 2));
   const rel = toRel(f.category, f.brand, name);
   const row = {
     path: rel,
@@ -187,6 +251,10 @@ export async function fileDownload(l: LinkLike, root: string, data: Buffer): Pro
     linkId: l.id,
     sourceUrl: l.url,
     downloadedAt: new Date(),
+    sha256,
+    sha1: l.sha1 ?? crypto.createHash("sha1").update(data).digest("hex"),
+    withdrawnAt: null,
+    withdrawnWhy: null,
   };
   await db.libraryDoc.upsert({ where: { id: libraryDocId(rel) }, create: { id: libraryDocId(rel), ...row }, update: row });
   return { path: rel, filed: true };
@@ -220,7 +288,7 @@ export async function linksInScope(s: Scope): Promise<ManualLink[]> {
   return s.kind === "brand" ? rows.filter((l) => brandMatches(l.brand, s.brand)) : rows;
 }
 
-export type Queued = { jobId: string; label: string; queued: number; dead: number; have: number; busy: number };
+export type Queued = { jobId: string; label: string; queued: number; dead: number; have: number; busy: number; repoFiles: number; repoBytes: number };
 
 /**
  * Queue every link in the scope that isn't dead, isn't in the library and isn't already waiting. Throws a UserError
@@ -234,17 +302,32 @@ export async function queueDownloads(user: { shopId: string }, s: Scope): Promis
   if (!links.length) throw new UserError(s.kind === "all" ? "No links yet. Sync with the hub first." : `No links for ${label} yet.`);
   const idx = await haveIndex();
   const waiting = new Set((await db.manualDownload.findMany({ where: { status: { in: ["QUEUED", "DOWNLOADING"] } }, select: { linkId: true } })).map((r) => r.linkId));
-  const out: Queued = { jobId: crypto.randomUUID(), label, queued: 0, dead: 0, have: 0, busy: 0 };
+  const out: Queued = { jobId: crypto.randomUUID(), label, queued: 0, dead: 0, have: 0, busy: 0, repoFiles: 0, repoBytes: 0 };
   const rows: { shopId: string; jobId: string; jobLabel: string; linkId: string }[] = [];
   for (const l of links) {
     if (l.status === "dead") out.dead += 1;
     else if (await alreadyHave(l, root, idx)) out.have += 1;
     else if (waiting.has(l.id)) out.busy += 1;
-    else rows.push({ shopId: user.shopId, jobId: out.jobId, jobLabel: label, linkId: l.id });
+    else {
+      rows.push({ shopId: user.shopId, jobId: out.jobId, jobLabel: label, linkId: l.id });
+      if (isRepoLink(l)) {
+        out.repoFiles += 1;
+        out.repoBytes += l.sizeBytes ?? 0;
+      }
+    }
   }
   if (!rows.length) {
     const why = [out.have && `${out.have} already in the library`, out.busy && `${out.busy} already waiting to download`, out.dead && `${out.dead} dead`].filter(Boolean).join(", ");
     throw new UserError(`Nothing to download for ${label}: ${why}.`);
+  }
+  // The volume guard (design 5.3): repository files are big and many; refuse when the disk couldn't hold them and the floor.
+  if (out.repoFiles) {
+    const free = await freeBytes(root);
+    if (free != null && free < out.repoBytes + minFreeBytes()) {
+      throw new UserError(
+        `Not enough room: ${out.repoFiles} repository files, about ${sizeWords(out.repoBytes)}, and the library's disk has ${sizeWords(free)} free (${sizeWords(minFreeBytes())} is always kept free). Free some space, or download one model or brand at a time.`,
+      );
+    }
   }
   await db.manualDownload.createMany({ data: rows });
   out.queued = rows.length;
@@ -327,16 +410,30 @@ async function run(root: string, o: { now?: Date; pauseMs?: number; maxFiles?: n
   let idx = await haveIndex();
   let taken = 0;
   while (Date.now() < until && (o.maxFiles == null || taken < o.maxFiles)) {
-    const next = await db.manualDownload.findFirst({ where: { ...scope, status: "QUEUED" }, orderBy: [{ queuedAt: "asc" }, { id: "asc" }] });
+    const next = await db.manualDownload.findFirst({
+      where: { ...scope, status: "QUEUED", OR: [{ retryAfter: null }, { retryAfter: { lte: new Date() } }] },
+      orderBy: [{ queuedAt: "asc" }, { id: "asc" }],
+    });
     if (!next) break;
-    if (taken > 0) await sleep(pause);
+    // The hub's own storage takes one request a second (design 5.3); a maker's site keeps the longer pause.
+    if (taken > 0) await sleep(next.linkId.startsWith("repo_") ? Math.min(pause, 1000) : pause);
     if (!(await renew())) break;
     // Claim it (another copy may have taken it between the read and now).
     const claimed = await db.manualDownload.updateMany({ where: { id: next.id, status: "QUEUED" }, data: { status: "DOWNLOADING", startedAt: new Date(), tries: { increment: 1 } } });
     if (!claimed.count) continue;
     taken += 1;
     const outcome = await downloadOne(next.linkId, root, idx);
-    await db.manualDownload.updateMany({ where: { id: next.id, status: "DOWNLOADING" }, data: { ...outcome, finishedAt: new Date() } });
+    if (outcome.status === "QUEUED") {
+      // No room, or the hub said "later": the row goes back, the run stops, the timer carries on after the pause.
+      await db.manualDownload.updateMany({
+        where: { id: next.id, status: "DOWNLOADING" },
+        data: { status: "QUEUED", startedAt: null, tries: { decrement: 1 }, error: outcome.error, retryAfter: new Date(Date.now() + (outcome.holdMs ?? 60 * MIN)) },
+      });
+      break;
+    }
+    const { holdMs: _hold, ...result } = outcome;
+    void _hold;
+    await db.manualDownload.updateMany({ where: { id: next.id, status: "DOWNLOADING" }, data: { ...result, finishedAt: new Date() } });
     if (outcome.status === "DONE") {
       counts.done += 1;
       idx = await haveIndex();
@@ -347,7 +444,7 @@ async function run(root: string, o: { now?: Date; pauseMs?: number; maxFiles?: n
   return counts;
 }
 
-type Outcome = { status: "DONE" | "SKIPPED" | "FAILED"; path?: string | null; filed?: boolean; error?: string | null };
+type Outcome = { status: "DONE" | "SKIPPED" | "FAILED" | "QUEUED"; path?: string | null; filed?: boolean; error?: string | null; holdMs?: number };
 
 async function downloadOne(linkId: string, root: string, idx: HaveIndex): Promise<Outcome> {
   const l = await db.manualLink.findUnique({ where: { id: linkId } });
@@ -360,6 +457,7 @@ async function downloadOne(linkId: string, root: string, idx: HaveIndex): Promis
     const saved = await downloadLink(l, root);
     return { status: "DONE", path: saved.path, filed: saved.filed, error: null };
   } catch (e) {
+    if (e instanceof HoldQueue) return { status: "QUEUED", error: e.message, holdMs: e.retryAfterMs };
     if (e instanceof DownloadFailed) {
       if (e.report) await reportLink(l.id);
       return { status: "FAILED", error: e.message };
@@ -418,8 +516,10 @@ export async function downloadJobs(shopId: string, o: { jobIds?: string[]; limit
       brand: l?.brand ?? "",
       models: l?.models ?? "",
     };
-    if (r.status === "QUEUED") j.queued += 1;
-    else if (r.status === "DOWNLOADING") {
+    if (r.status === "QUEUED") {
+      j.queued += 1;
+      if (r.error) j.problems.push(row); // why it is waiting (no room on the disk, the hub said later)
+    } else if (r.status === "DOWNLOADING") {
       j.downloading += 1;
       j.current = row;
     } else if (r.status === "DONE") {
@@ -446,13 +546,13 @@ export async function downloadsActive(shopId: string): Promise<boolean> {
 /** The kinds of manual a bench wants for every model, in the order the model page lists them. */
 export const WANTED_DOC_TYPES = ["ServiceManual", "PartsList", "OperatorManual", "ErrorCodes", "WiringDiagram"] as const;
 
-export type Coverage = { docType: string; have: number; links: number; dead: number; state: "have" | "link" | "missing" };
+export type Coverage = { docType: string; have: number; links: number; repo: number; dead: number; state: "have" | "repo" | "link" | "missing" };
 
 /**
  * For one model: each wanted kind of manual (and any other kind seen), with how many files the library has, how many
  * working links the hub has, and whether it's in hand, only a link away, or missing (nothing to download; look for it).
  */
-export function coverage(docs: { docType: string | null }[], links: { docType: string | null; status: string }[]): Coverage[] {
+export function coverage(docs: { docType: string | null }[], links: { docType: string | null; status: string; origin?: string | null }[]): Coverage[] {
   const types = [
     ...WANTED_DOC_TYPES,
     ...new Set([...docs.map((d) => d.docType), ...links.map((l) => l.docType)].filter((t): t is string => !!t && !(WANTED_DOC_TYPES as readonly string[]).includes(t))),
@@ -461,7 +561,9 @@ export function coverage(docs: { docType: string | null }[], links: { docType: s
     const have = docs.filter((d) => d.docType === docType).length;
     const all = links.filter((l) => l.docType === docType);
     const dead = all.filter((l) => l.status === "dead").length;
-    const live = all.length - dead;
-    return { docType, have, links: live, dead, state: have ? "have" : live ? "link" : "missing" };
+    const repo = all.filter((l) => l.origin === "repository").length;
+    const live = all.length - dead - repo;
+    // In the repository counts as available (design 5.3): a file is there to download, with nothing to look for by hand.
+    return { docType, have, links: live, repo, dead, state: have ? "have" : repo ? "repo" : live ? "link" : "missing" };
   });
 }

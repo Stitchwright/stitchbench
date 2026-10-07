@@ -175,7 +175,8 @@ export default async function ShopSettingsPage() {
                   In Stripe, Developers &rarr; Webhooks &rarr; Add endpoint: <span className="mono">{hook}</span>, events <span className="mono">checkout.session.completed</span>,{" "}
                   <span className="mono">checkout.session.async_payment_succeeded</span>, <span className="mono">checkout.session.async_payment_failed</span> and{" "}
                   <span className="mono">checkout.session.expired</span>. Payments are also confirmed when the customer comes back from Stripe&apos;s page, so a slow webhook only delays the books,
-                  never the sale.
+                  never the sale. For fabric clubs (the Clubs tab on the Fabric page) add the events <span className="mono">invoice.paid</span>,{" "}
+                  <span className="mono">invoice.payment_failed</span>, <span className="mono">customer.subscription.updated</span> and <span className="mono">customer.subscription.deleted</span> to the same endpoint.
                 </p>
               )}
               {(s.hasStripeKey || s.hasWebhookSecret) && (

@@ -16,6 +16,7 @@ for r in csv.DictReader(open(os.path.join(LIB, "index.csv"), encoding="utf-8")):
     if r["category"] not in MACHINE_CATS or not p.lower().endswith(".pdf") or p in seen:
         continue
     seen.add(p)
+    sha1 = (r.get("sha1") or "").strip().lower()
     rows.append({
         "id": hashlib.sha1(p.encode("utf-8")).hexdigest()[:20],
         "path": p,
@@ -27,6 +28,8 @@ for r in csv.DictReader(open(os.path.join(LIB, "index.csv"), encoding="utf-8")):
         "pages": int(r["pages"]) if (r.get("pages") or "").isdigit() else None,
         "sizeBytes": int(r["size_bytes"]) if (r.get("size_bytes") or "").isdigit() else None,
         "modelKeys": model_keys(file_models(p), p),
+        # The index's sha1 of the bytes (a 40-hex digest or nothing): a file the repository also has, under another name, isn't downloaded again.
+        "sha1": sha1 if len(sha1) == 40 and all(c in "0123456789abcdef" for c in sha1) else None,
     })
 json.dump(rows, open(OUT, "w", encoding="utf-8"), ensure_ascii=False)
 print(len(rows), "library docs ->", os.path.abspath(OUT), os.path.getsize(OUT) // 1024, "KB")

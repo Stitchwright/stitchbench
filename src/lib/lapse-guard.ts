@@ -15,11 +15,16 @@ export function lapseUserFrom(fn: () => Promise<LapseUser>) {
   resolveUser = fn;
 }
 
-export async function lapseGuard(): Promise<void> {
+/** Who is signed in for this action (null on a public page's action), from the session or a check script's say-so. */
+export async function actingUser(): Promise<LapseUser> {
   // The session module (next-auth, next/navigation) is loaded only when an action really runs: action.ts is imported by
   // every lib and check script, and the check scripts run outside Next.
   const resolve = resolveUser ?? (await import("@/lib/session")).sessionUser;
-  const user = await resolve();
-  if (!user) return;
-  await requireBaseWritable(user);
+  return resolve();
+}
+
+export async function lapseGuard(user?: LapseUser): Promise<void> {
+  const u = user === undefined ? await actingUser() : user;
+  if (!u) return;
+  await requireBaseWritable(u);
 }

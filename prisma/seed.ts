@@ -19,6 +19,7 @@ import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } from "../src/
 const SETS = [
   { name: "Tension specs", table: "TensionSpec", file: "tension_specs.json" },
   { name: "Factory settings", table: "FactorySetting", file: "factory_settings.json" },
+  { name: "Test modes", table: "ServiceMode", file: "service_modes.json" },
   { name: "Library documents", table: "LibraryDoc", file: "library_docs.json" },
 ] as const;
 

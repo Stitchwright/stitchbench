@@ -10,6 +10,7 @@ import { ModelPanel } from "@/components/model-panel";
 import { ModelMachines, ModelPhotos } from "@/components/model-history";
 import { SharedPosts } from "@/components/shared-posts";
 import { ManualLinks } from "@/components/manual-links";
+import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { PartsThatFit } from "@/components/parts-that-fit";
 
 export default async function ModelPage({ params, searchParams }: { params: Promise<{ brand: string; model: string }>; searchParams: Promise<{ kind?: string }> }) {
@@ -36,6 +37,7 @@ export default async function ModelPage({ params, searchParams }: { params: Prom
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
           <ModelPanel shopId={user.shopId} brand={brand} model={model} showLink={false} kind={kind} />
+          <ManualsAsk user={user} brand={brand} model={model} />
           <ManualLinks shopId={user.shopId} brand={brand} model={model} timeZone={tz} />
         </div>
         <div className="space-y-6 xl:col-span-2">

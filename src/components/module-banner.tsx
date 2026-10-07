@@ -70,6 +70,53 @@ export function GraceBanner({ items, admin }: { items: GraceItem[]; admin: boole
 }
 
 /**
+ * The company is being moved to another install (company-move-design.md section 7): one bar at the top of every page, for
+ * every role. Shown instead of the lapsed bar: the move is what the owner did last, and Cancel is what undoes it.
+ */
+/** The real-partnership rule's grace (src/lib/hub-standing.ts partnershipNotice): the hub's friendly words, for owners and admins. */
+export function PartnershipNotice({ note }: { note: string | null }) {
+  if (!note) return null;
+  return (
+    <div className="no-print card card-pad tone-wait mb-4 text-sm" role="status" data-testid="partnership-notice">
+      {note}
+    </div>
+  );
+}
+
+export function MovingBar({ to, since, movedOn, deleteOn, admin }: { to: string | null; since: string; movedOn?: string | null; deleteOn?: string | null; admin: boolean }) {
+  // Moved (the hub said so, or the owner did): the old copy, kept read-only until it is deleted by hand after 30 days.
+  if (movedOn) {
+    return (
+      <div className="no-print card card-pad tone-bad mb-4 text-sm" role="status" data-testid="moved-bar">
+        <strong>
+          This company moved{to ? ` to ${to}` : ""} on {movedOn}. This copy is read-only; delete it after {deleteOn}.
+        </strong>{" "}
+        Everything here can still be looked at and exported. Work goes on at the new install, where everyone signs in with the same email and password.
+      </div>
+    );
+  }
+  return (
+    <div className="no-print card card-pad tone-bad mb-4 text-sm" role="status" data-testid="moving-bar">
+      <strong>
+        This company is moving{to ? ` to ${to}` : ""}; it is read-only here since {since}.
+      </strong>{" "}
+      You can look at and export everything, finish open work and take payments; nothing new is written here, so nothing is lost on the way.{" "}
+      {admin ? (
+        <>
+          Download the move file, or cancel the move to carry on here, in{" "}
+          <Link href="/settings#move" className="underline">
+            Settings → Company
+          </Link>
+          .
+        </>
+      ) : (
+        "Ask the shop owner."
+      )}
+    </div>
+  );
+}
+
+/**
  * The program itself has lapsed (hub-accounts-billing-design.md 3.5): one bar at the top of every page, for every role,
  * saying what still works and where the key comes from. The nav keeps every item: the pages are read-only.
  */
