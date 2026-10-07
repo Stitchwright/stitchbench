@@ -23,6 +23,7 @@ export default async function MakerHome() {
     { href: "/units?kind=3d-printer#add", title: "3D printers for sale", text: "Filament and resin printers with serials, warranties, owner's classes and starter bundles.", count: `${printers} in stock` },
     { href: "/units?kind=craft-cutter#add", title: "Cutters and lasers for sale", text: "Craft cutters, fabric die cutters and laser cutters.", count: `${cutters} in stock` },
     { href: "/parts?kind=SUPPLY", title: "Supplies", text: "Filament, resin, blades, mats, vinyl, laser stock and dies, each with its own details and colors.", count: `${supplies} on the shelf` },
+    { href: "/maker/space", title: "Maker-space time", text: "Customers certified on your laser or printer book it by the hour.", count: "" },
     { href: "/maker/supplies", title: "Supplies due", text: "Printer and cutter owners probably running low, to call or remind.", count: `${due} due` },
   ];
   return (
@@ -32,7 +33,7 @@ export default async function MakerHome() {
           <Link key={c.href} href={c.href} className="card card-pad block hover:bg-surface-2">
             <div className="text-base font-semibold">{c.title}</div>
             <div className="muted text-sm">{c.text}</div>
-            <div className="mt-2 text-base">{c.count}</div>
+            {c.count && <div className="mt-2 text-base">{c.count}</div>}
           </Link>
         ))}
       </div>

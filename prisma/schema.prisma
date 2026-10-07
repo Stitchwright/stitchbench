@@ -242,6 +242,7 @@ model Shop {
   softwareCodes     SoftwareCode[]
   starterBundles    StarterBundle[]
   suppliesCare      SuppliesCare[]
+  certifications    Certification[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -405,6 +406,7 @@ model Customer {
   enrollments      Enrollment[]
   appointments     Appointment[]
   softwareLicenses SoftwareLicense[]
+  certifications   Certification[]
 
   @@index([shopId, name])
 }
@@ -2040,6 +2042,23 @@ model StockUnit {
 // "Supplies due" marks for a printer or cutter a customer bought here (shop-features-round-2-design.md 6.3, Maker Shop):
 // the general twin of VacCare. calledAt: someone got in touch (by phone, or "message" for a one-off send); snoozeUntil:
 // left off the list until then; stoppedAt: no more reminders for this machine.
+// A customer certified to use one of the shop's machines on her own (shop-features-round-2-design.md 6.4): "Longarm",
+// "Laser", "3D printer", after the safety class. Customer.longarmCertifiedAt is copied in as "Longarm" by the migration
+// and kept in step until it is removed. byUserId: who certified her (plain id).
+model Certification {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipment   String
+  certifiedAt DateTime @default(now())
+  byUserId    String?
+
+  @@unique([shopId, customerId, equipment])
+  @@index([shopId, equipment])
+}
+
 model SuppliesCare {
   machineId   String    @id
   machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
@@ -2447,6 +2466,9 @@ model AppointmentType {
   taxable      Boolean       @default(false)
   hourlyCents  Int? // a rental by the hour: the fee is this x the hours booked (the fee above is then ignored)
   needsCert    Boolean       @default(false) // only customers certified to rent (the longarm) can book it
+  // What they must be certified on (shop-features-round-2-design.md 6.4: "Laser", "3D printer"); empty with needsCert
+  // means the longarm, as before.
+  certFor      String?
   capacity     Int           @default(1) // bookings at the same time (two longarms: 2); shared by types with the same resource
   resource     String? // what it uses up, e.g. "Longarm": types naming the same resource share its capacity
   // When it can be booked: [{ day: 0-6 (Sunday 0), from: "10:00", to: "17:00" }]; empty = any time

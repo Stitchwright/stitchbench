@@ -1198,3 +1198,23 @@ Decisions made while building:
   now, and `npm run license -- --modules maker` issues one.
 - Browser test needed: the menu item with the module on and off, /maker, /maker/supplies (Called with a note, Not yet,
   Stop, Remind the n due now), Settings → Modules and the Companies switch showing Maker Shop.
+
+**`maker-space` (6.4, Maker Shop module, 7 Oct 2026).** Migration `20261020900000_maker_space` (`Certification`,
+carried by the company file and the customer merge; `AppointmentType.certFor`; every customer with `longarmCertifiedAt`
+copied in as certified on "Longarm"). Code: `src/lib/certifications.ts`, `src/actions/certifications.ts`; **Certified
+on** on the customer's page (`src/components/customer-certifications.tsx`: one tap to certify after the safety class,
+"Take off"), replacing the longarm's own flag there; an appointment type's "Certified customers only, on the ___"
+(`appt-type-form.tsx`); the booking check (`appointment-actions.ts`) reads the type's machine; Maker Shop →
+**Maker-space time** (`/maker/space`: your machines by the hour, "Set up a machine by the hour", the next two weeks'
+bookings, who is certified). Check: `scripts/checks/maker-space.check.ts` (5 groups); `longarm` (its wording updated),
+`appointments`, `online-booking`, `customer-merge` (certifications seeded), `move-export` still pass.
+Decisions made while building:
+- A maker-space machine is an appointment type exactly like longarm rental (hourly rate, how many at once, what it
+  uses up, bookable hours), with `certFor` naming the machine; a type with "certified only" and no machine is the
+  longarm, so the longarm's types and certifications work as before. Certifying on, or setting up a type for, anything
+  but the longarm needs Maker Shop; booking needs Scheduling (the calendar), as before.
+- `Customer.longarmCertifiedAt` stays and is kept in step with the "Longarm" certification (both buttons), and a
+  customer certified only by the old flag still books the longarm; removing the column is left for a later clean-up.
+- Material used is rung up at the register beside the booking (no separate material log).
+- Browser test needed: a customer's Certified on (certify, take off), Calendar → Types with a machine, /maker/space
+  (set up, coming up, who is certified), booking a laser hour for a certified and an uncertified customer.
