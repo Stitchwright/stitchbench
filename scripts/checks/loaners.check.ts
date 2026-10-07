@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import { balanced, buildBooks } from "@/lib/books";
 import { DEFAULT_BOOKS } from "@/lib/books-accounts";
-import { completeSaleAs } from "@/lib/register-sale";
+import { completeSaleAs, voidSaleAs } from "@/lib/register-sale";
 import { receiveUnitsFor, unitsForSaleFor } from "@/lib/units/units";
 import { registerUnitHits } from "@/lib/units/sale-units";
 import { backFor, heldForLoans, lendFor, loanCounts, loanDefaults, loansFor, setUnitUseFor, unitsToLend } from "@/lib/loans";
@@ -96,6 +96,16 @@ async function main() {
     assert.equal(await db.auditEntry.count({ where: { shopId: a.shopId, action: "loan.keep" } }), 1);
     assert.deepEqual(await loanCounts(a.shopId), { out: 0, overdue: 0 });
     ok("a demo out with no customer (overdue counted) and back; the loaner back with $20 kept as a loaner charge and $30 given back");
+
+    // 3b. Voiding the "It's back" sale: the loaner is out again with its $50 held. Two taps on It's back at once: the
+    // deposit goes back once.
+    await voidSaleAs(a.user, r.saleId!, "wrong loaner");
+    assert.equal((await db.unitLoan.findUniqueOrThrow({ where: { id: l1.loanId } })).backAt, null, "out again");
+    assert.equal((await heldForLoans(a.shopId, [l1.loanId])).get(l1.loanId), 5000, "its deposit held again");
+    const twice = await Promise.allSettled([backFor(a.user, l1.loanId, { method: "CASH" }), backFor(a.user, l1.loanId, { method: "CASH" })]);
+    assert.equal(twice.filter((x) => x.status === "fulfilled").length, 1, "one of the two");
+    assert.equal(await db.sale.count({ where: { shopId: a.shopId, status: "COMPLETED", lines: { some: { unitLoanId: l1.loanId, kind: "DEPOSIT", qty: { lt: 0 } } } } }), 1, "the deposit given back once");
+    ok("a void of It's back puts the loaner out again with its deposit held; two taps at once give the deposit back once");
 
     // 4. Sell this one; the books.
     await setUnitUseFor(a.user, demo, form({ use: "SALE" }));

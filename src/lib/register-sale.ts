@@ -892,6 +892,25 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await untieReaderPayments(tx, shopId, sale.id);
     // Shipped from another store (7.3): the job not shipped yet is cancelled (the stock comes back below).
     await (await import("@/lib/store-ship")).cancelShipJobs(tx, shopId, sale.id, at);
+    // Event money taken on this sale (a deposit, the balance, a door ticket, a paid link): no longer paid.
+    await tx.eventPayment.updateMany({ where: { shopId, saleId: sale.id, cancelledAt: null }, data: { cancelledAt: at } });
+    // A rental bought out on this sale, or a loaner's "It's back" that gave its deposit back: the rental or loan is open
+    // again (the machine out with her, its deposit held again), unless the machine has gone out to someone else since.
+    for (const loanId of [...new Set(sale.lines.map((l) => l.unitLoanId).filter((x): x is string => !!x))]) {
+      const mine = sale.lines.filter((l) => l.unitLoanId === loanId);
+      const boughtOut = mine.some((l) => l.stockUnitId && l.qty > 0);
+      const gaveBack = mine.some((l) => l.kind === "DEPOSIT" && l.qty < 0);
+      if (!boughtOut && !gaveBack) continue;
+      const loan = await tx.unitLoan.findFirst({ where: { id: loanId, shopId } });
+      if (!loan?.backAt) continue;
+      if (await tx.unitLoan.count({ where: { shopId, unitId: loan.unitId, backAt: null, id: { not: loan.id } } })) {
+        throw new UserError("That machine has gone out on another loan or rental since: the void can't put it back out. Ring up a return instead.");
+      }
+      await tx.unitLoan.update({ where: { id: loan.id }, data: { backAt: null, conditionBack: null } });
+      if (boughtOut) await tx.stockUnit.updateMany({ where: { id: loan.unitId, shopId }, data: { use: "RENTAL" } });
+    }
+    // Each line's stock goes back where its own move took it from (two lines of one item from two stores: each its own).
+    const usedMoves: string[] = [];
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);
@@ -905,7 +924,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
         if (part) {
           // Back on the shelf it came off: the sale's store, or the store it shipped from or was held at (its own move says).
-          const took = await tx.stockMove.findFirst({ where: { shopId, partId: part.id, reason: "SOLD", note: `Sale #${sale.number}`, qty: -l.qty }, select: { locationId: true } });
+          const took = await tx.stockMove.findFirst({ where: { shopId, partId: part.id, reason: "SOLD", note: `Sale #${sale.number}`, qty: -l.qty, id: { notIn: usedMoves } }, orderBy: { createdAt: "asc" }, select: { id: true, locationId: true } });
+          if (took) usedMoves.push(took.id);
           await moveStock(tx, { shopId, partId: part.id, locationId: took ? took.locationId : sale.locationId, qty: l.qty, reason: "SOLD", userId: user.id, note: `Sale #${sale.number} void`, createdAt: at });
         }
       }
