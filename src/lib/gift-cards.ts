@@ -249,11 +249,47 @@ export async function giveCredit(
 // ---------------------------------------------------------------------------------------------------------------------
 // Undoing: a void sale, a removed ticket payment
 
+/**
+ * The card a moved card's balance went to (moveCardAs: the old card's MOVED line off and the new card's MOVED line on,
+ * written together, the new card's note naming the old number), or null when there is no one such card.
+ */
+async function successorOf(tx: Tx, shopId: string, old: GiftCard): Promise<GiftCard | null> {
+  const off = await tx.giftCardEntry.findFirst({ where: { shopId, cardId: old.id, reason: "MOVED", amountCents: { lt: 0 } }, orderBy: [{ at: "desc" }, { id: "desc" }] });
+  if (!off) return null;
+  const near = 5_000;
+  const on = await tx.giftCardEntry.findMany({
+    where: { shopId, reason: "MOVED", amountCents: -off.amountCents, cardId: { not: old.id }, at: { gte: new Date(off.at.getTime() - near), lte: new Date(off.at.getTime() + near) }, card: { kind: old.kind, note: { startsWith: `Moved from ending ${lastFour(old.number)}` } } },
+    select: { card: true },
+    take: 2,
+  });
+  return on.length === 1 ? on[0].card : null;
+}
+
+/** Where an amount being put back onto `cardId` goes: the card, or (moved since) the card its balance moved to. */
+async function putBackCard(tx: Tx, shopId: string, cardId: string): Promise<GiftCard> {
+  let c = await tx.giftCard.findFirst({ where: { id: cardId, shopId } });
+  if (!c) throw new UserError("Gift card not found.");
+  for (let hops = 0; c.status !== "active" && hops < 10; hops++) {
+    const next = await successorOf(tx, shopId, c);
+    if (!next) break;
+    c = next;
+  }
+  if (c.status !== "active") throw new UserError(`${cardWords(c)} is void, so the amount can't go back on it. Give it back another way (store credit, cash).`);
+  return c;
+}
+
 /** Each entry in `entries` undone: its amount comes back off (or onto) the card as a VOID line, in the transaction. */
 async function undo(tx: Tx, shopId: string, entries: { id: string; cardId: string; amountCents: number; reason: string }[], cause: Cause & { userId?: string | null }, words: string) {
   for (const e of entries) {
     try {
-      await postEntry(tx, shopId, e.cardId, -e.amountCents, "VOID", { ...cause, note: `Undoes ${e.reason.toLowerCase()} ${money(Math.abs(e.amountCents))}` });
+      const note = `Undoes ${e.reason.toLowerCase()} ${money(Math.abs(e.amountCents))}`;
+      if (e.amountCents < 0) {
+        // Money going back onto a card (a spend undone): never onto a void card; a card moved since takes it on its new number.
+        const to = await putBackCard(tx, shopId, e.cardId);
+        await postEntry(tx, shopId, to.id, -e.amountCents, "VOID", { ...cause, active: true, note: to.id === e.cardId ? note : `${note} (moved from an older number)` });
+      } else {
+        await postEntry(tx, shopId, e.cardId, -e.amountCents, "VOID", { ...cause, note });
+      }
     } catch (err) {
       if (!(err instanceof UserError)) throw err;
       const c = await tx.giftCard.findFirst({ where: { id: e.cardId, shopId } });
@@ -341,10 +377,12 @@ export async function moveCardAs(user: { shopId: string; id: string; name: strin
     if (old.status !== "active") throw new UserError("That card is already void.");
     const balance = rows[0].balanceCents;
     if (balance <= 0) throw new UserError("That card has nothing left to move.");
+    // successorOf pairs the two MOVED lines by this note, amount and time.
     const fresh = await createCard(tx, a, { kind: old.kind as "gift" | "credit", number, customerId: old.customerId, note: `Moved from ending ${lastFour(old.number)}` });
-    await postEntry(tx, user.shopId, old.id, -balance, "MOVED", { userId: user.id, note: reason });
+    const at = new Date();
+    await postEntry(tx, user.shopId, old.id, -balance, "MOVED", { userId: user.id, note: reason, at });
     await tx.giftCard.update({ where: { id: old.id }, data: { status: "void" } });
-    await postEntry(tx, user.shopId, fresh.id, balance, "MOVED", { userId: user.id, note: reason });
+    await postEntry(tx, user.shopId, fresh.id, balance, "MOVED", { userId: user.id, note: reason, at });
     await audit(tx, a, { action: "giftcard.move", subjectType: "GiftCard", subjectId: old.id, subjectLabel: `${cardWords(old)} to ${cardWords(fresh)}`, amountCents: balance, changes: { number: [lastFour(old.number), lastFour(fresh.number)] }, reason });
     return fresh;
   });

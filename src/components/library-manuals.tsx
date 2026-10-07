@@ -25,7 +25,7 @@ function size(n: number | null) {
 }
 
 /** Every manual the shop library has for this model: its path on the shop PCs, and Open when this PC has it. */
-export function LibraryManuals({ docs, root, brand, model }: { docs: Doc[]; root: string; brand: string; model: string }) {
+export function LibraryManuals({ docs, root, brand, model, canDelete = false }: { docs: Doc[]; root: string; brand: string; model: string; canDelete?: boolean }) {
   const [index, setIndex] = useState<LibraryIndex | undefined>();
   const [ready, setReady] = useState(false);
   const [shop, setShop] = useState(false); // the shop PC serves the library (Windows program)
@@ -70,7 +70,7 @@ export function LibraryManuals({ docs, root, brand, model }: { docs: Doc[]; root
                     {d.withdrawnWhy && (
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                         <span className="pill tone-bad">{d.withdrawnWhy === "copyright" ? "Removed from the repository after a copyright notice" : "Withdrawn from the repository"}</span>
-                        {shop && (
+                        {shop && canDelete && (
                           <ActionButton action={deleteWithdrawnCopy.bind(null, d.path)} className="btn btn-sm btn-danger" confirm="Delete this copy from the library?" success="Copy deleted">
                             Delete my copy
                           </ActionButton>

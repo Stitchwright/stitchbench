@@ -16,17 +16,19 @@ export const ENTRY_LABEL: Record<string, string> = {
 };
 
 export type LiabilityReport = {
-  /** Per kind ("gift", "credit"): the balance on active cards when the range began, the movement by reason, and the balance when it ended. */
+  /** Per kind ("gift", "credit"): the balance on cards when the range began, the movement by reason, and the balance when it ended. */
   kinds: { kind: "gift" | "credit"; label: string; opening: number; movement: { reason: string; label: string; cents: number }[]; closing: number; cardsWithBalance: number }[];
   /** The liability today (every active card's balance). */
   today: number;
 };
 
 export async function liabilityReport(shopId: string, start: Date, end: Date): Promise<LiabilityReport> {
-  const cards = await db.giftCard.findMany({ where: { shopId, status: "active" }, select: { id: true, kind: true, balanceCents: true } });
+  // Every card, void ones too (their balance today is 0): a card moved to a new number or voided since the start still
+  // held its balance back then, and its MOVED line nets against the new card's.
+  const cards = await db.giftCard.findMany({ where: { shopId }, select: { id: true, kind: true, balanceCents: true } });
   const kindOf = new Map(cards.map((c) => [c.id, c.kind]));
   // Entries since the start: today's balance less these is the balance back then.
-  const entries = await db.giftCardEntry.findMany({ where: { shopId, at: { gte: start }, cardId: { in: [...kindOf.keys()] } }, select: { cardId: true, at: true, amountCents: true, reason: true } });
+  const entries = await db.giftCardEntry.findMany({ where: { shopId, at: { gte: start } }, select: { cardId: true, at: true, amountCents: true, reason: true } });
   const out: LiabilityReport["kinds"] = [];
   for (const kind of ["gift", "credit"] as const) {
     const mine = cards.filter((c) => c.kind === kind);

@@ -8,6 +8,8 @@ $log = "$run\rebuild_and_test.log"
 Get-NetTCPConnection -LocalPort 3300 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false }
 Set-Location C:\Users\bwatt\stitchbench
 $env:NODE_OPTIONS = "--max-old-space-size=2048"
+# A test build: development license keys count against this machine's database (docs/TESTING.md), so the specs can switch modules on.
+$env:STITCH_TEST_BUILD = "1"
 $b = npx next build 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) { $b | Out-File $log -Append -Encoding utf8; "BUILD FAILED" | Out-File $log -Append -Encoding utf8; exit 1 }
 "build ok $(Get-Date)" | Out-File $log -Append -Encoding utf8

@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { PassThrough, Readable, Transform, pipeline } from "node:stream";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
+import { isDesktop } from "@/lib/modules";
 import { withLease } from "@/lib/lease";
 import { inBackground } from "@/lib/hub";
 import { exportCompany, type Mover } from "@/lib/move/export";
@@ -24,6 +25,7 @@ export async function storeFor(shopId: string): Promise<OffsiteStore> {
   const s = await db.offsiteSettings.findUnique({ where: { shopId } });
   if (!s) throw new UserError("Off-site backup isn't set up.");
   if (s.target === "folder") {
+    if (!isDesktop()) throw new UserError("A folder is for the Windows program. Pick StitchHub or your own bucket (Settings, Off-site backup).");
     if (!s.folderPath.trim()) throw new UserError("Choose the folder the backups go to.");
     return folderStore(s.folderPath.trim());
   }

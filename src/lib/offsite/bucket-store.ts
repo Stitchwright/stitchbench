@@ -29,7 +29,7 @@ export async function bucketConfig(shopId: string, raw: unknown): Promise<S3Conf
   const secret = unseal(b.secretSealed, shopId, "offsiteBucket");
   if (!secret) throw new UserError("The bucket's secret key can't be read here (it was saved under another key): enter it again.");
   const endpoint = await checkEndpoint(b.endpoint, { allowPrivate: isDesktop() });
-  return { endpoint, bucket: b.bucket, region: b.region, accessKeyId: b.accessKeyId, secret: secret.plain, prefix: bucketPrefix(shopId) };
+  return { endpoint, bucket: b.bucket, region: b.region, accessKeyId: b.accessKeyId, secret: secret.plain, prefix: bucketPrefix(shopId), publicOnly: !isDesktop() };
 }
 
 export async function bucketStoreFor(shopId: string, raw: unknown): Promise<OffsiteStore> {

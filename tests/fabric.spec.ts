@@ -116,7 +116,9 @@ test("reorder: a suggestion becomes a purchase order, sent and received", async 
   const id = await fabric(pn, { qty: 3, supplier, ageDays: 70, collection: `Reorder ${RUN}` });
   // Bought 15 yards 70 days ago; 12 yards sold since, a little most days over the last three weeks.
   await sql(`INSERT INTO "StockMove" (id, "shopId", "partId", qty, reason, "createdAt") VALUES ($1, $2, $3, 15, 'RECEIVED', $4)`, [`mv${RUN}ro`.toLowerCase(), shopId, id, new Date(Date.now() - 70 * DAY)]);
-  let n = (await one<{ n: number }>(`SELECT COALESCE(MAX(number), 0)::int AS n FROM "Sale" WHERE "shopId" = $1`, [shopId]))!.n;
+  // The twelve receipt numbers come off the shop's counter, as the register takes them (a number past the counter would
+  // be handed out again by the next real sale and refused as a duplicate).
+  let n = (await one<{ n: number }>(`UPDATE "Shop" SET "nextSaleNumber" = "nextSaleNumber" + 12 WHERE id = $1 RETURNING ("nextSaleNumber" - 13)::int AS n`, [shopId]))!.n;
   for (let d = 1; d <= 12; d++) {
     n += 1;
     const when = new Date(Date.now() - d * 1.5 * DAY);

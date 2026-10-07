@@ -567,17 +567,24 @@ export async function handleClubEvent(shopId: string, ev: WebhookEvent, now = ne
     if (!m) return { status: 200, body: "no member" };
     const paid = obj.payment_status === "paid" || obj.payment_status === "no_payment_required";
     const mo = await month(ev.created);
-    await db.clubMember.update({
-      where: { id: m.id },
-      data: { stripeSubscriptionId: str1(obj.subscription) ?? m.stripeSubscriptionId, stripeCustomerId: str1(obj.customer) ?? m.stripeCustomerId, ...(paid ? { paidMonth: later(m.paidMonth, mo), lastPaidAt: now, payFailedAt: null } : {}) },
-    });
+    const sub = str1(obj.subscription);
+    // A link paid after the member was paused or cancelled, or a second link paid on top of a running subscription: the
+    // new subscription is stopped at Stripe so it never charges again. Its first payment still goes in the books below
+    // (the money was taken), for the shop to refund in Stripe; the refund then voids it here.
+    const stop = !!sub && (m.status !== "ACTIVE" || (!!m.stripeSubscriptionId && m.stripeSubscriptionId !== sub));
+    if (stop) await cancelSubscription(await stripeKeyOf(shopId), sub!);
+    else
+      await db.clubMember.update({
+        where: { id: m.id },
+        data: { stripeSubscriptionId: sub ?? m.stripeSubscriptionId, stripeCustomerId: str1(obj.customer) ?? m.stripeCustomerId, ...(paid ? { paidMonth: later(m.paidMonth, mo), lastPaidAt: now, payFailedAt: null } : {}) },
+      });
     // The first month's money goes in the books under the invoice that took it (the later invoice.paid for it posts nothing twice).
     const invoice = str1(obj.invoice);
     if (paid && invoice) {
       const tax = (obj.total_details as { amount_tax?: unknown } | undefined)?.amount_tax;
       await postClubPayment(shopId, { memberId: m.id, month: mo, label: monthLabel(mo), amountCents: Number(obj.amount_total) || 0, method: "CARD", invoiceId: invoice, paymentIntent: str1(obj.payment_intent), taxCents: typeof tax === "number" ? tax : null });
     }
-    return { status: 200, body: "ok" };
+    return { status: 200, body: stop ? "stopped" : "ok" };
   }
   if (ev.type === "invoice.paid" || ev.type === "invoice.payment_succeeded" || ev.type === "invoice.payment_failed") {
     if (obj.object !== "invoice") return { status: 200, body: "ignored" };

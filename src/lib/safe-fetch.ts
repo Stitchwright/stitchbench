@@ -44,7 +44,7 @@ function checkUrl(u: URL) {
 }
 
 /** Resolves a name for the connection itself and refuses it if any address it has is private. */
-const publicLookup: net.LookupFunction = (hostname, options, callback) => {
+export const publicLookup: net.LookupFunction = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
     if (err) return callback(err, "", 0);
     const list = addresses as unknown as dns.LookupAddress[];

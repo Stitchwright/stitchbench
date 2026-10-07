@@ -61,6 +61,8 @@ export type SaleInput = {
   taxCents?: number | null;
   /** The customer is tax exempt but the cashier says charge tax anyway (no certificate is recorded then). */
   chargeTax?: boolean;
+  /** The sale a scanned receipt brought back as this return (saleForReturn): a return-only cart is taxed at its rate and exemption. */
+  returnOfSaleId?: string | null;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -288,11 +290,17 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // A tax-exempt customer's sale charges no tax (their certificate number is kept on it), unless the cashier ticks
     // "Charge tax anyway" (chargeTax). A processor's tax amount (online shop) is never overridden here.
     const customerId = input.customerId || firstBookingCustomer(lines, bookings);
-    const exemptId =
-      givenTax == null && customerId && input.chargeTax !== true
+    // A return scanned in from a receipt (every line a return) gives back the tax as that sale charged it: its rate and
+    // exemption, not the customer's or the shop's today.
+    const fromReceipt = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.every((l) => l.qty < 0);
+    const original = fromReceipt ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true } }) : null;
+    if (fromReceipt && !original) throw new UserError("The sale being returned wasn't found.");
+    const exemptId = original
+      ? original.taxExemptId
+      : givenTax == null && customerId && input.chargeTax !== true
         ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
         : null;
-    const taxRatePct = givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
+    const taxRatePct = original ? original.taxRatePct : givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
     const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);

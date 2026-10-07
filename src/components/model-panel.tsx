@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Pin, Trash2 } from "lucide-react";
 import { specsLookup, settingsLookup, notesFor, gRange, pictureLookup, libraryLookup, type BaseModel, type SpecRow } from "@/lib/model-info";
 import { db } from "@/lib/db";
+import { isInstallAdmin, sessionUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { MachineInfo } from "@/components/machine-info";
@@ -190,6 +191,9 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
   );
   const baseName = pictureFrom ?? libraryFrom ?? specsFrom ?? settingsFrom ?? modesFrom;
   const category = library[0]?.category ?? settings[0]?.category ?? specs[0]?.category ?? null;
+  // "Delete my copy" removes a file from the install's library: its owner or admin, or with several companies its administrator.
+  const me = library.some((d) => d.withdrawnWhy) ? await sessionUser() : null;
+  const canDelete = Boolean(me && (await isInstallAdmin(me)));
   const modelPage = showLink ? (
     <Link href={modelHref(brand, model, kind?.key)} className="link text-sm">
       Model page
@@ -240,6 +244,7 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
           root={shop?.libraryRoot ?? "C:\\Manuals"}
           brand={brand}
           model={model}
+          canDelete={canDelete}
         />
       </Section>
     </div>

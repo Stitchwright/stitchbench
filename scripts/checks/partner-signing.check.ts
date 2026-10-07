@@ -199,7 +199,7 @@ async function database() {
   const kB = await ownKey(B.shopId);
   const byB = hubMsg(B.shopId, {});
   byB.sig = signAs(kB, byB, "5003");
-  await expectRefused("B signing as A", () => takeMessage(B.shopId, byB), /key other than the one/);
+  await expectRefused("B signing as A", () => takeMessage(B.shopId, byB), /this shop's own key/);
   const swapped = hubMsg(B.shopId, {});
   swapped.sig = { ...signAs(kB, swapped, "5004"), pub: kA2.publicKey };
   await expectRefused("B's signature under A's key", () => takeMessage(B.shopId, swapped), /signature doesn't check out/);

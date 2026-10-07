@@ -161,10 +161,15 @@ export type SaleReturnLine = {
 export type SaleForReturn = {
   id: string;
   number: number;
+  /** The rate the sale charged (0 when it was tax exempt): a return of it gives the tax back at this rate. */
+  taxRatePct: number;
   customer: CustomerHit | null;
   lines: SaleReturnLine[];
   /** Payment lines for a repair bill, left out: reverse those with the repair shop instead (same as voiding a sale). */
   skippedRepairLines: number;
+  /** Gift cards sold, loaded or paid out on it, left out: a card's money comes back through the card itself (void the
+   * sale, or pay the card out), never as a plain refund line that would leave the card spendable. */
+  skippedCardLines: number;
   /** Gift cards and store credit the sale was paid with: the default way back is onto the same card. */
   cardsPaid: { number: string; kind: "gift" | "credit"; amountCents: number }[];
 };
@@ -183,9 +188,14 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
   if (!sale) return null;
   const lines: SaleReturnLine[] = [];
   let skippedRepairLines = 0;
+  let skippedCardLines = 0;
   for (const l of sale.lines) {
     if (l.repairJobId) {
       skippedRepairLines++;
+      continue;
+    }
+    if (l.giftCardId) {
+      skippedCardLines++;
       continue;
     }
     // What the line actually charged (its own discount folded in), split into whole-cent unit prices that refund
@@ -201,7 +211,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     const c = cards.find((x) => x.id === t.cardId);
     return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
   });
-  return { id: sale.id, number: sale.number, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines, cardsPaid };
+  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines, skippedCardLines, cardsPaid };
 }
 
 /** `taxExemptId`: the certificate number when the customer is tax exempt now (null: not; absent: not looked up yet). */

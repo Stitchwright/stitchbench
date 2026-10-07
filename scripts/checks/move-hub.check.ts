@@ -503,9 +503,9 @@ async function main() {
     // The tray's door: the program's own one-use token for that company, on the PC itself.
     process.env.MOVE_LOCAL_SECRET = crypto.randomBytes(32).toString("base64url");
     await db.shop.update({ where: { id: f.shopId }, data: { movedOutAt: new Date(Date.now() - 31 * DAY) } });
-    const post = (token: string | null, forwardedHost?: string) =>
+    const post = (token: string | null, forwardedHost?: string, host = "127.0.0.1:3100") =>
       removeRoute(
-        new Request("http://127.0.0.1:3100/api/move/remove", {
+        new Request(`http://${host}/api/move/remove`, {
           method: "POST",
           headers: { "content-type": "application/json", ...(forwardedHost ? { "x-forwarded-host": forwardedHost } : {}), ...(token ? { "x-move-token": token } : {}) },
           body: JSON.stringify({ shopId: f.shopId, name: f.name }),
@@ -513,7 +513,9 @@ async function main() {
       );
     assert.equal((await post(null)).status, 403, "no token");
     assert.equal((await post(moveToken(process.env.MOVE_LOCAL_SECRET, `remove:${b.shopId}`))).status, 403, "a token for another company");
-    assert.equal((await post(moveToken(process.env.MOVE_LOCAL_SECRET, `remove:${f.shopId}`), "shop-pc.example:3100")).status, 403, "not addressed to the PC itself");
+    assert.equal((await post(moveToken(process.env.MOVE_LOCAL_SECRET, `remove:${f.shopId}`), undefined, "shop-pc.example:3100")).status, 403, "not addressed to the PC itself");
+    // X-Forwarded-Host is the sender's own word without a trusted proxy (a DNS-rebinding page can send it).
+    assert.equal((await post(moveToken(process.env.MOVE_LOCAL_SECRET, `remove:${f.shopId}`), "localhost", "shop-pc.example:3100")).status, 403, "a forwarded localhost from elsewhere");
     const good = moveToken(process.env.MOVE_LOCAL_SECRET, `remove:${f.shopId}`);
     const res = await post(good);
     assert.equal(res.status, 200, await res.clone().text());

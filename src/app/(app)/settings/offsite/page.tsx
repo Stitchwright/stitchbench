@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { isDesktop } from "@/lib/modules";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { fmtWhen } from "@/lib/zoned";
 import { fmtBytes } from "@/lib/offsite/format";
@@ -14,6 +15,7 @@ export default async function OffsitePage() {
   const user = await requireUser();
   if (user.role === "TECH") notFound();
   const tz = await shopTimeZone(user.shopId);
+  const desktop = isDesktop(); // a folder is the Windows program's choice only: on the hosted server it is the server's disk
   const [shop, s, last, lastGood, objects] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true } }),
     db.offsiteSettings.findUnique({ where: { shopId: user.shopId } }),
@@ -75,16 +77,18 @@ export default async function OffsitePage() {
             </label>
             <select id="target" name="target" className="select" defaultValue={s?.target === "folder" ? "folder" : s?.target === "bucket" ? "bucket" : "hub"}>
               <option value="hub">With StitchHub (arranged for you)</option>
-              <option value="folder">In a folder (a USB disk, OneDrive or Dropbox folder)</option>
+              {desktop && <option value="folder">In a folder (a USB disk, OneDrive or Dropbox folder)</option>}
               <option value="bucket">In my own bucket (R2, B2, Wasabi, S3 or MinIO)</option>
             </select>
           </div>
-          <div className="field">
-            <label htmlFor="folderPath" className="label">
-              Folder (only for the folder choice)
-            </label>
-            <input id="folderPath" name="folderPath" className="input" defaultValue={s?.folderPath ?? ""} placeholder="D:\Backups\StitchBench" />
-          </div>
+          {desktop && (
+            <div className="field">
+              <label htmlFor="folderPath" className="label">
+                Folder (only for the folder choice)
+              </label>
+              <input id="folderPath" name="folderPath" className="input" defaultValue={s?.folderPath ?? ""} placeholder="D:\Backups\StitchBench" />
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Submit>Save</Submit>
           </div>
