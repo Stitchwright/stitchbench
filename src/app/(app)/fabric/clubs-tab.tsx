@@ -7,7 +7,8 @@ import { KIND_LABEL, cardBillingFor, clubsFor } from "@/lib/clubs";
 import { Empty } from "@/components/ui";
 import { NewClubForm } from "@/components/club-forms";
 
-export async function ClubsTab({ shopId }: { shopId: string }) {
+/** `canStart`: an owner or admin (starting a club sets a price). */
+export async function ClubsTab({ shopId, canStart }: { shopId: string; canStart: boolean }) {
   const [clubs, series, card] = await Promise.all([clubsFor(shopId), db.kitSeries.findMany({ where: { shopId }, orderBy: { name: "asc" }, select: { id: true, name: true } }), cardBillingFor(shopId)]);
   const failed = clubs.reduce((a, c) => a + c.failed, 0);
   return (
@@ -25,7 +26,7 @@ export async function ClubsTab({ shopId }: { shopId: string }) {
       <div className="card">
         {clubs.length === 0 ? (
           <div className="card-pad">
-            <Empty>No clubs yet. Start one below.</Empty>
+            <Empty>{canStart ? "No clubs yet. Start one below." : "No clubs yet. The owner or an admin starts one here."}</Empty>
           </div>
         ) : (
           <ul className="divide-y divide-line" aria-label="Clubs">
@@ -51,10 +52,12 @@ export async function ClubsTab({ shopId }: { shopId: string }) {
           </ul>
         )}
       </div>
-      <div className="card card-pad space-y-2">
-        <h2 className="text-sm font-semibold">Start a club</h2>
-        <NewClubForm series={series} />
-      </div>
+      {canStart && (
+        <div className="card card-pad space-y-2">
+          <h2 className="text-sm font-semibold">Start a club</h2>
+          <NewClubForm series={series} />
+        </div>
+      )}
     </div>
   );
 }

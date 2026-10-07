@@ -132,7 +132,7 @@ export default async function ModulesPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <PageHeader title="Modules" back={{ href: "/settings", label: "Settings" }} />
+      <PageHeader title="Add-ons" back={{ href: "/settings", label: "Settings" }} />
 
       <Section title="Your company">
         <div className="space-y-2 text-sm">
@@ -156,7 +156,7 @@ export default async function ModulesPage() {
         </div>
       </Section>
 
-      <Section title="Modules">
+      <Section title="Add-ons">
         <p className="muted mb-3 text-sm">
           Extra parts of {programName()} you can add, paid monthly or yearly. When one ends, nothing is deleted: you can still look at and export what&apos;s there
           and finish work already in, but new work in it stops. The program itself is licensed through your{" "}
@@ -221,7 +221,7 @@ export default async function ModulesPage() {
                     Price your vacuum services
                   </Check>
                   <Check done={hubJoined} href="/settings#hub">
-                    Join the community hub to see and share what fits (the finder)
+                    Join StitchHub to see and share what fits (the finder)
                   </Check>
                   <li className="flex items-start gap-2">
                     <span aria-hidden className="muted">
@@ -280,7 +280,7 @@ export default async function ModulesPage() {
               <thead>
                 <tr>
                   <th>Key</th>
-                  <th>Modules</th>
+                  <th>Add-ons</th>
                   <th>Plan</th>
                   <th>From – to</th>
                   <th>Grace until</th>

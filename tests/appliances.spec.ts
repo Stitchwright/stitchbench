@@ -47,7 +47,7 @@ test("a stand mixer: Tilt-head / Bowl-lift, Bowl size, the dime test and the mix
   expect(types).toEqual(expect.arrayContaining(["Tilt-head", "Bowl-lift"]));
   await expect(page.getByLabel("Bowl size")).toBeVisible();
   await expect(page.getByLabel("Bowl", { exact: true })).toBeChecked();
-  await page.getByLabel("New customer name").fill(`Mixer Owner ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Mixer Owner ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("KitchenAid");
   await page.getByLabel("Model", { exact: true }).fill("KSM150PS");
   await page.getByLabel("Type", { exact: true }).selectOption("Tilt-head");
@@ -71,7 +71,7 @@ test("a 3D printer asks Filament in use and Nozzle size (no Resin), and its tick
   await expect(page.getByLabel("Nozzle size")).toBeVisible();
   await expect(page.getByLabel("Resin in use")).toHaveCount(0);
   await expect(page.getByLabel("Build plate", { exact: true })).toBeChecked();
-  await page.getByLabel("New customer name").fill(`Printer Owner ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Printer Owner ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Prusa");
   await page.getByLabel("Model", { exact: true }).fill("MK4");
   await page.getByLabel("Nozzle size").selectOption("0.4");
@@ -92,7 +92,7 @@ test("a resin printer asks Resin in use, and its checklist starts with the FEP f
   await page.goto("/tickets/new?kind=resin-printer");
   await expect(page.getByLabel("Resin in use")).toBeVisible();
   await expect(page.getByLabel("Filament in use")).toHaveCount(0);
-  await page.getByLabel("New customer name").fill(`Resin Owner ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Resin Owner ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Elegoo");
   await page.getByLabel("Model", { exact: true }).fill("Mars 4");
   await page.getByLabel("Resin in use").selectOption("Standard");
@@ -127,7 +127,7 @@ test("What you repair: Espresso machine with a Boiler type question; relabelling
   await page.getByRole("link", { name: "Espresso machine", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Check in an espresso machine" })).toBeVisible();
   await expect(page.getByLabel("Power cord", { exact: true })).toBeChecked();
-  await page.getByLabel("New customer name").fill(`Espresso Owner ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Espresso Owner ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Gaggia");
   await page.getByLabel("Model", { exact: true }).fill("Classic Pro");
   await page.getByLabel("Type", { exact: true }).selectOption("Semi-automatic");

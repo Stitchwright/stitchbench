@@ -1,7 +1,7 @@
 // Unit tests for splitting a sold line's charge into exact return lines (npm run test:unit).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { splitForReturn } from "./sale-return";
+import { linesOfSale, receiptStands, returnSkip, splitForReturn } from "./sale-return";
 import { roundCents } from "./register-math";
 
 test("a charge that divides evenly among its units returns one line", () => {
@@ -38,4 +38,35 @@ test("the split total matches netCents for a spread of quantities and charges, w
 
 test("nothing to return for a zero quantity", () => {
   assert.deepEqual(splitForReturn(0, 0), []);
+});
+
+test("a receipt leaves out lines with their own way back: repairs, gift cards, bookings, vacuums and trade-ins", () => {
+  assert.equal(returnSkip({}), null);
+  assert.equal(returnSkip({ repairJobId: "r" }), "repair");
+  assert.equal(returnSkip({ giftCardId: "g" }), "card");
+  assert.equal(returnSkip({ enrollmentId: "e" }), "booking");
+  assert.equal(returnSkip({ appointmentId: "a" }), "booking");
+  assert.equal(returnSkip({ stockUnitId: "u" }), "unit");
+  assert.equal(returnSkip({ tradeInUnitId: "t" }), "unit");
+});
+
+test("a return takes the receipt's tax only for items that sale sold", () => {
+  const sold = [
+    { partId: "p1", description: "Bobbins" },
+    { partId: null, description: "Hemming" },
+  ];
+  assert.equal(linesOfSale([{ partId: "p1", description: "anything" }, { partId: null, description: "Hemming" }], sold), true);
+  assert.equal(linesOfSale([{ partId: "p2", description: "Bobbins" }], sold), false, "another part");
+  assert.equal(linesOfSale([{ partId: null, description: "Other item" }], sold), false, "a typed line the sale didn't have");
+  assert.equal(linesOfSale([{ partId: null, description: "Bobbins" }], sold), false, "a typed line named like a part");
+});
+
+test("the scanned receipt stands only while every return line came from it", () => {
+  assert.equal(receiptStands("s1", [{ qty: -1, fromSale: "s1" }, { qty: -2, fromSale: "s1" }]), true);
+  assert.equal(receiptStands("s1", [{ qty: -1, fromSale: "s1" }, { qty: 1 }]), true, "a sale line beside it (the server then charges the rate today anyway)");
+  assert.equal(receiptStands("s1", []), false, "its lines removed");
+  assert.equal(receiptStands("s1", [{ qty: 1 }]), false, "no return lines left");
+  assert.equal(receiptStands("s1", [{ qty: -1 }]), false, "a return typed by hand");
+  assert.equal(receiptStands("s1", [{ qty: -1, fromSale: "s1" }, { qty: -1, fromSale: "s2" }]), false, "another receipt's lines");
+  assert.equal(receiptStands(null, [{ qty: -1, fromSale: "s1" }]), false);
 });

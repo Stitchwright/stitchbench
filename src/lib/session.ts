@@ -47,14 +47,15 @@ export async function requirePlatformAdmin(): Promise<CurrentUser> {
 }
 
 /**
- * Settings that belong to the whole install (the community hub connection) rather than one company. On an install with
- * one company its owner or admin decides; with several, only the StitchBench administrator may.
+ * Settings that belong to the whole install (the community hub connection, the manual library) rather than one company.
+ * On an install with one company its owner or admin decides; with several, only the StitchBench administrator may.
+ * `what` finishes the refusal: "only its administrator can <what>".
  */
-export async function requireInstallAdmin(): Promise<CurrentUser> {
+export async function requireInstallAdmin(what = "change the community hub connection"): Promise<CurrentUser> {
   const u = await requireAdmin();
   if (isPlatformAdmin(u.email)) return u;
   if ((await db.shop.count()) > 1) {
-    throw new UserError("Several companies share this StitchBench, so only its administrator can change the community hub connection.");
+    throw new UserError(`Several companies share this StitchBench, so only its administrator can ${what}.`);
   }
   return u;
 }

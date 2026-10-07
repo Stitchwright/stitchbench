@@ -8,12 +8,15 @@
   --ink: #17202e;
   --ink-2: #4a5566;
   --line: #d9d4c7;
+  /* Borders a person must see to find a field or a button (WCAG 1.4.11: 3:1 on white), and placeholder text (4.5:1). */
+  --field-line: #8a8578;
+  --placeholder: #6b6f78;
   --navy: #1f3a5f;
   --navy-ink: #ffffff;
   --thread: #b3261e;
-  --ok: #2e7d4f;
+  --ok: #276e45;
   --ok-bg: #e3f1e8;
-  --wait: #9a6a00;
+  --wait: #7a5400;
   --wait-bg: #fbf0d6;
   --work: #1f5f99;
   --work-bg: #e2edf8;
@@ -31,6 +34,8 @@
     --ink: #e8e4da;
     --ink-2: #a9b1bd;
     --line: #2d3848;
+    --field-line: #6b7a90;
+    --placeholder: #8c96a3;
     --navy: #6f9fd8;
     --navy-ink: #0d1520;
     --thread: #e5675e;
@@ -59,6 +64,12 @@
   --color-thread: var(--thread);
   --font-sans: var(--font-body);
   --font-mono: var(--font-code);
+  /* Nothing a person reads is below 14px (ease-of-use.md 1): the smallest size is the same as text-sm. */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.25rem;
+  /* The menu sits beside the page from this width; below it (a 10-inch tablet held sideways, an upright iPad) it folds
+     under a Menu button, so the register's sale table fits a 1024-wide screen without scrolling sideways. */
+  --breakpoint-side: 1100px;
 }
 
 html,
@@ -66,6 +77,16 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body), system-ui, sans-serif;
+}
+
+body {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+::placeholder {
+  color: var(--placeholder);
+  opacity: 1;
 }
 
 h1,
@@ -96,8 +117,9 @@ h3 {
   .h2 {
     @apply text-lg font-semibold;
   }
+  /* Field labels: 14px in sentence case (small capitals are slower to read). */
   .label {
-    @apply text-xs font-semibold uppercase tracking-wide text-ink-2;
+    @apply text-sm font-semibold text-ink-2;
   }
   .muted {
     @apply text-ink-2;
@@ -112,7 +134,15 @@ h3 {
   .input,
   .select,
   .textarea {
-    @apply w-full rounded border border-line bg-surface px-3 py-2 text-base text-ink outline-none;
+    @apply w-full rounded border bg-surface px-3 py-2 text-base text-ink outline-none;
+    border-color: var(--field-line);
+    min-height: 2.75rem;
+  }
+  .input:disabled,
+  .select:disabled,
+  .textarea:disabled {
+    background: var(--surface-2);
+    color: var(--ink-2);
   }
   .input:focus,
   .select:focus,
@@ -121,16 +151,23 @@ h3 {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--navy) 25%, transparent);
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded border px-3 py-2 text-sm font-semibold whitespace-nowrap;
-    border-color: var(--line);
+    @apply inline-flex items-center justify-center gap-2 rounded border px-3 py-2 text-base font-semibold whitespace-nowrap;
+    min-height: 2.75rem;
+    border-color: var(--field-line);
     background: var(--surface);
     color: var(--ink);
   }
-  .btn:hover {
+  /* Not on a disabled button: it keeps its grey look under the mouse. */
+  .btn:hover:not(:disabled) {
     background: var(--surface-2);
   }
-  .btn:disabled {
-    opacity: 0.55;
+  /* Disabled stays readable (4.5:1): a plain grey button with a dashed edge, not a faded one. */
+  .btn:disabled,
+  .btn-primary:disabled {
+    background: var(--muted-bg);
+    border-color: var(--field-line);
+    border-style: dashed;
+    color: var(--ink-2);
     cursor: not-allowed;
   }
   .btn:focus-visible,
@@ -144,24 +181,41 @@ h3 {
     border-color: var(--navy);
     color: var(--navy-ink);
   }
-  .btn-primary:hover {
+  .btn-primary:hover:not(:disabled) {
     background: color-mix(in srgb, var(--navy) 88%, black);
   }
   .btn-danger {
     color: var(--bad);
   }
   .btn-sm {
-    @apply px-2 py-1 text-xs;
+    @apply px-2.5 py-1 text-sm;
+    min-height: 2.25rem;
+  }
+  /* The big payment buttons at the register. */
+  .btn-lg {
+    @apply px-4 text-lg;
+    min-height: 3.5rem;
   }
   .link {
     color: var(--navy);
     @apply underline-offset-2 hover:underline;
   }
+  /* A link-styled button ("change", "remove", "Dismiss") is still a target: 24px at least (WCAG 2.5.8). */
+  button.link,
+  .link-target,
+  .table td > a:only-child {
+    @apply inline-flex items-center;
+    min-height: 1.5rem;
+  }
+  /* A link in a sentence: 2px above and below make its tap area 24px without moving the lines. */
+  a.link {
+    padding-block: 0.125rem;
+  }
   .table {
-    @apply w-full border-collapse text-sm;
+    @apply w-full border-collapse text-base;
   }
   .table th {
-    @apply border-b border-line px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-2;
+    @apply border-b border-line px-3 py-2 text-left text-sm font-semibold text-ink-2;
   }
   .table td {
     @apply border-b border-line px-3 py-2 align-top;
@@ -173,7 +227,7 @@ h3 {
     @apply overflow-x-auto;
   }
   .pill {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-sm font-semibold whitespace-nowrap;
   }
   .tone-neutral {
     background: var(--muted-bg);
@@ -206,8 +260,40 @@ h3 {
     @apply grid gap-3 sm:grid-cols-2;
   }
   .check {
-    @apply h-5 w-5 shrink-0;
+    @apply h-6 w-6 shrink-0;
     accent-color: var(--navy);
+  }
+}
+
+/* Checkboxes and radio buttons: 24px everywhere (WCAG 2.5.8); a utility class still sets its own size. */
+@layer base {
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    accent-color: var(--navy);
+  }
+}
+
+/* A finger, not a mouse (a tablet, a touch screen at the counter): every button 44px tall (Apple's minimum). In the
+   components layer, so a utility class still wins; the register's big payment buttons stay big. */
+@layer components {
+  @media (pointer: coarse) {
+    .btn,
+    .btn-sm,
+    .input,
+    .select {
+      min-height: 2.75rem;
+    }
+    .btn-lg {
+      min-height: 3.5rem;
+    }
+    button.link,
+    .link-target,
+    .table td > a:only-child {
+      min-height: 2.75rem;
+    }
   }
 }
 

@@ -386,6 +386,8 @@ export type MarkdownSource = "slow" | "bolt";
  */
 export async function markDownFor(user: CurrentUser, partId: string, source: MarkdownSource): Promise<string> {
   assertId(partId);
+  // A markdown is a price change: an owner's or admin's (as in updatePart).
+  if (user.role === "TECH") throw new UserError("Only an owner or admin can mark fabric down.");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true, ...INSIGHT_SELECT } });
   const tz = shop.timeZone;
   const part = await db.part.findFirst({ where: { id: partId, shopId: user.shopId }, select: { id: true, partNumber: true, kind: true, unit: true, consignLinkId: true, priceCents: true, qtyOnHand: true, createdAt: true } });
@@ -420,6 +422,7 @@ export async function markDownFor(user: CurrentUser, partId: string, source: Mar
 /** Takes back the latest markdown of a fabric, the day it was made and while its price is still the marked-down price. */
 export async function undoMarkdownFor(user: CurrentUser, markdownId: string): Promise<string> {
   assertId(markdownId);
+  if (user.role === "TECH") throw new UserError("Only an owner or admin can undo a markdown.");
   const tz = (await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } })).timeZone;
   const row = await db.fabricMarkdown.findFirst({ where: { id: markdownId, shopId: user.shopId }, include: { part: { select: { partNumber: true } } } });
   if (!row) throw new UserError("Markdown not found.");

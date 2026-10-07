@@ -20,6 +20,7 @@ import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type Card
 import { fmtWhen } from "@/lib/zoned";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { saleLineKind } from "@/lib/sale-kind";
+import { linesOfSale } from "@/lib/sale-return";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -109,6 +110,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // Every item must be this shop's; repairs must be this shop's unpaid partner jobs.
     const partIds = [...new Set(input.lines.map((l) => l.partId).filter(Boolean) as string[])];
     const parts = new Map((await db.part.findMany({ where: { shopId, id: { in: partIds } } })).map((p) => [p.id, p]));
+    // The remnant bin's items (a fabric's remnantId names it): a remnant sells whole, whatever its yardage (a 1.3 yd bolt end).
+    const remnants = new Set((await db.part.findMany({ where: { shopId, remnantId: { in: partIds } }, select: { remnantId: true } })).map((p) => p.remnantId!));
     if (parts.size !== partIds.length) throw new UserError("An item on this sale isn't in your inventory any more. Remove it and scan it again.");
     const jobIds = [...new Set(input.lines.map((l) => l.repairJobId).filter(Boolean) as string[])];
     const jobs = new Map((await db.repairJob.findMany({ where: { shopId, side: "retail", id: { in: jobIds } } })).map((j) => [j.id, j]));
@@ -214,11 +217,11 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       const job = l.repairJobId ? jobs.get(l.repairJobId)! : null;
       let qty = Number(l.qty);
       // Fabric is cut in eighths, and an eighth is exact in binary: counts and sums never drift, and the repair shop
-      // (which rounds to thousandths) records the same number. Anything that is not an eighth is refused below.
+      // (which rounds to thousandths) records the same number. Anything that is not an eighth is refused below (a remnant, sold whole, excepted).
       if (part?.unit === "yd" && Number.isFinite(qty) && inEighths(qty)) qty = Math.round(qty * 8) / 8;
       if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 10000) throw new UserError("Each line needs a quantity.");
       let unit = Math.round(Number(l.unitPriceCents));
-      if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, use Return mode (negative quantity).");
+      if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, press 'Return an item' at the register (it rings up a negative quantity).");
       let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
       if (job) {
         if (qty !== 1) throw new UserError("A repair is one line of 1.");
@@ -233,7 +236,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       }
       if (part) {
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
-        if (part.unit === "yd" && !inEighths(qty)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
+        if (part.unit === "yd" && !inEighths(qty) && !remnants.has(part.id)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
         if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
         // A tech can type the price of an item that has none, but not leave it free.
         if (user.role === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
@@ -290,11 +293,14 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // A tax-exempt customer's sale charges no tax (their certificate number is kept on it), unless the cashier ticks
     // "Charge tax anyway" (chargeTax). A processor's tax amount (online shop) is never overridden here.
     const customerId = input.customerId || firstBookingCustomer(lines, bookings);
-    // A return scanned in from a receipt (every line a return) gives back the tax as that sale charged it: its rate and
-    // exemption, not the customer's or the shop's today.
+    // A return scanned in from a receipt (every line a return, each an item that sale sold) gives back the tax as that
+    // sale charged it: its rate and exemption, not the customer's or the shop's today.
     const fromReceipt = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.every((l) => l.qty < 0);
-    const original = fromReceipt ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true } }) : null;
-    if (fromReceipt && !original) throw new UserError("The sale being returned wasn't found.");
+    const receipt = fromReceipt
+      ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true, lines: { select: { partId: true, description: true } } } })
+      : null;
+    if (fromReceipt && !receipt) throw new UserError("The sale being returned wasn't found.");
+    const original = receipt && linesOfSale(lines, receipt.lines) ? receipt : null;
     const exemptId = original
       ? original.taxExemptId
       : givenTax == null && customerId && input.chargeTax !== true
@@ -565,6 +571,8 @@ async function unpayClubSale(tx: Tx, shopId: string, saleId: string, at: Date) {
     await tx.clubPayment.update({ where: { id: p.id }, data: { voidedAt: at } });
     const m = await tx.clubMember.findFirst({ where: { id: p.memberId, shopId }, select: { id: true, paidMonth: true } });
     if (!m || m.paidMonth !== p.month) continue;
+    // Another payment still standing covers that month (a stray second subscription refunded beside the real one): it stays paid.
+    if (await tx.clubPayment.count({ where: { shopId, memberId: m.id, voidedAt: null, id: { not: p.id }, month: { gte: p.month } } })) continue;
     const prev = await tx.clubPayment.findFirst({ where: { shopId, memberId: m.id, voidedAt: null, id: { not: p.id }, month: { lt: p.month } }, orderBy: [{ month: "desc" }, { createdAt: "desc" }] });
     await tx.clubMember.update({ where: { id: m.id }, data: { paidMonth: prev?.month ?? null, lastPaidAt: prev?.createdAt ?? null } });
   }

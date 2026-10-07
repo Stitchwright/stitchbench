@@ -114,11 +114,11 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
       {canSignUp && (
         <Section title="Sign someone up">
           <ActionForm action={enroll.bind(null, c.id)} success={seatsLeft > 0 && !waiting.length ? "Signed up" : "Added to the waiting list"} reset className="space-y-3">
-            <CustomerPicker initial={null} />
+            <CustomerPicker initial={null} newBox />
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="field">
                 <label htmlFor="customerName" className="label">
-                  New customer name
+                  Or a new customer&apos;s name
                 </label>
                 <input id="customerName" name="customerName" className="input" autoComplete="off" />
               </div>

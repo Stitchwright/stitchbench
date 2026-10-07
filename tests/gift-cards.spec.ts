@@ -25,7 +25,7 @@ test("sell a card, pay part of a sale with it, void restores it", async ({ page 
   // Sell a new $50 card, paid in cash.
   await page.goto("/register");
   await page.getByRole("button", { name: "Gift card", exact: true }).first().click();
-  await page.getByLabel("Amount (", { exact: false }).fill("50");
+  await page.getByLabel(/^Amount \(/).fill("50");
   await page.getByRole("button", { name: "Add to sale" }).click();
   const sale = page.getByRole("table", { name: "Sale" });
   await expect(sale).toContainText("Gift card");
@@ -46,7 +46,7 @@ test("sell a card, pay part of a sale with it, void restores it", async ({ page 
   await page.locator("#register-code").press("Enter");
   await expect(sale).toContainText("Gift card test notion");
   await page.getByLabel(/^Gift card or store credit number/).fill(number);
-  await page.getByLabel(/^Amount tendered/).fill("20");
+  await page.getByLabel(/^Payment amount/).fill("20");
   await page.getByRole("button", { name: "Gift card", exact: true }).last().click();
   await expect(page.getByText(/Gift card ending/)).toBeVisible();
   await page.getByRole("button", { name: "Cash", exact: true }).click();

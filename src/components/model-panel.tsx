@@ -195,7 +195,7 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
   const me = library.some((d) => d.withdrawnWhy) ? await sessionUser() : null;
   const canDelete = Boolean(me && (await isInstallAdmin(me)));
   const modelPage = showLink ? (
-    <Link href={modelHref(brand, model, kind?.key)} className="link text-sm">
+    <Link href={modelHref(brand, model, kind?.key)} className="link link-target text-sm">
       Model page
     </Link>
   ) : undefined;

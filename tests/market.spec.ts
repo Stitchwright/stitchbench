@@ -48,7 +48,7 @@ test("cross-reference and marketplace", async ({ page }) => {
     await page.getByRole("button", { name: "Join", exact: true }).click();
   }
   await expect(page.getByText(/Connected to/)).toBeVisible({ timeout: 180_000 });
-  await page.getByRole("button", { name: "Sync now" }).click();
+  await page.getByRole("button", { name: "Update from StitchHub" }).click();
   await expect(page.getByText("Synced with the hub")).toBeVisible({ timeout: 180_000 });
 
   // ---- cross-reference: add, fix, history, roll back, and it shows on the model page ----

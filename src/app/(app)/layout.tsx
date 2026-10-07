@@ -73,9 +73,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const secureUrl = secureAddress();
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
+    <div className="flex min-h-screen flex-col side:flex-row">
       {secureUrl && <meta name={SECURE_ADDRESS_META} content={secureUrl} />}
-      <aside className="no-print border-b border-line bg-surface md:sticky md:top-0 md:h-screen md:overflow-y-auto md:w-60 md:shrink-0 md:border-r md:border-b-0">
+      <aside className="no-print border-b border-line bg-surface side:sticky side:top-0 side:h-screen side:overflow-y-auto side:w-60 side:shrink-0 side:border-r side:border-b-0">
         <AppHeader
           logo={
           <Link href="/" className="block">
@@ -86,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
         }
           search={
-        <form action="/search" className="md:px-0 md:pb-3 md:pt-0">
+        <form action="/search" className="side:px-0 side:pb-3 side:pt-0">
           <label htmlFor="q" className="sr-only">
             Search
           </label>
@@ -117,7 +117,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         )}
         {/* On phones too: a shared counter tablet or a tech's phone must be able to sign out. */}
-        <div className="px-4 py-2 text-xs md:py-4">
+        <div className="px-4 py-2 text-xs side:py-4">
           <div className="muted">Signed in as {user.name}</div>
           <form
             action={async () => {

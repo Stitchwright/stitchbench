@@ -177,7 +177,12 @@ async function main() {
     const apr0 = monthRange("2026-04-01", "2026-04-30", TZ);
     const ga = (await liabilityReport(a.shopId, apr0.start, apr0.end)).kinds.find((k) => k.kind === "gift")!;
     assert.deepEqual([ga.opening, ga.closing, ga.movement.length], [2880, 2880, 0], "the liability carries over a quiet month");
-    ok("gift card liability: start, movement by reason, end");
+    // A void card's row with money on it owes nothing: not in today's liability or the count.
+    const voidCard = await db.giftCard.create({ data: { shopId: a.shopId, number: `VOIDCHECK${Date.now()}`, kind: "gift", status: "void", balanceCents: 999 } });
+    const gv = await liabilityReport(a.shopId, apr0.start, apr0.end);
+    assert.deepEqual([gv.today, gv.kinds.find((k) => k.kind === "gift")!.cardsWithBalance], [2880, ga.cardsWithBalance], "a void card isn't owed");
+    await db.giftCard.delete({ where: { id: voidCard.id } });
+    ok("gift card liability: start, movement by reason, end; void cards aren't in today's liability");
 
     // ---------- April: exempt, a rate change, a void across the quarter's end ----------
     const s9 = await completeSaleAs(a.user, { customerId: exempt.id, lines: [item(p1, 2)], tenders: [cash(2000)] });

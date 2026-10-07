@@ -138,9 +138,11 @@ export async function runOffsiteBackup(shopId: string, opts: RunOpts = {}): Prom
   if (!s.on && !opts.force) throw new UserError("Off-site backup is switched off.");
   const publicKey = Buffer.from(s.publicKey, "base64");
   const now = opts.now ?? new Date();
-  const store = opts.store ?? (await storeFor(shopId));
+  // The run's row first: a store that can't be used (a folder saved on hosted, a bucket gone) is a failed run the
+  // Settings page shows, not a silent skip.
   const run = await db.offsiteRun.create({ data: { shopId, startedAt: now } });
   try {
+    const store = opts.store ?? (await storeFor(shopId));
     const photos = await sendPhotos(shopId, store, publicKey, now);
     const ex = await exportCompany(systemMover(shopId), shopId, { purpose: "backup" });
     const name = dataObjectName(now);

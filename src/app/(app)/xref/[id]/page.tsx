@@ -33,7 +33,7 @@ export default async function CrossRefEntry({ params }: { params: Promise<{ id: 
   return (
     <div className="space-y-6">
       <PageHeader
-        back={{ href: "/xref", label: "Cross-reference" }}
+        back={{ href: "/xref", label: "Other part numbers" }}
         title={x.name}
         sub={[KIND_LABEL[x.kind] ?? x.kind, x.category, x.specs].filter(Boolean).join(" · ")}
       />

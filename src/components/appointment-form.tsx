@@ -131,11 +131,11 @@ export function AppointmentForm({
         </div>
       ) : (
         <>
-          <CustomerPicker initial={customer} notifyRequired={false} />
+          <CustomerPicker initial={customer} notifyRequired={false} newBox />
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="field">
               <label htmlFor="customerName" className="label">
-                New customer name
+                Or a new customer&apos;s name
               </label>
               <input id="customerName" name="customerName" className="input" autoComplete="off" />
             </div>

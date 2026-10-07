@@ -51,7 +51,7 @@ async function pagesComeUp(page: Page, paths: string[]) {
 async function sync(page: Page) {
   for (let i = 0; i < 2; i++) {
     await page.goto("/partners");
-    await page.getByRole("button", { name: "Sync now" }).click();
+    await page.getByRole("button", { name: "Update from StitchHub" }).click();
     await expect(page.getByText("Synced with partners")).toBeVisible();
     await page.waitForTimeout(500);
   }
@@ -153,7 +153,7 @@ test(`offline: ${phase}`, async ({ browser }) => {
     const r = await login(browser, repair);
     await pagesComeUp(r, ["/", "/tickets", "/parts", "/customers", "/market", "/shared", "/partners", "/manuals", "/xref"]);
     await r.goto("/tickets/new");
-    await r.getByLabel("New customer name").fill("Offline Customer");
+    await r.getByLabel("new customer's name").fill("Offline Customer");
     await r.getByLabel("Brand", { exact: true }).fill("Janome");
     await r.getByLabel("Model", { exact: true }).fill("MC6700P");
     await r.getByLabel("Serial number", { exact: true }).fill(`OFFT${state.run}${phase}${Date.now().toString(36).slice(-3)}`);
@@ -165,7 +165,7 @@ test(`offline: ${phase}`, async ({ browser }) => {
       r,
       async () => {
         await r.goto("/partners");
-        await r.getByRole("button", { name: "Sync now" }).click();
+        await r.getByRole("button", { name: "Update from StitchHub" }).click();
       },
       phase === "hang" ? 45_000 : QUICK_MS,
     );

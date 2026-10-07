@@ -57,7 +57,7 @@ export default async function Market({ searchParams }: { searchParams: Promise<{
       <MarketNav current="browse" />
       {!joined ? (
         <p className="pill tone-wait inline-block">
-          The marketplace is on the community hub. <Link href="/settings#hub" className="link">Join it in Settings</Link>.
+          The marketplace is on StitchHub. <Link href="/settings#hub" className="link">Join it in Settings</Link>.
         </p>
       ) : (
         <>
