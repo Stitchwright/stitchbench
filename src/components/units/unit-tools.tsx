@@ -11,6 +11,7 @@ import { UNIT_CONDITION_LABEL } from "@/lib/constants";
 import { money, toCents } from "@/lib/format";
 import type { UnitForSale, UnitToReturn } from "@/lib/units/units";
 import type { TradeInInput, UnitCartLine } from "@/lib/units/types";
+import { TradeInHelper } from "@/components/units/trade-in-helper";
 
 /** A kind the shop may take in trade (from the register page): its key, words, types and brand suggestions. */
 export type TradeKind = { key: string; label: string; types: string[]; brands: string[]; modelHint: string };
@@ -18,7 +19,7 @@ export type TradeKind = { key: string; label: string; types: string[]; brands: s
 type Panel = "sell" | "trade" | "plan" | "return" | null;
 type Choices = Awaited<ReturnType<typeof planChoices>>;
 const CONDITIONS = ["NEW", "OPEN_BOX", "REFURB", "USED"] as const;
-const emptyTrade = (kind: string) => ({ kind, brand: "", model: "", serial: "", machineType: "", condition: "USED" as TradeInInput["condition"], bagged: "" as "" | "Bagged" | "Bagless", bagType: "", credit: "" });
+const emptyTrade = (kind: string) => ({ kind, brand: "", model: "", serial: "", machineType: "", condition: "USED" as TradeInInput["condition"], bagged: "" as "" | "Bagged" | "Bagless", bagType: "", credit: "", note: "" });
 
 export function UnitTools({
   kinds,
@@ -27,6 +28,7 @@ export function UnitTools({
   inCart,
   onAdd,
   onNeedCustomer,
+  tradeNote,
 }: {
   /** Kinds the shop may sell and take in trade now; empty: returns only. */
   kinds: TradeKind[];
@@ -35,6 +37,8 @@ export function UnitTools({
   inCart: { stockUnitId?: string; qty: number; description: string }[];
   onAdd: (line: UnitCartLine) => void;
   onNeedCustomer: () => void;
+  /** The Assistant's "Draft a condition note" on the trade-in (shop-features-round-2-design.md 5.4), when it can be used. */
+  tradeNote?: { unavailable?: string } | null;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [q, setQ] = useState("");
@@ -92,6 +96,7 @@ export function UnitTools({
       condition: trade.condition,
       bagged: vacuum && trade.bagged ? trade.bagged : null,
       bagType: vacuum ? trade.bagType.trim() || null : null,
+      note: trade.note.trim() || null,
     };
     onAdd({ description: `Trade-in: ${t.brand} ${t.model}${t.serial ? ` S/N ${t.serial}` : ""}`, qty: -1, unitPriceCents: credit, taxable: false, unit: null, tradeIn: t });
     setTrade(emptyTrade(trade.kind));
@@ -280,6 +285,15 @@ export function UnitTools({
                     </div>
                   </>
                 )}
+                <TradeInHelper
+                  kind={tradeKind?.key ?? null}
+                  brand={trade.brand}
+                  model={trade.model}
+                  note={trade.note}
+                  onNote={(note) => setTrade((t) => ({ ...t, note }))}
+                  onCredit={(credit) => setTrade((t) => ({ ...t, credit }))}
+                  noteEntry={tradeNote}
+                />
                 <div className="field">
                   <label htmlFor="ti-credit" className="label">
                     Credit ($)

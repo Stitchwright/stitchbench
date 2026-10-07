@@ -290,6 +290,10 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   });
   await db.assistantSettings.create({ data: { shopId: shopId, voice: "Short and friendly." } });
   await db.assistantCall.create({ data: { shopId: shopId, feature: "draft_work_done", model: "claude-sonnet-5-5", request: { system: "s", messages: [] }, response: "Done." } });
+  // Phase 4 (shop-features-round-2-design.md section 5): a pattern's yardage, a care tip, a customer's question.
+  await db.patternNeed.create({ data: { shopId, patternPartId: part.id, size: "Throw", role: "background", yards: 2.25 } });
+  await db.careTip.create({ data: { shopId, kind: "sewing", text: "Change the needle every 8 hours of sewing." } });
+  await db.customerQuestion.create({ data: { shopId, name: "Pat", contact: "pat@example.com", text: "Do you sell Bernina feet?" } });
   await db.shop.update({
     where: { id: shopId },
     data: {

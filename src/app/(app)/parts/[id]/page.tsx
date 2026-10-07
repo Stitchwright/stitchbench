@@ -8,6 +8,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { ListingCard } from "@/components/shop/listing-card";
+import { PatternYardage } from "@/components/pattern-yardage";
 import { PartFields } from "@/components/part-fields";
 import { addPartSource, moveStock, preferPartSource, removePartSource, updatePart } from "@/actions/parts";
 import { addPartToCrossRef } from "@/actions/xref";
@@ -64,6 +65,8 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   const shopFlags = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, shopOn: true } });
   const swatchPhoto = p.kind === "FABRIC" && shopFlags.sellsRetail ? await db.partPhoto.findFirst({ where: { partId: p.id, shopId: user.shopId }, orderBy: { sortOrder: "asc" }, select: { id: true } }) : null;
   const tagEntry = swatchPhoto ? await entryFor(user.shopId, "fabric") : null;
+  // Marketing drafts on the Online shop card (shop-features-round-2-design.md 5.2).
+  const marketingEntry = shopFlags.sellsRetail ? await entryFor(user.shopId, "marketing") : null;
   // The items this fabric's cuts feed (fat quarters, half yards, remnant): only this shop's own.
   const cutIds = [p.fatQuarterId, p.halfYardId, p.remnantId].filter((x): x is string => !!x);
   const cutItems = cutIds.length ? await db.part.findMany({ where: { id: { in: cutIds }, shopId: user.shopId }, select: { id: true, partNumber: true, description: true, qtyOnHand: true, unit: true } }) : [];
@@ -179,7 +182,8 @@ export default async function PartPage({ params, searchParams }: { params: Promi
           {p.kind !== "MACHINE" && p.kind !== "FABRIC" && <FitsSection shopId={user.shopId} partId={p.id} />}
           {/* The shop's own color matches (shop-features-round-2-design.md 2.2), for items with a color. */}
           {shopFlags.sellsRetail && (p.colorNumber || p.colorName || p.colorHex || typeOf(p) === "thread") && <SameColor shopId={user.shopId} partId={p.id} />}
-          {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}
+          {p.kind === "PATTERN" && shopFlags.sellsRetail && <PatternYardage shopId={user.shopId} partId={p.id} />}
+          {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} drafting={marketingEntry?.show ? { unavailable: marketingEntry.unavailable } : null} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
               <p className="muted text-sm">No suppliers yet. Add where you buy it.</p>

@@ -17,6 +17,8 @@ import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
 import { balanced, buildBooks, loadBooks } from "@/lib/books";
 import { markBooksExported } from "@/actions/books";
 import { ActionButton } from "@/components/action-form";
+import { entryFor } from "@/lib/assistant/ui";
+import { AskShop } from "@/components/assistant/ask-shop";
 
 const TABS = [
   { key: "sales", label: "Sales" },
@@ -68,11 +70,14 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
     const p = new URLSearchParams({ tab, from: fromStr, to: toStr, period, ...over } as Record<string, string>);
     return `?${p}`;
   };
+  // Ask your shop (shop-features-round-2-design.md 5.1): shown while the Assistant and its "Ask your shop" switch are on.
+  const askEntry = await entryFor(user.shopId, "ask");
   const csv = (what: string) => `/api/reports/${what}?from=${fromStr}&to=${toStr}&period=${period}`;
 
   return (
     <div className="space-y-6">
       <PageHeader title="Reports" sub={`${fmtDay(fromStr)} to ${fmtDay(toStr)}`} />
+      {askEntry.show && <AskShop unavailable={askEntry.unavailable} />}
       <nav className="no-print flex flex-wrap gap-2" aria-label="Reports">
         {TABS.map((t) => (
           <Link key={t.key} href={q({ tab: t.key })} className={`btn btn-sm ${t.key === tab ? "btn-primary" : ""}`} aria-current={t.key === tab ? "page" : undefined}>

@@ -117,6 +117,28 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           <dd className="border-t border-line pt-1 text-right font-semibold">{money(tot.balance)}</dd>
         </dl>
 
+        {/* The pickup sheet (shop-features-round-2-design.md 5.5): what we did in plain words and the shop's care tips. */}
+        {(t.pickupWhat || t.pickupTips.length > 0) && (
+          <section className="mt-6 border-t border-line pt-4 text-sm">
+            {t.pickupWhat && (
+              <>
+                <div className="label">What we did</div>
+                <p className="whitespace-pre-wrap">{t.pickupWhat}</p>
+              </>
+            )}
+            {t.pickupTips.length > 0 && (
+              <>
+                <div className="label mt-3">Caring for your {kind.noun}</div>
+                <ul className="list-disc pl-5">
+                  {t.pickupTips.map((tip) => (
+                    <li key={tip}>{tip}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
         <footer className="mt-8 border-t border-line pt-4 text-xs">
           {s.warrantyDays > 0 && (
             <p>
