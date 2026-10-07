@@ -82,12 +82,24 @@ function partData(formData: FormData) {
   };
 }
 
+const SWATCH_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+/** The picture a new fabric was made with (a bolt-label photo kept as the swatch): checked like the collection form's. */
+async function swatchFile(v: FormDataEntryValue | null) {
+  if (!(v instanceof File) || v.size === 0) return null;
+  if (!SWATCH_TYPES.has(v.type)) throw new UserError("The swatch picture must be a JPEG, PNG or WebP photo.");
+  if (v.size > 2_500_000) throw new UserError("That swatch picture is too large (2.5 MB at most).");
+  return { mime: v.type, data: new Uint8Array(await v.arrayBuffer()) };
+}
+
 export const createPart = safe(async function createPart(formData: FormData) {
   const user = await requireUser();
   const data = partData(formData);
   const qty = qtyValue(formData.get("qtyOnHand"), data.unit === "yd");
+  const swatch = await swatchFile(formData.get("swatch"));
   const row = {
     ...data,
+    photos: swatch ? { create: { shopId: user.shopId, mime: swatch.mime, data: swatch.data, sortOrder: 0 } } : undefined,
     shopId: user.shopId,
     qtyOnHand: qty,
     moves: qty ? { create: { shopId: user.shopId, qty, reason: "RECEIVED" as const, userId: user.id, note: "Opening stock" } } : undefined,

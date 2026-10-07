@@ -13,6 +13,8 @@ import { Empty, PageHeader } from "@/components/ui";
 import { FabricCuts } from "@/components/fabric-cuts";
 import { FabricMarkdown } from "@/components/fabric-markdown";
 import { Swatch } from "@/components/fabric-swatch";
+import { entryFor, type Entry } from "@/lib/assistant/ui";
+import { TagBatch } from "@/components/assistant/tag-fabric";
 import { ReorderTab } from "./reorder-tab";
 import { KitsTab } from "./kits-tab";
 import { ClubsTab } from "./clubs-tab";
@@ -78,7 +80,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
         )}
       </nav>
       {tab === "bolt" && bolt && <BoltEnds shopId={user.shopId} rows={bolt.rows} limit={bolt.limit} />}
-      {tab === "sells" && insight && <WhatSells insight={insight} />}
+      {tab === "sells" && insight && <WhatSells insight={insight} tagEntry={await entryFor(user.shopId, "fabric")} />}
       {tab === "slow" && insight && <SlowFabric insight={insight} />}
       {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
       {tab === "kits" && <KitsTab shopId={user.shopId} />}
@@ -144,8 +146,10 @@ function GradePill({ g }: { g: InsightItem["grade"] }) {
   return <span className={`pill ${tone}`}>{g === "unrated" ? "unrated" : `Grade ${g}`}</span>;
 }
 
-function WhatSells({ insight }: { insight: Insight }) {
+function WhatSells({ insight, tagEntry }: { insight: Insight; tagEntry: Entry }) {
   const { items, groups, gmroi, settings: s } = insight;
+  const untagged = items.filter((i) => i.photoId && i.colorTags.length === 0);
+  const batch = untagged.slice(0, 20).map((i) => ({ id: i.id, photoId: i.photoId as string }));
   const shown = items.slice(0, MAX_ROWS);
   if (items.length === 0) {
     return (
@@ -198,6 +202,7 @@ function WhatSells({ insight }: { insight: Insight }) {
           </p>
         )}
       </div>
+      {tagEntry.show && <TagBatch items={batch} more={Math.max(0, untagged.length - batch.length)} unavailable={tagEntry.unavailable} />}
       <div className="grid gap-4 lg:grid-cols-2">
         <Rollup title="By maker" rows={groups.maker} />
         <Rollup title="By collection" rows={groups.collection} />

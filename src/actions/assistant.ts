@@ -7,7 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { noted, safe, shownOnce } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { draftText, likelyCauses, markCall, plateRead, saveSettings } from "@/lib/assistant/bodies";
+import { draftText, labelRead, likelyCauses, markCall, plateRead, saveSettings, tagFromPicture } from "@/lib/assistant/bodies";
 import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
@@ -48,6 +48,7 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
     plateOn: fd.get("plateOn") === "on",
     manualsOn: fd.get("manualsOn") === "on",
     partsOn: fd.get("partsOn") === "on",
+    fabricOn: fd.get("fabricOn") === "on",
     offerFirstNames: fd.get("offerFirstNames") === "on",
     voice: String(fd.get("voice") ?? "").trim() || null,
   });
@@ -107,4 +108,19 @@ export const askPartsForJob = safe(async (ticketId: string, instruction: string)
 export const askMatchColumns = safe(async (fields: { key: string; label: string }[], headers: string[], sample: string[][]) => {
   const user = await requireUser();
   return shownOnce(JSON.stringify(await matchColumns(user, { fields, headers, sample })));
+});
+
+/** "Photograph the bolt label" (Add a collection, a new fabric): the label's words go back to the form to be checked; nothing is saved. */
+export const readBoltLabel = safe(async (data: string, mediaType: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await labelRead(user, data, mediaType)));
+});
+
+/** "Tag from the picture" on a fabric (the picture is sent from the browser, shrunk): the colors and themes are added to its tags. */
+export const tagFabric = safe(async (partId: string, data: string, mediaType: string) => {
+  const user = await requireUser();
+  const r = await tagFromPicture(user, partId, data, mediaType);
+  revalidatePath(`/parts/${partId}`);
+  revalidatePath("/fabric");
+  return shownOnce(JSON.stringify(r));
 });

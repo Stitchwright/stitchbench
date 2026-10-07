@@ -6,13 +6,14 @@ import { toast } from "sonner";
 import { runAction } from "@/components/action-form";
 import { shrinkImage } from "@/components/photo-upload";
 import { addCollection } from "@/actions/fabric";
+import { BoltLabelButton } from "@/components/assistant/label-button";
 
 const START_ROWS = 8;
 const MORE_ROWS = 6;
 const MAX_ROWS = 60;
 
 /** "Add a collection": the maker, collection and designer once, then a row per colorway (number, color, yards, price, photo). */
-export function CollectionForm() {
+export function CollectionForm({ label }: { label?: { show: boolean; unavailable?: string } }) {
   const router = useRouter();
   const ref = useRef<HTMLFormElement>(null);
   const [rows, setRows] = useState(START_ROWS);
@@ -46,6 +47,7 @@ export function CollectionForm() {
         });
       }}
     >
+      {label?.show && <BoltLabelButton mode="collection" unavailable={label.unavailable} />}
       <div className="grid-form">
         <div className="field">
           <label htmlFor="maker" className="label">

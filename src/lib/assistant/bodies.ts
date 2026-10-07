@@ -9,7 +9,7 @@ import { UserError } from "@/lib/user-error";
 import { runAssistant } from "./client";
 import { causeSources, ticketContext, voiceFor } from "./context";
 import { DRAFT_KINDS, type DraftKind } from "./features";
-import { buildCustomerMessage, buildLikelyCauses, buildPartnerNote, buildPlateRead, buildWriteUp, parsePlate, type Built, type Plate } from "./prompts";
+import { buildCustomerMessage, buildLabelRead, buildLikelyCauses, buildPartnerNote, buildPlateRead, buildSwatchTags, buildWriteUp, parseLabel, parsePlate, parseTags, type BoltLabel, type Built, type Plate } from "./prompts";
 
 const MAX_TEXT = 3000;
 
@@ -84,9 +84,41 @@ export async function plateRead(user: Pick<CurrentUser, "id" | "shopId">, data: 
   return { plate, retried };
 }
 
-export async function saveSettings(user: Pick<CurrentUser, "shopId" | "role">, o: { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn?: boolean; partsOn?: boolean; offerFirstNames: boolean; voice: string | null }) {
+export async function saveSettings(user: Pick<CurrentUser, "shopId" | "role">, o: { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn?: boolean; partsOn?: boolean; fabricOn?: boolean; offerFirstNames: boolean; voice: string | null }) {
   if (user.role === "TECH") throw new UserError("Only the shop owner or an admin can change this.");
   if ((o.voice ?? "").length > 900) throw new UserError("Keep the sample to a few sentences (900 characters).");
   const data = { ...o, voice: o.voice?.trim() || null };
   await db.assistantSettings.upsert({ where: { shopId: user.shopId }, create: { shopId: user.shopId, ...data }, update: data });
+}
+
+const photoOf = (data: string, mediaType: string) => {
+  const type = mediaType === "image/png" || mediaType === "image/webp" ? mediaType : "image/jpeg";
+  const photo = { mediaType: type, data: String(data ?? "").replace(/^data:[^,]*,/, "") } as const;
+  if (!/^[A-Za-z0-9+/=]{100,}$/.test(photo.data)) throw new UserError("Take the photo again: it didn't come through.");
+  return photo;
+};
+
+/** "Photograph the bolt label": one photo (shrunk in the browser) through the hub; the form is prefilled for the person to check. */
+export async function labelRead(user: Pick<CurrentUser, "id" | "shopId">, data: string, mediaType: string): Promise<{ label: BoltLabel }> {
+  await requireOn(user as CurrentUser, "assistant");
+  const photo = photoOf(data, mediaType);
+  const makers = (await db.part.groupBy({ by: ["brand"], where: { shopId: user.shopId, kind: "FABRIC", brand: { not: null } }, _count: { brand: true }, orderBy: { _count: { brand: "desc" } }, take: 30 })).map((b) => b.brand).filter((b): b is string => !!b);
+  const { text } = await runAssistant({ shopId: user.shopId, userId: user.id, built: buildLabelRead(makers), photo });
+  const label = parseLabel(text);
+  if (!label) throw new UserError("The Assistant couldn't read a label from that photo. Take it again, closer and straight on, or type it in.");
+  return { label };
+}
+
+/** The tags a swatch picture earns, added to the fabric's own (nothing typed is removed). Counts one call. */
+export async function tagFromPicture(user: Pick<CurrentUser, "id" | "shopId">, partId: string, data: string, mediaType: string): Promise<{ tags: string[] }> {
+  await requireOn(user as CurrentUser, "assistant");
+  const part = await db.part.findFirst({ where: { id: String(partId), shopId: user.shopId, kind: "FABRIC" }, select: { id: true, colorTags: true } });
+  if (!part) throw new UserError("Fabric not found.");
+  const photo = photoOf(data, mediaType);
+  const { text } = await runAssistant({ shopId: user.shopId, userId: user.id, built: buildSwatchTags(), photo, target: { partId: part.id } });
+  const tags = parseTags(text);
+  if (!tags) throw new UserError("The Assistant couldn't tag that picture. Type the tags in, or try another picture.");
+  const merged = [...new Set([...part.colorTags, ...tags])];
+  await db.part.update({ where: { id: part.id }, data: { colorTags: merged } });
+  return { tags: merged };
 }

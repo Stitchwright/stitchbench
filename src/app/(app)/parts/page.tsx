@@ -7,6 +7,8 @@ import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
 import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
 import { createPart } from "@/actions/parts";
+import { entryFor } from "@/lib/assistant/ui";
+import { BoltLabelButton } from "@/components/assistant/label-button";
 import { KIND_LABEL } from "@/lib/parts";
 import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
@@ -39,6 +41,7 @@ export default async function Parts({
 }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, doesRepair: true } });
+  const labelEntry = shop.sellsRetail ? await entryFor(user.shopId, "fabric") : null;
   const tabs = KINDS.filter((x) => !("retail" in x) || shop.sellsRetail);
   const { q, low, kind: k, condition: cond, origin: made, new: newCode } = await searchParams;
   const term = q?.trim();
@@ -295,6 +298,7 @@ export default async function Parts({
       <div id="add">
         <Section title="Add a part or accessory">
           <ActionForm action={createPart} className="grid-form">
+            {labelEntry?.show && <BoltLabelButton mode="fabric" unavailable={labelEntry.unavailable} />}
             <PartFields withQty defaultNumber={newCode} fabric={shop.sellsRetail} />
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Submit>Add part</Submit>

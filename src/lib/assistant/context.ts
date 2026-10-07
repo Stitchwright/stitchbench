@@ -32,7 +32,7 @@ export type TicketContext = {
 
 export async function assistantSettings(shopId: string) {
   return (
-    (await db.assistantSettings.findUnique({ where: { shopId } })) ?? { shopId, draftOn: true, causesOn: true, plateOn: true, manualsOn: true, partsOn: true, offerFirstNames: false, voice: null as string | null, updatedAt: new Date(0) }
+    (await db.assistantSettings.findUnique({ where: { shopId } })) ?? { shopId, draftOn: true, causesOn: true, plateOn: true, manualsOn: true, partsOn: true, fabricOn: true, offerFirstNames: false, voice: null as string | null, updatedAt: new Date(0) }
   );
 }
 

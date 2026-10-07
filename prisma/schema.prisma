@@ -2744,6 +2744,7 @@ model AssistantSettings {
   plateOn         Boolean  @default(true)
   manualsOn       Boolean  @default(true)
   partsOn         Boolean  @default(true)
+  fabricOn        Boolean  @default(true)
   offerFirstNames Boolean  @default(false)
   voice           String?
   updatedAt       DateTime @updatedAt

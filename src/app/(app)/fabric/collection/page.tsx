@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { PageHeader } from "@/components/ui";
 import { CollectionForm } from "@/components/collection-form";
+import { entryFor } from "@/lib/assistant/ui";
 
 export default async function AddCollectionPage() {
   const user = await requireUser();
@@ -13,7 +14,7 @@ export default async function AddCollectionPage() {
     <div className="space-y-4">
       <PageHeader title="Add a collection" sub="A new collection arrives as a dozen colorways: the maker, collection and designer once, then a row each." back={{ href: "/fabric", label: "Fabric" }} />
       <div className="card card-pad">
-        <CollectionForm />
+        <CollectionForm label={await entryFor(user.shopId, "fabric")} />
       </div>
     </div>
   );
