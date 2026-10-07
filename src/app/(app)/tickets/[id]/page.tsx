@@ -30,6 +30,7 @@ import { TicketEstimateSlot } from "@/components/slots/ticket-estimate";
 import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
+import { PickupSheetSlot } from "@/components/slots/pickup-sheet";
 import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { UnitBadge } from "@/components/units/unit-badge";
 import { coverLine } from "@/actions/units";
@@ -326,6 +327,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </Section>
 
           <TicketAssistantSlot ticketId={t.id} user={user} canWork={canWork} partnerJob={job?.side === "repair"} />
+          <PickupSheetSlot ticketId={t.id} user={user} canWork={canWork} noun={kind.noun} />
           <ManualsAsk user={user} brand={m.brand} model={m.model} ticketId={t.id} />
 
           <Section title={isSite ? "Install checklist" : "Service checklist"}>

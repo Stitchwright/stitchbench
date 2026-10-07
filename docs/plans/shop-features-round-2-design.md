@@ -1235,3 +1235,27 @@ Decisions made while building:
   refuses the call with a 400 and the button shows that message.
 - Browser test needed: the trade-in step's What is it worth? and Use, condition photos and Draft a condition note, a
   trade-in rung up with its note (the unit page shows it).
+
+**`pickup-sheet-and-insight-words` (5.5, 7 Oct 2026).** Code: `src/lib/care-tips-starters.ts` (starter tips per kind),
+`src/lib/care-tips.ts` (the shop's tips, the sheet saved), `src/actions/care-tips.ts`, Settings → **Care tips**
+(`/settings/care-tips`, remove with Undo), the ticket's **Pickup sheet** (`src/components/slots/pickup-sheet.tsx`,
+`src/components/pickup-sheet.tsx`) printed on the invoice ("What we did", "Caring for your {machine}");
+`src/lib/assistant/pickup-prompt.ts` and `pickup.ts` (`draftPickup`), `src/lib/assistant/insight-words.ts` (the cards
+and their request) with `explainInsight`, the actions `draftPickupSheet` and `explainFabricInsight`, and "At a glance"
+(`src/components/assistant/insight-words.tsx`) on Fabric → What sells and Slow fabric. Check:
+`scripts/checks/pickup-sheet.check.ts` (5 groups). Spec: `tests/pickup-sheet.spec.ts`.
+Decisions made while building:
+- The sheet shows on a ticket once it is ready (ready in truck, ready for pickup, collected) or already has words; anyone
+  who can work on the ticket can write and save it, with or without the Assistant. The tips ticked are copied as printed
+  (a later edit of the list doesn't change a sheet already given).
+- "Draft the pickup sheet" (group Draft it, `draft_pickup`): the ticket as the drafts see it (no customer, no internal
+  notes) and the shop's tips for the machine's kind, numbered; the model returns the words and up to three numbers; a
+  number not on the list is dropped. With no work done, diagnosis or lines it refuses before any call.
+- Starter tips exist for sewing machines, vacuums, stand mixers and 3D and resin printers; a shop's own kind starts
+  empty. Tips are the owner's and admins'; everyone reads them.
+- Words on fabric insight: the program makes up to six cards from its own numbers (What sells: the three fastest
+  collections, the fastest color, the slowest collection with stock; Slow fabric: clearance and markdown stages, the
+  color tag and the collection with the most slow fabrics) and shows them without the Assistant; "Say it in words"
+  (group Fabric helpers, `explain_insight`) adds one sentence to each. The sentences aren't stored.
+- Browser test needed: Care tips (starters, a tip of her own, remove and Undo), a ready ticket's pickup sheet (draft,
+  save, the invoice), Fabric → What sells and Slow fabric with "At a glance" and Say it in words.

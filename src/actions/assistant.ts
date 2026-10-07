@@ -14,6 +14,7 @@ import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
 import { askShop } from "@/lib/assistant/ask";
 import { quiltPick } from "@/lib/assistant/quilt";
 import { tradeInNote } from "@/lib/assistant/trade-in";
+import { draftPickup, explainInsight } from "@/lib/assistant/pickup";
 import { UserError } from "@/lib/user-error";
 import { draftArrivals, draftClassBlurb, draftProductText, draftSocialPost } from "@/lib/assistant/marketing";
 
@@ -179,4 +180,16 @@ export const draftTradeInNote = safe(async (data: string, mediaType: string, pho
   if (!/^[A-Za-z0-9+/=]{100,}$/.test(clean)) throw new UserError("Take the photos again: they didn't come through.");
   const photo = { mediaType: mediaType === "image/png" || mediaType === "image/webp" ? mediaType : "image/jpeg", data: clean } as const;
   return shownOnce(JSON.stringify({ note: await tradeInNote(user, { photo, photos, kind, brand: String(brand ?? "").slice(0, 60), model: String(model ?? "").slice(0, 60) }) }));
+});
+
+/** "Draft the pickup sheet" on a ticket: the words and the tips (from the shop's own list) go into the form to check and save. */
+export const draftPickupSheet = safe(async (ticketId: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await draftPickup(user, ticketId)));
+});
+
+/** "Say it in words" on fabric insight: one sentence per card, from the program's own numbers. */
+export const explainFabricInsight = safe(async (tab: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await explainInsight(user, tab)));
 });

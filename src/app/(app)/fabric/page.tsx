@@ -15,6 +15,8 @@ import { FabricMarkdown } from "@/components/fabric-markdown";
 import { Swatch } from "@/components/fabric-swatch";
 import { entryFor, type Entry } from "@/lib/assistant/ui";
 import { TagBatch } from "@/components/assistant/tag-fabric";
+import { InsightWords } from "@/components/assistant/insight-words";
+import { insightCards } from "@/lib/assistant/insight-words";
 import { ReorderTab } from "./reorder-tab";
 import { KitsTab } from "./kits-tab";
 import { ClubsTab } from "./clubs-tab";
@@ -84,7 +86,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
       </nav>
       {tab === "bolt" && bolt && <BoltEnds shopId={user.shopId} rows={bolt.rows} limit={bolt.limit} />}
       {tab === "sells" && insight && <WhatSells insight={insight} tagEntry={await entryFor(user.shopId, "fabric")} />}
-      {tab === "slow" && insight && <SlowFabric insight={insight} />}
+      {tab === "slow" && insight && <SlowFabric insight={insight} entry={await entryFor(user.shopId, "fabric")} />}
       {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
       {tab === "kits" && <KitsTab shopId={user.shopId} />}
       {tab === "clubs" && <ClubsTab shopId={user.shopId} />}
@@ -163,6 +165,7 @@ function WhatSells({ insight, tagEntry }: { insight: Insight; tagEntry: Entry })
   }
   return (
     <div className="space-y-4">
+      <InsightWords tab="sells" cards={insightCards(insight, "sells")} entry={tagEntry} />
       <p className="muted text-sm">
         Yards a week are over the last {s.fabVelocityWeeks} weeks, counting only the days a fabric was in stock; a fabric that sells in lumps is smoothed (Croston), and a new one leans on similar fabrics
         until it has {s.fabBlendDays} days in stock. Margin uses the cost recorded when the sale was rung up
@@ -295,7 +298,7 @@ function Gmroi({ title, rows, windowDays, good, review }: { title: string; rows:
 
 const STAGE = { watch: "Watch", markdown: "First markdown", clearance: "Clearance" } as const;
 
-function SlowFabric({ insight }: { insight: Insight }) {
+function SlowFabric({ insight, entry }: { insight: Insight; entry: Entry }) {
   const { slow, settings: s } = insight;
   if (slow.length === 0) {
     return (
@@ -309,6 +312,7 @@ function SlowFabric({ insight }: { insight: Insight }) {
   }
   return (
     <div className="space-y-3">
+      <InsightWords tab="slow" cards={insightCards(insight, "slow")} entry={entry} />
       <p className="muted text-sm">
         Age is first in, first out from the receipts: watch at {s.fabWatchDays} days, first markdown at {s.fabMarkdownDays} (under {s.fabMarkdownSoldPct}% sold), clearance at {s.fabClearanceDays}. Yards cut or used
         count as sold. A yard&apos;s margin is its price less cost; fat quarters use the cut price, less {money(s.fabCutCostCents)} a yard for cutting. Nothing here changes a price until you tap Mark down.
