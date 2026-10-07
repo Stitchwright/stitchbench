@@ -63,6 +63,9 @@ async function call<T>(key: string, method: "GET" | "POST" | "DELETE", path: str
   return json as T;
 }
 
+/** The same call for the card reader (src/lib/card-reader.ts, shop-features-round-2-design.md 4.8). */
+export const stripeCall = call;
+
 export type CheckoutLine = { name: string; description?: string | null; unitCents: number; qty: number; taxCode?: string | null };
 
 /** Stripe's tax code for shipping (taxed where the state taxes delivery). */

@@ -6,6 +6,7 @@ import "server-only";
 import { checkDelisted, clearUnitListings, sellerFor } from "@/lib/commissions";
 import { checkRegistryLines } from "@/lib/gift-registry";
 import { applyAccountTender, prepareAccountTender, voidAccountOfSale } from "@/lib/house-accounts";
+import { prepareReaderTenders, refundReturnToCards, tieReaderPayments, untieReaderPayments } from "@/lib/card-reader";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -368,6 +369,7 @@ export async function completeSaleAs(
         note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
         cardNumber: typeof t?.cardNumber === "string" ? t.cardNumber.slice(0, 40) : null,
         ...(t?.method === "FINANCED" ? { lenderId: typeof t.lenderId === "string" ? t.lenderId : "" } : {}),
+        ...(t?.method === "CARD" && typeof t.stripeIntent === "string" && /^pi_[A-Za-z0-9_]{6,80}$/.test(t.stripeIntent) && Number(t.amountCents) > 0 ? { stripeIntent: t.stripeIntent } : {}),
       }))
       .filter((t) => t.amountCents !== 0);
     if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
@@ -395,6 +397,8 @@ export async function completeSaleAs(
         : null;
     // "On account" (9.4): her open house account, within its limit.
     const accountId = opts.paidOnline ? null : await prepareAccountTender(shopId, customerId, tenders);
+    // Card payments taken on the card reader (4.8): approved at Stripe for that amount, this shop's, used once.
+    const readerIntents = opts.paidOnline ? [] : await prepareReaderTenders(shopId, tenders);
     // Each line's category (written on it below), and why a line that could be taxed wasn't (SaleLine.taxNote).
     const lineKinds = lines.map((l, i) =>
       saleLineKind({
@@ -618,6 +622,7 @@ export async function completeSaleAs(
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
         await clearUnitListings(tx, shopId, delistUnits);
+        await tieReaderPayments(tx, shopId, sale.id, readerIntents);
         await applyAccountTender(tx, { shopId, accountId, saleId: sale.id, saleNumber: number, amountCents: tenders.filter((t) => t.method === "ACCOUNT").reduce((x, t) => x + t.amountCents, 0), at, userId: user.id });
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
@@ -651,9 +656,18 @@ export async function completeSaleAs(
       .catch(async (e: unknown) => {
         // The same sale sent twice at once: the other try made it.
         const made = (e as { code?: string })?.code === "P2002" ? await saleByKey(shopId, clientKey) : null;
-        if (made) return { sale: made, cards: [] as Issued[] };
+        if (made) return { sale: made, cards: [] as Issued[], again: true };
         throw e;
       });
+    // A return from a receipt paid back as Card: onto the cards that paid that sale on the reader (4.8), after the save.
+    const cardBack = -tenders.filter((t) => t.method === "CARD" && t.amountCents < 0).reduce((x, t) => x + t.amountCents, 0);
+    if (cardBack > 0 && !("again" in result) && typeof input.returnOfSaleId === "string" && input.returnOfSaleId) {
+      const r = await refundReturnToCards(shopId, result.sale.id, input.returnOfSaleId, cardBack);
+      if (r.refunded || r.problem) {
+        const words = r.problem ? `Card refund didn't go through (${r.problem}); $${(r.refunded / 100).toFixed(2)} reached the card. Refund the rest another way.` : `$${(r.refunded / 100).toFixed(2)} refunded to the card on the reader.`;
+        await db.sale.updateMany({ where: { id: result.sale.id, shopId }, data: { note: [input.note?.slice(0, 300), words].filter(Boolean).join(" · ").slice(0, 500) } });
+      }
+    }
     return { saleId: result.sale.id, number: result.sale.number, changeCents: result.sale.changeCents, cards: result.cards };
   }
 }
@@ -706,6 +720,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await tx.appraisal.updateMany({ where: { shopId, saleId: sale.id }, data: { saleId: null, issuedAt: null } });
     // A charge to a house account (9.4) comes off it.
     await voidAccountOfSale(tx, shopId, sale.id, at);
+    // Its card reader payments are on no sale again (refund them from Settings, Card reader).
+    await untieReaderPayments(tx, shopId, sale.id);
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);

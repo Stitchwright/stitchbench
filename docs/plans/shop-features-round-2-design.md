@@ -1419,3 +1419,29 @@ Decisions made while building:
 - Turning house accounts off stops new charges; what is owed stays and payments still go in.
 - Left for later: many-machine service visits for a school or business (`TicketMachine`, the other half of 9.4);
   meanwhile each machine is its own ticket, all charged to the same account.
+
+**`card-reader` (4.8, built 7 Oct 2026 on the owner's "everything today"; question 2's gate lifted).** Migration
+`20261024800000_card_reader` (`CardReader`, `CardPayment`, `Shop.cardReaderOn` off by default, `terminalLocationId`).
+Code: `src/lib/card-reader.ts` (Stripe Terminal by plain fetch through `stripeCall`, now exported from
+`src/lib/shop/stripe.ts`), `src/actions/card-reader.ts`, **Settings → Card reader** (`/settings/card-reader`: the
+shop's own Stripe secret key, shared with the online shop and sealed; "Use the card reader at the register"; pair a
+reader by the code it shows, `simulated-wpe` for Stripe's simulated reader in test mode, the Terminal location made
+once; "Approved, but on no sale" with Refund to the card), the register's **Card reader $n** button
+(`src/components/register-card-reader.tsx`: "Tap, insert or swipe on the reader", Cancel on the reader, and in test mode
+"Test: tap a card" / "Test: a declined card"; an approval becomes a Card payment with its PaymentIntent and the sale
+finishes itself when nothing is left to pay). `completeSaleAs` checks each such Card payment with Stripe (approved, the
+same amount, this shop's, on no other sale; the card's last four from Stripe on the receipt) and ties it to the sale; a
+return from the receipt (scanned sale) paid back as Card is refunded to that sale's card(s) at Stripe after the save,
+noted on the return; a void frees the payment (refund it from Settings). Check: `scripts/checks/card-reader.check.ts`
+(6 groups) against the new mock `scripts/test-mail/stripe-terminal-mock.mjs` (STRIPE_API_BASE; never real money);
+`base-license` (`startReaderPayment` by hand, refused while read-only; the status, cancel and test tap are allowed),
+`online-shop`, `clubs`, `promotions`, `gift-cards` still pass. Spec: `tests/card-reader.spec.ts` (skipped unless the
+app runs with STRIPE_API_BASE on the terminal mock, port 3404).
+Decisions made while building:
+- Hosted first; the Windows program can use it too when online (it is plain HTTPS to Stripe). Tap to Pay on a phone
+  needs Stripe's mobile SDK in an app, so it isn't built: a shop uses a reader (or keeps its own terminal and records
+  Card as before, which still works with the reader off).
+- Payments are captured automatically when approved. A payment approved but never put on a sale stays in Settings to
+  refund; nothing refunds by itself.
+- Only a return scanned from its receipt refunds the card (the program needs the original sale to know the card);
+  any other card refund is done on the shop's Stripe dashboard, as now.
