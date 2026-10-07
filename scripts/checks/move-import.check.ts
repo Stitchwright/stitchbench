@@ -355,6 +355,7 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   const storeNote = await db.storeNote.create({ data: { shopId, fromLocationId: mainStore.id, toLocationId: florida.id, text: "The rep visits Thursday" } });
   await db.storeNoteRead.create({ data: { noteId: storeNote.id, userId: a.user.id } });
   await db.approval.create({ data: { shopId, locationId: florida.id, kind: "REFUND", amountCents: 25000, expiresAt: new Date(Date.now() + 3_600_000) } });
+  await db.slipReceipt.create({ data: { shopId, key: "slip-move-fixture-0001", words: "Received 2 pieces." } });
   await db.shop.update({
     where: { id: shopId },
     data: {

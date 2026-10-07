@@ -339,6 +339,7 @@ model Shop {
   coopClaims        CoopClaim[]
   coopProofs        CoopProof[]
   consignPayouts    ConsignPayout[]
+  slipReceipts      SlipReceipt[]
   appraisals        Appraisal[]
   appraisalPhotos   AppraisalPhoto[]
   giftRegistries    GiftRegistry[]
@@ -4448,6 +4449,7 @@ model Approval {
 // sent again (a retry, a double tap) receives nothing twice
 model SlipReceipt {
   shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   key       String
   words     String?
   createdAt DateTime @default(now())
