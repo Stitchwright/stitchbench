@@ -1314,3 +1314,25 @@ Decisions made while building:
   page so it is checked in Pirate Ship, which validates every address on import anyway. Splitting the checkout's box
   into fields would make this exact; left as it is so the checkout doesn't change.
 - Items carry no weight, so Pirate Ship asks for the weight (or uses the shop's saved package there).
+
+**`consign-machines` (9.6, 7 Oct 2026).** Migration `20261024300000_consign_machines` (`StockUnit.consignorId`,
+`consignPct`, `consignUntil`; `ConsignPayout`; `Shop.consignDefaultPct`, 25). Code: `src/lib/consign-machines.ts` (the
+sale hooks `payoutOnSale` / `payoutOnReturn` / `payoutOnVoidSale` / `payoutOnVoidReturn`, called from
+`src/lib/units/sale-units.ts`; set, give back, pay, undo, the statement), `src/actions/consign-machines.ts`, the machine
+page's **Consignment** box ("A customer's machine? Sell it for her": the customer, the shop keeps %, the give-back
+day; "Give it back to her unsold"), Paperwork → **Consigned machines** (owed to consignors with **Pay her** by check,
+cash or store credit; the machines on consignment, give-back day first; paid lately; the usual commission), the
+printable **consignment statement** (`/paperwork/consign/[customerId]`), and "Her machines on consignment" on the
+customer's page (`src/components/paperwork/customer-paperwork.tsx`, which later packages add to). Books: "Due to
+Consignors": her share comes off the machine sales on the day it sells and is owed until paid (cash or check out of
+undeposited funds; store credit through her card). Merges and the customer delete carry the consignor and payouts
+(the delete is refused while she is owed or her machine is for sale). Check: `scripts/checks/consign-machines.check.ts`
+(6 groups); `machine-sales`, `layaway`, `customer-merge` (seeds the new columns, and `WarrantyClaim.machineId` from
+`warranty-claims`), `move-export`, `books-export` still pass. Spec: `tests/consign-machines.spec.ts`.
+Decisions made while building:
+- Her share is worked out on what the machine sold for before tax, after its line discount and its part of a
+  whole-sale discount (as `soldNetCents`), less the commission at the time it was set on the machine.
+- A return before she was paid takes the payout back; after she was paid it stays (the shop paid her and has the
+  machine back: sell it again as the shop's own, or settle with her by hand). Voiding the sale is refused while she is
+  paid; "Undo" her payment first (check or cash; store credit is taken back by adjusting her card).
+- A consigned machine carries no cost (the shop paid nothing for it).

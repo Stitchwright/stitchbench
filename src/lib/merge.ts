@@ -53,6 +53,8 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
   { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
+  { model: "StockUnit", field: "consignorId", label: ["machine on consignment", "machines on consignment"] },
+  { model: "ConsignPayout", field: "customerId", label: ["consignment payout", "consignment payouts"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -326,6 +328,10 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
   }
+  const owedHer = await tx.consignPayout.count({ where: { shopId, customerId: c.id, paidAt: null, voidedAt: null } });
+  if (owedHer) out.push(`The shop still owes them for ${owedHer === 1 ? "a consigned machine" : `${owedHer} consigned machines`}. Pay them first (Paperwork, Consigned machines).`);
+  const consigned = await tx.stockUnit.count({ where: { shopId, consignorId: c.id, status: { in: ["IN_STOCK", "HELD"] } } });
+  if (consigned) out.push(`${consigned === 1 ? "Their machine is" : `${consigned} of their machines are`} for sale on consignment. Sell or give ${consigned === 1 ? "it" : "them"} back first.`);
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
     select: { shopClass: { select: { title: true } } },
@@ -394,6 +400,8 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["StockUnit.consignorId"], ["machine once on consignment", "machines once on consignment"], "kept, without the customer");
+  add(n["ConsignPayout.customerId"], ["consignment payout", "consignment payouts"], "kept in the books, without the customer");
   add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
@@ -434,6 +442,9 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
+    // Consignment (9.6): her machines and payouts stay in the books without her (the payout's id is a plain one, blanked).
+    await tx.stockUnit.updateMany({ where: { shopId, consignorId: c.id }, data: { consignorId: null } });
+    await tx.consignPayout.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: "" } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });

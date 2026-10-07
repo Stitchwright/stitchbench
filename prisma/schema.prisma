@@ -100,6 +100,8 @@ model Shop {
   nextClaimNumber         Int           @default(1)
   // Co-op advertising and rebate claims (9.2): the next one's number
   nextCoopNumber          Int           @default(1)
+  // Customers' machines on consignment (9.6): the shop's commission when none is typed, a percent of what it sells for
+  consignDefaultPct       Float         @default(25)
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -257,6 +259,7 @@ model Shop {
   warrantyClaims    WarrantyClaim[]
   coopClaims        CoopClaim[]
   coopProofs        CoopProof[]
+  consignPayouts    ConsignPayout[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -2036,6 +2039,11 @@ model StockUnit {
   costCents       Int? // what it cost the shop (a trade-in: the credit given)
   priceCents      Int? // asking price
   mapCents        Int? // the maker's minimum advertised price (9.3): an asking price below it is never advertised
+  // A customer's used machine on consignment (shop-features-round-2-design.md 9.6): whose it is (Customer id, plain), the
+  // shop's commission (a percent of what it sells for) and the day to give it back or mark it down (YYYY-MM-DD)
+  consignorId     String?
+  consignPct      Float?
+  consignUntil    String?
   warrantyMonths  Int?
   warrantyBy      String? // who stands behind it: the maker's name, or the shop
   soldLineId      String? // SaleLine that sold it (kept after a return, until it sells again)
@@ -3456,4 +3464,32 @@ model CoopProof {
   createdAt DateTime  @default(now())
 
   @@index([claimId])
+}
+
+// What the shop owes a consignor for her machine sold on consignment (shop-features-round-2-design.md 9.6, package
+// consign-machines): written when the machine sells (amountCents: what it sold for before tax, less the shop's
+// commission), paid by check, cash or store credit (paidAt, method, note: the check number), voided with the sale or a
+// return before it was paid. unitId, customerId, saleLineId and giftCardId are plain ids. In the books it is owed to
+// consignors (a liability) from the sale until it is paid.
+model ConsignPayout {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  unitId      String
+  customerId  String
+  saleLineId  String
+  soldCents   Int
+  pct         Float
+  amountCents Int
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+  method      String? // CHECK | CASH | CREDIT
+  note        String?
+  giftCardId  String?
+  paidById    String?
+  voidedAt    DateTime?
+
+  @@index([shopId, customerId])
+  @@index([shopId, paidAt])
+  @@index([saleLineId])
 }

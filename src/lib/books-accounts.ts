@@ -20,6 +20,7 @@ export const ACCOUNT_KEYS = [
   { key: "lenderReceivable", label: "Owed by lenders (financed sales not paid yet)", def: "Due from Lenders" },
   { key: "makerReceivable", label: "Owed by makers (warranty claims sent, not paid yet)", def: "Due from Manufacturers" },
   { key: "warrantyIncome", label: "Warranty work the makers pay for", def: "Warranty Claims Income" },
+  { key: "consignorLiability", label: "Owed to consignors (their machines sold, not paid out yet)", def: "Due to Consignors" },
   { key: "coopIncome", label: "Co-op advertising and rebates paid by makers", def: "Co-op and Rebates Received" },
 ] as const;
 
