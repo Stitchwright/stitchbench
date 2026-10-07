@@ -32,6 +32,7 @@ import { VacUnitTools } from "@/components/vac/unit-tools";
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { receiptStands } from "@/lib/sale-return";
+import { nameOrPhone } from "@/lib/phone";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
 import type { TradeInInput, VacCartLine } from "@/lib/vac/types";
 
@@ -268,7 +269,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       fd.set("customerPhone", who.phone);
     } else {
       // No customer on the sale: one form under the class asks who (no error alongside it).
-      setSignup({ classId, name: custQ.trim(), phone: "" });
+      setSignup({ classId, ...nameOrPhone(custQ) });
       return;
     }
     const r = await enrollAtRegister(classId, fd);
@@ -1173,7 +1174,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             {!customer && !newCustomer && custSearched && custSearched === custQ.trim() && custHits.length === 0 && (
               <p className="text-sm">
                 No customer matches &lsquo;{custSearched}&rsquo;.{" "}
-                <button type="button" className="link" onClick={() => setNewCustomerForm({ ...EMPTY_CUSTOMER, ...(/\d/.test(custSearched) ? { phone: custSearched } : { name: custSearched }) })}>
+                <button type="button" className="link" onClick={() => setNewCustomerForm({ ...EMPTY_CUSTOMER, ...nameOrPhone(custSearched) })}>
                   Add &lsquo;{custSearched}&rsquo; as a new customer
                 </button>
               </p>
