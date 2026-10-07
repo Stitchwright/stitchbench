@@ -46,6 +46,24 @@ Never paste the password or key into chat: type it straight into Railway.
 founding shops, disputes, the partnership rule) on start. Check: `https://hub.stitchbench.app/account` loads, and
 `/admin` with your admin token. Billing shows as closed: correct until Stripe day.
 
+## 4a. The hub's other settings (Railway → stitchhub service → Variables; each can wait for its day)
+
+All are optional: a hub without them runs, and the feature behind each one stays switched off.
+
+**Stripe day, the Assistant ($15 a month add-on):**
+- `STRIPE_PRICE_ASSISTANT_MONTHLY` and `STRIPE_PRICE_ASSISTANT_YEARLY`: the two recurring prices (month and year) of the Assistant product.
+- `STRIPE_PRICE_ASSISTANT_TOPUP`: the one-time price of a top-up (extra calls on top of the 300 a month).
+- `ANTHROPIC_API_KEY`: the hub's key from console.anthropic.com. It lives on the hub only, never in a program. Without it the Assistant answers "isn't set up on this hub yet" and shops see the buttons say so.
+
+**Off-site backups (before shops turn them on):** an R2 bucket (Cloudflare → R2 → create a bucket, then an API token with
+read and write on that bucket only). Set `BACKUP_S3_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`),
+`BACKUP_S3_BUCKET`, `BACKUP_S3_KEY_ID`, `BACKUP_S3_SECRET` and `BACKUP_S3_REGION` (`auto` for R2).
+
+**The manual repository: leave it off until the lawyer has been through it.**
+- `COPYRIGHT_AGENT_NAME`, `COPYRIGHT_AGENT_ADDRESS`, `COPYRIGHT_EMAIL`: the designated agent for takedown notices. The /copyright page stays closed until all three are set, and the agent must be registered with the US Copyright Office first.
+- `REPO_UPLOADS`: leave it unset. It is the switch that lets techs upload manuals; set it to `on` only after the lawyer's go-ahead.
+- `REPO_OCR`: reading scanned manuals so they can be searched is on by default; set it to `off` to switch it off. The hub image is about 130 MB bigger because of the OCR engine. **Before opening uploads, test one scanned upload on Railway** (a scanned manual page, as a shop would send it) and check the text comes out and the build and memory held.
+
 ## 5. Release the programs (30 to 45 min)
 
 1. Claude merges nothing on its own; you run, after Claude's last check:
