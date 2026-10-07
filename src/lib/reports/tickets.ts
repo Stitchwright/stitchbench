@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { saleLines } from "@/lib/reports/sales";
 import { NOT_SALE_KINDS } from "@/lib/sale-kind";
 import { ticketTotals } from "@/lib/ticket-math";
+import { atStore } from "@/lib/stores";
 
 const DAY = 86_400_000;
 export const CLOSED = ["COLLECTED", "RETURNED_UNREPAIRED"] as const;
@@ -31,18 +32,20 @@ export type TicketsReport = {
   techs: { id: string | null; name: string; closed: number; laborHours: number; laborCents: number; partsCents: number }[];
 };
 
-export async function ticketsReport(shopId: string, start: Date, end: Date, now: Date = new Date()): Promise<TicketsReport> {
+export async function ticketsReport(shopId: string, start: Date, end: Date, now: Date = new Date(), store: { id: string; main: boolean } | null = null): Promise<TicketsReport> {
+  // One store's tickets (shop-features-round-2-design.md 7.4), or every store's (null).
+  const sw = atStore(store);
   const [made, closed, open, abandoned] = await Promise.all([
-    db.ticket.findMany({ where: { shopId, intakeAt: { gte: start, lt: end } }, select: { machine: { select: { equipment: true } } } }),
+    db.ticket.findMany({ where: { shopId, ...sw, intakeAt: { gte: start, lt: end } }, select: { machine: { select: { equipment: true } } } }),
     db.ticket.findMany({
-      where: { shopId, status: { in: [...CLOSED] }, closedAt: { gte: start, lt: end } },
+      where: { shopId, ...sw, status: { in: [...CLOSED] }, closedAt: { gte: start, lt: end } },
       include: { lines: true, payments: true, machine: { select: { equipment: true } }, tech: { select: { name: true } } },
     }),
     db.ticket.findMany({
-      where: { shopId, status: { notIn: [...CLOSED, "ABANDONED"] } },
+      where: { shopId, ...sw, status: { notIn: [...CLOSED, "ABANDONED"] } },
       select: { intakeAt: true, machine: { select: { equipment: true } } },
     }),
-    db.ticket.count({ where: { shopId, status: "ABANDONED", closedAt: { gte: start, lt: end } } }),
+    db.ticket.count({ where: { shopId, ...sw, status: "ABANDONED", closedAt: { gte: start, lt: end } } }),
   ]);
   const kinds = new Map<string, { in: number; out: number; open: number }>();
   const kind = (k: string) => {
@@ -100,7 +103,8 @@ export async function ticketsReport(shopId: string, start: Date, end: Date, now:
 export type TopCustomer = { id: string; name: string; counterCents: number; repairCents: number; totalCents: number; visits: number };
 
 /** The customers who spent most in the range: counter sales (not gift cards, trade-ins or partner bills) and repairs handed back. */
-export async function topCustomers(shopId: string, start: Date, end: Date, limit = 20): Promise<TopCustomer[]> {
+export async function topCustomers(shopId: string, start: Date, end: Date, limit = 20, store: { id: string; main: boolean } | null = null): Promise<TopCustomer[]> {
+  const sw = atStore(store);
   const by = new Map<string, TopCustomer>();
   const get = (id: string) => {
     let c = by.get(id);
@@ -108,7 +112,7 @@ export async function topCustomers(shopId: string, start: Date, end: Date, limit
     return c;
   };
   const sales = await db.sale.findMany({
-    where: { shopId, customerId: { not: null }, status: "COMPLETED", createdAt: { gte: start, lt: end } },
+    where: { shopId, ...sw, customerId: { not: null }, status: "COMPLETED", createdAt: { gte: start, lt: end } },
     include: { lines: { include: { part: { select: { kind: true } } } } },
   });
   for (const s of sales) {
@@ -119,7 +123,7 @@ export async function topCustomers(shopId: string, start: Date, end: Date, limit
     c.visits++;
   }
   const closed = await db.ticket.findMany({
-    where: { shopId, customerId: { not: null }, status: { in: [...CLOSED] }, closedAt: { gte: start, lt: end } },
+    where: { shopId, ...sw, customerId: { not: null }, status: { in: [...CLOSED] }, closedAt: { gte: start, lt: end } },
     include: { lines: true },
   });
   for (const t of closed) {

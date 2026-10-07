@@ -21,7 +21,8 @@ export const REPORT_IDS = REPORT_DEFS.map((d) => d.id) as ReportId[];
 /** The kinds a report may narrow to (Part kinds the counter sells). */
 export const ASK_KINDS = ["FABRIC", "THREAD", "NOTION", "PATTERN", "ACCESSORY", "SUPPLY", "PART"] as const;
 
-export type AskParams = { from: string; to: string; kind: string | null; collection: string | null; top: number };
+/** store: a store named in the question ("at the Florida store"), one of the company's (more than one store, 7.5); null = all. */
+export type AskParams = { from: string; to: string; kind: string | null; collection: string | null; top: number; store?: string | null };
 export type AskChoice = { report: ReportId; params: AskParams } | { report: "none" };
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -33,7 +34,7 @@ const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00
  * at most five years back (missing: this year so far), a kind from the list, a collection the shop has (matched in any
  * case), top N from 1 to 50 (default 10). Null when the answer isn't JSON at all.
  */
-export function checkChoice(j: unknown, today: string, collections: readonly string[]): AskChoice | null {
+export function checkChoice(j: unknown, today: string, collections: readonly string[], stores: readonly string[] = []): AskChoice | null {
   if (!j || typeof j !== "object") return null;
   const o = j as Record<string, unknown>;
   const id = String(o.report ?? "");
@@ -50,8 +51,11 @@ export function checkChoice(j: unknown, today: string, collections: readonly str
   const n = Math.round(Number(o.top));
   const top = Number.isFinite(n) && n >= 1 ? Math.min(50, n) : 10;
   const has = (p: ReportParam) => (def.params as readonly string[]).includes(p);
+  // A store from the company's list (any case, or a word of its name); anything else is every store.
+  const askedStore = typeof o.store === "string" ? o.store.trim().toLowerCase().replace(/\s+store$/, "") : "";
+  const store = askedStore && stores.length > 1 ? (stores.find((s) => s.toLowerCase() === askedStore) ?? stores.find((s) => askedStore.includes(s.toLowerCase()) || s.toLowerCase().includes(askedStore)) ?? null) : null;
   return {
     report: def.id,
-    params: { from, to, kind: has("kind") ? kind : null, collection: has("collection") ? collection : null, top: has("top") ? top : 25 },
+    params: { from, to, kind: has("kind") ? kind : null, collection: has("collection") ? collection : null, top: has("top") ? top : 25, ...(store ? { store } : {}) },
   };
 }

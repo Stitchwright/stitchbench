@@ -19,6 +19,7 @@ import { markBooksExported } from "@/actions/books";
 import { ActionButton } from "@/components/action-form";
 import { entryFor } from "@/lib/assistant/ui";
 import { AskShop } from "@/components/assistant/ask-shop";
+import { activeStores, currentStore } from "@/lib/stores";
 
 const TABS = [
   { key: "sales", label: "Sales" },
@@ -32,7 +33,9 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
-type Sp = { tab?: string; from?: string; to?: string; period?: string };
+type Sp = { tab?: string; from?: string; to?: string; period?: string; store?: string };
+
+type StoreArg = { id: string; main: boolean; name: string } | null;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`;
@@ -66,13 +69,20 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
   const books = tab === "books" ? await loadBooks(user.shopId) : null;
   const nextDay = books?.exportedThrough ? new Date(new Date(`${books.exportedThrough}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10) : null;
   const { start, end, fromStr, toStr } = monthRange(sp.from ?? (nextDay && nextDay <= todayIn(tz) ? nextDay : undefined), sp.to, tz);
+  // More than one store (shop-features-round-2-design.md 7.4): "All stores" (the owner's default) or one store (an
+  // admin's default is her own); nothing shows with one store.
+  const stores = await activeStores(user.shopId);
+  const multi = stores.length > 1;
+  const mine = multi ? await currentStore(user) : null;
+  const storeKey = multi ? (sp.store === "all" || stores.some((s) => s.id === sp.store) ? sp.store! : user.role === "OWNER" ? "all" : (mine?.id ?? "all")) : "all";
+  const store: StoreArg = multi && storeKey !== "all" ? (stores.find((s) => s.id === storeKey) ?? null) : null;
   const q = (over: Partial<Sp>) => {
-    const p = new URLSearchParams({ tab, from: fromStr, to: toStr, period, ...over } as Record<string, string>);
+    const p = new URLSearchParams({ tab, from: fromStr, to: toStr, period, ...(multi ? { store: storeKey } : {}), ...over } as Record<string, string>);
     return `?${p}`;
   };
   // Ask your shop (shop-features-round-2-design.md 5.1): shown while the Assistant and its "Ask your shop" switch are on.
   const askEntry = await entryFor(user.shopId, "ask");
-  const csv = (what: string) => `/api/reports/${what}?from=${fromStr}&to=${toStr}&period=${period}`;
+  const csv = (what: string) => `/api/reports/${what}?from=${fromStr}&to=${toStr}&period=${period}${multi ? `&store=${storeKey}` : ""}`;
 
   return (
     <div className="space-y-6">
@@ -99,6 +109,21 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
           </label>
           <input id="to" name="to" type="date" defaultValue={toStr} className="input" />
         </div>
+        {multi && (
+          <div className="field">
+            <label htmlFor="store" className="label">
+              Store
+            </label>
+            <select id="store" name="store" defaultValue={storeKey} className="select">
+              <option value="all">All stores</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {tab === "sales" && (
           <div className="field">
             <label htmlFor="period" className="label">
@@ -121,19 +146,27 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
         ))}
       </p>
 
-      {tab === "sales" && <SalesTab shopId={user.shopId} tz={tz} start={start} end={end} period={period} csv={csv} />}
-      {tab === "tickets" && <TicketsTab shopId={user.shopId} start={start} end={end} csv={csv} />}
-      {tab === "customers" && <CustomersTab shopId={user.shopId} start={start} end={end} csv={csv} />}
+      {tab === "sales" && <SalesTab shopId={user.shopId} tz={tz} start={start} end={end} period={period} csv={csv} store={store} />}
+      {tab === "tickets" && <TicketsTab shopId={user.shopId} start={start} end={end} csv={csv} store={store} />}
+      {tab === "customers" && <CustomersTab shopId={user.shopId} start={start} end={end} csv={csv} store={store} />}
       {tab === "gift-cards" && <GiftTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "layaways" && <LayawayTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "financing" && <FinancingTab shopId={user.shopId} tz={tz} start={start} end={end} />}
-      {tab === "tax" && <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} />}
+      {tab === "tax" &&
+        (multi && !store ? (
+          // Each store files its own return (its own state): one section per store.
+          stores.map((s) => <TaxTab key={s.id} shopId={user.shopId} tz={tz} start={start} end={end} csv={(w) => `${csv(w).replace(/&store=[^&]*/, "")}&store=${s.id}`} store={s} />)
+        ) : (
+          <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} store={store} />
+        ))}
+      {multi && tab === "gift-cards" && <p className="muted text-sm">Gift cards and store credit are the company&apos;s: they work at every store, so this list is for all stores together.</p>}
+      {multi && tab === "books" && <p className="muted text-sm">Each store gets its own entry a day, its name in QuickBooks&apos; Location (Online) or Class (Desktop) column.</p>}
       {tab === "books" && books && <BooksTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} fromStr={fromStr} toStr={toStr} exportedThrough={books.exportedThrough} />}
     </div>
   );
 }
 
-type TabProps = { shopId: string; start: Date; end: Date; csv: (what: string) => string };
+type TabProps = { shopId: string; start: Date; end: Date; csv: (what: string) => string; store?: StoreArg };
 
 const Download = ({ href }: { href: string }) => (
   <a className="btn btn-sm no-print" href={href}>
@@ -141,8 +174,8 @@ const Download = ({ href }: { href: string }) => (
   </a>
 );
 
-async function SalesTab({ shopId, tz, start, end, period, csv }: TabProps & { tz: string; period: Period }) {
-  const r = await salesReport(shopId, tz, start, end, period);
+async function SalesTab({ shopId, tz, start, end, period, csv, store = null }: TabProps & { tz: string; period: Period }) {
+  const r = await salesReport(shopId, tz, start, end, period, store);
   const t = r.totals;
   return (
     <>
@@ -267,8 +300,8 @@ async function SalesTab({ shopId, tz, start, end, period, csv }: TabProps & { tz
   );
 }
 
-async function TicketsTab({ shopId, start, end, csv }: TabProps) {
-  const r = await ticketsReport(shopId, start, end);
+async function TicketsTab({ shopId, start, end, csv, store = null }: TabProps) {
+  const r = await ticketsReport(shopId, start, end, new Date(), store);
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-5">
@@ -366,8 +399,8 @@ async function TicketsTab({ shopId, start, end, csv }: TabProps) {
   );
 }
 
-async function CustomersTab({ shopId, start, end, csv }: TabProps) {
-  const rows = await topCustomers(shopId, start, end);
+async function CustomersTab({ shopId, start, end, csv, store = null }: TabProps) {
+  const rows = await topCustomers(shopId, start, end, 20, store);
   return (
     <Section title="Top customers" actions={<Download href={csv("customers")} />}>
       {rows.length === 0 ? (
@@ -618,11 +651,11 @@ async function GiftTab({ shopId, start, end, csv }: TabProps) {
   );
 }
 
-async function TaxTab({ shopId, tz, start, end, csv }: TabProps & { tz: string }) {
-  const r = await taxReport(shopId, tz, start, end);
+async function TaxTab({ shopId, tz, start, end, csv, store = null }: TabProps & { tz: string }) {
+  const r = await taxReport(shopId, tz, start, end, store);
   return (
     <>
-      <Section title="Sales tax" actions={<Download href={csv("tax")} />}>
+      <Section title={store ? `Sales tax: ${store.name}` : "Sales tax"} actions={<Download href={csv("tax")} />}>
         {r.rates.length === 0 ? (
           <Empty>No sales in this range.</Empty>
         ) : (

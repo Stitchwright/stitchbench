@@ -11,6 +11,7 @@ import { saveSplitFor, sendShareFor } from "@/lib/store-orders";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { db } from "@/lib/db";
 import { numberKey } from "@/lib/parts";
+import { mainStoreId } from "@/lib/stores";
 
 const refresh = () => {
   revalidatePath("/parts", "layout");
@@ -52,7 +53,11 @@ export const askItem = safe(async function askItem(partId: string, formData: For
 export const sendUnit = safe(async function sendUnit(unitId: string, formData: FormData) {
   const user = await requireUser();
   await requireBaseWritable(user);
-  const t = await sendStockFor(user, { toId: String(formData.get("toId") ?? ""), lines: [{ unitId: String(unitId) }], note: str(formData.get("note")) });
+  // From the store the machine is at (whatever store this computer is at).
+  const unit = await db.stockUnit.findFirst({ where: { id: String(unitId), shopId: user.shopId }, select: { locationId: true } });
+  if (!unit) throw new UserError("That machine isn't one of yours.");
+  const fromId = unit.locationId ?? (await mainStoreId(user.shopId));
+  const t = await sendStockFor(user, { toId: String(formData.get("toId") ?? ""), fromId, lines: [{ unitId: String(unitId) }], note: str(formData.get("note")) });
   revalidatePath("/units", "layout");
   refresh();
   return noted(`Sent (transfer ${t.number}).`);

@@ -14,6 +14,7 @@ import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { dateIn } from "@/lib/time-zone";
 import { accountName, cleanAccount, DEFAULT_BOOKS, readAccounts, type AccountKey, type BooksConfig } from "@/lib/books-accounts";
 import type { LineKind } from "@/generated/prisma/enums";
+import { activeStores, storesOf } from "@/lib/stores";
 
 export type BooksSettingsView = BooksConfig & { exportedThrough: string | null };
 
@@ -24,7 +25,8 @@ export async function loadBooks(shopId: string): Promise<BooksSettingsView> {
 }
 
 export type BookLine = { account: string; debitCents: number; creditCents: number };
-export type DayEntry = { day: string; number: string; lines: BookLine[] };
+/** store: with more than one store, the store the entry is for (a QuickBooks location / class); null with one store. */
+export type DayEntry = { day: string; number: string; lines: BookLine[]; store?: string | null };
 
 export type BooksResult = {
   days: DayEntry[];
@@ -60,13 +62,17 @@ function tenderKey(method: string, cfg: BooksConfig): { account: string } {
 }
 
 export async function buildBooks(shopId: string, tz: string, start: Date, end: Date, cfg: BooksConfig): Promise<BooksResult> {
-  const days = new Map<string, Map<string, number>>(); // day -> account -> net debit (credit is negative)
+  const days = new Map<string, Map<string, number>>(); // day|store -> account -> net debit (credit is negative)
+  // More than one store (shop-features-round-2-design.md 7.4): one entry a day for each store, tagged with its name.
+  const stores = await activeStores(shopId).then(async (open) => (open.length > 1 ? await storesOf(shopId) : []));
+  const mainId = stores.find((s) => s.main)?.id ?? "";
+  const storeKey = (locationId: string | null | undefined) => (stores.length ? (locationId ?? mainId) : "");
   const inRange = (d: Date | null) => d != null && d >= start && d < end;
   const post = (ledger: Map<string, number>, account: string, debit: number) => {
     if (debit) ledger.set(account, (ledger.get(account) ?? 0) + debit);
   };
-  const dayLedger = (d: Date) => {
-    const k = dateIn(d, tz);
+  const dayLedger = (d: Date, locationId?: string | null) => {
+    const k = `${dateIn(d, tz)}|${storeKey(locationId)}`;
     let m = days.get(k);
     if (!m) days.set(k, (m = new Map()));
     return m;
@@ -113,7 +119,7 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
         unbalancedSales++;
         post(one, acct("sales"), -off);
       }
-      merge(dayLedger(at), one);
+      merge(dayLedger(at, s.locationId), one);
     }
   }
 
@@ -124,7 +130,7 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
   });
   for (const t of closed) {
     const x = ticketTotals(t.lines, t.payments, t.taxRatePct);
-    const led = dayLedger(t.closedAt!);
+    const led = dayLedger(t.closedAt!, t.locationId);
     post(led, acct("repairClearing"), x.total);
     const byKind = new Map<LineKind, number>();
     for (const l of t.lines) byKind.set(l.kind, (byKind.get(l.kind) ?? 0) + lineTotal(l));
@@ -133,9 +139,9 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
   }
 
   // ----- repair money, when it is taken -----
-  const pays = await db.payment.findMany({ where: { ticket: { shopId }, paidAt: { gte: start, lt: end } }, select: { amountCents: true, method: true, paidAt: true } });
+  const pays = await db.payment.findMany({ where: { ticket: { shopId }, paidAt: { gte: start, lt: end } }, select: { amountCents: true, method: true, paidAt: true, ticket: { select: { locationId: true } } } });
   for (const p of pays) {
-    const led = dayLedger(p.paidAt);
+    const led = dayLedger(p.paidAt, p.ticket.locationId);
     post(led, tenderKey(p.method, cfg).account, p.amountCents);
     post(led, acct("repairClearing"), -p.amountCents);
   }
@@ -144,12 +150,12 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
   // goodwill credit, LOADED with no sale): the offset is its own account -----
   const entries = await db.giftCardEntry.findMany({
     where: { shopId, at: { gte: start, lt: end }, OR: [{ reason: { in: ["ADJUSTED", "OPENING"] } }, { reason: "LOADED", saleId: null, paymentId: null }] },
-    select: { cardId: true, at: true, amountCents: true },
+    select: { cardId: true, at: true, amountCents: true, locationId: true },
   });
   if (entries.length) {
     const kinds = new Map((await db.giftCard.findMany({ where: { shopId, id: { in: [...new Set(entries.map((e) => e.cardId))] } }, select: { id: true, kind: true } })).map((c) => [c.id, c.kind]));
     for (const e of entries) {
-      const led = dayLedger(e.at);
+      const led = dayLedger(e.at, e.locationId);
       post(led, kinds.get(e.cardId) === "credit" ? acct("creditLiability") : acct("giftLiability"), -e.amountCents);
       post(led, acct("giftAdjust"), e.amountCents);
     }
@@ -211,9 +217,9 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
   }
 
   // ----- payments against house accounts (9.4): the money in, off what they owe (charges went to receivable as tenders) -----
-  const acctPays = await db.accountEntry.findMany({ where: { shopId, kind: "PAYMENT", at: { gte: start, lt: end }, voidedAt: null }, select: { amountCents: true, at: true, method: true } });
+  const acctPays = await db.accountEntry.findMany({ where: { shopId, kind: "PAYMENT", at: { gte: start, lt: end }, voidedAt: null }, select: { amountCents: true, at: true, method: true, locationId: true } });
   for (const p of acctPays) {
-    const led = dayLedger(p.at);
+    const led = dayLedger(p.at, p.locationId);
     post(led, tenderKey(p.method === "CARD" ? "CARD" : "CASH", cfg).account, p.amountCents);
     post(led, acct("receivable"), -p.amountCents);
   }
@@ -228,12 +234,16 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
 
   const out: DayEntry[] = [...days.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, m]) => {
+    .map(([key, m]) => {
+      const [day, storeId] = key.split("|");
       const lines = [...m.entries()]
         .filter(([, v]) => v !== 0)
         .map(([account, v]) => ({ account, debitCents: v > 0 ? v : 0, creditCents: v < 0 ? -v : 0 }))
         .sort((a, b) => Number(b.debitCents > 0) - Number(a.debitCents > 0) || a.account.localeCompare(b.account));
-      return { day, number: `SB-${day.replace(/-/g, "")}`, lines };
+      if (!storeId) return { day, number: `SB-${day.replace(/-/g, "")}`, lines };
+      // With more than one store: an entry per store a day, its number ending in the store's place in the list.
+      const i = stores.findIndex((s) => s.id === storeId);
+      return { day, number: `SB-${day.replace(/-/g, "")}-${i + 1}`, lines, store: stores[i]?.name ?? null };
     })
     .filter((d) => d.lines.length > 0);
 
@@ -252,18 +262,23 @@ const dollars = (c: number) => (c / 100).toFixed(2);
 
 /** QuickBooks Online's journal entry import: one row per account per day, the entry's number and date on each row. */
 export function toJournalCsvRows(days: DayEntry[]): string[][] {
-  const rows: string[][] = [["*JournalNo", "*JournalDate", "*AccountName", "*Debits", "*Credits", "Description", "Name"]];
-  for (const d of days) for (const l of d.lines) rows.push([d.number, usDate(d.day), l.account, l.debitCents ? dollars(l.debitCents) : "", l.creditCents ? dollars(l.creditCents) : "", "Daily sales summary", ""]);
+  // With more than one store, each line names its store in QuickBooks' Location column.
+  const byStore = days.some((d) => d.store);
+  const rows: string[][] = [["*JournalNo", "*JournalDate", "*AccountName", "*Debits", "*Credits", "Description", "Name", ...(byStore ? ["Location"] : [])]];
+  for (const d of days) for (const l of d.lines) rows.push([d.number, usDate(d.day), l.account, l.debitCents ? dollars(l.debitCents) : "", l.creditCents ? dollars(l.creditCents) : "", "Daily sales summary", "", ...(byStore ? [d.store ?? ""] : [])]);
   return rows;
 }
 
 /** QuickBooks Desktop's IIF: a GENERAL JOURNAL transaction a day (the first line the TRNS, the others SPL; amounts are debits positive, credits negative). */
 export function toIif(days: DayEntry[]): string {
-  const out = ["!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tDOCNUM\tMEMO", "!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tDOCNUM\tMEMO", "!ENDTRNS"];
+  // With more than one store, each line names its store in QuickBooks Desktop's CLASS column.
+  const byStore = days.some((d) => d.store);
+  const cls = byStore ? "\tCLASS" : "";
+  const out = [`!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tDOCNUM\tMEMO${cls}`, `!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tDOCNUM\tMEMO${cls}`, "!ENDTRNS"];
   for (const d of days) {
     d.lines.forEach((l, i) => {
       const amount = dollars(l.debitCents - l.creditCents);
-      out.push([i === 0 ? "TRNS" : "SPL", "", "GENERAL JOURNAL", usDate(d.day), l.account, amount, d.number, "Daily sales summary"].join("\t"));
+      out.push([i === 0 ? "TRNS" : "SPL", "", "GENERAL JOURNAL", usDate(d.day), l.account, amount, d.number, "Daily sales summary", ...(byStore ? [d.store ?? ""] : [])].join("\t"));
     });
     out.push("ENDTRNS");
   }
