@@ -55,6 +55,7 @@ async function runShop(now: Date, shopId: string) {
     ["uncollected", ms.abandonNotices, () => uncollected(run)],
     ["service due", ms.serviceDue && ms.serviceDueDay !== run.today, () => serviceDue(run)],
     ["review", ms.reviewRequest && !!ms.reviewUrl, () => reviews(run)],
+    ["software renewals", true, () => softwareRenewals(run)],
   ];
   for (const [name, on, fn] of steps) {
     if (!on || run.left <= 0) continue;
@@ -292,6 +293,49 @@ async function serviceDue(run: Run) {
 }
 
 // ---------- 4. review requests ----------
+
+/**
+ * Software subscriptions renewing in the next 30 days (shop-features-round-2-design.md 2.5): one friendly reminder per
+ * renewal date (Shop's Marketing on; consent rules as any marketing message), never twice for the same date.
+ */
+async function softwareRenewals(run: Run) {
+  const { now, shop, ms, tz } = run;
+  const due = await db.softwareLicense.findMany({
+    where: { shopId: shop.id, status: "ACTIVE", kind: "SUBSCRIPTION", customerId: { not: null }, renewsOn: { gte: now, lte: new Date(now.getTime() + 30 * DAY) } },
+    select: { id: true, description: true, customerId: true, renewsOn: true, renewNoticeFor: true },
+    take: 200,
+  });
+  const todo = due.filter((l) => l.renewsOn && (!l.renewNoticeFor || l.renewNoticeFor.getTime() !== l.renewsOn.getTime()));
+  if (!todo.length) return;
+  const names = await customerNames(shop.id, todo.map((l) => l.customerId!));
+  for (const l of todo) {
+    if (run.left <= 0) return;
+    const c = names.get(l.customerId!);
+    const day = ymdOf(l.renewsOn!, tz);
+    const when = fmtWhen(l.renewsOn!, tz).replace(/ at .*$/, "");
+    const hello = `Hi ${firstName(c?.name ?? "")}`.trim();
+    const body = `${hello}, your ${l.description} subscription from ${shop.name} renews on ${when}. Stop by${shop.phone ? ` or call ${shop.phone}` : ""} to renew it.`;
+    const key = `software_renew:${l.id}:${day}`;
+    await db.$transaction(async (tx) => {
+      const r = await queueToCustomer(tx, {
+        shopId: shop.id,
+        customerId: l.customerId!,
+        kind: "software_renew",
+        channels: run.marketingEmailOk ? "one" : ["sms"],
+        dedupeKey: key,
+        sendAfter: now,
+        ms,
+        refType: "software",
+        refId: l.id,
+        content: (ch) => (ch === "email" ? { subject: `Your ${l.description} renews on ${when}`, body } : { body }),
+      });
+      if (r.queued.length || r.duplicate.length) {
+        await tx.softwareLicense.updateMany({ where: { id: l.id, shopId: shop.id }, data: { renewNoticeFor: l.renewsOn } });
+        run.left -= r.queued.length;
+      }
+    });
+  }
+}
 
 async function reviews(run: Run) {
   const { now, today, shop, ms } = run;

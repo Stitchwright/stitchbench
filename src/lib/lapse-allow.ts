@@ -133,6 +133,8 @@ export const HAND_ALLOWED = [
   // What fits the customer's machines, and what goes with a machine being sold (2.4): lookups
   "fitsForCustomerNow",
   "fitsForUnitsNow",
+  // The register's software line: the customer's machines, what she can renew, codes on hand (2.5)
+  "softwareChoices",
   "readCatalogSheet",
   "previewCatalog",
   "openClassSeats",

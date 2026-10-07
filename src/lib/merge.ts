@@ -50,6 +50,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
   { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
+  { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -66,6 +67,7 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "MachinePlan", field: "machineId", label: ["service plan", "service plans"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
+  { model: "SoftwareLicense", field: "machineId", label: ["software licence", "software licences"] },
 ];
 
 /** What a deleted customer's kept rows say instead of their name. */
@@ -379,6 +381,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
+  add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }

@@ -100,6 +100,11 @@ export default async function Parts({
             <Link href="/parts/orders" className="btn">
               Orders to suppliers
             </Link>
+            {shop.sellsRetail && (
+              <Link href="/parts/software" className="btn">
+                Software licences
+              </Link>
+            )}
             <Link href="/parts/on-order" className="btn">
               On order
             </Link>

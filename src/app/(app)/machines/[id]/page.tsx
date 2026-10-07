@@ -1,3 +1,4 @@
+import { MachineSoftware } from "@/components/customer-software";
 import Link from "next/link";
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
@@ -227,6 +228,9 @@ export default async function MachinePage({ params, searchParams }: { params: Pr
               <Empty>No tickets yet for this {kind.noun}.</Empty>
             </Section>
           )}
+
+          {/* Software licensed for this machine (shop-features-round-2-design.md 2.5). */}
+          <MachineSoftware shopId={user.shopId} machineId={m.id} admin={user.role !== "TECH"} />
 
           {m.tickets.length > 0 && (
             <Section title="Service history">

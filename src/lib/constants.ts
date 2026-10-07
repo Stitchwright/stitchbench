@@ -192,6 +192,7 @@ export const MESSAGE_KIND_LABEL: Record<string, string> = {
   consent_confirm: "Text sign-up confirmation",
   help_reply: "Reply to HELP",
   bags_due: "Bags due reminder",
+  software_renew: "Software renewal reminder",
   parts_in: "Parts arrived",
   order_notice: "Online order",
   test: "Test",

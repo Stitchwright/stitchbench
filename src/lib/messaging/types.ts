@@ -18,9 +18,10 @@ export type MessageKind =
   | "bags_due"
   | "parts_in"
   | "order_notice"
+  | "software_renew"
   | "test";
 
-export const MESSAGE_KINDS: MessageKind[] = ["ready", "reminder", "estimate", "abandon", "service_due", "review", "campaign", "class_notice", "booking_notice", "consent_confirm", "help_reply", "bags_due", "parts_in", "order_notice", "test"];
+export const MESSAGE_KINDS: MessageKind[] = ["ready", "reminder", "estimate", "abandon", "service_due", "review", "campaign", "class_notice", "booking_notice", "consent_confirm", "help_reply", "bags_due", "parts_in", "order_notice", "software_renew", "test"];
 
 /** Notices are about something the customer started or owns; marketing encourages buying (TCPA / CAN-SPAM rules apply). */
 export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
@@ -39,6 +40,8 @@ export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
   review: "marketing",
   campaign: "marketing",
   bags_due: "marketing",
+  // A friendly reminder that a software subscription renews (shop-features-round-2-design.md 2.5): it asks for a sale.
+  software_renew: "marketing",
 };
 
 /** Texts of these kinds end with " Reply STOP to opt out." (marketing always; these notices are typed by staff). */

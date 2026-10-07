@@ -22,6 +22,7 @@ import { listPlans, planTerms } from "@/lib/units/plans";
 import { listMakerTerms, termsText } from "@/lib/units/units";
 import { deleteMakerTerms, saveMakerTerms, savePlan } from "@/actions/units";
 import { saveLayawaySettings } from "@/actions/layaway";
+import { saveSoftwareSettings } from "@/actions/software";
 import { layawaySettings } from "@/lib/layaway";
 import { EVERY_LABEL, LAYAWAY_EVERY } from "@/lib/layaway-math";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
@@ -120,7 +121,7 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
     shopTimeZone(user.shopId),
     listLenders(user.shopId),
   ]);
-  const [promos, shop] = await Promise.all([listPromotions(user.shopId), db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { taxIncludedOn: true } })]);
+  const [promos, shop] = await Promise.all([listPromotions(user.shopId), db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { taxIncludedOn: true, softwareActivatedAtSale: true } })]);
   const today = ymdOf(new Date(), tz);
   const year = Number(today.slice(0, 4));
   const preset = presetByKey(sp.preset);
@@ -485,6 +486,19 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
             </ActionForm>
           </div>
         )}
+      </Section>
+      {/* Software licences (shop-features-round-2-design.md 2.5): when a licence counts as activated. */}
+      <Section title="Software" id="software">
+        <ActionForm action={saveSoftwareSettings} success="Saved" className="space-y-2">
+          <label className="flex min-h-11 items-start gap-2 text-base">
+            <input type="checkbox" name="activatedAtSale" defaultChecked={shop.softwareActivatedAtSale} className="check mt-1" />
+            <span>
+              Software counts as activated on the day it is sold
+              <span className="muted block text-sm">Off: it counts as activated when you mark it on the licence (Parts, Software licences). Once activated, a return needs an owner or admin and a reason.</span>
+            </span>
+          </label>
+          <Submit className="btn">Save</Submit>
+        </ActionForm>
       </Section>
     </div>
   );

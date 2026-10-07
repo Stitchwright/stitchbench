@@ -136,11 +136,12 @@ export const KIND_CHOICES: KindChoice[] = [
   { value: "FABRIC", label: "Fabric" },
   { value: "THREAD", label: "Thread" },
   { value: "PATTERN", label: "Pattern / book" },
+  { value: "SOFTWARE", label: "Software (embroidery, cutting-machine or slicer software, with a code)" },
   { value: "MACHINE", label: "Machine model to order (it becomes a machine for sale when it arrives)" },
   ...ITEM_TYPE_IDS.filter((t) => ITEM_TYPES[t].craft).map((t) => ({ value: `${ITEM_TYPES[t].kind}:${t}`, label: ITEM_TYPES[t].label, craft: true })),
 ];
 
-export const PLAIN_KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN", "MACHINE"] as const;
+export const PLAIN_KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN", "SOFTWARE", "MACHINE"] as const;
 export type PlainKind = (typeof PLAIN_KINDS)[number];
 
 /** "SUPPLY:filament" -> { kind SUPPLY, itemType filament }; "THREAD" -> thread; a plain kind -> no type. Unknown: an error in words. */
@@ -322,6 +323,7 @@ const KIND_WORDS: [RegExp, string][] = [
   [/\bmats?\b|cutting mat/, "SUPPLY:mat"],
   [/laser|plywood|basswood|acrylic|\bmdf\b/, "SUPPLY:laser-material"],
   [/\bdies?\b/, "ACCESSORY:die"],
+  [/software|licen[cs]e|activation/, "SOFTWARE"],
   [/thread|floss/, "THREAD"],
   [/fabric|yardage|quilting cotton|by the yard|\bbolt/, "FABRIC"],
   [/notion/, "NOTION"],
