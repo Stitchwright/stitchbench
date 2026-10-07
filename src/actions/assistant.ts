@@ -11,6 +11,7 @@ import { draftText, labelRead, likelyCauses, markCall, plateRead, saveSettings, 
 import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
+import { askShop } from "@/lib/assistant/ask";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
 export const draftTicketText = safe(async (ticketId: string, kind: string, shorthand: string, instruction: string) => {
@@ -49,6 +50,9 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
     manualsOn: fd.get("manualsOn") === "on",
     partsOn: fd.get("partsOn") === "on",
     fabricOn: fd.get("fabricOn") === "on",
+    askOn: fd.get("askOn") === "on",
+    marketingOn: fd.get("marketingOn") === "on",
+    quiltOn: fd.get("quiltOn") === "on",
     offerFirstNames: fd.get("offerFirstNames") === "on",
     voice: String(fd.get("voice") ?? "").trim() || null,
   });
@@ -123,4 +127,10 @@ export const tagFabric = safe(async (partId: string, data: string, mediaType: st
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/fabric");
   return shownOnce(JSON.stringify(r));
+});
+
+/** Ask your shop (Reports): the model picks one of the program's reports, the program runs it, the model words the answer. */
+export const askYourShop = safe(async (question: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await askShop(user, question)));
 });

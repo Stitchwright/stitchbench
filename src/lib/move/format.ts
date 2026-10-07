@@ -57,7 +57,7 @@ export type MoveTable = {
  * PER_INSTALL, so a new table can't be forgotten.
  */
 export const MOVE_TABLES: readonly MoveTable[] = [
-  { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
+  { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed", "statusKeyHash", "statusKeyAt"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
   { t: "User", key: "id" },
   { t: "BooksSettings", key: '"shopId"' }, // the bookkeeping export's names (one row per company)
   { t: "OffsiteSettings", key: '"shopId"', leftOut: ["bucket"] }, // off-site backup: on or off, target, the public key; the own-bucket settings (a secret sealed under the install's key) are left out
@@ -145,6 +145,9 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "WebOrder", key: "id", leftOut: ["linkSealed"] },
   { t: "AssistantSettings", key: '"shopId"' }, // the company's own Assistant switches and voice sample (one row per company)
   { t: "AssistantCall", key: "id" }, // the company's own log of what the Assistant was asked and said
+  { t: "PatternNeed", key: "id" }, // a pattern's yardage per size and role (its pattern item by plain id)
+  { t: "CareTip", key: "id" }, // the shop's own care tips for the pickup sheet
+  { t: "CustomerQuestion", key: "id" }, // customers' questions from the public page that went to a person
 ];
 
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */
@@ -163,7 +166,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
 export const LEFT_OUT: readonly string[] = MOVE_TABLES.flatMap((t) => (t.leftOut ?? []).map((c) => `${t.t}.${c}`));
 
 /** What the owner enters again on the new side, in the words the Settings page uses. */
-export const LEFT_OUT_WORDS = ["the mail password", "the Twilio secret", "the Stripe keys and webhook secret", "estimate and online-order links (customers get new ones)", "the partner signing key (the company makes a new one, and each partner trusts it by a new partner code)"];
+export const LEFT_OUT_WORDS = ["the mail password", "the Twilio secret", "the Stripe keys and webhook secret", "estimate and online-order links (customers get new ones)", "the partner signing key (the company makes a new one, and each partner trusts it by a new partner code)", "the phone-answering service's key (make a new one in Settings → Customer questions)"];
 
 export const tableNames = (): string[] => MOVE_TABLES.map((t) => t.t);
 
