@@ -91,6 +91,9 @@ export default async function Parts({
             <Link href="/parts/most-used" className="btn">
               Most used
             </Link>
+            <Link href="/parts/orders" className="btn">
+              Orders to suppliers
+            </Link>
             <Link href="/parts/on-order" className="btn">
               On order
             </Link>

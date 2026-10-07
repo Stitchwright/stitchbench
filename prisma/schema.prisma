@@ -2442,6 +2442,7 @@ enum PurchaseOrderStatus {
 enum PoUnit {
   YD
   BOLT
+  EACH // any item that isn't sold by the yard (shop-features-round-2-design.md 1.1)
 }
 
 model PurchaseOrder {
@@ -2469,8 +2470,10 @@ model PurchaseOrder {
   @@index([shopId, status])
 }
 
-// One line: the fabric (kept by number and description too, so the order reads right if the item is changed), the amount
-// in yards or bolts (a bolt is boltYards, copied when the line is made), the maker's item number and the cost a yard.
+// One line: the item (kept by number and description too, so the order reads right if the item is changed), the amount
+// in yards or bolts for fabric (a bolt is boltYards, copied when the line is made) or in pieces (EACH) for anything else,
+// the maker's item number and the cost a yard or each. receivedYards is what came in, in the line's own measure: yards
+// for fabric, pieces for an EACH line (the name is from when orders were fabric only).
 model PurchaseOrderLine {
   id            String        @id @default(cuid())
   shopId        String

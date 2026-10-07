@@ -1,7 +1,7 @@
 // Fabric ordering math (fabric-smarts-design.md sections 5 and 9; formulas in docs/research/fabric-analytics-methods.md
 // section 5). Pure: no "server-only", no database, so the Fabric page, the server bodies (src/lib/fabric-orders.ts) and the
 // check script share one set of numbers. Yards are eighths, money integer cents (figures in between are floating point).
-import { roundCents } from "@/lib/register-math";
+import { roundCents, yards } from "@/lib/register-math";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Shop settings (Settings -> Fabric)
@@ -134,28 +134,69 @@ export function isUrgent(o: { sold: number; lot: number; weeks: number | null; l
 // Purchase order lines
 // ---------------------------------------------------------------------------------------------------------------
 
-export type PoLineLike = { unit: "YD" | "BOLT"; qty: number; boltYards: number; costCents: number | null; receivedYards: number };
+/** YD and BOLT are fabric's measures; EACH is pieces of any other item (shop-features-round-2-design.md 1.1). */
+export type PoUnitName = "YD" | "BOLT" | "EACH";
 
-/** The yards a line orders: its quantity in yards, or bolts x the bolt size, in eighths. */
-export const lineYards = (l: Pick<PoLineLike, "unit" | "qty" | "boltYards">): number => eighths(l.unit === "BOLT" ? l.qty * l.boltYards : l.qty);
+export type PoLineLike = { unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number };
 
-/** Yards still to come on a line (never negative: an over-delivery leaves nothing outstanding). */
-export const outstandingYards = (l: PoLineLike): number => Math.max(0, eighths(lineYards(l) - l.receivedYards));
+/**
+ * What a line orders in its stock measure: yards (its quantity in yards, or bolts x the bolt size, in eighths) for fabric,
+ * pieces for an EACH line. The name is from when orders were fabric only.
+ */
+export const lineYards = (l: Pick<PoLineLike, "unit" | "qty" | "boltYards">): number => (l.unit === "EACH" ? Math.round(l.qty) : eighths(l.unit === "BOLT" ? l.qty * l.boltYards : l.qty));
 
-/** What a line costs: yards x the cost a yard, rounded to the cent. */
+/** Still to come on a line, in its stock measure (never negative: an over-delivery leaves nothing outstanding). */
+export const outstandingYards = (l: PoLineLike): number => (l.unit === "EACH" ? Math.max(0, Math.round(l.qty - l.receivedYards)) : Math.max(0, eighths(lineYards(l) - l.receivedYards)));
+
+/** What a line costs: yards x the cost a yard (or pieces x the cost each), rounded to the cent. */
 export const lineCostTotal = (l: PoLineLike): number => (l.costCents == null ? 0 : roundCents(lineYards(l) * l.costCents));
 
 export const orderTotal = (lines: PoLineLike[]): number => lines.reduce((a, l) => a + lineCostTotal(l), 0);
+
+/** A line's stock measure in words: "yd" for fabric, "" for pieces (a count reads plainly: "12"). */
+export const isEach = (l: Pick<PoLineLike, "unit">) => l.unit === "EACH";
+
+/** The amount as an order reads it: "1 1/2 bolts (22 1/2 yd)", "3 yd", "12". */
+export function amountText(l: Pick<PoLineLike, "unit" | "qty" | "boltYards">): string {
+  if (l.unit === "EACH") return String(Math.round(l.qty));
+  if (l.unit === "BOLT") return `${l.qty} ${l.qty === 1 ? "bolt" : "bolts"} (${yards(lineYards(l))} yd)`;
+  return `${yards(l.qty)} yd`;
+}
+
+/** An amount in a line's stock measure: "3 1/2 yd" for fabric, "12" for pieces. */
+export const measureText = (l: Pick<PoLineLike, "unit">, q: number): string => (l.unit === "EACH" ? String(Math.round(q)) : `${yards(q)} yd`);
+
+/** "/yd" or " each": what a line's cost is per. */
+export const costPer = (l: Pick<PoLineLike, "unit">): string => (l.unit === "EACH" ? " each" : "/yd");
+
+/** The whole order's amount: "45 yd", "24 pieces", or "45 yd and 24 pieces". */
+export function orderAmountText(lines: Pick<PoLineLike, "unit" | "qty" | "boltYards">[]): string {
+  const yd = lines.filter((l) => l.unit !== "EACH").reduce((a, l) => a + lineYards(l), 0);
+  const pcs = lines.filter((l) => l.unit === "EACH").reduce((a, l) => a + lineYards(l), 0);
+  const parts = [lines.some((l) => l.unit !== "EACH") ? `${yards(yd)} yd` : null, pcs ? `${pcs} ${pcs === 1 ? "piece" : "pieces"}` : null].filter(Boolean);
+  return parts.length ? parts.join(" and ") : "nothing yet";
+}
 
 export type PoStatus = "DRAFT" | "SENT" | "PARTLY_RECEIVED" | "RECEIVED" | "CANCELLED";
 
 export const PO_STATUS_LABEL: Record<PoStatus, string> = { DRAFT: "Draft", SENT: "Sent", PARTLY_RECEIVED: "Partly received", RECEIVED: "Received", CANCELLED: "Cancelled" };
 
-/** The status after a receipt: received once no line has yards outstanding, else partly received. */
+/** The status after a receipt: received once no line has anything outstanding, else partly received. */
 export const statusAfterReceive = (lines: PoLineLike[]): "PARTLY_RECEIVED" | "RECEIVED" => (lines.every((l) => outstandingYards(l) <= 1e-9) ? "RECEIVED" : "PARTLY_RECEIVED");
 
-/** Orders whose outstanding yards count as "on order". A draft isn't ordered yet. */
+/** Orders whose outstanding amounts count as "on order". A draft isn't ordered yet. */
 export const OPEN_STATUSES: PoStatus[] = ["SENT", "PARTLY_RECEIVED"];
 
-/** The amount as the order reads it: "1.5 bolts (22 1/2 yd)" is built by the caller; this is just the unit word. */
-export const unitWord = (unit: "YD" | "BOLT", qty: number) => (unit === "YD" ? "yd" : qty === 1 ? "bolt" : "bolts");
+/** The amount as the order reads it: "1.5 bolts (22 1/2 yd)" is built by amountText; this is just the unit word. */
+export const unitWord = (unit: PoUnitName, qty: number) => (unit === "YD" ? "yd" : unit === "EACH" ? "each" : qty === 1 ? "bolt" : "bolts");
+
+/**
+ * The suggestion for an item sold each (not fabric by the yard), from its own reorder point: at or below it, counting
+ * what is on a sent order, order enough to bring it up to twice the point (at least 1). 0: nothing to order.
+ */
+export function eachSuggestion(o: { reorderAt: number; onHand: number; onOrder: number }): number {
+  if (!(o.reorderAt > 0)) return 0;
+  const have = Math.max(0, o.onHand) + Math.max(0, o.onOrder);
+  if (have > o.reorderAt + 1e-9) return 0;
+  return Math.max(1, Math.ceil(o.reorderAt * 2 - have));
+}
