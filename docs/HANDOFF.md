@@ -927,7 +927,7 @@ Meanwhile Claude ran a focused local review of the riskiest code (billing, money
   weeks of supply, A/B/C, GMROI, roll-ups), Slow fabric (FIFO age, mark down vs fat quarters with the numbers), the
   markdown ladder with records and same-day undo, 18 shop settings. Next: F3 reorder and purchase orders, F4 kits.
 
-## 2aj. 6-7 Oct 2026: everything merged into the launch branches (pushed; main not yet merged)
+## 2aj. 6-7 Oct 2026: everything merged into the launch branches, then into main (7 Oct: StitchBench main 50ca9af, StitchHub main 60283c6; not deployed)
 
 Owner decision (6 Oct): this week's feature branches ship with the launch release. `scheduling-features` (8d933f8)
 now holds `fabric-smarts` (F1-F7: bolt ends, insight, reorder and POs, kits, connectors, clubs with payments in the
@@ -1136,13 +1136,13 @@ accounts and billing: design first).
      whenever the program draws a factory-setting figure on a joined install (since the hub client's first version).
      That predates and conflicts with item 9 ("chosen per item"), and figure crops from OEM manuals are a lawyer
      question. Options: keep (the draft discloses it), an install setting off by default, or stop sharing figures.
-   - **Hub billing**: subscribing during the 30-day trial charges the same day (pass the trial end to Checkout so the
+   - **Done** (hub billing.mjs: trial end passed to Checkout, won chargebacks restored). Was: **Hub billing**: subscribing during the 30-day trial charges the same day (pass the trial end to Checkout so the
      first charge falls when the trial ends); a refund inside the trial makes the shop read-only at once (should go
      back to its trial); a won chargeback isn't undone (handle `charge.dispute.closed` with status won).
-   - **Customers can't be deleted or merged** (L126 decided, not built): needed to honour a customer's deletion request.
+   - **Done** (`src/actions/merge.ts`, the "Merge or delete" card). Was: **Customers can't be deleted or merged** (L126 decided, not built): needed to honour a customer's deletion request.
    - **No LICENSE file** in this repository, so self-hosting shops have no stated licence for the code (the hub is
      AGPL). Owner and lawyer decision.
-   - The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
+   - **Done** (no longer in the README). Was: The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
    - Before the pages go live: the hub's `/terms` and `/privacy` routes, Checkout recording the accepted version, and
      `TERMS_VERSION` in `src/lib/hub-account.ts` (still "2026-10-02-draft"): billing package 5.
 
