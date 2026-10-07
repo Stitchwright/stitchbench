@@ -99,7 +99,7 @@ export default async function GiftCardPage({ params }: { params: Promise<{ id: s
       {card.status === "active" && card.balanceCents > 0 && admin && (
         <Section title="Pay out the balance in cash">
           <p className="muted text-sm">
-            Some states require a small leftover to be paid out on request. At the register, press Gift card, pick &quot;Pay out a balance in cash&quot; and scan or type this number; the drawer and the tender totals then stay right.
+            Some states require a small leftover to be paid out on request. At the register, press Gift card, pick &quot;Pay out a balance in cash&quot; and scan or type this number; the drawer and the payment totals then stay right.
           </p>
         </Section>
       )}

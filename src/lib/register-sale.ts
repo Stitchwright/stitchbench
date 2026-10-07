@@ -218,7 +218,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       if (part?.unit === "yd" && Number.isFinite(qty) && inEighths(qty)) qty = Math.round(qty * 8) / 8;
       if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 10000) throw new UserError("Each line needs a quantity.");
       let unit = Math.round(Number(l.unitPriceCents));
-      if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, use Return mode (negative quantity).");
+      if (!Number.isFinite(unit) || unit < 0) throw new UserError("Prices can't be negative. For a return, press 'Return an item' at the register (it rings up a negative quantity).");
       let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
       if (job) {
         if (qty !== 1) throw new UserError("A repair is one line of 1.");

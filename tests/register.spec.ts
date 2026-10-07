@@ -31,7 +31,7 @@ test("cash refund, and a scan while a Qty field has focus", async ({ page }) => 
   // A return paid back in cash from the drawer.
   await page.goto("/register");
   const sale = page.getByRole("table", { name: "Sale" });
-  await page.getByRole("button", { name: /Return mode/ }).click();
+  await page.getByRole("button", { name: /Return an item/ }).click();
   await page.locator("#register-code").fill(pn);
   await page.locator("#register-code").press("Enter");
   await expect(sale).toContainText("Spool of thread (test)");

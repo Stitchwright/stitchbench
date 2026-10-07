@@ -66,7 +66,7 @@ test("set-up: the admin turns vac on for D; D checks in T1 and sells a unit; the
   await setModule(admin, d.name, "Vac Shop", true);
   const page = await login(browser, d.owner);
   await page.goto("/tickets/new?kind=vacuum");
-  await page.getByLabel("New customer name").fill(`D Customer ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`D Customer ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Hoover");
   await page.getByLabel("Model", { exact: true }).fill("UH70120");
   await page.getByLabel("Serial number", { exact: true }).fill(serial);
@@ -135,7 +135,7 @@ test("D after the end: read-only units, no new vacuum check-in, T1 finishes, the
 
   // "Return a vacuum" still refunds the unit (money already owed).
   await page.goto("/register");
-  await page.getByRole("button", { name: /Return mode off/ }).click();
+  await page.getByRole("button", { name: /Return an item/ }).click();
   await page.getByRole("button", { name: "Return a vacuum" }).click();
   await page.getByRole("button", { name: "Look up" }).click();
   await page.getByRole("button", { name: "Refund $499.00" }).click();
@@ -158,7 +158,7 @@ test("E in its grace days: the banner says it keeps working until, not on the pr
   await page.goto("/");
   await expect(page.getByText(/Vac Shop ended on .* It keeps working until/)).toBeVisible();
   await page.goto("/tickets/new?kind=vacuum");
-  await page.getByLabel("New customer name").fill(`E Customer ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`E Customer ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Sebo");
   await page.getByLabel("Model", { exact: true }).fill("X4");
   await page.getByLabel("Bags or bagless").selectOption("Bagged");
