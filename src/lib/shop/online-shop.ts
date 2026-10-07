@@ -13,7 +13,7 @@ import { handleClubEvent } from "@/lib/clubs";
 import { db } from "@/lib/db";
 import { actorOf, audit } from "@/lib/audit";
 import { UserError } from "@/lib/user-error";
-import { money, str } from "@/lib/format";
+import { modelKey, money, str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { seal, unseal } from "@/lib/messaging/secrets";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
@@ -332,15 +332,19 @@ export type CatalogItem = {
 const LISTED = (shopId: string): Prisma.PartWhereInput => ({ shopId, online: true, priceCents: { not: null }, consignLinkId: null });
 const titleOf = (p: { onlineTitle: string | null; description: string }) => p.onlineTitle?.trim() || p.description;
 
-/** The listed items, by words, number or kind; in stock first. */
-export async function catalog(shopId: string, o: { q?: string | null; kind?: string | null; take?: number } = {}): Promise<CatalogItem[]> {
+/** The listed items, by words, number, kind, or the machine they fit ("Fits your machine", 2.4); in stock first. */
+export async function catalog(shopId: string, o: { q?: string | null; kind?: string | null; fits?: string | null; take?: number } = {}): Promise<CatalogItem[]> {
   const q = (o.q ?? "").trim().slice(0, 80);
   const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
   const kind = o.kind && KIND_LABEL[o.kind] ? o.kind : null;
+  // `fits` is a model key from the picker (catalogFitModels), or a model typed ("PE800").
+  const fitKey = o.fits ? modelKey(o.fits.slice(0, 80)) : "";
+  const fitGroups = fitKey ? (await db.fitGroup.findMany({ where: { shopId, modelKeys: { has: fitKey } }, select: { id: true } })).map((g) => g.id) : [];
   const rows = await db.part.findMany({
     where: {
       ...LISTED(shopId),
       ...(kind ? { kind: kind as PartKind } : {}),
+      ...(fitKey ? { AND: [{ OR: [{ fitsKeys: { has: fitKey } }, ...(fitGroups.length ? [{ fitGroupIds: { hasSome: fitGroups } }] : [])] }] } : {}),
       ...(q
         ? {
             OR: [
@@ -391,6 +395,21 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
       tags: partTags(p),
     }))
     .sort((a, b) => Number(b.inStock) - Number(a.inStock) || a.title.localeCompare(b.title));
+}
+
+/**
+ * "Fits your machine" (shop-features-round-2-design.md 2.4): the models the listed items fit, by their own models and
+ * their fit groups' models, each once, for the online shop's machine picker. Labels as the shop typed them.
+ */
+export async function catalogFitModels(shopId: string): Promise<{ label: string; key: string }[]> {
+  const listed = await db.part.findMany({ where: { ...LISTED(shopId), OR: [{ fitsModels: { isEmpty: false } }, { fitGroupIds: { isEmpty: false } }] }, select: { fitsModels: true, fitsKeys: true, fitGroupIds: true }, take: 2000 });
+  const groupIds = [...new Set(listed.flatMap((p) => p.fitGroupIds))];
+  const groups = groupIds.length ? await db.fitGroup.findMany({ where: { shopId, id: { in: groupIds } }, select: { models: true, modelKeys: true } }) : [];
+  // Labels and keys are kept side by side on both (the same position is the same model).
+  const pairs = [...listed, ...groups.map((g) => ({ fitsModels: g.models, fitsKeys: g.modelKeys }))].flatMap((x) => (x.fitsModels.length === x.fitsKeys.length ? x.fitsModels.map((label, i) => ({ label, key: x.fitsKeys[i] })) : []));
+  const byKey = new Map<string, { label: string; key: string }>();
+  for (const p of pairs) if (p.key && !byKey.has(p.key)) byKey.set(p.key, p);
+  return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label)).slice(0, 300);
 }
 
 /** The kinds the shop has listed, for the category links. */

@@ -234,6 +234,7 @@ model Shop {
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
+  fitGroups         FitGroup[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -804,6 +805,12 @@ model Part {
   // are the same color ("same as Madeira 1147"), kept both ways. No foreign key (a company file imports in any order);
   // src/lib/colors.ts reads only the company's own.
   sameAs          String[]      @default([])
+  // Which machines it fits (shop-features-round-2-design.md 2.4): models as the shop picked them ("Brother PE800"), their
+  // model keys (modelKey of the model, what every lookup matches on), and fit groups the shop named (plain ids of this
+  // company's FitGroup rows: no foreign key). The free-text `fits` stays for notes. src/lib/fits.ts.
+  fitsModels      String[]      @default([])
+  fitsKeys        String[]      @default([])
+  fitGroupIds     String[]      @default([])
 
   moves     StockMove[]
   markdowns FabricMarkdown[]
@@ -821,6 +828,23 @@ model Part {
   @@unique([shopId, partNumber])
   @@index([numberKeys], type: Gin)
   @@index([shopId, itemType])
+  @@index([fitsKeys], type: Gin)
+}
+
+// A fit group (shop-features-round-2-design.md 2.4): a name the shop gives once ("Brother 7 mm low shank", "Cricut
+// Maker 3", "Bambu P1 hot end") and the models in it; an item that fits the group fits every one of them. `models` as
+// typed ("Brother PE800"), `modelKeys` their keys.
+model FitGroup {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  models    String[] @default([])
+  modelKeys String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, name])
+  @@index([modelKeys], type: Gin)
 }
 
 enum InPrint {

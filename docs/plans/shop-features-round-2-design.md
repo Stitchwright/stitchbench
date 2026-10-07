@@ -1098,3 +1098,22 @@ Decisions made while building:
   out or refuse it in words. Left for later: cutters and lasers as machine kinds come with `maker-machines` (6.1);
   warranty months aren't read from the terms (the unit gets the shop's default months, the terms in its note); MAP is
   kept as the price, not enforced (9.3).
+
+**`fits-machines` (2.4, 7 Oct 2026).** Migration `20261020500000_fits_machines` (`Part.fitsModels`, `fitsKeys`,
+`fitGroupIds`; `FitGroup`, carried by the company file). Code: `src/lib/fits.ts`, `src/actions/fits.ts`; an item's
+**Fits these machines** (`src/components/fits-section.tsx`: brand and model picked from the shop's models or typed, fit
+groups ticked), Parts → **Fit groups** (`/parts/fit-groups`), **Fits their machines** on the customer's page
+(`src/components/customer-fits.tsx`), the register's quiet lines (`src/components/register-fits.tsx`: "3 items fit
+Jane's Brother PE800" with a customer chosen, "Goes with this Brother SE600" with a machine for sale on the sale; one
+tap opens the list, each item has Add), and the online shop's **Fits your machine** picker. Check:
+`scripts/checks/fits-machines.check.ts` (6 groups); `online-shop`, `move-export`, `base-license` still pass.
+Decisions made while building:
+- Models match on the model key alone, as everything else does (PE-800 is PE800). An item's labels and keys are kept
+  side by side, so a brand of two words ("Baby Lock Altair") keeps the key of its model; in a fit group's list a
+  two-word brand takes a comma ("Baby Lock, Altair").
+- The register's lines show only what is on the shelf; a customer's machine with nothing that fits isn't mentioned.
+  The machine's own bundle ("what comes with it") stays on the unit's line as before.
+- Removing a fit group takes it off its items (they keep their own models), after one confirming tap.
+- The free-text `fits` stays, labelled "Fits (notes)".
+- Browser test needed: an item's Fits these machines (add, take off, groups), /parts/fit-groups, a customer's page, the
+  register with a customer who owns a machine and with a machine for sale on the sale, the online shop's picker.
