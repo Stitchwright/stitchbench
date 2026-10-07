@@ -109,6 +109,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
   { t: "CoopClaim", key: "id" }, // co-op advertising and rebate claims (9.2)
   { t: "CoopProof", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> CoopClaim: the ad and invoice photos
+  { t: "HouseAccount", key: "id" }, // house charge accounts (9.4; customer id plain)
+  { t: "AccountEntry", key: "id" }, // -> HouseAccount (sale, ticket and payment ids plain)
   { t: "GiftRegistry", key: "id" }, // gift lists (9.9; customer id plain)
   { t: "RegistryItem", key: "id" }, // -> GiftRegistry
   { t: "Appraisal", key: "id" }, // quilt appraisals (9.8; customer and sale ids are plain)

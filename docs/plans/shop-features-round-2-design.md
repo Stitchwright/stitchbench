@@ -1394,3 +1394,28 @@ Decisions made while building:
   shop needs its page address (Settings → Online shop) to share lists; the token is random and changes when the list
   is shared again. Online purchases don't tick the list off yet (the cart has no list line); the public page tells
   buyers to say so at the counter.
+
+**`house-accounts` (9.4, built 7 Oct 2026 on the owner's "everything today"; question 11's gate lifted).** Migration
+`20261024700000_house_accounts` (`HouseAccount`, `AccountEntry`, `Shop.houseAccountsOn` off by default; carried by the
+company file, the merges and the customer delete). Code: `src/lib/house-accounts-math.ts` (pure: balance, aging,
+statement), `src/lib/house-accounts.ts`, `src/actions/house-accounts.ts`; the register's **On account** payment
+(`ACCOUNT` tender, shown with a customer picked while house accounts are on; the server checks her open account and
+limit; a void takes the charge off, a refund to the account goes on it), a ticket's existing "Invoice (on account)"
+payment for a customer with an account goes on it (removing the payment takes it off), Paperwork → **House accounts**
+(the owner's "Turn on house accounts" switch, "Owed to us" by age: current, 31-60, 61-90, over 90, with last month's
+statement to print), each account's page (Take the payment: check with its number, cash, card; Undo; by age; charges
+and payments; print or **Email** last month's statement with Messages on; limit, days to pay, closed to new charges),
+the printable **statement** (`/paperwork/accounts/[id]/statement?month=`), and "House account" on the customer's page
+(open one: limit and days to pay). Books: On account tenders are accounts receivable (as ticket invoices already were);
+payments against an account move it to undeposited funds (or card clearing). Check:
+`scripts/checks/house-accounts.check.ts` (7 groups); `customer-merge` (seeds `HouseAccount`; its schema scan now skips
+a column that keys a relation to another model, like `AccountEntry.accountId`), `move-export`, `books-export`,
+`gift-cards`, `store-credit`, `financing`, `reports`, `money-records` still pass. Spec: `tests/house-accounts.spec.ts`.
+Decisions made while building:
+- Statements are worked out from the entries when printed or emailed (no Statement table): a month's opening balance,
+  charges, payments, what is owed and the due day (the month's end plus her days to pay). Emailing uses the
+  transactional notice kind, one per account and month.
+- Aging pays the oldest charges first. A credit balance shows as a negative current amount.
+- Turning house accounts off stops new charges; what is owed stays and payments still go in.
+- Left for later: many-machine service visits for a school or business (`TicketMachine`, the other half of 9.4);
+  meanwhile each machine is its own ticket, all charged to the same account.

@@ -53,6 +53,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
   { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
+  { model: "HouseAccount", field: "customerId", label: ["house account", "house accounts"] },
   { model: "GiftRegistry", field: "customerId", label: ["gift list", "gift lists"] },
   { model: "Appraisal", field: "customerId", label: ["quilt appraisal", "quilt appraisals"] },
   { model: "StockUnit", field: "consignorId", label: ["machine on consignment", "machines on consignment"] },
@@ -267,6 +268,12 @@ export async function mergeCustomersFor(user: CurrentUser, fromId: string, intoI
     const theirCerts = new Set((await tx.certification.findMany({ where: { shopId, customerId: into.id }, select: { equipment: true } })).map((x) => x.equipment.toLowerCase()));
     const certClash = (await tx.certification.findMany({ where: { shopId, customerId: from.id }, select: { id: true, equipment: true } })).filter((x) => theirCerts.has(x.equipment.toLowerCase()));
     if (certClash.length) await tx.certification.deleteMany({ where: { shopId, id: { in: certClash.map((x) => x.id) } } });
+    // A house account on both (9.4): the duplicate's charges and payments join the kept one's account.
+    const [fromAcct, intoAcct] = await Promise.all([tx.houseAccount.findFirst({ where: { shopId, customerId: from.id } }), tx.houseAccount.findFirst({ where: { shopId, customerId: into.id } })]);
+    if (fromAcct && intoAcct) {
+      await tx.accountEntry.updateMany({ where: { shopId, accountId: fromAcct.id }, data: { accountId: intoAcct.id } });
+      await tx.houseAccount.delete({ where: { id: fromAcct.id } });
+    }
     for (const r of CUSTOMER_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await replaceInLists(tx, shopId, from.id, into.id);
     await tx.customer.update({ where: { id: into.id }, data: customerFill(from, into, date).data });
@@ -329,6 +336,12 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   }
   for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
+  }
+  const acct = await tx.houseAccount.findFirst({ where: { shopId, customerId: c.id }, select: { id: true } });
+  if (acct) {
+    const es = await tx.accountEntry.findMany({ where: { accountId: acct.id, voidedAt: null }, select: { kind: true, amountCents: true } });
+    const owes = es.reduce((x, e) => x + (e.kind === "PAYMENT" ? -e.amountCents : e.amountCents), 0);
+    if (owes !== 0) out.push(`Their house account ${owes > 0 ? `owes ${money(owes)}` : `holds a credit of ${money(-owes)}`}. Settle it first.`);
   }
   const owedHer = await tx.consignPayout.count({ where: { shopId, customerId: c.id, paidAt: null, voidedAt: null } });
   if (owedHer) out.push(`The shop still owes them for ${owedHer === 1 ? "a consigned machine" : `${owedHer} consigned machines`}. Pay them first (Paperwork, Consigned machines).`);
@@ -402,6 +415,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["HouseAccount.customerId"], ["house account", "house accounts"], "kept in the books (nothing owed on it), without the customer");
   add(n["GiftRegistry.customerId"], ["gift list", "gift lists"], "deleted (its link stops working)");
   add(n["Appraisal.customerId"], ["quilt appraisal", "quilt appraisals"], `kept in the books as "${DELETED_NAME}" (their photos deleted)`);
   add(n["StockUnit.consignorId"], ["machine once on consignment", "machines once on consignment"], "kept, without the customer");
@@ -446,6 +460,10 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
+    // A settled house account (9.4) stays for the books, without her (its id stands in, so the one-per-customer key holds).
+    for (const a of await tx.houseAccount.findMany({ where: { shopId, customerId: c.id }, select: { id: true } })) {
+      await tx.houseAccount.update({ where: { id: a.id }, data: { customerId: `deleted:${a.id}`, status: "CLOSED" } });
+    }
     // Gift lists (9.9): hers, so they go (lines already bought keep their sales).
     await tx.giftRegistry.deleteMany({ where: { shopId, customerId: c.id } });
     // Quilt appraisals (9.8): kept as the fee's record, without her name or the quilt's photos.

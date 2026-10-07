@@ -126,6 +126,7 @@ export function Register({
   preload,
   sellers = [],
   me = "",
+  houseAccounts = false,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -145,6 +146,8 @@ export function Register({
   /** Who can be picked as the seller (commissions, 9.7), and the person signed in (the default). */
   sellers?: { id: string; name: string }[];
   me?: string;
+  /** House accounts are on (9.4): "On account" is offered once a customer is picked (the server checks her account). */
+  houseAccounts?: boolean;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -1353,6 +1356,11 @@ export function Register({
                 {TENDER_LABEL[m]}
               </button>
             ))}
+            {houseAccounts && customer && (
+              <button type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender("ACCOUNT")}>
+                {TENDER_LABEL.ACCOUNT}
+              </button>
+            )}
             {lenders.length > 0 && (
               <button type="button" className={`btn btn-sm ${fin ? "btn-primary" : ""}`} disabled={!lines.length} aria-expanded={!!fin} onClick={() => setFin(fin ? null : { lenderId: lenders.length === 1 ? lenders[0].id : "", approval: "" })}>
                 {TENDER_LABEL.FINANCED}

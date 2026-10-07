@@ -10,6 +10,7 @@ const TABS: { key: PaperTab; href: string; label: string; admin?: boolean }[] = 
   { key: "coop", href: "/paperwork/coop", label: "Co-op and rebates" },
   { key: "consign", href: "/paperwork/consign", label: "Consigned machines" },
   { key: "commissions", href: "/paperwork/commissions", label: "Commissions", admin: true },
+  { key: "accounts", href: "/paperwork/accounts", label: "House accounts" },
 ];
 
 export function PaperFrame({

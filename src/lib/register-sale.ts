@@ -5,6 +5,7 @@ import "server-only";
 // class seats and appointments paid or refunded here.
 import { checkDelisted, clearUnitListings, sellerFor } from "@/lib/commissions";
 import { checkRegistryLines } from "@/lib/gift-registry";
+import { applyAccountTender, prepareAccountTender, voidAccountOfSale } from "@/lib/house-accounts";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -392,6 +393,8 @@ export async function completeSaleAs(
       : givenTax == null && customerId && input.chargeTax !== true
         ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
         : null;
+    // "On account" (9.4): her open house account, within its limit.
+    const accountId = opts.paidOnline ? null : await prepareAccountTender(shopId, customerId, tenders);
     // Each line's category (written on it below), and why a line that could be taxed wasn't (SaleLine.taxNote).
     const lineKinds = lines.map((l, i) =>
       saleLineKind({
@@ -615,6 +618,7 @@ export async function completeSaleAs(
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
         await clearUnitListings(tx, shopId, delistUnits);
+        await applyAccountTender(tx, { shopId, accountId, saleId: sale.id, saleNumber: number, amountCents: tenders.filter((t) => t.method === "ACCOUNT").reduce((x, t) => x + t.amountCents, 0), at, userId: user.id });
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
@@ -700,6 +704,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await tx.makeJob.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, closedAt: null, saleId: null, fileDeleteAfter: null } });
     // A quilt appraisal's fee (9.8): the certificate is a draft again.
     await tx.appraisal.updateMany({ where: { shopId, saleId: sale.id }, data: { saleId: null, issuedAt: null } });
+    // A charge to a house account (9.4) comes off it.
+    await voidAccountOfSale(tx, shopId, sale.id, at);
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);

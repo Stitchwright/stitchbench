@@ -1,4 +1,5 @@
 import "server-only";
+import { accountFromTicketPayment } from "@/lib/house-accounts";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { PAYMENT_LABEL } from "@/lib/constants";
@@ -32,6 +33,8 @@ export async function addPaymentFor(user: CurrentUser, ticketId: string, input: 
   await db.$transaction(async (tx) => {
     let note = input.note;
     const p = await tx.payment.create({ data: { ticketId, method: input.method, amountCents: amount, note } });
+    // On a house account (shop-features-round-2-design.md 9.4): an "Invoice (on account)" payment for her goes on it.
+    await accountFromTicketPayment(tx, { shopId: user.shopId, customerId: ticket.customerId, ticketId, ticketNumber: ticket.number, paymentId: p.id, method: input.method, amountCents: amount, userId: user.id });
     if (onCard) {
       const r = await applyCardTender(
         tx,
@@ -72,6 +75,8 @@ export async function removePaymentFor(user: CurrentUser, paymentId: string): Pr
       const removal = await tx.payment.create({
         data: { ticketId: p.ticketId, method: p.method, amountCents: -p.amountCents, paidAt: new Date(), reversesId: p.id, note: `Removed: the ${label}${p.note ? ` (${p.note})` : ""}`.slice(0, 500) },
       });
+      // A house account charge it made comes off (9.4).
+      await tx.accountEntry.updateMany({ where: { shopId: user.shopId, paymentId: p.id, voidedAt: null }, data: { voidedAt: new Date() } });
       // What the payment did to a gift card or store credit comes back (or goes back off it).
       await reversePayment(tx, actorOf(user), { id: p.id, ticketId: p.ticketId }, removal.id);
       await audit(tx, actorOf(user), {

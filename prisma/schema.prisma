@@ -107,6 +107,8 @@ model Shop {
   appraisalFeeCents       Int           @default(7500)
   appraiserName           String?
   appraiserCredential     String?
+  // House charge accounts (9.4): off until the owner turns them on
+  houseAccountsOn         Boolean       @default(false)
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -269,6 +271,8 @@ model Shop {
   appraisalPhotos   AppraisalPhoto[]
   giftRegistries    GiftRegistry[]
   registryItems     RegistryItem[]
+  houseAccounts     HouseAccount[]
+  accountEntries    AccountEntry[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -3590,4 +3594,47 @@ model RegistryItem {
   createdAt   DateTime     @default(now())
 
   @@index([registryId])
+}
+
+// A customer's house charge account (shop-features-round-2-design.md 9.4, package house-accounts): she buys "on account"
+// at the register (tender ACCOUNT) or on a ticket (payment INVOICE), up to her limit (0: no limit), and pays within the
+// terms (days) from a monthly statement. status: OPEN | CLOSED (no new charges). Only while Shop.houseAccountsOn.
+model HouseAccount {
+  id         String         @id @default(cuid())
+  shopId     String
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String
+  limitCents Int            @default(0)
+  termsDays  Int            @default(30)
+  status     String         @default("OPEN")
+  note       String?
+  createdAt  DateTime       @default(now())
+  entries    AccountEntry[]
+
+  @@unique([shopId, customerId])
+}
+
+// One charge or payment on a house account: kind CHARGE (a sale or a ticket put on account; negative for a refund to the
+// account) | PAYMENT (money she paid against it: method CASH | CHECK | CARD | OTHER, note the check number) | ADJUST.
+// saleId, ticketId and paymentId (a ticket's Payment) are plain. voidedAt: the sale was voided (or the payment undone).
+model AccountEntry {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     HouseAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind        String
+  amountCents Int
+  method      String?
+  note        String?
+  saleId      String?
+  ticketId    String?
+  paymentId   String?
+  byUserId    String?
+  at          DateTime     @default(now())
+  voidedAt    DateTime?
+
+  @@index([accountId, at])
+  @@index([shopId, at])
+  @@index([saleId])
 }

@@ -48,6 +48,7 @@ function tenderKey(method: string, cfg: BooksConfig): { account: string } {
     case "CREDIT":
       return { account: accountName(cfg, "creditLiability") };
     case "INVOICE":
+    case "ACCOUNT":
       return { account: accountName(cfg, "receivable") };
     case "SHOP_COLLECTED":
       return { account: accountName(cfg, "dueFromPartners") };
@@ -207,6 +208,14 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
       // Store credit was put on her card (booked above as a card loaded outside a sale, against the adjustments account).
       post(led, p.method === "CREDIT" ? acct("giftAdjust") : acct("undeposited"), -p.amountCents);
     }
+  }
+
+  // ----- payments against house accounts (9.4): the money in, off what they owe (charges went to receivable as tenders) -----
+  const acctPays = await db.accountEntry.findMany({ where: { shopId, kind: "PAYMENT", at: { gte: start, lt: end }, voidedAt: null }, select: { amountCents: true, at: true, method: true } });
+  for (const p of acctPays) {
+    const led = dayLedger(p.at);
+    post(led, tenderKey(p.method === "CARD" ? "CARD" : "CASH", cfg).account, p.amountCents);
+    post(led, acct("receivable"), -p.amountCents);
   }
 
   // ----- co-op advertising and rebates (9.2): booked when the money comes in -----
