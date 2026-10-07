@@ -15,6 +15,11 @@ const answer = (rec) => {
   // Phase 4 (shop-features-round-2-design.md section 5): Ask your shop picks best sellers and words the first row.
   if (rec.system.startsWith("You pick which")) return /unicorn/i.test(rec.userText) ? '{"report":"none"}' : '{"report":"best_sellers","from":"2020-01-01","to":"2099-12-31","kind":"FABRIC","collection":"Kona Solids","top":5}';
   if (rec.system.startsWith("You answer a shop owner")) return `The best seller was ${/1\. ([^\n]+)/.exec(rec.userText)?.[1] ?? "nothing"}.`;
+  // Marketing drafts.
+  if (rec.system.includes("email to the shop's customers")) return "Subject: New fabric is in\n\nHi {first_name},\n\nFresh fabric just arrived.\n\n{shop_name}";
+  if (rec.system.includes("describing this class")) return "Learn to bind a quilt in one evening.";
+  if (rec.system.includes("online store")) return "A soft quilting cotton in a deep navy.";
+  if (rec.system.includes("social media post")) return "New in! Come see us. #quilting";
   return "unexpected request";
 };
 

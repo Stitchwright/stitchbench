@@ -10,8 +10,9 @@ const HUB = process.env.HUB_URL ?? "http://localhost:3200";
 const ADMIN = process.env.HUB_ADMIN_TOKEN ?? "local-test-admin-token-123";
 const ymd = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
-export async function assistantOn(shopId: string) {
-  execFileSync("npx", ["tsx", "scripts/license/dev.ts", "--grant", shopId, "--modules", "assistant", "--from", ymd(-2), "--until", ymd(60), "--grace", "14"], { stdio: "pipe", shell: process.platform === "win32" });
+/** `also`: other modules on the same key (marketing, scheduling), for pages that need them. */
+export async function assistantOn(shopId: string, also: string[] = []) {
+  execFileSync("npx", ["tsx", "scripts/license/dev.ts", "--grant", shopId, "--modules", ["assistant", ...also].join(","), "--from", ymd(-2), "--until", ymd(60), "--grace", "14"], { stdio: "pipe", shell: process.platform === "win32" });
   const installId = (await one<{ installId: string }>(`SELECT "installId" FROM "HubState" WHERE id = 1`))?.installId;
   expect(installId, "this install must be joined to the test hub").toBeTruthy();
   const comp = await fetch(`${HUB}/v1/admin/assistant/comp`, { method: "POST", headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" }, body: JSON.stringify({ installId, shopRef: shopId, until: ymd(60) }) });

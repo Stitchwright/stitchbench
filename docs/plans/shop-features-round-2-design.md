@@ -1148,3 +1148,23 @@ Decisions made while building:
   when `special-orders` and `price-groups` (phase 1) land; "at the Florida store" when `locations` does.
 - Browser test needed: Reports with the Assistant off (no box), a question (answer, table, Open this report), a question
   nothing covers (the list), the switch off.
+
+**`marketing-drafts` (5.2, 7 Oct 2026).** Code: the requests `src/lib/assistant/marketing-prompt.ts`, the bodies
+`src/lib/assistant/marketing.ts` (`draftArrivals`, `draftClassBlurb`, `draftProductText`, `draftSocialPost`), the actions
+`draftArrivalsEmail`, `draftClassText`, `draftItemText`, `draftPostText`, and `src/components/assistant/marketing-drafts.tsx`
+(`DraftFill`: "Draft it" that fills the field and then offers "Try again" with a few words; `PostDraft`: the post with a
+Copy button). Where: a new campaign ("Let the Assistant start it": a new arrivals email from the last N days, and a post
+about them), the class form's "About the class" (new and saved classes) and a post on the class page, the item page's
+Online shop card (the text for customers, and a post). Check: `scripts/checks/marketing-drafts.check.ts` (6 groups).
+Spec: `tests/marketing-drafts.spec.ts`.
+Decisions made while building:
+- "New arrivals" are the items with stock received (`StockMove` RECEIVED) in the last N days (14 by default, at most 90),
+  most received first, up to 30; a partner's consigned stock and machine models are left out. Nothing received: refused
+  in words before any call.
+- The email keeps `{first_name}` and `{shop_name}` for the campaign to fill in; the subject comes back on its own line.
+  Pictures are not put in the email (campaign emails are plain text today); the items' names, makers, colors and prices
+  are.
+- A new class is drafted from the form as typed (it isn't saved yet); a saved class adds its first meeting and how many
+  meetings. Anyone who can edit the field can draft it; the words never change a price.
+- `AssistantSettings.marketingOn` (on by default) switches all four off together.
+- Browser test needed: an item's Draft it and post, a new class's Draft it, a new campaign's arrivals email.
