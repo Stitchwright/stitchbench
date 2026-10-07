@@ -35,6 +35,8 @@ import { TicketLoanerSlot } from "@/components/slots/ticket-loaner";
 import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { UnitBadge } from "@/components/units/unit-badge";
 import { coverLine } from "@/actions/units";
+import { claimLine } from "@/actions/warranty-claims";
+import { CLAIM_LABEL, ticketClaims } from "@/lib/warranty-claims";
 import { machinePlansFor } from "@/lib/units/plans";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
@@ -91,6 +93,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const allPlans = await machinePlansFor(user.shopId, m.id, tz, t.intakeAt);
   const plans = allPlans.filter((p) => p.current);
   const planName = new Map(allPlans.map((p) => [p.id, p.name]));
+  // Warranty claims to the maker (shop-features-round-2-design.md 9.1): a claimed line charges nothing.
+  const claims = new Map((await ticketClaims(user.shopId, t.id)).map((c) => [c.id, c]));
   const isSite = t.jobType === "SITE";
   const exemptNow = Boolean(exemptCertificate(t.customer) ?? exemptCertificate(t.viaAccount));
   // Came in through a partner sewing shop (StitchShop)?
@@ -457,7 +461,26 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                               )}
                             </span>
                           )}
-                          {!l.coveredPlanId && canWork && l.kind !== "DISCOUNT" && l.kind !== "FEE" && l.unitPriceCents > 0 &&
+                          {l.claimId && (
+                            <span className="muted block text-xs">
+                              Claimed from the maker:{" "}
+                              <Link href={`/paperwork/warranty/${l.claimId}`} className="link">
+                                claim #{claims.get(l.claimId)?.number} to {claims.get(l.claimId)?.maker} ({(CLAIM_LABEL[claims.get(l.claimId)?.status ?? ""] ?? "").toLowerCase()})
+                              </Link>{" "}
+                              (would have been {money(l.coveredCents ?? 0)} each)
+                              {canWork && claims.get(l.claimId)?.status === "OPEN" && (
+                                <ActionButton action={claimLine.bind(null, t.id, l.id, false)} className="link ml-2 text-xs">
+                                  Charge it instead
+                                </ActionButton>
+                              )}
+                            </span>
+                          )}
+                          {!l.coveredPlanId && !l.claimId && canWork && l.kind !== "DISCOUNT" && l.kind !== "FEE" && l.unitPriceCents > 0 && (
+                            <ActionButton action={claimLine.bind(null, t.id, l.id, true)} className="btn btn-sm no-print ml-2">
+                              Claim it from the maker
+                            </ActionButton>
+                          )}
+                          {!l.coveredPlanId && !l.claimId && canWork && l.kind !== "DISCOUNT" && l.kind !== "FEE" && l.unitPriceCents > 0 &&
                             plans.map((p) => (
                               <ActionButton key={p.id} action={coverLine.bind(null, l.id, p.id)} className="btn btn-sm no-print ml-2">
                                 Covered by {p.name}

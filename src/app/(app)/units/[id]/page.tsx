@@ -19,12 +19,18 @@ import { IntakeFields } from "@/components/equipment/intake-fields";
 import { UnitLifetime } from "@/components/units/unit-lifetime";
 import { UnitUse } from "@/components/units/unit-use";
 import { Empty, KV, PageHeader, Section } from "@/components/ui";
+import { MapPriceSection } from "@/components/map-price";
+import { ConsignSection } from "@/components/paperwork/consign-parts";
+import { ListedSection } from "@/components/listed-elsewhere";
+import { db } from "@/lib/db";
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
   const u = await unitDetail(user.shopId, id);
   if (!u) notFound();
+  // Round 2, phase 6 (shop-features-round-2-design.md section 9): the maker's minimum advertised price.
+  const extra = await db.stockUnit.findFirstOrThrow({ where: { id: u.id, shopId: user.shopId }, select: { mapCents: true, consignorId: true, consignPct: true, consignUntil: true, listedOn: true } });
   const [tz, kind, plans, terms, workable] = await Promise.all([
     shopTimeZone(user.shopId),
     kindOf(user.shopId, { equipment: u.equipment, kind: u.kind }),
@@ -159,6 +165,9 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
 
           <UnitUse shopId={user.shopId} unitId={u.id} admin={admin} />
           <UnitLifetime shopId={user.shopId} unitId={u.id} admin={admin} />
+          {(u.status === "IN_STOCK" || u.status === "HELD" || u.status === "REMOVED") && <ListedSection what="unit" id={u.id} listedOn={extra.listedOn} />}
+          <ConsignSection shopId={user.shopId} unit={{ id: u.id, status: u.status, priceCents: u.priceCents, ...extra }} admin={admin} />
+          {(u.status === "IN_STOCK" || u.status === "HELD" || extra.mapCents != null) && <MapPriceSection what="unit" id={u.id} priceCents={u.priceCents} mapCents={extra.mapCents} admin={admin} />}
 
           <Section title="History">
             {u.events.length === 0 ? (

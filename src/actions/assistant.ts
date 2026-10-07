@@ -17,6 +17,7 @@ import { tradeInNote } from "@/lib/assistant/trade-in";
 import { draftPickup, explainInsight } from "@/lib/assistant/pickup";
 import { UserError } from "@/lib/user-error";
 import { draftArrivals, draftClassBlurb, draftProductText, draftSocialPost } from "@/lib/assistant/marketing";
+import { threadMatchFor } from "@/lib/thread-photo";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
 export const draftTicketText = safe(async (ticketId: string, kind: string, shorthand: string, instruction: string) => {
@@ -193,4 +194,10 @@ export const draftPickupSheet = safe(async (ticketId: string) => {
 export const explainFabricInsight = safe(async (tab: string) => {
   const user = await requireUser();
   return shownOnce(JSON.stringify(await explainInsight(user, tab)));
+});
+
+/** "Match from a photo" at the register (shop-features-round-2-design.md 9.10): the closest threads in stock to pull and check. */
+export const matchThreadPhoto = safe(async (data: string, mediaType: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await threadMatchFor(user, data, mediaType)));
 });

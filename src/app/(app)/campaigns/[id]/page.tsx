@@ -1,5 +1,6 @@
 // One campaign (scheduling-messaging-design.md 11.3): a draft's form, the check and the sample, "Send me a test" and the
 // two-tap "Send now"; after that, its progress and recipients. Everyone views; admins act.
+import { MapWarnings } from "@/components/map-price";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -79,6 +80,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         }
       />
       <MessagesTabs active="campaigns" />
+      {c.status === "DRAFT" && <MapWarnings shopId={shopId} />}
       {gate === "readonly" && <ModuleOff shopId={shopId} module="marketing" admin={user.role !== "TECH"} />}
     </>
   );

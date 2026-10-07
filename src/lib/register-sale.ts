@@ -3,6 +3,10 @@ import "server-only";
 // src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, machines for sale and
 // trade-ins, service plans (tax-machine-sales-layaway-design.md section 3), and (scheduling-messaging-design.md 12.3)
 // class seats and appointments paid or refunded here.
+import { checkDelisted, clearUnitListings, sellerFor } from "@/lib/commissions";
+import { checkRegistryLines } from "@/lib/gift-registry";
+import { applyAccountTender, prepareAccountTender, voidAccountOfSale } from "@/lib/house-accounts";
+import { prepareReaderTenders, refundReturnToCards, tieReaderPayments, untieReaderPayments } from "@/lib/card-reader";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -89,6 +93,10 @@ export type SaleLineInput = {
    */
   unitLoanId?: string | null;
   rentKind?: "RENT" | "LOAN_FEE" | null;
+  /** Listed elsewhere (shop-features-round-2-design.md 9.7): the cashier ticked "taken down on eBay" for this line. */
+  delisted?: boolean;
+  /** Bought from a customer's gift list (9.9): the list item, ticked off by this line. */
+  registryItemId?: string | null;
 };
 
 export type SaleInput = {
@@ -107,6 +115,8 @@ export type SaleInput = {
   returnOfSaleId?: string | null;
   /** The customer uses her birthday offer (a percent off this sale) today (shop-features-round-2-design.md 1.6). */
   birthday?: boolean;
+  /** Who sold it (shop-features-round-2-design.md 9.7): one of the company's people; the person ringing it up when blank. */
+  soldById?: string | null;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -181,6 +191,11 @@ export async function completeSaleAs(
       // Paid, unless the bill went up after it was paid here: then the rest is paid the same way.
       if (j.paidAt && repairDue(j) <= 0) throw new UserError(`Repair tag ${j.tag} is already paid.`);
     }
+    // Listed elsewhere (9.7): a machine, or the last of an item, also listed on eBay is ticked "taken down" first. Who sold it.
+    const delistUnits = lay || opts.paidOnline ? [] : await checkDelisted(shopId, input.lines, parts);
+    const soldById = opts.paidOnline ? null : await sellerFor(user, input.soldById);
+    // Gift list items (9.9): this shop's, the same item, bought.
+    if (!lay && !opts.paidOnline) await checkRegistryLines(shopId, input.lines);
     // Class seats and appointments: this shop's, each once per sale.
     const bookings = await loadBookings(shopId, input.lines);
     // A supply bought for a customer's vacuum names one of this shop's vacuums.
@@ -392,6 +407,7 @@ export async function completeSaleAs(
         note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
         cardNumber: typeof t?.cardNumber === "string" ? t.cardNumber.slice(0, 40) : null,
         ...(t?.method === "FINANCED" ? { lenderId: typeof t.lenderId === "string" ? t.lenderId : "" } : {}),
+        ...(t?.method === "CARD" && typeof t.stripeIntent === "string" && /^pi_[A-Za-z0-9_]{6,80}$/.test(t.stripeIntent) && Number(t.amountCents) > 0 ? { stripeIntent: t.stripeIntent } : {}),
       }))
       .filter((t) => t.amountCents !== 0);
     if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
@@ -421,6 +437,10 @@ export async function completeSaleAs(
       : givenTax == null && customerId && input.chargeTax !== true
         ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
         : null;
+    // "On account" (9.4): her open house account, within its limit.
+    const accountId = opts.paidOnline ? null : await prepareAccountTender(shopId, customerId, tenders);
+    // Card payments taken on the card reader (4.8): approved at Stripe for that amount, this shop's, used once.
+    const readerIntents = opts.paidOnline ? [] : await prepareReaderTenders(shopId, tenders);
     // Each line's category (written on it below), and why a line that could be taxed wasn't (SaleLine.taxNote).
     const lineKinds = lines.map((l, i) =>
       saleLineKind({
@@ -588,7 +608,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], priceGroupId: groupIds[i], priceNote: priceNotes[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null, unitLoanId: input.lines[i].unitLoanId ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], priceGroupId: groupIds[i], priceNote: priceNotes[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null, unitLoanId: input.lines[i].unitLoanId ?? null, soldById, registryItemId: lay || opts.paidOnline ? null : (input.lines[i].registryItemId ?? null) } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
@@ -698,6 +718,9 @@ export async function completeSaleAs(
           }
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
+        await clearUnitListings(tx, shopId, delistUnits);
+        await tieReaderPayments(tx, shopId, sale.id, readerIntents);
+        await applyAccountTender(tx, { shopId, accountId, saleId: sale.id, saleNumber: number, amountCents: tenders.filter((t) => t.method === "ACCOUNT").reduce((x, t) => x + t.amountCents, 0), at, userId: user.id });
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
@@ -733,9 +756,20 @@ export async function completeSaleAs(
       .catch(async (e: unknown) => {
         // The same sale sent twice at once: the other try made it.
         const made = (e as { code?: string })?.code === "P2002" ? await saleByKey(shopId, clientKey) : null;
-        if (made) return { sale: made, cards: [] as Issued[] };
+        if (made) return { sale: made, cards: [] as Issued[], again: true };
         throw e;
       });
+    // A return from a receipt paid back as Card: onto the cards that paid that sale on the reader (4.8), after the save.
+    // Phase 6 + the release's review fix: only while the receipt stands for the cart (original: every line a return
+    // that sale sold), the same rule as "tax as sold"; any other return's Card refund is run on the terminal by hand.
+    const cardBack = -tenders.filter((t) => t.method === "CARD" && t.amountCents < 0).reduce((x, t) => x + t.amountCents, 0);
+    if (cardBack > 0 && !("again" in result) && original && typeof input.returnOfSaleId === "string" && input.returnOfSaleId) {
+      const r = await refundReturnToCards(shopId, result.sale.id, input.returnOfSaleId, cardBack);
+      if (r.refunded || r.problem) {
+        const words = r.problem ? `Card refund didn't go through (${r.problem}); $${(r.refunded / 100).toFixed(2)} reached the card. Refund the rest another way.` : `$${(r.refunded / 100).toFixed(2)} refunded to the card on the reader.`;
+        await db.sale.updateMany({ where: { id: result.sale.id, shopId }, data: { note: [input.note?.slice(0, 300), words].filter(Boolean).join(" · ").slice(0, 500) } });
+      }
+    }
     return { saleId: result.sale.id, number: result.sale.number, changeCents: result.sale.changeCents, cards: result.cards };
   }
 }
@@ -784,6 +818,12 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
     // A print or cut job collected on it likewise (shop-features-round-2-design.md 6.5), its file kept again.
     await tx.makeJob.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, closedAt: null, saleId: null, fileDeleteAfter: null } });
+    // A quilt appraisal's fee (9.8): the certificate is a draft again.
+    await tx.appraisal.updateMany({ where: { shopId, saleId: sale.id }, data: { saleId: null, issuedAt: null } });
+    // A charge to a house account (9.4) comes off it.
+    await voidAccountOfSale(tx, shopId, sale.id, at);
+    // Its card reader payments are on no sale again (refund them from Settings, Card reader).
+    await untieReaderPayments(tx, shopId, sale.id);
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);

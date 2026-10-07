@@ -12,6 +12,9 @@ import { yardBreaksFor } from "@/lib/birthdays";
 import { tradeUpSettings } from "@/lib/trade-up";
 import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
+import { sellers } from "@/lib/commissions";
+import { registerReaders } from "@/lib/card-reader";
+import { entryFor } from "@/lib/assistant/ui";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { pullListItems } from "@/lib/quilt";
 import { entryFor } from "@/lib/assistant/ui";
@@ -27,7 +30,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const { booking, items } = await searchParams;
   const [shop, partners] = await Promise.all([
-    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true } }),
+    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true, houseAccountsOn: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
   if (!shop.sellsRetail) {
@@ -68,6 +71,13 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const specialOrders = { depositPct: so.depositPct, depositCents: so.depositCents, taxRatePct: shop.taxRatePct };
   // Per-yard breaks (1.6): the register prices them as the server will.
   const yardBreaks = (await yardBreaksFor(user.shopId)).map(({ minYards, pctOff, kinds }) => ({ minYards, pctOff, kinds }));
+  // Who sold it (commissions, shop-features-round-2-design.md 9.7): the picker shows when the company has two or more people.
+  const people = await sellers(user.shopId);
+  // The card reader (4.8), when it is on and a reader is paired.
+  const cardReader = await registerReaders(user.shopId);
+  // Thread match from a photo (9.10): with the Assistant's Fabric and thread helpers on.
+  const photoEntry = await entryFor(user.shopId, "fabric");
+  const threadPhoto = photoEntry.show ? { unavailable: photoEntry.unavailable } : null;
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
   const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
@@ -117,7 +127,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} tradeInLessPct={(await tradeUpSettings(user.shopId)).lessPct} preload={preload} preloadItems={preloadItems} tradeNote={tradeNote} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} tradeInLessPct={(await tradeUpSettings(user.shopId)).lessPct} preload={preload} preloadItems={preloadItems} tradeNote={tradeNote} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} cardReader={cardReader} threadPhoto={threadPhoto} />
     </div>
   );
 }

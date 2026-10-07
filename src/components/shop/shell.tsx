@@ -29,11 +29,13 @@ export function ShopShell({ shop, cart, children }: { shop: { name: string; phon
   );
 }
 
-export function Price({ cents, unit }: { cents: number; unit: string | null }) {
+/** seeInCart: the cents are the maker's minimum advertised price; the real price shows in the cart (9.3). */
+export function Price({ cents, unit, seeInCart = false }: { cents: number; unit: string | null; seeInCart?: boolean }) {
   return (
     <span className="num font-semibold">
       {money(cents)}
       {unit === "yd" ? <span className="muted text-sm"> / yd</span> : null}
+      {seeInCart ? <span className="muted block text-sm font-normal">Add to cart to see our price</span> : null}
     </span>
   );
 }

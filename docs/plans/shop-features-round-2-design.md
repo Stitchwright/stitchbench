@@ -1840,3 +1840,246 @@ Decisions made while building:
 - It works whether or not the booking-page answers are switched on: making a key is the shop's choice to turn it on.
 - Rate limits: 120 a minute per address, 2,000 an hour per shop, 300 ticket lookups an hour per shop.
 - No phone service is built or chosen (question 3); the first interested shop's service is tested against this.
+
+**`warranty-claims` (9.1, 7 Oct 2026, branch `phase6-later`).** Migration `20261024000000_warranty_claims`
+(`WarrantyClaim`, `TicketLine.claimId`, `Shop.nextClaimNumber`; carried by the company file and the machine merge).
+Code: `src/lib/warranty-claims.ts`, `src/actions/warranty-claims.ts`; on a ticket, **Claim it from the maker** on a line
+(and "Charge it instead" while the claim isn't sent; the printed invoice says "Covered by the maker's warranty (no
+charge)"); the new menu item **Paperwork** (`/paperwork`, `src/components/paperwork/frame.tsx`, tabs for this phase's
+records) → **Warranty claims** (by maker: not sent, waiting, owed, paid, short, refused; the claims, filtered by status
+or maker) and each claim's page (Mark it sent with their claim number, Record what came in, They refused it, Undo).
+Books: two new accounts, "Due from Manufacturers" (owed from the day a claim is sent) and "Warranty Claims Income";
+what came in clears the receivable on its day and a short or refused claim's rest comes off the income that day. Check:
+`scripts/checks/warranty-claims.check.ts` (6 groups); `books-export`, `move-export`, `base-license` still pass. Spec:
+`tests/warranty-claims.spec.ts`.
+Decisions made while building:
+- A claimed line works like a line covered by a service plan: its price moves to `coveredCents` and it charges 0, so
+  ticket totals, invoices and reports needed no change. A line can't be both. Fees and discounts aren't claimed.
+- Lines go on the ticket's claim that isn't sent yet, else a new one, made out to the machine's brand (changeable).
+- "Not sent yet" is a step of its own before Sent (the design's FILED), so lines can be gathered first. Once sent, the
+  lines and the amount expected are fixed; the amount expected follows the lines until an owner types over it (makers
+  pay labour at their own rate). A tech can claim lines and send; recording money, refusals and undo are owner or admin.
+- Nothing connects to the makers' portals (Brother's and others are closed): the shop sends there by hand.
+
+**`coop-claims` (9.2, 7 Oct 2026).** Migration `20261024100000_coop_claims` (`CoopClaim`, `CoopProof`,
+`Shop.nextCoopNumber`; both carried by the company file). Code: `src/lib/coop-claims.ts`, `src/actions/coop-claims.ts`,
+Paperwork → **Co-op and rebates** (`/paperwork/coop`: owed to you by maker, not sent yet by deadline, "Add a claim",
+sent and settled) and each claim's page (the proof photos, "I sent it to Brother", Record what came in, They turned it
+down, Undo, details), the proof route `/api/paperwork/coop-proof/[id]`, and a dashboard and register line "Send co-op
+claim #3 to Brother: due Tue, Oct 21, 2026" 14 days before the deadline while it isn't sent (owners and admins). Books:
+"Co-op and Rebates Received" when the money comes in. Check: `scripts/checks/coop-claims.check.ts` (5 groups);
+`books-export`, `move-export` still pass. Spec: `tests/coop-claims.spec.ts`.
+Decisions made while building:
+- Co-op and rebates are one list with a kind (co-op advertising or rebate). A co-op claim left blank claims half of
+  what was spent (the usual program); a rebate's amount is typed.
+- Owners and admins keep the list (it is marketing money); techs can read it.
+- The proof is a photo (JPEG, PNG, WebP, HEIC) or a PDF, 5 MB at most, as many as needed. Nothing is booked when the ad
+  is paid (that is the shop's own bill); the books get the money back when it comes in.
+
+**`map-prices` (9.3, 7 Oct 2026).** Migration `20261024200000_map_prices` (`Part.mapCents`, `StockUnit.mapCents`).
+Code: `src/lib/map-math.ts` (`belowMap`), `src/lib/map-prices.ts` (`setMapFor`, `mapProblems`), `src/actions/map-prices.ts`,
+`src/components/map-price.tsx` (the item's and the machine's **Minimum advertised price** box with its warning, and
+`MapWarnings`); the online shop's catalog and item page show the minimum and "Add to cart to see our price" when the
+real price is lower (`shownPrice` in `src/lib/shop/online-shop.ts`; the real price is never in those pages), the cart
+shows the real one. The list of prices advertised below a minimum shows on Settings → Selling → Sales (promotions on now
+or coming that bring an item or machine under) and on a new or draft campaign (everything: the item's own price and
+the sales). Check: `scripts/checks/map-prices.check.ts` (5 groups); `online-shop` still passes. Spec:
+`tests/map-prices.spec.ts`.
+Decisions made while building:
+- The price at the counter and in the cart may be below the minimum (that is how MAP works); only advertising is
+  checked. The register is not changed.
+- Campaign emails are free text, so the program doesn't read prices out of them: the draft page lists the items whose
+  price or sale price is under a minimum, as a reminder not to put those prices in.
+- Machines for sale aren't in the online shop yet; their minimum shows on the machine's page and in the list. The
+  Google and Meta feeds (4.1, 4.2, phase 3) should leave out, or show at the minimum, anything `belowMap`.
+- Fabric by the yard gets no minimum box (makers don't set MAP on fabric).
+
+**`ship-export` (9.5, 7 Oct 2026).** No migration. Code: `src/lib/ship-export.ts` (pure: `splitAddress`,
+`pirateShipRows` in Pirate Ship's spreadsheet layout: Name, Company, Address, Address Line 2, City, State, Zipcode,
+Country, Email, Phone, Order ID, Order Items, then weight and size left blank), `src/lib/ship-orders.ts`
+(`ordersToShip`: paid, to post, no tracking yet), the download `/api/shop-orders/pirate-ship`, and on Online orders a
+box "3 orders to post" with **Export for Pirate Ship** (and the orders whose address was split by guesswork). The
+tracking number is pasted back with Shipped, as before. Check: `scripts/checks/ship-export.check.ts` (3 groups). Spec:
+`tests/ship-export.spec.ts`.
+Decisions made while building:
+- The online shop takes the address as one box of text, so the export splits it (lines or commas, the name on the
+  first line dropped, "State ZIP" at the end, ZIP+4, "USA"); anything else goes in Address whole and is named on the
+  page so it is checked in Pirate Ship, which validates every address on import anyway. Splitting the checkout's box
+  into fields would make this exact; left as it is so the checkout doesn't change.
+- Items carry no weight, so Pirate Ship asks for the weight (or uses the shop's saved package there).
+
+**`consign-machines` (9.6, 7 Oct 2026).** Migration `20261024300000_consign_machines` (`StockUnit.consignorId`,
+`consignPct`, `consignUntil`; `ConsignPayout`; `Shop.consignDefaultPct`, 25). Code: `src/lib/consign-machines.ts` (the
+sale hooks `payoutOnSale` / `payoutOnReturn` / `payoutOnVoidSale` / `payoutOnVoidReturn`, called from
+`src/lib/units/sale-units.ts`; set, give back, pay, undo, the statement), `src/actions/consign-machines.ts`, the machine
+page's **Consignment** box ("A customer's machine? Sell it for her": the customer, the shop keeps %, the give-back
+day; "Give it back to her unsold"), Paperwork → **Consigned machines** (owed to consignors with **Pay her** by check,
+cash or store credit; the machines on consignment, give-back day first; paid lately; the usual commission), the
+printable **consignment statement** (`/paperwork/consign/[customerId]`), and "Her machines on consignment" on the
+customer's page (`src/components/paperwork/customer-paperwork.tsx`, which later packages add to). Books: "Due to
+Consignors": her share comes off the machine sales on the day it sells and is owed until paid (cash or check out of
+undeposited funds; store credit through her card). Merges and the customer delete carry the consignor and payouts
+(the delete is refused while she is owed or her machine is for sale). Check: `scripts/checks/consign-machines.check.ts`
+(6 groups); `machine-sales`, `layaway`, `customer-merge` (seeds the new columns, and `WarrantyClaim.machineId` from
+`warranty-claims`), `move-export`, `books-export` still pass. Spec: `tests/consign-machines.spec.ts`.
+Decisions made while building:
+- Her share is worked out on what the machine sold for before tax, after its line discount and its part of a
+  whole-sale discount (as `soldNetCents`), less the commission at the time it was set on the machine.
+- A return before she was paid takes the payout back; after she was paid it stays (the shop paid her and has the
+  machine back: sell it again as the shop's own, or settle with her by hand). Voiding the sale is refused while she is
+  paid; "Undo" her payment first (check or cash; store credit is taken back by adjusting her card).
+- A consigned machine carries no cost (the shop paid nothing for it).
+
+**`commissions-listed` (9.7, 7 Oct 2026).** Migration `20261024400000_commissions_listed` (`SaleLine.soldById`,
+`User.commission`, `StockUnit.listedOn`, `Part.listedOn`). Code: `src/lib/listed-math.ts` (pure), `src/lib/commissions.ts`
+(listing, the register's `checkDelisted` / `clearUnitListings` / `sellerFor`, the rules and `commissionReport`),
+`src/actions/commissions.ts`; `completeSaleAs` takes `soldById` and each line's `delisted`; the register's **Sold by**
+picker (shown when the company has two or more people, starting on the person signed in) and the line's tick "Take it
+down on eBay first: done" (Complete sale waits for it); **Also listed on** on a machine's and an item's page
+(`src/components/listed-elsewhere.tsx`: eBay, Etsy, Facebook Marketplace, Craigslist, their own website or a place
+typed, each with its link); Paperwork → **Commissions** (owners and admins: each person's month, machines and
+everything, the commission by their rule, the month before; each person's rule). Check:
+`scripts/checks/commissions-listed.check.ts` (5 groups); `promotions`, `layaway`, `gift-cards`, `software-codes`,
+`machine-sales`, `make-jobs`, `online-shop`, `store-credit`, `tax-holidays` still pass. Spec:
+`tests/commissions-listed.spec.ts`.
+Decisions made while building:
+- The seller is one per sale (every line carries it); the online shop's sales have none. A layaway's pick-up sale
+  counts for the person ringing it up.
+- Commission is on each line's price less its own discount, before tax; returns take off, voids drop out; gift cards,
+  layaway payments and partner repair bills don't count, nor trade-in credit.
+- A machine asks for the tick whenever it is listed; an item only when the sale takes its last one (the listing can
+  stay up while there are more). A machine's listings are cleared when it sells (voiding the sale doesn't put them back).
+- Listings are recorded by anyone; the rules by owners and admins.
+
+**`appraisals` (9.8, 7 Oct 2026).** Migration `20261024500000_appraisals` (`Appraisal`, `AppraisalPhoto`;
+`Shop.nextAppraisalNumber`, `appraisalFeeCents` $75, `appraiserName`, `appraiserCredential`; carried by the company
+file, the merges and the customer delete). Code: `src/lib/appraisals.ts`, `src/lib/appraisals-words.ts`,
+`src/actions/appraisals.ts`, `src/components/appraisal-fields.tsx`; **Quilt appraisals** (`/appraisals`, from the
+Longarm page's header and the customer's page: the list, "New appraisal" with a new or existing customer, the shop's
+appraiser and fee), each appraisal's page (photos, "Issue the certificate" with how the fee was paid, the draft's
+details) and its printable **certificate** (`/appraisals/[id]/certificate`: number, date, shop, owner, the first photo,
+the quilt, the value and what it is for, the appraiser's signature line and credential); photos at
+`/api/appraisal-photos/[id]`. Check: `scripts/checks/appraisals.check.ts` (3 groups); `customer-merge`, `move-export`
+still pass. Spec: `tests/appraisals.spec.ts`.
+Decisions made while building:
+- Issuing rings the fee up as its own register sale (like a print job's pickup), untaxed: an appraisal is a service.
+  A shop in a state that taxes it can ring it up by hand instead (fee 0 on the appraisal).
+- An issued certificate can't change (a new appraisal replaces it); voiding the fee's sale makes it a draft again.
+- The value is what the appraiser writes; a tech can do appraisals but not change the fee.
+- Deleting the customer keeps the appraisal (the fee's record) without her name or the photos.
+
+**`gift-registry` (9.9, 7 Oct 2026).** Migration `20261024600000_gift_registry` (`GiftRegistry`, `RegistryItem`,
+`SaleLine.registryItemId`; carried by the company file, the merges and the customer delete). Code:
+`src/lib/gift-registry.ts`, `src/actions/gift-registry.ts`; **Wish lists** on the customer's page ("Start a wish list or
+gift registry she can share with family": its name and day), the list's page (`/gift-lists/[id]`: what she would like,
+how many, "n of m bought" for staff, the link to send with Copy, Stop sharing / Share it again, add from stock with the
+part box or in words), the register's **Gift lists** button (`src/components/register-gift-lists.tsx`: find her list by
+name, what is still wanted, Add puts the item on the sale as a "gift: <list>" line), and the public page
+`/shop/[slug]/wish/[token]` (what is still wanted, linked to the online shop's item pages; nothing about buyers or
+prices). Check: `scripts/checks/gift-registry.check.ts` (4 groups); `base-license` (`findGiftLists` is a read),
+`customer-merge`, `move-export`, `register-bookings` still pass. Spec: `tests/gift-registry.spec.ts`.
+Decisions made while building:
+- Built on its own list (`GiftRegistry`), not on want lists (1.4, phase 1, built on another branch): when `want-lists`
+  merges, its `WantItem` can be shared through the same page and the register line, or its rows folded into these.
+- What was bought is counted from the sales that stand (a void puts it back by itself); a return of a gift is an
+  ordinary return and doesn't put it back on her list.
+- The link lives on the shop's public address (`/shop/<slug>/...`, already public and on the links address), so a
+  shop needs its page address (Settings → Online shop) to share lists; the token is random and changes when the list
+  is shared again. Online purchases don't tick the list off yet (the cart has no list line); the public page tells
+  buyers to say so at the counter.
+
+**`house-accounts` (9.4, built 7 Oct 2026 on the owner's "everything today"; question 11's gate lifted).** Migration
+`20261024700000_house_accounts` (`HouseAccount`, `AccountEntry`, `Shop.houseAccountsOn` off by default; carried by the
+company file, the merges and the customer delete). Code: `src/lib/house-accounts-math.ts` (pure: balance, aging,
+statement), `src/lib/house-accounts.ts`, `src/actions/house-accounts.ts`; the register's **On account** payment
+(`ACCOUNT` tender, shown with a customer picked while house accounts are on; the server checks her open account and
+limit; a void takes the charge off, a refund to the account goes on it), a ticket's existing "Invoice (on account)"
+payment for a customer with an account goes on it (removing the payment takes it off), Paperwork → **House accounts**
+(the owner's "Turn on house accounts" switch, "Owed to us" by age: current, 31-60, 61-90, over 90, with last month's
+statement to print), each account's page (Take the payment: check with its number, cash, card; Undo; by age; charges
+and payments; print or **Email** last month's statement with Messages on; limit, days to pay, closed to new charges),
+the printable **statement** (`/paperwork/accounts/[id]/statement?month=`), and "House account" on the customer's page
+(open one: limit and days to pay). Books: On account tenders are accounts receivable (as ticket invoices already were);
+payments against an account move it to undeposited funds (or card clearing). Check:
+`scripts/checks/house-accounts.check.ts` (7 groups); `customer-merge` (seeds `HouseAccount`; its schema scan now skips
+a column that keys a relation to another model, like `AccountEntry.accountId`), `move-export`, `books-export`,
+`gift-cards`, `store-credit`, `financing`, `reports`, `money-records` still pass. Spec: `tests/house-accounts.spec.ts`.
+Decisions made while building:
+- Statements are worked out from the entries when printed or emailed (no Statement table): a month's opening balance,
+  charges, payments, what is owed and the due day (the month's end plus her days to pay). Emailing uses the
+  transactional notice kind, one per account and month.
+- Aging pays the oldest charges first. A credit balance shows as a negative current amount.
+- Turning house accounts off stops new charges; what is owed stays and payments still go in.
+- Left for later: many-machine service visits for a school or business (`TicketMachine`, the other half of 9.4);
+  meanwhile each machine is its own ticket, all charged to the same account.
+
+**`card-reader` (4.8, built 7 Oct 2026 on the owner's "everything today"; question 2's gate lifted).** Migration
+`20261024800000_card_reader` (`CardReader`, `CardPayment`, `Shop.cardReaderOn` off by default, `terminalLocationId`).
+Code: `src/lib/card-reader.ts` (Stripe Terminal by plain fetch through `stripeCall`, now exported from
+`src/lib/shop/stripe.ts`), `src/actions/card-reader.ts`, **Settings → Card reader** (`/settings/card-reader`: the
+shop's own Stripe secret key, shared with the online shop and sealed; "Use the card reader at the register"; pair a
+reader by the code it shows, `simulated-wpe` for Stripe's simulated reader in test mode, the Terminal location made
+once; "Approved, but on no sale" with Refund to the card), the register's **Card reader $n** button
+(`src/components/register-card-reader.tsx`: "Tap, insert or swipe on the reader", Cancel on the reader, and in test mode
+"Test: tap a card" / "Test: a declined card"; an approval becomes a Card payment with its PaymentIntent and the sale
+finishes itself when nothing is left to pay). `completeSaleAs` checks each such Card payment with Stripe (approved, the
+same amount, this shop's, on no other sale; the card's last four from Stripe on the receipt) and ties it to the sale; a
+return from the receipt (scanned sale) paid back as Card is refunded to that sale's card(s) at Stripe after the save,
+noted on the return; a void frees the payment (refund it from Settings). Check: `scripts/checks/card-reader.check.ts`
+(6 groups) against the new mock `scripts/test-mail/stripe-terminal-mock.mjs` (STRIPE_API_BASE; never real money);
+`base-license` (`startReaderPayment` by hand, refused while read-only; the status, cancel and test tap are allowed),
+`online-shop`, `clubs`, `promotions`, `gift-cards` still pass. Spec: `tests/card-reader.spec.ts` (skipped unless the
+app runs with STRIPE_API_BASE on the terminal mock, port 3406).
+Decisions made while building:
+- Hosted first; the Windows program can use it too when online (it is plain HTTPS to Stripe). Tap to Pay on a phone
+  needs Stripe's mobile SDK in an app, so it isn't built: a shop uses a reader (or keeps its own terminal and records
+  Card as before, which still works with the reader off).
+- Payments are captured automatically when approved. A payment approved but never put on a sale stays in Settings to
+  refund; nothing refunds by itself.
+- Only a return scanned from its receipt refunds the card (the program needs the original sale to know the card);
+  any other card refund is done on the shop's Stripe dashboard, as now.
+
+**`thread-photo` (9.10, built 7 Oct 2026 on the owner's "everything today"; the "shops ask" gate lifted).** No
+migration. Code: the feature `thread_photo` (`src/lib/assistant/features.ts`, class read, in the **Fabric and thread
+helpers** switch group, its blurb updated), `buildThreadPhoto` / `parseThreadColors` (`src/lib/assistant/prompts.ts`),
+`src/lib/thread-photo-math.ts` (pure: Lab color distance, ranking), `src/lib/thread-photo.ts` (`threadMatchFor`), the
+action `matchThreadPhoto` (`src/actions/assistant.ts`), and the register's **Match from a photo**
+(`src/components/thread-photo-match.tsx`: the camera or a picture, shrunk to 640 px; "Pull these and check them against
+the swatch card": each color read, the closest threads with their swatch, closeness, stock, bin and price, Add; how many
+threads have no swatch color). Check: `scripts/checks/thread-photo.check.ts` (2 groups, a stand-in hub); `assistant`,
+`fabric-ai`, `assistant-parts`, `base-license` still pass. Spec: `tests/thread-photo.spec.ts` (no button without the
+Assistant; the full flow is written and marked fixme until the hub change ships).
+**Hub change needed (StitchHub, `src/assistant.mjs`):** add `"thread_photo"` to `PHOTO_FEATURES` (today only
+`read_plate`, `read_label` and `tag_fabric` may carry a photo; the hub answers 400 "Only the plate, bolt-label and
+swatch readers take a photo" until then). Nothing else changes on the hub (class read, the same image limits, counted
+like the others).
+Decisions made while building:
+- The model only reads the photo's main colors (one to three, as #rrggbb with a plain name and where in the photo); it
+  is never sent the shop's items and never names a maker or number. The program ranks the shop's own threads that have a
+  swatch color (Part.colorHex, from item-details) by how close they look (CIE Lab), on the shelf first unless one out of
+  stock is much closer. Threads without a swatch can't be matched and are counted on the screen.
+- Offered as "pull these and check": photos are never exact, and the swatch card decides.
+- Listing photo clean-up and counting spools from a rack photo (9.11) stay unbuilt, as the design says.
+
+**`shippo` (9.5, built 7 Oct 2026 on the owner's "everything today"; the "shops ask" gate lifted).** Migration
+`20261024900000_shippo` (`Shop.shippoOn` off by default, `shippoKeySealed`, `shipFrom`, `shipParcel`; `WebOrder.labelUrl`,
+`labelCarrier`, `labelCents`, `shippoTxId`; the Shippo key is left out of the company file like the Stripe keys). Code:
+`src/lib/shippo.ts` (plain fetch against SHIPPO_API_BASE), `src/actions/shippo.ts`, **Settings → Shipping labels**
+(`/settings/shipping`: the shop's own Shippo API key, sealed; "Buy labels from Online orders"; where parcels ship from,
+filled from the shop's address; the usual box), and on Online orders a paid order to post gets the weight (the usual
+box's), **Get label rates** (the cheapest four) and **Buy $5.40** (owners and admins, "Tap again: buy for $5.40"), then
+"Print the label" with the carrier and cost, and the tracking number already in Shipped's box
+(`src/components/shippo-label.tsx`). An order with a Shippo label leaves the Pirate Ship export. Check:
+`scripts/checks/shippo.check.ts` (4 groups) against the new mock `scripts/test-mail/shippo-mock.mjs` (never a real
+label); `ship-export`, `move-export`, `online-shop` still pass. Spec: `tests/shippo.spec.ts` (skipped unless the app
+runs with SHIPPO_API_BASE on the mock, port 3405).
+Decisions made while building:
+- The order's address is split the same way as the Pirate Ship export; an address that can't be split for sure is
+  refused in words (check it with the customer, or export it for Pirate Ship).
+- One label an order; a label bought by mistake is refunded in Shippo (its own refund window), not here.
+- What the label cost is kept on the order for the owner to see; it isn't booked (Shippo bills the shop's card).
+
+**Phase 6, not built on this branch.** `fb-comments` (9.12, reading Facebook Live comments into the claim list) comes
+**after phase 3** (`live-sales`, 4.3, on another branch). `store-link-hub`, `store-sync-customers` and
+`store-sync-gift-cards` (7.8, a store on its own Windows PC kept in step through StitchHub) come **after phase 5**
+(multiple stores, on another branch).

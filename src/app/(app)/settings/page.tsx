@@ -286,6 +286,20 @@ export default async function SettingsPage() {
               </Link>
             </div>
           )}
+          {shop.sellsRetail && admin && (
+            <div>
+              <Link href="/settings/card-reader" className="link">
+                Card reader at the counter (Stripe)
+              </Link>
+            </div>
+          )}
+          {shop.sellsRetail && admin && (
+            <div>
+              <Link href="/settings/shipping" className="link">
+                Shipping labels (Shippo)
+              </Link>
+            </div>
+          )}
         </div>
       </Section>
 

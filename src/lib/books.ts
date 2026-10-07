@@ -48,6 +48,7 @@ function tenderKey(method: string, cfg: BooksConfig): { account: string } {
     case "CREDIT":
       return { account: accountName(cfg, "creditLiability") };
     case "INVOICE":
+    case "ACCOUNT":
       return { account: accountName(cfg, "receivable") };
     case "SHOP_COLLECTED":
       return { account: accountName(cfg, "dueFromPartners") };
@@ -160,6 +161,69 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
     const led = dayLedger(f.paidAt!);
     post(led, acct("undeposited"), f.amountCents);
     post(led, acct("lenderReceivable"), -f.amountCents);
+  }
+
+  // ----- warranty claims (shop-features-round-2-design.md 9.1): owed by the maker from the day it is sent; what came in
+  // off it on the day recorded, and a short or refused claim's rest written off the income that day -----
+  const claims = await db.warrantyClaim.findMany({
+    where: { shopId, OR: [{ filedAt: { gte: start, lt: end } }, { receivedAt: { gte: start, lt: end }, status: { in: ["PAID", "SHORT", "REFUSED"] } }] },
+    select: { status: true, filedAt: true, expectedCents: true, receivedCents: true, receivedAt: true },
+  });
+  for (const c of claims) {
+    if (c.filedAt && inRange(c.filedAt)) {
+      const led = dayLedger(c.filedAt);
+      post(led, acct("makerReceivable"), c.expectedCents);
+      post(led, acct("warrantyIncome"), -c.expectedCents);
+    }
+    if (c.receivedAt && inRange(c.receivedAt) && ["PAID", "SHORT", "REFUSED"].includes(c.status)) {
+      const led = dayLedger(c.receivedAt);
+      post(led, acct("undeposited"), c.receivedCents);
+      post(led, acct("makerReceivable"), -c.receivedCents);
+      // Paid short or refused: the rest won't come (paid over: the extra is income too).
+      post(led, acct("warrantyIncome"), c.expectedCents - c.receivedCents);
+      post(led, acct("makerReceivable"), -(c.expectedCents - c.receivedCents));
+    }
+  }
+
+  // ----- customers' machines on consignment (9.6): her share of the sale isn't the shop's income; it is owed to her
+  // from the sale (taken back if the sale is voided or the machine returned unpaid) until she is paid -----
+  const payouts = await db.consignPayout.findMany({
+    where: { shopId, OR: [{ createdAt: { gte: start, lt: end } }, { voidedAt: { gte: start, lt: end } }, { paidAt: { gte: start, lt: end } }] },
+    select: { amountCents: true, createdAt: true, voidedAt: true, paidAt: true, method: true },
+  });
+  for (const p of payouts) {
+    if (inRange(p.createdAt)) {
+      const led = dayLedger(p.createdAt);
+      post(led, salesAccount("UNIT"), p.amountCents);
+      post(led, acct("consignorLiability"), -p.amountCents);
+    }
+    if (p.voidedAt && inRange(p.voidedAt)) {
+      const led = dayLedger(p.voidedAt);
+      post(led, salesAccount("UNIT"), -p.amountCents);
+      post(led, acct("consignorLiability"), p.amountCents);
+    }
+    if (p.paidAt && inRange(p.paidAt)) {
+      const led = dayLedger(p.paidAt);
+      post(led, acct("consignorLiability"), p.amountCents);
+      // Store credit was put on her card (booked above as a card loaded outside a sale, against the adjustments account).
+      post(led, p.method === "CREDIT" ? acct("giftAdjust") : acct("undeposited"), -p.amountCents);
+    }
+  }
+
+  // ----- payments against house accounts (9.4): the money in, off what they owe (charges went to receivable as tenders) -----
+  const acctPays = await db.accountEntry.findMany({ where: { shopId, kind: "PAYMENT", at: { gte: start, lt: end }, voidedAt: null }, select: { amountCents: true, at: true, method: true } });
+  for (const p of acctPays) {
+    const led = dayLedger(p.at);
+    post(led, tenderKey(p.method === "CARD" ? "CARD" : "CASH", cfg).account, p.amountCents);
+    post(led, acct("receivable"), -p.amountCents);
+  }
+
+  // ----- co-op advertising and rebates (9.2): booked when the money comes in -----
+  const coop = await db.coopClaim.findMany({ where: { shopId, status: { in: ["PAID", "SHORT"] }, receivedAt: { gte: start, lt: end } }, select: { receivedCents: true, receivedAt: true } });
+  for (const c of coop) {
+    const led = dayLedger(c.receivedAt!);
+    post(led, acct("undeposited"), c.receivedCents);
+    post(led, acct("coopIncome"), -c.receivedCents);
   }
 
   const out: DayEntry[] = [...days.entries()]

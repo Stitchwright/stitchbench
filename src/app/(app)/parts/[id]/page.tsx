@@ -29,6 +29,8 @@ import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
 import { ColorDot } from "@/components/color-dot";
 import { SameColor } from "@/components/same-color";
 import { FitsSection } from "@/components/fits-section";
+import { MapPriceSection } from "@/components/map-price";
+import { ListedSection } from "@/components/listed-elsewhere";
 import { SoftwareItem } from "@/components/software-item";
 import { ItemSpecialOrders } from "@/components/item-special-orders";
 import { ItemMembership } from "@/components/item-membership";
@@ -191,6 +193,8 @@ export default async function PartPage({ params, searchParams }: { params: Promi
           {shopFlags.sellsRetail && p.kind !== "MACHINE" && <ItemSpecialOrders shopId={user.shopId} part={p} admin={user.role !== "TECH"} />}
           {shopFlags.sellsRetail && p.kind !== "MACHINE" && user.role !== "TECH" && <ItemMembership shopId={user.shopId} part={p} />}
           {shopFlags.sellsRetail && p.unit === "yd" && user.role !== "TECH" && <ItemYardBreak part={p} />}
+          {shopFlags.sellsRetail && p.kind !== "FABRIC" && <MapPriceSection what="part" id={p.id} priceCents={p.priceCents} mapCents={p.mapCents} admin={user.role !== "TECH"} online={p.online} />}
+          {shopFlags.sellsRetail && p.kind !== "MACHINE" && <ListedSection what="part" id={p.id} listedOn={p.listedOn} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
               <p className="muted text-sm">No suppliers yet. Add where you buy it.</p>

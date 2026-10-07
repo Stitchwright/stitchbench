@@ -17,6 +17,7 @@ import { REGISTER_AFTER_DAYS } from "@/lib/units/units";
 import { listLayaways } from "@/lib/layaway";
 import { presetReminders } from "@/lib/tax-holidays";
 import { shopTodos } from "@/lib/shop-todos";
+import { coopDue, dayWords } from "@/lib/coop-claims";
 
 const WEEK = 7 * 86_400_000;
 const SHOWN = 5;
@@ -83,6 +84,20 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         </Link>
       ),
     });
+  }
+
+  // Co-op and rebate claims not sent with the deadline two weeks off or less (shop-features-round-2-design.md 9.2).
+  if (admin) {
+    for (const c of await coopDue(shopId, now)) {
+      lines.push({
+        key: `coop-${c.id}`,
+        node: (
+          <Link href={`/paperwork/coop/${c.id}`} className="link">
+            Send co-op claim #{c.number} to {c.maker}: due {dayWords(c.deadline!)}
+          </Link>
+        ),
+      });
+    }
   }
 
   // A state's tax holiday the shop used before: confirm this year's dates (they are set by law each year).
