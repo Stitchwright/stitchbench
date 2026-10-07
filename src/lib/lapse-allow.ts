@@ -130,6 +130,8 @@ export const HAND_ALLOWED = [
   "findFabricItems",
   // The register's "Find a color" (shop-features-round-2-design.md 2.2): a lookup
   "findColors",
+  // Help switching (shop-features-round-2-design.md 4.7): "See what will come in" only reads the file
+  "previewSwitchFile",
   // What fits the customer's machines, and what goes with a machine being sold (2.4): lookups
   "fitsForCustomerNow",
   "fitsForUnitsNow",
