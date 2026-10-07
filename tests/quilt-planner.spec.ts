@@ -41,8 +41,8 @@ test("plan from the pattern: the pull list, the register and the kit builder", a
   await expect(page.getByRole("heading", { name: "Plan a quilt" })).toBeVisible();
   await expect(page.getByLabel("Yards needed")).toContainText("background: 2 1/4 yd");
   await page.getByLabel("Find a fabric (name, number, collection or color)").fill(RUN.toLowerCase());
-  await page.getByLabel("background (2 1/4 yd)").selectOption({ label: new RegExp(bg) });
-  await page.getByLabel("focus (1 yd)").selectOption({ label: new RegExp(focus) });
+  await page.getByLabel("background (2 1/4 yd)").selectOption({ label: `${bg} (QB-${RUN}) · 10 yd · $10.00/yd` });
+  await page.getByLabel("focus (1 yd)").selectOption({ label: `${focus} (QF-${RUN}) · 6 yd · $12.00/yd` });
   const list = page.getByRole("table", { name: "Pull list" });
   await expect(list).toContainText(bg);
   // 2 1/4 x $10 + 1 x $12 + the pattern $14
@@ -51,8 +51,8 @@ test("plan from the pattern: the pull list, the register and the kit builder", a
   await expect(page.getByRole("heading", { name: "New kit" })).toBeVisible();
   await expect(page.getByLabel(/Pattern item/)).toHaveValue(`QP-${RUN}`);
   await page.goBack();
-  await page.getByLabel("background (2 1/4 yd)").selectOption({ label: new RegExp(bg) });
-  await page.getByLabel("focus (1 yd)").selectOption({ label: new RegExp(focus) });
+  await page.getByLabel("background (2 1/4 yd)").selectOption({ label: `${bg} (QB-${RUN}) · 10 yd · $10.00/yd` });
+  await page.getByLabel("focus (1 yd)").selectOption({ label: `${focus} (QF-${RUN}) · 6 yd · $12.00/yd` });
   await page.getByRole("link", { name: "Add all to the sale" }).click();
   await expect(page).toHaveURL(/\/register$/);
   await expect(page.getByText(bg).first()).toBeVisible();
