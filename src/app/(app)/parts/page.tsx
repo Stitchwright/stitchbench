@@ -81,7 +81,7 @@ export default async function Parts({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={shop.doesRepair ? "Parts and accessories" : "Inventory"}
+        title={shop.sellsRetail ? "Inventory" : "Parts and accessories"}
         sub={`${all.length} items${all.length > parts.length ? ` (the first ${parts.length} listed: search to narrow it down)` : ""} · ${money(value)} on the shelf at cost`}
         actions={
           <>

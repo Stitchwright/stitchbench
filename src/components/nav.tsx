@@ -103,7 +103,8 @@ export function Nav({
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
     .filter((i) => !i.admin || showReports)
     .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
-    .map((i) => (i.href === "/parts" && !doesRepair ? { ...i, label: "Inventory" } : i));
+    // A shop that sells (retail, or retail and repair) calls its stock Inventory; a repair-only shop calls it Parts.
+    .map((i) => (i.href === "/parts" && sellsRetail ? { ...i, label: "Inventory" } : i));
   // The most specific menu entry wins (/register/sales over /register).
   const activeHref = [...shown, ...platformItems]
     .filter((i) => (i.href === "/" ? path === "/" : path === i.href || path.startsWith(i.href + "/")))
