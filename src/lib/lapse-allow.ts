@@ -135,6 +135,8 @@ export const HAND_ALLOWED = [
   "fitsForUnitsNow",
   // The register's software line: the customer's machines, what she can renew, codes on hand (2.5)
   "softwareChoices",
+  // The register's starter bundles for a machine being sold (6.1): a lookup
+  "starterBundlesNow",
   "readCatalogSheet",
   "previewCatalog",
   "openClassSeats",

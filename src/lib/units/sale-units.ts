@@ -11,14 +11,15 @@ import type { Prisma, SaleLine } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { canWorkOn, equipmentState } from "@/lib/equipment/gate";
-import { usableKind } from "@/lib/equipment/shop";
+import { sellableKind, sellsFree } from "@/lib/equipment/shop";
+import { builtInKind } from "@/lib/equipment";
 import { modelKey, money } from "@/lib/format";
 import { blockedMessage } from "@/lib/module-info";
 import type { RegisterItem } from "@/lib/register-item";
 import { lineNet } from "@/lib/register-math";
 import type { TradeInInput } from "@/lib/units/types";
 import { grantPlan } from "@/lib/units/plans";
-import { DEFAULT_WARRANTY_MONTHS, isCondition, pushEvent, sellableEquipment, unitDescription, unitDisclosure, warrantyByDefault, warrantyEnd, type UnitEvent } from "@/lib/units/units";
+import { DEFAULT_WARRANTY_MONTHS, isCondition, pushEvent, sellableMachines, unitDescription, unitDisclosure, warrantyByDefault, warrantyEnd, type UnitEvent } from "@/lib/units/units";
 
 export type UnitLineIn = { stockUnitId: string | null; tradeIn: TradeInInput | null; qty: number; unitPriceCents: number; taxable: boolean };
 export type UnitLineOut = { description: string; qty: number; unitPriceCents: number; taxable: boolean; discountable: boolean; costCents: number | null; stockUnitId: string | null };
@@ -46,9 +47,9 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
       // A register from before every shop sold machines sends no kind: its trade-ins were vacuums.
       const kindKey = typeof t.kind === "string" && t.kind ? t.kind : "vacuum";
       if (kindKey === "vacuum") await needActive("VACUUM");
-      const kind = await usableKind(a.shopId, kindKey);
+      const kind = await sellableKind(a.shopId, kindKey);
       if (!kind) throw new UserError("Pick what kind of machine the trade-in is.");
-      await needActive(kind.equipment);
+      if (!sellsFree(kind)) await needActive(kind.equipment);
       if (!a.customerId) throw new UserError("Pick the customer trading it in.");
       const brand = String(t.brand ?? "").trim();
       const model = String(t.model ?? "").trim();
@@ -74,7 +75,7 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
     }
     const held = !!unit && !!a.heldFor && unit.status === "HELD" && unit.layawayId === a.heldFor;
     if (!unit || (unit.status !== "IN_STOCK" && !held)) throw new UserError(`${desc} isn't in stock any more.`);
-    await needActive(unit.machine.equipment);
+    if (!sellsFree(builtInKind(unit.machine.kind))) await needActive(unit.machine.equipment);
     if (l.qty !== 1) throw new UserError("A machine for sale is one line of 1.");
     if (!a.customerId) throw new UserError("Pick the customer first: a warranty needs the buyer.");
     if (unit.priceCents == null) throw new UserError(`Set a price for ${desc} first (Machines for sale).`);
@@ -136,7 +137,7 @@ export async function applyUnitLine(
 /** A trade-in: the machine (found by serial and model, or made), its unit back IN_STOCK at the credit, no price yet. */
 async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date; line: SaleLine }, t: TradeInInput): Promise<void> {
   const { shopId, line, at } = a;
-  const kind = await usableKind(shopId, t.kind || "vacuum");
+  const kind = await sellableKind(shopId, t.kind || "vacuum");
   if (!kind) throw new UserError("Pick what kind of machine the trade-in is.");
   const vacuum = kind.key === "vacuum";
   const brand = t.brand.trim();
@@ -278,13 +279,13 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
 export async function registerUnitHits(a: { shopId: string; q: string; mode: "code" | "search" }): Promise<RegisterItem[]> {
   const t = a.q.trim();
   if (!t) return [];
-  const equipment = await sellableEquipment(a.shopId);
+  const sellable = await sellableMachines(a.shopId);
   const words = t.split(/\s+/).slice(0, 4);
   const match: Prisma.MachineWhereInput =
     a.mode === "code"
       ? { serial: { equals: t, mode: "insensitive" } }
       : { AND: words.map((w) => ({ OR: [{ brand: { contains: w, mode: "insensitive" as const } }, { model: { contains: w, mode: "insensitive" as const } }, { serial: { contains: w, mode: "insensitive" as const } }] })) };
-  const machine: Prisma.MachineWhereInput = { AND: [match, { equipment: { in: equipment } }] };
+  const machine: Prisma.MachineWhereInput = { AND: [match, sellable] };
   const rows = await db.stockUnit.findMany({ where: { shopId: a.shopId, status: "IN_STOCK", machine }, include: { machine: true }, orderBy: { createdAt: "desc" }, take: 10 });
   return rows.map((u) => ({
     id: u.id,

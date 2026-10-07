@@ -303,4 +303,7 @@ export const MACHINE_MODEL_KINDS = [
   { key: "vacuum", label: "Vacuum" },
   { key: "3d-printer", label: "3D printer" },
   { key: "resin-printer", label: "Resin printer" },
+  { key: "craft-cutter", label: "Craft cutter (Cricut, Silhouette, ScanNCut)" },
+  { key: "die-cutter", label: "Fabric die cutter (AccuQuilt)" },
+  { key: "laser-cutter", label: "Laser cutter" },
 ] as const;

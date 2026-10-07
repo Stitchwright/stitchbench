@@ -33,7 +33,7 @@ export default async function Units({ searchParams }: { searchParams: Promise<{ 
   const admin = user.role !== "TECH";
   const kindLabel = new Map(kinds.all.map((k) => [k.key, k.label]));
   // The "Add" form's kind: picked by a link (each kind has its own types and questions), sewing machines first.
-  const kind = kinds.usable.find((k) => k.key === one(sp.kind)) ?? kinds.usable[0];
+  const kind = kinds.sellable.find((k) => k.key === one(sp.kind)) ?? kinds.sellable[0];
   const sold = tab === "sold" || tab === "register";
   const here = (more: string) => `/units?tab=${tab}${q ? `&q=${encodeURIComponent(q)}` : ""}${more}`;
   return (
@@ -126,10 +126,10 @@ export default async function Units({ searchParams }: { searchParams: Promise<{ 
       )}
       {admin && kind && (
         <Section title="Add machines for sale" id="add">
-          {kinds.usable.length > 1 && (
+          {kinds.sellable.length > 1 && (
             <div className="mb-3 flex flex-wrap items-center gap-2 text-sm" role="navigation" aria-label="What kind">
               <span className="muted">What kind:</span>
-              {kinds.usable.map((k) => (
+              {kinds.sellable.map((k) => (
                 <Link key={k.key} href={here(`&kind=${encodeURIComponent(k.key)}#add`)} className={`btn btn-sm ${k.key === kind.key ? "btn-primary" : ""}`} aria-current={k.key === kind.key ? "true" : undefined}>
                   {k.label}
                 </Link>

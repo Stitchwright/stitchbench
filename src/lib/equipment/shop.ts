@@ -9,7 +9,8 @@ import { BUILT_IN_KINDS, builtInKind, genericKind, shopKind, sortKinds } from ".
 import { SEWING_KIND } from "./sewing";
 import type { EquipmentKind } from "./types";
 
-export type ShopKinds = { all: EquipmentKind[]; usable: EquipmentKind[] };
+/** sellable: what may be sold as a machine for sale now: the usable kinds and the kinds that sell with no module (6.1). */
+export type ShopKinds = { all: EquipmentKind[]; usable: EquipmentKind[]; sellable: EquipmentKind[] };
 
 const load = cache(async (shopId: string): Promise<ShopKinds> => {
   const [rows, mods] = await Promise.all([
@@ -26,7 +27,8 @@ const load = cache(async (shopId: string): Promise<ShopKinds> => {
     if (k.module && !mods.states[k.module].active) return false;
     return k.builtIn || activeKeys.has(k.key);
   });
-  return { all, usable };
+  const sellable = all.filter((k) => usable.includes(k) || (k.builtIn && k.sellFree));
+  return { all, usable, sellable };
 });
 
 /** all = built-ins + the shop's own rows (inactive ones too, so records render); usable = what new work may use. */
@@ -53,6 +55,16 @@ export async function usableKind(shopId: string, key: string | null | undefined)
   const { usable } = await load(shopId);
   return usable.find((k) => k.key === key) ?? null;
 }
+
+/** A kind that may be sold as a machine for sale now (usable, or one that sells with no module), or null. */
+export async function sellableKind(shopId: string, key: string | null | undefined): Promise<EquipmentKind | null> {
+  if (!key) return null;
+  const { sellable } = await load(shopId);
+  return sellable.find((k) => k.key === key) ?? null;
+}
+
+/** Whether a machine of this kind sells with no module (sewing machines, printers, cutters, lasers). */
+export const sellsFree = (k: EquipmentKind | undefined | null) => !!k && (k.key === "sewing" || !!k.sellFree);
 
 /** sewing: the shop's own checklist (or the default); other kinds: the kind's. */
 export function checklistFor(kind: EquipmentKind, shop: { checklistItems: string[] }): string[] {

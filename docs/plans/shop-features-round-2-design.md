@@ -1151,3 +1151,26 @@ Decisions made while building:
 - Browser test needed: an item set to Software (licence box, codes), the register's software line (code, later, machine,
   renew, a return with and without a reason), the receipt, /parts/software, the customer and machine pages, Settings →
   Selling → Software, the dashboard lines; the renewal reminder through the message worker with Marketing on.
+
+**`maker-machines` (6.1, 7 Oct 2026).** Migration `20261020700000_maker_machines` (`StarterBundle`, carried by the
+company file). Code: `src/lib/equipment/maker.ts` (craft cutter, fabric die cutter, laser cutter), `sellFree` and
+`serialOptional` on equipment kinds (`src/lib/equipment/types.ts`; the 3D and resin printers are `sellFree` too),
+`ShopKinds.sellable` / `sellableKind` / `sellsFree` (`src/lib/equipment/shop.ts`), the machines-for-sale gate per kind
+(`src/lib/units/units.ts`, `sale-units.ts`, `layaway.ts`: `sellableMachines`, `isSellableMachine`, `requireForSale`),
+`src/lib/starter-bundles.ts`, `src/actions/starter-bundles.ts`, Settings → Selling → **Starter bundles**
+(`src/components/starter-bundle-settings.tsx`) and the register's **Add the starter bundle** button for a machine of
+that kind on the sale (`StarterBundles` in `src/components/register-fits.tsx`); catalog machine models read these kinds
+too. Check: `scripts/checks/maker-machines.check.ts` (4 groups); `machine-sales`, `vac-units`, `layaway`,
+`modules-tenant`, `bags-due`, `equipment`, `equipment-lines` still pass.
+Decisions made while building:
+- Selling printers, cutters, die cutters and lasers needs no module (answer 7); the new kinds are appliance kinds, so
+  repairing them is the Small Appliance Repair module's (they show on "What you repair" for a shop with it). A vacuum
+  still needs Vac Shop to be sold.
+- A fabric die cutter may be added without a serial; every other new machine still needs one (the warranty does).
+- Serials, warranties, registration reminders, owner's classes and service plans are the machines-for-sale ones,
+  unchanged; "what fits" (2.4) shows dies and accessories for a machine on the sale.
+- A starter bundle is per kind (not per model) and holds items with how many each; the register adds them as ordinary
+  lines (priced and taxed as items), one tap per machine.
+- Browser test needed: /units "Add machines for sale" with the new kinds (a die cutter without a serial), the register
+  selling a printer with no module and taking a laser in trade, Settings → Selling → Starter bundles, the register's
+  starter bundle button.
