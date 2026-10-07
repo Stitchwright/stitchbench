@@ -15,6 +15,8 @@ import { partKeys, takeShopNumber } from "@/lib/parts";
 import { receiveOrderFor } from "@/lib/fabric-orders";
 import { afterArrival } from "@/lib/arrivals";
 import { buildInvoiceRead, matchSlip, parseSlip, slipKey, type Matched, type SlipLine } from "@/lib/invoice-reader-math";
+import { currentStoreId } from "@/lib/stores";
+import { moveStock, placeNewStock } from "@/lib/stock";
 
 export const MAX_PAGES = 5;
 const MAX_PHOTO_CHARS = 2_800_000;
@@ -98,6 +100,7 @@ export async function receiveSlipFor(user: CurrentUser, a: { orderId: string | n
     words.push(await receiveOrderFor(user, po.id, fd));
   }
 
+  const here = await currentStoreId(user);
   // Our items not on the order: received by hand.
   const loose = rows.filter((r) => r.group === "item");
   if (loose.length) {
@@ -108,10 +111,8 @@ export async function receiveSlipFor(user: CurrentUser, a: { orderId: string | n
       if (!p) throw new UserError("An item isn't in your inventory any more. Read the slip again.");
       const qty = p.unit === "yd" ? Math.round(r.qty * 8) / 8 : Math.round(r.qty);
       if (!(qty > 0)) continue;
-      await db.$transaction([
-        db.part.update({ where: { id: p.id }, data: { qtyOnHand: { increment: qty } } }),
-        db.stockMove.create({ data: { shopId: user.shopId, partId: p.id, qty, reason: "RECEIVED", userId: user.id, note: `Packing slip${po ? ` (not on order #${po.number})` : ""}` } }),
-      ]);
+      // Received at the store reading the slip (7.2).
+      await db.$transaction((tx) => moveStock(tx, { shopId: user.shopId, partId: p.id, locationId: here, qty, reason: "RECEIVED", userId: user.id, note: `Packing slip${po ? ` (not on order #${po.number})` : ""}` }));
     }
     const more = await afterArrival(
       user,
@@ -133,7 +134,7 @@ export async function receiveSlipFor(user: CurrentUser, a: { orderId: string | n
       const number = r.itemNumber?.trim().slice(0, 60) || (await takeShopNumber(tx, user.shopId));
       const clash = await tx.part.findFirst({ where: { shopId: user.shopId, partNumber: { equals: number, mode: "insensitive" } }, select: { id: true } });
       if (clash) throw new UserError(`${number} is already one of your items. Read the slip again.`);
-      await tx.part.create({
+      const made = await tx.part.create({
         data: {
           shopId: user.shopId,
           partNumber: number,
@@ -144,9 +145,10 @@ export async function receiveSlipFor(user: CurrentUser, a: { orderId: string | n
           supplier: po?.supplierName ?? null,
           qtyOnHand: qty,
           ...(cost != null ? { costTenThou: cost, costCents: Math.round(cost / 100) } : {}),
-          moves: { create: { shopId: user.shopId, qty, reason: "RECEIVED", userId: user.id, note: "Packing slip: new item" } },
+          moves: { create: { shopId: user.shopId, locationId: here, qty, reason: "RECEIVED", userId: user.id, note: "Packing slip: new item" } },
         },
       });
+      await placeNewStock(tx, user.shopId, made.id, here, qty);
     });
   }
   if (fresh.length) words.push(`${fresh.length} new ${fresh.length === 1 ? "item" : "items"} made. Give ${fresh.length === 1 ? "it" : "them"} a price on ${fresh.length === 1 ? "its" : "their"} page.`);

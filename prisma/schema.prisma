@@ -118,6 +118,13 @@ model Shop {
   shippoOn                 Boolean       @default(false)
   shippoKeySealed          String?
   shipFrom                 Json          @default("{}")
+  // More than one store (7.1-7.5): the store whose shelves the online shop and the product feeds sell from (a Location
+  // id; null = the main store), the next transfer's number, and the owner's daily summary at each store's closing time
+  // (on unless turned off; sent only with more than one store), by "email" or "text".
+  onlineLocationId         String?
+  nextTransferNumber       Int           @default(1)
+  dailySummaryOn           Boolean       @default(true)
+  dailySummaryBy           String        @default("email")
   shipParcel               Json          @default("{}")
   nextTagNumber            Int           @default(101)
   nextOrderNumber          Int           @default(1001)
@@ -368,6 +375,12 @@ model Shop {
   assistantCallLog  AssistantCall[]
   manualPages       ManualPage[]
   manualIndexDocs   ManualIndexDoc[]
+  // More than one store (shop-features-round-2-design.md section 7)
+  locations         Location[]
+  stockLevels       StockLevel[]
+  stockTransfers    StockTransfer[]
+  storeNotes        StoreNote[]
+  approvals         Approval[]
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -409,6 +422,10 @@ model User {
   id             String   @id @default(cuid())
   shopId         String
   shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The person's home store (7.1): plain Location id; null = the main store
+  locationId     String?
+  // A manager's approval code at the register (7.5), hashed; null = none
+  approveCode    String?
   email          String
   name           String
   passwordHash   String
@@ -420,15 +437,16 @@ model User {
   commission     Json     @default("{}")
   createdAt      DateTime @default(now())
 
-  notes         ModelNote[]
-  ticketsOpened Ticket[]        @relation("TicketOpenedBy")
-  ticketsAsTech Ticket[]        @relation("TicketTech")
-  stockMoves    StockMove[]
-  sharedPosts   SharedPost[]
-  sales         Sale[]
-  shifts        Shift[]
-  appointments  Appointment[]
-  resets        PasswordReset[]
+  notes          ModelNote[]
+  ticketsOpened  Ticket[]        @relation("TicketOpenedBy")
+  ticketsAsTech  Ticket[]        @relation("TicketTech")
+  stockMoves     StockMove[]
+  storeNoteReads StoreNoteRead[]
+  sharedPosts    SharedPost[]
+  sales          Sale[]
+  shifts         Shift[]
+  appointments   Appointment[]
+  resets         PasswordReset[]
 
   // An email is unique inside one company (round 3 W1): the same address may have a login in several companies.
   @@unique([shopId, email])
@@ -720,6 +738,8 @@ model Ticket {
   id                  String       @id @default(cuid())
   shopId              String
   shop                Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId          String?
   number              Int
   status              TicketStatus @default(ON_BENCH)
   machineId           String
@@ -790,6 +810,7 @@ model Ticket {
   @@index([machineId])
   @@index([customerId])
   @@index([viaAccountId])
+  @@index([shopId, locationId])
 }
 
 enum LineKind {
@@ -974,16 +995,18 @@ model Part {
   // scanned on the item page; empty: the feed uses a valid GTIN among the item's numbers. Digits only, check digit checked.
   gtin String?
 
-  moves     StockMove[]
-  markdowns FabricMarkdown[]
-  poLines   PurchaseOrderLine[]
-  kitLines  KitLine[]
-  kitStock  Kit[]               @relation("KitStock")
-  photos    PartPhoto[]
-  lines     TicketLine[]
-  sources   PartSource[]
-  saleLines SaleLine[]
-  waits     PartWait[]
+  moves         StockMove[]
+  levels        StockLevel[]
+  transferLines StockTransferLine[]
+  markdowns     FabricMarkdown[]
+  poLines       PurchaseOrderLine[]
+  kitLines      KitLine[]
+  kitStock      Kit[]               @relation("KitStock")
+  photos        PartPhoto[]
+  lines         TicketLine[]
+  sources       PartSource[]
+  saleLines     SaleLine[]
+  waits         PartWait[]
 
   // The number is also unique in any case: a unique index on (shopId, lower(partNumber)), which Prisma can't express,
   // in migration 20260930220000_round3_tail2_part_number_ci. Writes catch its P2002 (partNumberClash in lib/parts.ts).
@@ -1129,12 +1152,15 @@ enum MoveReason {
   CONSIGNED // sent to, or taken back from, a partner shop's consignment shelf
   CUT // fabric cut into fat quarters, half yards or a remnant: one move out of the bolt, one into the item it feeds
   HELD // set aside for a layaway (off the shelf), or back on the shelf when it is picked up or cancelled
+  TRANSFER // sent to, or arrived from, another store of the company (7.2)
 }
 
 model StockMove {
   id          String     @id @default(cuid())
   shopId      String
   shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store whose shelf it moved (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   partId      String
   part        Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
   qty         Float // + in, - out
@@ -1149,6 +1175,7 @@ model StockMove {
 
   @@index([partId, createdAt])
   @@index([shopId, createdAt])
+  @@index([shopId, locationId])
 }
 
 // ============================================================
@@ -1545,6 +1572,8 @@ model Sale {
   id            String    @id @default(cuid())
   shopId        String
   shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId    String?
   number        Int
   customerId    String?
   customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1572,6 +1601,7 @@ model Sale {
   @@unique([shopId, number])
   @@unique([shopId, clientKey])
   @@index([shopId, createdAt])
+  @@index([shopId, locationId])
 }
 
 model SaleLine {
@@ -2080,6 +2110,8 @@ model WebOrder {
   id              String    @id @default(cuid())
   shopId          String
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   number          Int
   status          String    @default("PENDING")
   customerId      String?
@@ -2127,6 +2159,7 @@ model WebOrder {
   @@unique([shopId, number])
   @@index([shopId, status, createdAt])
   @@index([customerId])
+  @@index([shopId, locationId])
 }
 
 model PartWait {
@@ -2176,6 +2209,8 @@ model StockUnit {
   id              String    @id @default(cuid())
   shopId          String
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   machineId       String    @unique
   machine         Machine   @relation(fields: [machineId], references: [id], onDelete: Restrict)
   status          String    @default("IN_STOCK") // IN_STOCK | HELD (on a layaway) | SOLD | REMOVED
@@ -2220,6 +2255,7 @@ model StockUnit {
   updatedAt       DateTime  @updatedAt
 
   @@index([shopId, status])
+  @@index([shopId, locationId])
 }
 
 // "Bags due" for a customer's vacuum: when someone last got in touch, snoozes and stops. Due dates come from sales.
@@ -2239,6 +2275,8 @@ model MakeJob {
   id              String    @id @default(cuid())
   shopId          String
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   number          Int
   customerId      String?
   customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -2276,6 +2314,7 @@ model MakeJob {
   @@unique([shopId, number])
   @@index([shopId, status])
   @@index([shopId, customerId])
+  @@index([shopId, locationId])
 }
 
 model Certification {
@@ -2616,6 +2655,8 @@ model ShopClass {
   id                String         @id @default(cuid())
   shopId            String
   shop              Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId        String?
   title             String
   description       String?
   teacher           String?
@@ -2650,6 +2691,7 @@ model ShopClass {
   draws             EventDraw[]
 
   @@index([shopId, firstAt])
+  @@index([shopId, locationId])
 }
 
 model ClassMeeting {
@@ -2712,6 +2754,8 @@ model AppointmentType {
   id           String        @id @default(cuid())
   shopId       String
   shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId   String?
   name         String
   minutes      Int           @default(60)
   feeCents     Int           @default(0)
@@ -2733,6 +2777,7 @@ model AppointmentType {
   appointments Appointment[]
 
   @@index([shopId, sortOrder])
+  @@index([shopId, locationId])
 }
 
 model Appointment {
@@ -2780,6 +2825,8 @@ model Shift {
   id          String   @id @default(cuid())
   shopId      String
   shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   userId      String?
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   name        String
@@ -2793,6 +2840,7 @@ model Shift {
 
   @@index([shopId, startsAt])
   @@index([userId, startsAt])
+  @@index([shopId, locationId])
 }
 
 // Fabric markdown ladder (fabric-smarts-design.md section 2): one row each time a fabric's price is marked down a step, so
@@ -2869,6 +2917,8 @@ model PurchaseOrder {
   id              String              @id @default(cuid())
   shopId          String
   shop            Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   number          Int
   supplierId      String
   supplier        FabricSupplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
@@ -2888,6 +2938,7 @@ model PurchaseOrder {
 
   @@unique([shopId, number])
   @@index([shopId, status])
+  @@index([shopId, locationId])
 }
 
 // One line: the item (kept by number and description too, so the order reads right if the item is changed), the amount
@@ -2898,6 +2949,8 @@ model PurchaseOrderLine {
   id            String        @id @default(cuid())
   shopId        String
   shop          Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // How many of the line are for each store when the order is for several (7.3): { locationId: qty }; {} = all for the order's store
+  split         Json          @default("{}")
   orderId       String
   order         PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId        String?
@@ -3157,6 +3210,8 @@ model LongarmOrder {
   id             String         @id @default(cuid())
   shopId         String
   shop           Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId     String?
   number         Int
   customerId     String?
   customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -3193,6 +3248,7 @@ model LongarmOrder {
   @@unique([shopId, number])
   @@index([shopId, status, dueAt])
   @@index([shopId, customerId])
+  @@index([shopId, locationId])
 }
 
 model LongarmPhoto {
@@ -3359,6 +3415,8 @@ model GiftCard {
 model GiftCardEntry {
   id          String   @id @default(cuid())
   shopId      String
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   cardId      String
   card        GiftCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
   at          DateTime @default(now())
@@ -3378,6 +3436,7 @@ model GiftCardEntry {
   @@index([shopId, at])
   @@index([saleId])
   @@index([paymentId])
+  @@index([shopId, locationId])
 }
 
 // Machines for sale (tax-machine-sales-layaway-design.md section 3): a maker's warranty terms as the shop types them
@@ -3451,6 +3510,8 @@ model Layaway {
   id              String        @id @default(cuid())
   shopId          String
   shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   number          Int
   customerId      String?
   customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -3477,6 +3538,7 @@ model Layaway {
   @@unique([shopId, number])
   @@index([shopId, status])
   @@index([customerId])
+  @@index([shopId, locationId])
 }
 
 model LayawayLine {
@@ -3641,6 +3703,8 @@ model LiveSale {
   id          String      @id @default(cuid())
   shopId      String
   shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   name        String
   startsAt    DateTime    @default(now())
   status      String      @default("OPEN")
@@ -3652,6 +3716,7 @@ model LiveSale {
   claims      LiveClaim[]
 
   @@index([shopId, startsAt])
+  @@index([shopId, locationId])
 }
 
 // One buyer's claim on a live sale: the item (plain part id), how much (yards in eighths for fabric), the price, and
@@ -3779,6 +3844,8 @@ model SpecialOrder {
   id           String    @id @default(cuid())
   shopId       String
   shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId   String?
   number       Int
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -3809,6 +3876,7 @@ model SpecialOrder {
   @@index([shopId, status])
   @@index([shopId, partId])
   @@index([customerId])
+  @@index([shopId, locationId])
 }
 
 // Want lists (shop-features-round-2-design.md 1.4): what a customer wants the shop to tell her about, an item of the
@@ -3876,6 +3944,8 @@ model UnitLoan {
   id            String    @id @default(cuid())
   shopId        String
   shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId    String?
   unitId        String // plain id (StockUnit)
   kind          String    @default("LOAN") // LOAN | DEMO | RENTAL
   customerId    String?
@@ -3901,6 +3971,7 @@ model UnitLoan {
   @@index([shopId, backAt])
   @@index([unitId])
   @@index([customerId])
+  @@index([shopId, locationId])
 }
 
 // Trade-up credit used (shop-features-round-2-design.md 1.9): a repair's cost taken off a machine bought within the shop's
@@ -4132,6 +4203,8 @@ model AccountEntry {
   id          String       @id @default(cuid())
   shopId      String
   shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   accountId   String
   account     HouseAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   kind        String
@@ -4148,6 +4221,7 @@ model AccountEntry {
   @@index([accountId, at])
   @@index([shopId, at])
   @@index([saleId])
+  @@index([shopId, locationId])
 }
 
 // A Stripe Terminal card reader paired to the shop (shop-features-round-2-design.md 4.8, package card-reader): Stripe's
@@ -4156,12 +4230,15 @@ model CardReader {
   id         String   @id @default(cuid())
   shopId     String
   shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId String?
   readerId   String
   label      String
   deviceType String?
   createdAt  DateTime @default(now())
 
   @@unique([shopId, readerId])
+  @@index([shopId, locationId])
 }
 
 // A card payment taken on the reader (4.8): the PaymentIntent (pi_...), how much, where it stands (PENDING | SUCCEEDED |
@@ -4183,5 +4260,167 @@ model CardPayment {
   updatedAt     DateTime @updatedAt
 
   @@index([shopId, saleId])
+  @@index([shopId, status])
+}
+
+// ============================================================
+// More than one store (shop-features-round-2-design.md section 7, phase 5)
+// ============================================================
+
+// A store of the company (7.1). The main store (main = true; the migration makes one per company from its own details,
+// and a company without one gets it when a second store is added) keeps its address, phone, time zone, tax rate and
+// receipt line on the Shop row as before, so a company with one store works exactly as it did; another store keeps its
+// own here. Rows whose locationId is null belong to the main store. A store is closed (active = false), never deleted;
+// the main store can't be closed. approveRefundCents / approveDiscountPct (7.5): a refund over the amount, or a discount
+// over the percent, needs a manager's code or the owner's approval; null = no limit. dailyAt: the store's closing time
+// ("HH:MM", the daily summary goes then; null = 18:00).
+model Location {
+  id                 String   @id @default(cuid())
+  shopId             String
+  shop               Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name               String
+  main               Boolean  @default(false)
+  address            String?
+  phone              String?
+  timeZone           String   @default("America/New_York")
+  taxRatePct         Float    @default(0)
+  hours              String?
+  receiptFooter      String?
+  dailyAt            String?
+  approveRefundCents Int?
+  approveDiscountPct Int?
+  active             Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  levels StockLevel[]
+
+  @@index([shopId, sortOrder])
+}
+
+// An item's stock at a store other than the main one (7.2). The main store's stock is Part.qtyOnHand less every other
+// store's level, so Part.qtyOnHand stays the company's total (kept in the same transaction) and every reader that wants
+// the total keeps working; bin and reorder point here are the store's own (the main store's are Part.location and
+// Part.reorderAt). A store with no row has none.
+model StockLevel {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId     String
+  part       Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  qtyOnHand  Float    @default(0)
+  reorderAt  Float    @default(0)
+  bin        String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([partId, locationId])
+  @@index([shopId, locationId])
+}
+
+// Stock sent from one store to another, or asked for (7.2, 7.3, 7.7). status: ASKED (a request; the other store sends
+// it or says it can't, with a reason) | SENT (off the sending store's shelf, on its way) | ARRIVED (on the receiving
+// store's shelf; counts corrected on arrival are recorded there as an adjustment) | CANCELLED | DECLINED. forCustomerId:
+// brought over for a customer (her "it's here" message goes when it arrives); saleId: the sale it was paid on;
+// specialOrderId: the special order holding it; poId: a purchase order's share for this store. fromId / toId are
+// Location ids. The user ids and the parties' ids are plain.
+model StockTransfer {
+  id             String              @id @default(cuid())
+  shopId         String
+  shop           Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number         Int
+  fromId         String
+  toId           String
+  status         String              @default("SENT")
+  note           String?
+  neededBy       String?
+  declineReason  String?
+  forCustomerId  String?
+  saleId         String?
+  specialOrderId String?
+  poId           String?
+  askedById      String?
+  askedAt        DateTime?
+  sentById       String?
+  sentAt         DateTime?
+  arrivedById    String?
+  arrivedAt      DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime            @default(now())
+  lines          StockTransferLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, toId, status])
+}
+
+// One item of a transfer: a stocked item (partId) and how many were asked for, sent and counted on arrival, or a machine
+// for sale (unitId, plain StockUnit id; qty 1).
+model StockTransferLine {
+  id          String        @id @default(cuid())
+  transferId  String
+  transfer    StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  partId      String?
+  part        Part?         @relation(fields: [partId], references: [id], onDelete: SetNull)
+  unitId      String?
+  description String
+  qty         Float
+  qtySent     Float?
+  qtyArrived  Float?
+
+  @@index([transferId])
+}
+
+// Notes between stores (7.7): to one store (toLocationId) or all (null); pinned notes first. fromLocationId and userId
+// are plain ids (the writer and her store).
+model StoreNote {
+  id             String          @id @default(cuid())
+  shopId         String
+  shop           Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  fromLocationId String?
+  toLocationId   String?
+  userId         String?
+  text           String
+  pinned         Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  reads          StoreNoteRead[]
+
+  @@index([shopId, createdAt])
+}
+
+model StoreNoteRead {
+  noteId String
+  note   StoreNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt DateTime  @default(now())
+
+  @@id([noteId, userId])
+}
+
+// A refund or discount over the store's limit, waiting for the owner (7.5): kind REFUND | DISCOUNT; amountCents (the
+// refund, or the discount in money) and pct (a discount's percent); draft: what the register needs to carry on (its
+// lines, for the owner to see); status ASKED | APPROVED | REFUSED | EXPIRED | USED (the register used an approval).
+// A manager's code at the register approves at once (decidedById: the manager). Ids are plain.
+model Approval {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  locationId    String?
+  kind          String
+  amountCents   Int
+  pct           Float?
+  reason        String?
+  draft         Json      @default("{}")
+  requestedById String?
+  status        String    @default("ASKED")
+  decidedById   String?
+  decidedAt     DateTime?
+  note          String?
+  usedAt        DateTime?
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+
   @@index([shopId, status])
 }

@@ -10,6 +10,7 @@ import { numberNames, shopNumberText, twinNumber } from "@/lib/part-labels";
 import { appName } from "@/lib/shops";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartCondition } from "@/generated/prisma/enums";
+import { countAtStore, storeQty } from "@/lib/stock";
 
 export type XNumber = { brand: string; number: string };
 export type XFit = { brand: string; model: string; modelKey: string; evidence: string; source?: string | null };
@@ -149,14 +150,12 @@ export async function partNumberClash(e: unknown, shopId: string, number: string
  * moment (the row is locked), so a sale that lands while the count is being saved can't leave the history off.
  * Returns the change (0 when the count matched).
  */
-export async function countStock(shopId: string, partId: string, counted: number, userId: string, note: string): Promise<number> {
+export async function countStock(shopId: string, partId: string, counted: number, userId: string, note: string, locationId: string | null = null): Promise<number> {
   return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ qtyOnHand: number }[]>`SELECT "qtyOnHand" FROM "Part" WHERE id = ${partId} AND "shopId" = ${shopId} FOR UPDATE`;
-    if (!rows.length) throw new UserError("Part not found.");
-    const change = Math.round((counted - rows[0].qtyOnHand) * 1000) / 1000;
+    // The count is this store's shelf (7.2; null = the main store): the change is worked out from its stock now.
+    const before = await storeQty(tx, shopId, partId, locationId);
+    const change = await countAtStore(tx, { shopId, partId, locationId, counted, userId, note });
     if (change === 0) return 0;
-    await tx.part.update({ where: { id: partId }, data: { qtyOnHand: counted } });
-    await tx.stockMove.create({ data: { shopId, partId, qty: change, reason: "ADJUSTED", userId, note } });
     // Who changed the count and from what to what (audit log, design 4.1 Stock), in the same transaction.
     const who = await tx.user.findFirst({ where: { id: userId, shopId }, select: { id: true, name: true, role: true } });
     const part = await tx.part.findFirst({ where: { id: partId, shopId }, select: { partNumber: true } });
@@ -165,7 +164,7 @@ export async function countStock(shopId: string, partId: string, counted: number
       subjectType: "Part",
       subjectId: partId,
       subjectLabel: part?.partNumber ?? null,
-      changes: { qtyOnHand: [rows[0].qtyOnHand, counted] },
+      changes: { qtyOnHand: [before, counted] },
       reason: note,
     });
     return change;

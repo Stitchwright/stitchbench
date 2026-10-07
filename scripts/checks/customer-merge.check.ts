@@ -205,7 +205,7 @@ async function main() {
     ok("customerFill fills blanks, carries text consent only for the same number, notes the rest; machineFill and vacCombine");
 
     // ---------- 1. the reference lists against the schema ----------
-    const custSchema = schemaRefs("Customer", ["customerId", "accountId", "consignorId"]);
+    const custSchema = schemaRefs("Customer", ["customerId", "accountId", "consignorId", "forCustomerId"]);
     assert.deepEqual(custSchema, CUSTOMER_REFS.map(key).sort(), "CUSTOMER_REFS is every column that points at a customer");
     const machSchema = schemaRefs("Machine", ["machineId"]);
     assert.deepEqual(
@@ -286,6 +286,8 @@ async function main() {
     const consM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "830", modelKey: modelKey("830") } });
     const consU = await db.stockUnit.create({ data: { shopId: A, machineId: consM.id, status: "SOLD", consignorId: dup.id } });
     await db.consignPayout.create({ data: { shopId: A, unitId: consU.id, customerId: dup.id, saleLineId: "x", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
+    // An item brought over from another store for her (phase 5, 7.3).
+    await db.stockTransfer.create({ data: { shopId: A, number: 9001, fromId: "loc-a", toId: "loc-b", status: "ARRIVED", forCustomerId: dup.id } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -478,6 +480,7 @@ async function main() {
     const delConsM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "740", modelKey: modelKey("740") } });
     const delConsU = await db.stockUnit.create({ data: { shopId: A, machineId: delConsM.id, status: "SOLD", consignorId: del.id } });
     await db.consignPayout.create({ data: { shopId: A, unitId: delConsU.id, customerId: del.id, saleLineId: "y", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
+    await db.stockTransfer.create({ data: { shopId: A, number: 9002, fromId: "loc-a", toId: "loc-b", status: "ARRIVED", forCustomerId: del.id } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });

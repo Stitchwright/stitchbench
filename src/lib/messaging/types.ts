@@ -20,11 +20,12 @@ export type MessageKind =
   | "order_in"
   | "order_notice"
   | "pay_link"
+  | "owner_notice"
   | "software_renew"
   | "supplies_due"
   | "test";
 
-export const MESSAGE_KINDS: MessageKind[] = ["ready", "reminder", "estimate", "abandon", "service_due", "review", "campaign", "class_notice", "booking_notice", "consent_confirm", "help_reply", "bags_due", "parts_in", "order_in", "order_notice", "pay_link", "software_renew", "supplies_due", "test"];
+export const MESSAGE_KINDS: MessageKind[] = ["ready", "reminder", "estimate", "abandon", "service_due", "review", "campaign", "class_notice", "booking_notice", "consent_confirm", "help_reply", "bags_due", "parts_in", "order_in", "order_notice", "pay_link", "owner_notice", "software_renew", "supplies_due", "test"];
 
 /** Notices are about something the customer started or owns; marketing encourages buying (TCPA / CAN-SPAM rules apply). */
 export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
@@ -41,6 +42,8 @@ export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
   order_notice: "notice",
   // A pay link a staff member sends (shop-features-round-2-design.md 1.3): transactional, in the base.
   pay_link: "notice",
+  // To the owner herself (more than one store, 7.5): an approval asked for, the daily summary.
+  owner_notice: "notice",
   test: "notice",
   service_due: "marketing",
   review: "marketing",
@@ -58,7 +61,7 @@ export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
  * special order or want list (both transactional, moved into the base on 7 Oct 2026 too), and what texting itself needs
  * (the sign-up confirmation, the HELP reply, a settings test). Every other kind needs Marketing (or Scheduling's own gate).
  */
-export const BASE_KINDS: MessageKind[] = ["ready", "parts_in", "estimate", "pay_link", "order_in", "consent_confirm", "help_reply", "test"];
+export const BASE_KINDS: MessageKind[] = ["ready", "parts_in", "estimate", "pay_link", "order_in", "owner_notice", "consent_confirm", "help_reply", "test"];
 
 /** The template kinds of BASE_KINDS (the estimate has a wording for installs without a public address too). */
 export const BASE_TEMPLATE_KINDS: string[] = [...BASE_KINDS, "estimate_nolink"];
@@ -67,7 +70,7 @@ export const BASE_TEMPLATE_KINDS: string[] = [...BASE_KINDS, "estimate_nolink"];
 export const STOP_LINE_KINDS: MessageKind[] = ["class_notice", "booking_notice"];
 
 /** Sent to an explicit address: only suppression is checked (queue and worker), even when customerId is set for the record. */
-export const EXPLICIT_KINDS: MessageKind[] = ["consent_confirm", "help_reply", "test"];
+export const EXPLICIT_KINDS: MessageKind[] = ["consent_confirm", "help_reply", "owner_notice", "test"];
 
 /** preferred: by notifyBy; every: every channel allowed() passes; one: text if allowed and preferred, else email; or a fixed list. */
 export type ChannelMode = "preferred" | "every" | "one" | Channel[];

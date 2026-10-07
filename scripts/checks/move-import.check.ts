@@ -345,6 +345,16 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.accountEntry.create({ data: { shopId, accountId: houseAcct.id, kind: "CHARGE", amountCents: 4500, saleId: sale.id, note: "Sale #7001" } });
   await db.cardReader.create({ data: { shopId, readerId: "tmr_check", label: "Counter" } });
   await db.cardPayment.create({ data: { shopId, intentId: `pi_check_${crypto.randomBytes(6).toString("hex")}`, amountCents: 4500, saleId: sale.id } });
+  // Phase 5 (shop-features-round-2-design.md section 7): the main store and a second, the item's stock there, a transfer
+  // with a line, a note between the stores read by the owner, an approval.
+  const mainStore = await db.location.create({ data: { shopId, name: "Main store", main: true } });
+  const florida = await db.location.create({ data: { shopId, name: "Florida", sortOrder: 1, taxRatePct: 7, timeZone: "America/New_York" } });
+  await db.stockLevel.create({ data: { shopId, partId: part.id, locationId: florida.id, qtyOnHand: 0 } });
+  const transfer = await db.stockTransfer.create({ data: { shopId, number: 1, fromId: mainStore.id, toId: florida.id, status: "ASKED", askedAt: new Date() } });
+  await db.stockTransferLine.create({ data: { transferId: transfer.id, partId: part.id, description: "Hook", qty: 1 } });
+  const storeNote = await db.storeNote.create({ data: { shopId, fromLocationId: mainStore.id, toLocationId: florida.id, text: "The rep visits Thursday" } });
+  await db.storeNoteRead.create({ data: { noteId: storeNote.id, userId: a.user.id } });
+  await db.approval.create({ data: { shopId, locationId: florida.id, kind: "REFUND", amountCents: 25000, expiresAt: new Date(Date.now() + 3_600_000) } });
   await db.shop.update({
     where: { id: shopId },
     data: {

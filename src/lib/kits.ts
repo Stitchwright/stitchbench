@@ -23,6 +23,8 @@ import {
 } from "@/lib/kits-math";
 import type { CurrentUser } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
+import { currentStoreId } from "@/lib/stores";
+import { moveStock, storeQty, takeStockIfThere } from "@/lib/stock";
 
 export const MAX_KIT_LINES = 60;
 export const MAX_KITS_AT_ONCE = 500;
@@ -309,17 +311,19 @@ export async function deleteKitFor(user: CurrentUser, kitId: string): Promise<st
 
 type Take = { part: { id: string; partNumber: string; kind: string; unit: string | null; qtyOnHand: number }; qty: number };
 
-async function takes(tx: Prisma.TransactionClient, shopId: string, kit: { patternPartId: string | null; lines: { partId: string; qty: number }[] }): Promise<Take[]> {
+async function takes(tx: Prisma.TransactionClient, shopId: string, kit: { patternPartId: string | null; lines: { partId: string; qty: number }[] }, locationId: string | null = null): Promise<Take[]> {
   const out: Take[] = [];
+  // What's on hand is this store's shelf (7.2; the main store's is the total less the others').
+  const at = async (part: Take["part"]) => ({ ...part, qtyOnHand: await storeQty(tx, shopId, part.id, locationId) });
   for (const l of kit.lines) {
     const part = await tx.part.findFirst({ where: { id: l.partId, shopId }, select: { id: true, partNumber: true, kind: true, unit: true, qtyOnHand: true } });
     if (!part) throw new UserError("One of the kit's items is no longer in inventory. Open the kit and fix its lines.");
-    out.push({ part, qty: l.qty });
+    out.push({ part: await at(part), qty: l.qty });
   }
   if (kit.patternPartId) {
     const part = await tx.part.findFirst({ where: { id: kit.patternPartId, shopId }, select: { id: true, partNumber: true, kind: true, unit: true, qtyOnHand: true } });
     if (!part) throw new UserError("The kit's pattern is no longer in inventory. Open the kit and fix it.");
-    out.push({ part, qty: 1 });
+    out.push({ part: await at(part), qty: 1 });
   }
   return out;
 }
@@ -344,6 +348,8 @@ export async function makeKitsFor(user: CurrentUser, kitId: string, n: number): 
   assertId(kitId);
   if (!Number.isInteger(n) || n < 1) throw new UserError("How many kits? Enter a whole number, 1 or more.");
   if (n > MAX_KITS_AT_ONCE) throw new UserError(`${MAX_KITS_AT_ONCE} kits at most at a time.`);
+  // Made at this store, from its shelf, onto its shelf (7.2).
+  const here = await currentStoreId(user);
   return db.$transaction(async (tx) => {
     const kit = await tx.kit.findFirst({ where: { id: kitId, shopId: user.shopId }, include: { lines: true } });
     if (!kit) throw new UserError("Kit not found.");
@@ -351,7 +357,7 @@ export async function makeKitsFor(user: CurrentUser, kitId: string, n: number): 
     const stock = await tx.part.findFirst({ where: { id: kit.partId, shopId: user.shopId }, select: { id: true, partNumber: true } });
     if (!stock) throw new UserError(`${kit.name}'s stock item is gone from inventory. Save the kit again to make a new one.`);
     if (!kit.lines.length) throw new UserError(`${kit.name} has no lines yet.`);
-    const list = await takes(tx, user.shopId, kit);
+    const list = await takes(tx, user.shopId, kit, here);
     const short = shortages(list.map((t) => ({ partNumber: t.part.partNumber, qty: t.qty, onHand: t.part.qtyOnHand, unit: t.part.unit })), n);
     if (short.length) {
       throw new UserError(`Not enough for ${n} ${n === 1 ? "kit" : "kits"}: ${short.slice(0, 4).map((s) => `${s.partNumber} needs ${amountText(s.need, s.unit)}, has ${amountText(s.have, s.unit)}`).join("; ")}${short.length > 4 ? `; and ${short.length - 4} more` : ""}.`);
@@ -361,16 +367,15 @@ export async function makeKitsFor(user: CurrentUser, kitId: string, n: number): 
     for (const t of list) {
       const need = t.qty * n;
       // Only while the stock is all still there (two makes at once can't take the same yards).
-      const took = await tx.part.updateMany({ where: { id: t.part.id, shopId: user.shopId, qtyOnHand: { gte: need } }, data: { qtyOnHand: { decrement: need } } });
-      if (took.count !== 1) throw new UserError(`${t.part.partNumber} changed while the kits were being made. Look at the stock and try again.`);
+      const took = await takeStockIfThere(tx, user.shopId, t.part.id, here, need);
+      if (!took) throw new UserError(`${t.part.partNumber} changed while the kits were being made. Look at the stock and try again.`);
       const cut = isFabricYards(t.part);
       if (cut) fabricYards += need;
-      await tx.stockMove.create({ data: { shopId: user.shopId, partId: t.part.id, qty: -need, reason: cut ? "CUT" : "USED", userId: user.id, note: why, otherPartId: stock.id } });
+      await tx.stockMove.create({ data: { shopId: user.shopId, locationId: here, partId: t.part.id, qty: -need, reason: cut ? "CUT" : "USED", userId: user.id, note: why, otherPartId: stock.id } });
     }
-    await tx.part.update({ where: { id: stock.id }, data: { qtyOnHand: { increment: n }, costCents: await costNow(tx, user.shopId, kit), costTenThou: null } });
-    await tx.stockMove.create({ data: { shopId: user.shopId, partId: stock.id, qty: n, reason: "RECEIVED", userId: user.id, note: why } });
-    const now = await tx.part.findUniqueOrThrow({ where: { id: stock.id }, select: { qtyOnHand: true } });
-    return `Made ${n} ${n === 1 ? "kit" : "kits"} of ${kit.name}${fabricYards > 0 ? `, ${yards(fabricYards)} yd of fabric cut` : ""}. ${now.qtyOnHand} in stock.`;
+    await moveStock(tx, { shopId: user.shopId, partId: stock.id, locationId: here, qty: n, reason: "RECEIVED", userId: user.id, note: why, partData: { costCents: await costNow(tx, user.shopId, kit), costTenThou: null } });
+    const now = await storeQty(tx, user.shopId, stock.id, here);
+    return `Made ${n} ${n === 1 ? "kit" : "kits"} of ${kit.name}${fabricYards > 0 ? `, ${yards(fabricYards)} yd of fabric cut` : ""}. ${now} in stock.`;
   });
 }
 
@@ -380,6 +385,8 @@ export async function makeKitsFor(user: CurrentUser, kitId: string, n: number): 
  */
 export async function unmakeKitFor(user: CurrentUser, kitId: string): Promise<string> {
   assertId(kitId);
+  // Unmade at this store: one kit off its shelf, the parts back on it (7.2).
+  const here = await currentStoreId(user);
   return db.$transaction(async (tx) => {
     const kit = await tx.kit.findFirst({ where: { id: kitId, shopId: user.shopId }, include: { lines: true } });
     if (!kit) throw new UserError("Kit not found.");
@@ -387,16 +394,15 @@ export async function unmakeKitFor(user: CurrentUser, kitId: string): Promise<st
     const stock = await tx.part.findFirst({ where: { id: kit.partId, shopId: user.shopId }, select: { id: true } });
     if (!stock) throw new UserError(`${kit.name}'s stock item is gone from inventory.`);
     const list = await takes(tx, user.shopId, kit);
-    const took = await tx.part.updateMany({ where: { id: stock.id, shopId: user.shopId, qtyOnHand: { gte: 1 } }, data: { qtyOnHand: { decrement: 1 } } });
-    if (took.count !== 1) throw new UserError(`No made ${kit.name} is in stock to unmake (the rest were sold).`);
+    const took = await takeStockIfThere(tx, user.shopId, stock.id, here, 1);
+    if (!took) throw new UserError(`No made ${kit.name} is in stock to unmake (the rest were sold).`);
     const why = `Unmade 1 kit: ${kit.name}`;
-    await tx.stockMove.create({ data: { shopId: user.shopId, partId: stock.id, qty: -1, reason: "ADJUSTED", userId: user.id, note: why } });
+    await tx.stockMove.create({ data: { shopId: user.shopId, locationId: here, partId: stock.id, qty: -1, reason: "ADJUSTED", userId: user.id, note: why } });
     for (const t of list) {
-      await tx.part.update({ where: { id: t.part.id }, data: { qtyOnHand: { increment: t.qty } } });
-      await tx.stockMove.create({ data: { shopId: user.shopId, partId: t.part.id, qty: t.qty, reason: isFabricYards(t.part) ? "CUT" : "RETURNED", userId: user.id, note: why, otherPartId: stock.id } });
+      await moveStock(tx, { shopId: user.shopId, partId: t.part.id, locationId: here, qty: t.qty, reason: isFabricYards(t.part) ? "CUT" : "RETURNED", userId: user.id, note: why, otherPartId: stock.id });
     }
-    const now = await tx.part.findUniqueOrThrow({ where: { id: stock.id }, select: { qtyOnHand: true } });
-    return `Unmade 1 ${kit.name}: its parts are back on the shelf. ${now.qtyOnHand} left in stock.`;
+    const now = await storeQty(tx, user.shopId, stock.id, here);
+    return `Unmade 1 ${kit.name}: its parts are back on the shelf. ${now} left in stock.`;
   });
 }
 

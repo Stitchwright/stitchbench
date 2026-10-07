@@ -198,6 +198,7 @@ export const MESSAGE_KIND_LABEL: Record<string, string> = {
   order_in: "Special order or want list arrived",
   order_notice: "Online order",
   pay_link: "Pay link",
+  owner_notice: "To the owner (approvals, daily summary)",
   test: "Test",
 };
 export const ABANDON_STAGE_LABEL: Record<string, string> = { first: "First notice", second: "Second notice", third: "Third notice", fourth: "Fourth notice", final: "Final notice" };

@@ -6,32 +6,32 @@ import type { Prisma } from "@/generated/prisma/client";
 import { UserError } from "@/lib/user-error";
 import type { CurrentUser } from "@/lib/session";
 import { pushEvent, unitDescription } from "@/lib/units/units";
+import { moveStock } from "@/lib/stock";
 
 type Tx = Prisma.TransactionClient;
 
 /** Takes the items off sale for the layaway: its machines HELD, its stock items' quantity off the shelf. */
-export async function holdItems(tx: Tx, shopId: string, l: { id: string; number: number; lines: { partId: string | null; stockUnitId: string | null; qty: number }[] }, user: Pick<CurrentUser, "id" | "name">, at: Date): Promise<void> {
+export async function holdItems(tx: Tx, shopId: string, l: { id: string; number: number; locationId?: string | null; lines: { partId: string | null; stockUnitId: string | null; qty: number }[] }, user: Pick<CurrentUser, "id" | "name">, at: Date): Promise<void> {
   for (const x of l.lines) {
     if (x.stockUnitId) {
       const u = await tx.stockUnit.findFirst({ where: { id: x.stockUnitId, shopId }, include: { machine: true } });
       const r = await tx.stockUnit.updateMany({ where: { id: x.stockUnitId, shopId, status: "IN_STOCK" }, data: { status: "HELD", layawayId: l.id, events: pushEvent(u?.events, { at: at.toISOString(), note: `Held for layaway #${l.number} (${user.name})` }) } });
       if (!r.count) throw new UserError(`${u ? unitDescription(u) : "A machine"} was just sold or held. Take it off this layaway.`);
     } else if (x.partId) {
-      await tx.part.update({ where: { id: x.partId }, data: { qtyOnHand: { decrement: x.qty } } });
-      await tx.stockMove.create({ data: { shopId, partId: x.partId, qty: -x.qty, reason: "HELD", userId: user.id, note: `Layaway #${l.number}`, createdAt: at } });
+      // Off the shelf of the layaway's store.
+      await moveStock(tx, { shopId, partId: x.partId, locationId: l.locationId ?? null, qty: -x.qty, reason: "HELD", userId: user.id, note: `Layaway #${l.number}`, createdAt: at });
     }
   }
 }
 
 /** Puts the layaway's items back: its machines in stock, its stock items' quantity on the shelf. */
-export async function releaseItems(tx: Tx, shopId: string, l: { id: string; number: number; lines: { partId: string | null; stockUnitId: string | null; qty: number }[] }, user: Pick<CurrentUser, "id" | "name">, at: Date, why: string): Promise<void> {
+export async function releaseItems(tx: Tx, shopId: string, l: { id: string; number: number; locationId?: string | null; lines: { partId: string | null; stockUnitId: string | null; qty: number }[] }, user: Pick<CurrentUser, "id" | "name">, at: Date, why: string): Promise<void> {
   for (const x of l.lines) {
     if (x.stockUnitId) {
       const u = await tx.stockUnit.findFirst({ where: { id: x.stockUnitId, shopId, status: "HELD", layawayId: l.id } });
       if (u) await tx.stockUnit.updateMany({ where: { id: u.id, shopId, status: "HELD", layawayId: l.id }, data: { status: "IN_STOCK", layawayId: null, events: pushEvent(u.events, { at: at.toISOString(), note: `Layaway #${l.number}: ${why}` }) } });
     } else if (x.partId) {
-      await tx.part.updateMany({ where: { id: x.partId, shopId }, data: { qtyOnHand: { increment: x.qty } } });
-      await tx.stockMove.create({ data: { shopId, partId: x.partId, qty: x.qty, reason: "HELD", userId: user.id, note: `Layaway #${l.number}: ${why}`, createdAt: at } });
+      await moveStock(tx, { shopId, partId: x.partId, locationId: l.locationId ?? null, qty: x.qty, reason: "HELD", userId: user.id, note: `Layaway #${l.number}: ${why}`, createdAt: at });
     }
   }
 }

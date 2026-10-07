@@ -14,6 +14,8 @@ import { asCondition, asOrigin, labelFields } from "@/lib/part-labels";
 import { answerConsignReturnDetailed, consignReturned, MAX_MONEY, MAX_QTY, orderTotal, partnerLink, sendToPartner, type CatalogItem, type JobEvent, type OrderLine } from "@/lib/partners";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PartKind } from "@/generated/prisma/enums";
+import { currentStoreId } from "@/lib/stores";
+import { countAtStore, moveStock } from "@/lib/stock";
 
 type Json = Prisma.InputJsonValue;
 const KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
@@ -87,6 +89,7 @@ export const partnerOrderAction = safe.whileLapsed("partnerOrderAction")(async f
   const note = str(formData.get("note"));
   let status = o.status;
   const extra: Record<string, unknown> = {};
+  const here = await currentStoreId(user);
 
   await db.$transaction(async (tx) => {
     // First claim the change: only while the order still stands as it was read. Two clicks at once (two tabs, two
@@ -109,8 +112,8 @@ export const partnerOrderAction = safe.whileLapsed("partnerOrderAction")(async f
       for (const l of lines) {
         const part = await tx.part.findFirst({ where: { id: l.itemKey, shopId } });
         if (!part) continue;
-        await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: l.qty } } });
-        await tx.stockMove.create({ data: { shopId, partId: part.id, qty: -l.qty, reason: "SOLD", userId: user.id, note: `${o.number} to ${link.partnerName}`, createdAt: at } });
+        // Out of the shelf of the store this person is working at (7.2).
+        await moveStock(tx, { shopId, partId: part.id, locationId: here, qty: -l.qty, reason: "SOLD", userId: user.id, note: `${o.number} to ${link.partnerName}`, createdAt: at });
       }
     } else if (action === "cancel") {
       if (o.side === "buyer" && o.status !== "PLACED") throw new UserError("The repair shop already accepted it. Ask them to cancel.");
@@ -159,8 +162,8 @@ export const partnerOrderAction = safe.whileLapsed("partnerOrderAction")(async f
             throw await partNumberClash(e, shopId, stock.partNumber);
           });
         }
-        await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: l.qty }, costCents: l.unitCents, costTenThou: null } });
-        await tx.stockMove.create({ data: { shopId, partId: part.id, qty: l.qty, reason: "RECEIVED", userId: user.id, note: `${o.number} from ${link.partnerName}`, createdAt: at } });
+        // Onto the shelf of the store this person is working at (7.2).
+        await moveStock(tx, { shopId, partId: part.id, locationId: here, qty: l.qty, reason: "RECEIVED", userId: user.id, note: `${o.number} from ${link.partnerName}`, createdAt: at, partData: { costCents: l.unitCents, costTenThou: null } });
       }
     } else {
       throw new UserError("That can't be done to this order.");
@@ -212,9 +215,10 @@ export const placeConsignment = safe(async function placeConsignment(linkId: str
   const price = toCents(formData.get("price")) ?? part.priceCents;
   if (price == null || !(price > 0) || price > MAX_MONEY) throw new UserError("Set the shelf price (what the customer pays).");
   const at = new Date();
+  // Off the shelf of the store this person is working at (7.2).
+  const here = await currentStoreId(admin);
   await db.$transaction(async (tx) => {
-    await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: qty } } });
-    await tx.stockMove.create({ data: { shopId, partId: part.id, qty: -qty, reason: "CONSIGNED", userId: admin.id, note: `Placed at ${link.partnerName}`, createdAt: at } });
+    await moveStock(tx, { shopId, partId: part.id, locationId: here, qty: -qty, reason: "CONSIGNED", userId: admin.id, note: `Placed at ${link.partnerName}`, createdAt: at });
     await tx.consignItem.upsert({
       where: { shopId_linkId_itemKey: { shopId, linkId, itemKey: part.id } },
       create: { shopId, linkId, side: "owner", itemKey: part.id, partId: part.id, partNumber: part.partNumber, description: part.description, priceCents: price, placed: qty },
@@ -302,10 +306,8 @@ export const countConsigned = safe(async function countConsigned(linkId: string,
       if (!Number.isFinite(n) || n < 0 || n > MAX_QTY || (!yards && !Number.isInteger(n))) throw new UserError(`Check the count for ${it.partNumber}${yards ? "" : ": whole pieces only"}.`);
       counted.push({ itemKey: it.itemKey, onHand: n });
       await tx.consignItem.update({ where: { id: it.id }, data: { countedQty: n, countedAt: at } });
-      if (part && part.qtyOnHand !== n) {
-        await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: n } });
-        await tx.stockMove.create({ data: { shopId, partId: part.id, qty: n - part.qtyOnHand, reason: "ADJUSTED", userId: user.id, note: "Consignment shelf count", createdAt: at } });
-      }
+      // A partner's consigned stock is on the main store's shelf (it is placed there by the partner's messages).
+      if (part) await countAtStore(tx, { shopId, partId: part.id, locationId: null, counted: n, userId: user.id, note: "Consignment shelf count", createdAt: at });
     }
     if (!counted.length) throw new UserError("Enter at least one count.");
     await sendToPartner(shopId, linkId, "consign.count", { id: crypto.randomUUID(), items: counted, at: at.toISOString() }, tx);

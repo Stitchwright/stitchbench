@@ -39,6 +39,9 @@ import { applyMembership, ruleCtxFor, undoMembership } from "@/lib/price-groups"
 import { bestRule, type RuleCtx } from "@/lib/price-rules";
 import { birthdayFor, markBirthdayUsed, unuseBirthday, yardBreaksFor } from "@/lib/birthdays";
 import { creditCents, spendCredit, unuseCredits } from "@/lib/trade-up";
+import { currentStore, storeDetails, storeOfRow } from "@/lib/stores";
+import { moveStock } from "@/lib/stock";
+import { approvalFor, useApproval } from "@/lib/approvals";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -113,6 +116,8 @@ export type SaleInput = {
   chargeTax?: boolean;
   /** The sale a scanned receipt brought back as this return (saleForReturn): a return-only cart is taxed at its rate and exemption. */
   returnOfSaleId?: string | null;
+  // A refund or discount over the store's limit (7.5): the approval it uses (a manager's code or the owner's yes)
+  approvalId?: string | null;
   /** The customer uses her birthday offer (a percent off this sale) today (shop-features-round-2-design.md 1.6). */
   birthday?: boolean;
   /** Who sold it (shop-features-round-2-design.md 9.7): one of the company's people; the person ringing it up when blank. */
@@ -147,7 +152,7 @@ function saleByKey(shopId: string, clientKey: string | null) {
 export async function completeSaleAs(
   user: CurrentUser,
   input: SaleInput,
-  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean; specialOrder?: SpecialOrderHook } = {},
+  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean; specialOrder?: SpecialOrderHook; locationId?: string | null } = {},
 ): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
@@ -168,7 +173,14 @@ export async function completeSaleAs(
     // A loaner's or rental's money names one of this shop's loans.
     const loanIds = [...new Set(input.lines.map((l) => l.unitLoanId).filter((x): x is string => !!x))];
     if (loanIds.length && (await db.unitLoan.count({ where: { shopId: user.shopId, id: { in: loanIds } } })) !== loanIds.length) throw new UserError("That loan isn't one of this shop's.");
-    const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
+    // The store the sale is made at (7.1): the one named (an online order: the online store; a layaway or special
+    // order: its own), else this device's. Its tax rate and time zone stand in for the company's (the main store's are
+    // the company's own, so one store changes nothing).
+    const store = opts.locationId !== undefined ? await storeOfRow(shopId, opts.locationId) : await currentStore(user);
+    const storeId = store?.id ?? null;
+    // A layaway's held items are on its own store's shelf (undefined: not a layaway's sale).
+    const layStore = lay ? ((await db.layaway.findFirst({ where: { id: lay.id, shopId }, select: { locationId: true } }))?.locationId ?? null) : undefined;
+    const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId } }), store);
     if (!input.lines.length) throw new UserError("Nothing to sell yet. Scan or search for an item.");
     if (input.lines.length > 300) throw new UserError("That's too many lines for one sale.");
     // While the program is read-only (hub-accounts-billing-design.md 3.5): a return (every line money back) still goes
@@ -560,6 +572,21 @@ export async function completeSaleAs(
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
     if (problem) throw new UserError(problem);
+    // Over the store's limit (7.5): a refund, or a discount as a share of the full prices, needs its approval first.
+    // Layaways, special orders and online orders priced by the program never stop here.
+    const approval =
+      lay || opts.internal || opts.paidOnline
+        ? null
+        : await approvalFor(
+            user,
+            store,
+            {
+              refundCents: totals.total < 0 ? -totals.total : 0,
+              discountCents: lines.reduce((a, l) => a + (l.qty > 0 && l.discountCents > 0 ? l.discountCents : 0), 0) + totals.orderDiscount,
+              grossCents: lines.reduce((a, l) => a + (l.qty > 0 ? Math.round(l.qty * l.unitPriceCents) : 0), 0),
+            },
+            input.approvalId,
+          );
     // Each line's share of the whole-sale discount as the tax was worked out (what a machine really sold for).
     const shares = discountShares(lines, totals.orderDiscount);
 
@@ -602,6 +629,7 @@ export async function completeSaleAs(
             note: input.note?.slice(0, 500) || null,
             clientKey,
             createdAt: at,
+            locationId: storeId,
           },
         });
         for (const [i, l] of lines.entries()) {
@@ -618,7 +646,7 @@ export async function completeSaleAs(
           const tradeUp = tradeUps.get(i);
           if (tradeUp) await spendCredit(tx, { shopId, customerId, ticketId: tradeUp, lineId: line.id, today });
           if (l.stockUnitId || tradeIn) {
-            await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
+            await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i], locationId: storeId });
           }
           const plan = planLines.get(i);
           if (plan) await applyPlanLine(tx, { shopId, at, timeZone: shop.timeZone, line, prepared: plan });
@@ -633,10 +661,11 @@ export async function completeSaleAs(
               await tx.saleLine.update({ where: { id: line.id }, data: { priceNote: note } });
             }
           } else if (l.partId) {
-            await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
-            await tx.stockMove.create({
-              data: { shopId, partId: l.partId, qty: -l.qty, reason: "SOLD", userId: user.id, note: `Sale #${number}`, createdAt: at },
-            });
+            // Off this store's shelf (a return goes back on it). A special order or a layaway picked up is taken where
+            // it was held: its own store.
+            const pick = input.lines[i].specialOrderId ? so.pickups.get(input.lines[i].specialOrderId!) : undefined;
+            const lineStore = pick ? pick.locationId : layStore !== undefined ? layStore : storeId;
+            await moveStock(tx, { shopId, partId: l.partId, locationId: lineStore, qty: -l.qty, reason: "SOLD", userId: user.id, note: `Sale #${number}`, createdAt: at });
           }
           if (l.consignLinkId && l.consignItemKey) {
             // Consigned stock: the owner hears about every sale; the net price after the line discount and the line's part
@@ -720,10 +749,17 @@ export async function completeSaleAs(
         }
         await clearUnitListings(tx, shopId, delistUnits);
         await tieReaderPayments(tx, shopId, sale.id, readerIntents);
+        // A refund or discount over the store's limit (7.5) used its approval, once.
+        if (approval) await useApproval(tx, shopId, approval, sale.id);
         await applyAccountTender(tx, { shopId, accountId, saleId: sale.id, saleNumber: number, amountCents: tenders.filter((t) => t.method === "ACCOUNT").reduce((x, t) => x + t.amountCents, 0), at, userId: user.id });
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
+        // Gift card, store credit and house account entries of this sale record the store they were used at (7.1).
+        if (storeId) {
+          await tx.giftCardEntry.updateMany({ where: { shopId, saleId: sale.id, locationId: null }, data: { locationId: storeId } });
+          await tx.accountEntry.updateMany({ where: { shopId, saleId: sale.id, locationId: null }, data: { locationId: storeId } });
+        }
         // The birthday offer used on this sale: once a year.
         if (customerId && priceNotes.some((n) => n?.startsWith("Birthday"))) await markBirthdayUsed(tx, shopId, customerId, Number(today.slice(0, 4)));
         if (so.pickups.size || opts.specialOrder) await afterSpecialOrderSale(tx, { shopId, pickups: so.pickups, hook: opts.specialOrder ?? null, saleId: sale.id });
@@ -836,8 +872,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
         if (part) {
-          await tx.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: l.qty } } });
-          await tx.stockMove.create({ data: { shopId, partId: part.id, qty: l.qty, reason: "SOLD", userId: user.id, note: `Sale #${sale.number} void`, createdAt: at } });
+          // Back on the shelf of the store that sold it.
+          await moveStock(tx, { shopId, partId: part.id, locationId: sale.locationId, qty: l.qty, reason: "SOLD", userId: user.id, note: `Sale #${sale.number} void`, createdAt: at });
         }
       }
       if (l.consignLinkId && l.consignItemKey) {

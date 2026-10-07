@@ -30,6 +30,8 @@ import { saveIntakeFor, saveReadingsFor } from "@/lib/equipment/ticket-data";
 import { openingTax, setTicketTaxFor } from "@/lib/ticket-tax";
 import { takeTicketNumber, typedTicketNumber } from "@/lib/ticket-number";
 import { INSTALL_CHECKLIST } from "@/lib/vac/installs";
+import { currentStore, storeDetails } from "@/lib/stores";
+import { moveStock } from "@/lib/stock";
 
 // $100,000 in cents: far above any real line or payment, and well inside what the books' whole numbers hold.
 const MAX_MONEY = 10_000_000;
@@ -175,7 +177,9 @@ export const createTicket = safe(async function createTicket(formData: FormData)
   // A paper ticket number typed in (blank takes the next one).
   const typed = typedTicketNumber(str(formData.get("number")));
   const preApprovedCents = amountOf(formData.get("preApproved"), "OK to spend up to");
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
+  // Checked in at this store (7.1): the ticket is its, and taxed at its rate.
+  const here = await currentStore(user);
+  const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId } }), here);
   const { equipment, key: kindName } = kind;
 
   const ticket = await db.$transaction(async (tx) => {
@@ -227,6 +231,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
     return tx.ticket.create({
       data: {
         shopId,
+        locationId: here?.id ?? null,
         number,
         machineId,
         customerId,
@@ -507,15 +512,15 @@ export const addLine = safe(async function addLine(ticketId: string, formData: F
     if (!part && price == null) throw new UserError(pn ? `${pn} isn't in your parts. Pick it from the list, or enter a price for a part you don't stock.` : "Pick a part from inventory, or describe it and enter a price.");
     if (part) {
       const unit = price ?? part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100));
-      await db.$transaction([
-        db.ticketLine.create({
+      await db.$transaction(async (tx) => {
+        await tx.ticketLine.create({
           // A used, refurbished, compatible or 3D printed part says so on the invoice: written now, so the bill stays
           // right if the part is changed later.
           data: { ticketId, kind, description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty, unitPriceCents: unit, partId: part.id },
-        }),
-        db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: qty } } }),
-        db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: -qty, reason: "USED", ticketId, userId: user.id } }),
-      ]);
+        });
+        // Off the shelf of the ticket's store.
+        await moveStock(tx, { shopId: user.shopId, partId: part.id, locationId: t.locationId, qty: -qty, reason: "USED", ticketId, userId: user.id });
+      });
     } else {
       if (!desc && !pn) throw new UserError("Pick a part from inventory or type a description.");
       await db.ticketLine.create({
@@ -577,7 +582,7 @@ export const removeLine = safe(async function removeLine(lineId: string) {
   const user = await requireUser();
   const line = await db.ticketLine.findFirst({
     where: { id: lineId, ticket: { shopId: user.shopId } },
-    include: { ticket: { select: { number: true, closedAt: true, intakeAt: true, status: true, machine: { select: { equipment: true } } } } },
+    include: { ticket: { select: { number: true, closedAt: true, intakeAt: true, status: true, locationId: true, machine: { select: { equipment: true } } } } },
   });
   if (!line) throw new UserError("Line not found.");
   // Taking a line off is work on the ticket (the same gate as adding one).
@@ -587,10 +592,8 @@ export const removeLine = safe(async function removeLine(lineId: string) {
     const qty = line.qty;
     await db.$transaction(async (tx) => {
       await tx.ticketLine.delete({ where: { id: lineId } });
-      await tx.part.update({ where: { id: line.partId! }, data: { qtyOnHand: { increment: qty } } });
-      await tx.stockMove.create({
-        data: { shopId: user.shopId, partId: line.partId!, qty, reason: "RETURNED", ticketId: line.ticketId, userId: user.id, note: "Removed from ticket" },
-      });
+      // Back on the shelf of the ticket's store.
+      await moveStock(tx, { shopId: user.shopId, partId: line.partId!, locationId: line.ticket.locationId, qty, reason: "RETURNED", ticketId: line.ticketId, userId: user.id, note: "Removed from ticket" });
       await audit(tx, actorOf(user), removedLine(line));
     });
   } else {

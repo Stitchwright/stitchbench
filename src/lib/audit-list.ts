@@ -21,6 +21,9 @@ export const AUDIT_ACTIONS = {
   "payment.add": { category: "money", label: "Payment taken on a ticket" },
   "payment.remove": { category: "money", label: "Payment taken off a ticket" },
   "sale.void": { category: "money", label: "Sale voided" },
+  "approval.code": { category: "money", label: "Refund or discount over the limit approved with a manager's code" },
+  "approval.yes": { category: "money", label: "Refund or discount over the limit approved by the owner" },
+  "approval.no": { category: "money", label: "Refund or discount over the limit not approved" },
   "sale.return": { category: "money", label: "Return or refund at the register" },
   "sale.discount": { category: "money", label: "Discount given at the register" },
   "sale.price_override": { category: "money", label: "Register price different from the item's" },
@@ -52,6 +55,7 @@ export const AUDIT_ACTIONS = {
   "shop.rates": { category: "prices", label: "Labor rate, tax rate, markup or storage fee changed" },
   // Stock
   "stock.count": { category: "stock", label: "Stock recounted or adjusted" },
+  "stock.transfer": { category: "stock", label: "Stock sent to or arrived from another store" },
   // Deletes
   "ticketline.remove": { category: "deletes", label: "Ticket line removed" },
   "photo.delete": { category: "deletes", label: "Machine photo deleted" },
@@ -64,6 +68,9 @@ export const AUDIT_ACTIONS = {
   "hub.usage": { category: "settings", label: "Sharing of parts used switched on or off" },
   "shop.details": { category: "settings", label: "Shop details changed" },
   "feeds.settings": { category: "settings", label: "Google and Facebook feeds switched on or off" },
+  "store.add": { category: "settings", label: "Store added" },
+  "store.change": { category: "settings", label: "Store details changed, closed or opened again" },
+  "store.join": { category: "data", label: "A separate company joined in as a store" },
   // People
   "user.add": { category: "people", label: "Login added" },
   "user.role": { category: "people", label: "Role changed" },

@@ -18,6 +18,8 @@ import type { InPrint, PartCondition, PartOrigin } from "@/generated/prisma/enum
 import { Prisma } from "@/generated/prisma/client";
 import { detailsFrom, parseKindChoice, type ItemType } from "@/lib/item-details";
 import { gtinInput } from "@/lib/shop/feeds-math";
+import { currentStore } from "@/lib/stores";
+import { moveStock as moveStockAt, placeNewStock } from "@/lib/stock";
 
 /** The item form's barcode (UPC or EAN): digits with a right check digit, or empty; undefined when the form has no such field. */
 function gtinField(formData: FormData): string | null | undefined {
@@ -121,12 +123,14 @@ export const createPart = safe(async function createPart(formData: FormData) {
   const data = partData(formData);
   const qty = qtyValue(formData.get("qtyOnHand"), data.unit === "yd");
   const swatch = await swatchFile(formData.get("swatch"));
+  // Opening stock is on this store's shelf (7.2).
+  const here = await currentStore(user);
   const row = {
     ...data,
     photos: swatch ? { create: { shopId: user.shopId, mime: swatch.mime, data: swatch.data, sortOrder: 0 } } : undefined,
     shopId: user.shopId,
     qtyOnHand: qty,
-    moves: qty ? { create: { shopId: user.shopId, qty, reason: "RECEIVED" as const, userId: user.id, note: "Opening stock" } } : undefined,
+    moves: qty ? { create: { shopId: user.shopId, locationId: here?.id ?? null, qty, reason: "RECEIVED" as const, userId: user.id, note: "Opening stock" } } : undefined,
   };
   if (!data.partNumber) {
     // The maker gave no number: the item gets a shop number (SB-00001), taken in the same step as the item.
@@ -140,6 +144,7 @@ export const createPart = safe(async function createPart(formData: FormData) {
         // each other out): the database's key refused the second, and saving again takes the next number.
         throw isPartNumberClash(e) ? new UserError("Another item was given that shop number at the same moment. Save again.") : e;
       });
+    if (qty) await placeNewStock(db, user.shopId, p.id, here?.id ?? null, qty);
     // A new item may be what a want list watches for (shop-features-round-2-design.md 1.4).
     await matchWantsFor(user.shopId, [p.id]);
     revalidatePath("/parts");
@@ -158,6 +163,7 @@ export const createPart = safe(async function createPart(formData: FormData) {
   const p = await db.part.create({ data: { ...row, partNumber: stock.partNumber, altNumbers, numberKeys: partKeys(stock.partNumber, altNumbers) } }).catch(async (e: unknown) => {
     throw await partNumberClash(e, user.shopId, stock.partNumber);
   });
+  if (qty) await placeNewStock(db, user.shopId, p.id, here?.id ?? null, qty);
   await matchWantsFor(user.shopId, [p.id]);
   revalidatePath("/parts");
   redirect(`/parts/${p.id}`);
@@ -209,15 +215,14 @@ export async function moveStock(partId: string, formData: FormData): Promise<Act
     const n = p.unit === "yd" ? Math.round(raw * 1000) / 1000 : Math.round(raw);
     if (n < 0 || n > MAX_STOCK) throw new UserError(`Enter a quantity from 0 to ${MAX_STOCK.toLocaleString("en-US")}.`);
     const note = str(formData.get("note"));
+    const here = await currentStore(user);
     if (mode === "count") {
-      await countStock(user.shopId, partId, n, user.id, note ?? "Shelf count");
+      // This store's shelf (7.2).
+      await countStock(user.shopId, partId, n, user.id, note ?? "Shelf count", here?.id ?? null);
     } else {
       if (n <= 0) throw new UserError("Enter how many arrived.");
       const cost = costField(formData.get("cost"), "Cost");
-      await db.$transaction([
-        db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost ?? {}) } }),
-        db.stockMove.create({ data: { shopId: user.shopId, partId, qty: n, reason: "RECEIVED", userId: user.id, note } }),
-      ]);
+      await db.$transaction((tx) => moveStockAt(tx, { shopId: user.shopId, partId, locationId: here?.id ?? null, qty: n, reason: "RECEIVED", userId: user.id, note, partData: cost ?? {} }));
     }
     revalidatePath(`/parts/${partId}`);
     revalidatePath("/parts");
