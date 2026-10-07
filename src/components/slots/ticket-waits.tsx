@@ -109,7 +109,7 @@ export async function TicketWaitsSlot({ ticketId, user, canWork }: { ticketId: s
           </ul>
         )}
         {canWork && !closed && (
-          <details open={!open.length}>
+          <details open={waiting && !open.length}>
             <summary className="cursor-pointer font-semibold">Waiting on a part</summary>
             <ActionForm action={addWait.bind(null, ticketId)} success="Recorded" className="mt-2 space-y-3">
               <div className="grid-form">

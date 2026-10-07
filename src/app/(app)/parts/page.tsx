@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { money } from "@/lib/format";
+import { fineCost, money } from "@/lib/format";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
 import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
 import { createPart } from "@/actions/parts";
+import { entryFor } from "@/lib/assistant/ui";
+import { BoltLabelButton } from "@/components/assistant/label-button";
 import { KIND_LABEL } from "@/lib/parts";
 import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
+import { FIRST_PHOTO } from "@/lib/register-item";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -38,6 +41,7 @@ export default async function Parts({
 }) {
   const user = await requireUser();
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, doesRepair: true } });
+  const labelEntry = shop.sellsRetail ? await entryFor(user.shopId, "fabric") : null;
   const tabs = KINDS.filter((x) => !("retail" in x) || shop.sellsRetail);
   const { q, low, kind: k, condition: cond, origin: made, new: newCode } = await searchParams;
   const term = q?.trim();
@@ -68,13 +72,11 @@ export default async function Parts({
   const SHOWN = 1000;
   // The count and the shelf value cover every matching item, not only the ones listed.
   const [parts, all] = await Promise.all([
-    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN }),
-    db.part.findMany({ where, select: { costCents: true, qtyOnHand: true } }),
+    db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN, include: FIRST_PHOTO }),
+    db.part.findMany({ where, select: { costCents: true, costTenThou: true, qtyOnHand: true } }),
   ]);
-  const value = all.reduce(
-    (s, p) => s + (p.costCents ?? 0) * Math.max(0, p.qtyOnHand),
-    0,
-  );
+  // At the fine cost (ten-thousandths), rounded once for the whole shelf, not per unit.
+  const value = Math.round(all.reduce((s, p) => s + (fineCost(p.costCents, p.costTenThou) ?? 0) * Math.max(0, p.qtyOnHand), 0) / 100);
 
   return (
     <div className="space-y-6">
@@ -211,6 +213,11 @@ export default async function Parts({
                   <th className="w-8">
                     <span className="sr-only">Label</span>
                   </th>
+                  {shop.sellsRetail && (
+                    <th className="w-14">
+                      <span className="sr-only">Picture</span>
+                    </th>
+                  )}
                   <th>Part #</th>
                   <th>Description</th>
                   <th>Fits</th>
@@ -231,6 +238,14 @@ export default async function Parts({
                         className="check"
                       />
                     </td>
+                    {shop.sellsRetail && (
+                      <td>
+                        {p.photos[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
+                          <img src={`/api/parts/photo/${p.photos[0].id}`} alt={`${p.partNumber} swatch`} className="h-10 w-10 rounded border border-line object-cover" loading="lazy" />
+                        ) : null}
+                      </td>
+                    )}
                     <td className="mono">
                       <Link href={`/parts/${p.id}`} className="link">
                         {p.partNumber}
@@ -283,7 +298,8 @@ export default async function Parts({
       <div id="add">
         <Section title="Add a part or accessory">
           <ActionForm action={createPart} className="grid-form">
-            <PartFields withQty defaultNumber={newCode} />
+            {labelEntry?.show && <BoltLabelButton mode="fabric" unavailable={labelEntry.unavailable} />}
+            <PartFields withQty defaultNumber={newCode} fabric={shop.sellsRetail} />
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Submit>Add part</Submit>
               <BarcodeLookupButton />

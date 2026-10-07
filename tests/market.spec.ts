@@ -39,7 +39,7 @@ test("cross-reference and marketplace", async ({ page }) => {
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD ?? "e2e-password-1");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   // On the hub (join with an invite if a past run didn't).
   await page.goto("/settings");
@@ -105,17 +105,17 @@ test("cross-reference and marketplace", async ({ page }) => {
   await expect(page.getByText("$14.00")).toBeVisible();
   await page.getByRole("button", { name: "Mark it paid" }).click();
   await expect(page.getByText("Marked paid")).toBeVisible();
-  // Once paid, the seller can rate the buyer.
-  await page.locator("#rt-stars").selectOption("5");
-  await page.locator("#rt-comment").fill("Paid fast");
-  await page.getByRole("button", { name: "Send rating" }).click();
-  await expect(page.getByText("Thanks for rating")).toBeVisible();
   const sellOrderId = page.url().split("/").pop()!;
   await page.locator("#sh-track").fill("9400100000000000000000");
   await page.getByRole("checkbox", { name: /Take 2 out of my parts stock/ }).uncheck();
   await page.getByRole("button", { name: "Mark shipped" }).click();
   await expect(page.getByText("Shipped: the buyer has the tracking")).toBeVisible();
   await expect(page.getByRole("link", { name: /9400100000000000000000/ })).toHaveAttribute("href", /usps/i);
+  // Once it has shipped, the seller can rate the buyer (the form shows only when the hub would take the rating).
+  await page.locator("#rt-stars").selectOption("5");
+  await page.locator("#rt-comment").fill("Paid fast");
+  await page.getByRole("button", { name: "Send rating" }).click();
+  await expect(page.getByText("Thanks for rating")).toBeVisible();
   // The buyer (member B) rates us after it shipped; we see it on the order.
   await api(`/v1/orders/${sellOrderId}/rate`, bKey, { json: { stars: 4, comment: "Well packed" } });
   await page.goto("/market/orders?role=seller");

@@ -3,9 +3,15 @@ import "server-only";
 // Sync pushes what this shop shared, then pulls every change since last time into the local copy
 // (ManualLink, HubPost, HubPhoto, HubFigure). Pictures are fetched the first time someone looks at them.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { actingCompany, asCompany } from "@/lib/acting-company";
+import { libraryDir } from "@/lib/library-dir";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
-import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
+import { applyMovedOut, applyStanding, movedAnswer, type StandingAnswer } from "@/lib/hub-standing";
+// Used inside functions only (it imports this file back for hubFetch): the cycle is harmless, as modules.ts and license-signing.ts.
+import { pullResetGrants } from "@/lib/hub-reset-grants";
+import { isDesktop } from "@/lib/modules";
+import { MOVE_CANCEL_PENDING } from "@/lib/move/format";
 import { baseNumber } from "@/lib/parts";
 import { readUpTo } from "@/lib/read-body";
 import { appName, programVersion, shopKindOf } from "@/lib/shops";
@@ -43,8 +49,10 @@ type HubPostIn = {
   body: string;
   deleted: boolean;
   mine: boolean;
-  // The company on the sharing install (hubs from before per-company identity don't send it)
+  // The company on the sharing install (hubs from before per-company identity don't send it), and its id in the hub's
+  // shops table once it has claimed itself; shopName is then the company's current name
   shopRef?: string | null;
+  shopId?: string | null;
   createdAt: string;
   photos: { id: string; kind: PhotoKind; caption: string | null; mime: string; sortOrder: number }[];
 };
@@ -153,9 +161,12 @@ export function hubOfflineSince() {
   return net.offlineSince;
 }
 
-/** Sync work: always tries the hub in full, whatever happened last time. */
+/**
+ * Sync work: always tries the hub in full, whatever happened last time, and speaks for the install, not for the company
+ * whose action set it off (a sync started by one company's click pushes every company's notes and claims).
+ */
 export function inBackground<T>(fn: () => Promise<T>) {
-  return net.background.run(true, fn);
+  return net.background.run(true, () => asCompany(null, fn));
 }
 
 function wentOffline(why: string) {
@@ -223,6 +234,8 @@ export class HubError extends UserError {
   constructor(
     message: string,
     public status: number,
+    /** The hub's answer as it came (JSON), for the few refusals that carry more than words (410 moved: to, at). */
+    public detail: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = "HubError";
@@ -238,13 +251,28 @@ export function hubStatus(e: unknown): number {
 
 async function failure(r: Response) {
   let msg = `The community hub answered ${r.status}.`;
+  let detail: Record<string, unknown> | null = null;
   try {
     const j = (await r.json()) as { error?: string };
+    if (j && typeof j === "object" && !Array.isArray(j)) detail = j as Record<string, unknown>;
     if (j.error) msg = j.error;
   } catch {
     /* not JSON */
   }
-  return new HubError(msg, r.status);
+  // The hub refused a change to a row of another company on this same install (it says so when the request named a
+  // company, X-Shop-Ref): in the person's words, about this program.
+  const other = r.status === 403 && /^That (\w[\w ]*?) belongs to another company/.exec(msg);
+  if (other) msg = `That ${other[1]} belongs to another company on this ${appName()}.`;
+  return new HubError(msg, r.status, detail);
+}
+
+/**
+ * The company a hub call speaks for: the one given, else the one acting (the signed-in person's, set by safe() for the
+ * whole action); none in background work. `shopRef: null` says "the install itself" on purpose.
+ */
+function companyHeader(shopRef: string | null | undefined): Record<string, string> {
+  const ref = shopRef === undefined ? actingCompany() : shopRef;
+  return ref ? { "X-Shop-Ref": ref } : {};
 }
 
 /**
@@ -252,14 +280,14 @@ async function failure(r: Response) {
  * under the same rules as hubFetch: the address checked, no redirects followed, the hub's refusal as a HubError.
  * `key`: an install key to send (the one this install had on that hub before it left), or none.
  */
-export async function hubRequest<T>(base: string, path: string, o: { method?: string; json?: unknown; key?: string | null } = {}): Promise<T> {
+export async function hubRequest<T>(base: string, path: string, o: { method?: string; json?: unknown; key?: string | null; shopRef?: string | null } = {}): Promise<T> {
   const url = checkHubUrl(base);
   if (!path.startsWith("/v1/") || /[#?\\]|(^|\/)\.\.?(\/|$)/.test(path)) throw new UserError("That hub request isn't allowed.");
   const r = await reach(
     url + path,
     {
       method: o.method ?? "POST",
-      headers: { "Content-Type": "application/json", ...(o.key ? { Authorization: `Bearer ${o.key}` } : {}) },
+      headers: { "Content-Type": "application/json", ...(o.key ? { Authorization: `Bearer ${o.key}` } : {}), ...companyHeader(o.shopRef) },
       body: o.json === undefined ? undefined : JSON.stringify(o.json),
     },
     url,
@@ -268,8 +296,12 @@ export async function hubRequest<T>(base: string, path: string, o: { method?: st
   return (await r.json()) as T;
 }
 
-/** quick: a page is waiting on this (a picture, ratings); it gives up sooner when the hub is slow or down. */
-export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean } = {}) {
+/**
+ * quick: a page is waiting on this (a picture, ratings); it gives up sooner when the hub is slow or down.
+ * shopRef: the company this call speaks for (X-Shop-Ref) when it isn't the acting one (companyHeader): a page, or a
+ * library function called outside an action, names it.
+ */
+export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean; shopRef?: string | null } = {}) {
   const s = await hubState();
   if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → Community hub).");
   // The install key goes with every request: only to an address the join rules allow (https, or http on this computer).
@@ -279,12 +311,12 @@ export async function hubFetch(path: string, init: RequestInit & { json?: unknow
   if (!route.startsWith("/v1/") || /(^|\/)\.\.?(\/|$)|%2e|%2f|%5c|\\|#/i.test(route) || path.includes("#")) {
     throw new UserError("That hub request isn't allowed.");
   }
-  const { json, ...rest } = init;
+  const { json, shopRef, ...rest } = init;
   const r = await reach(
     base + path,
     {
       ...rest,
-      headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
+      headers: { Authorization: `Bearer ${s.installKey}`, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...companyHeader(shopRef), ...(rest.headers ?? {}) },
       body: json !== undefined ? JSON.stringify(json) : rest.body,
     },
     base,
@@ -362,6 +394,7 @@ export async function joinHub(url: string, joinKey: string, shopName: string, co
     installKey: j.installKey,
     joinedAt: new Date(),
     cursor: "0",
+    repoCursor: null, repoUploads: null, repoProbeAt: null,
     orderCursor: null,
     partnerCursor: null,
     lastError: null,
@@ -422,6 +455,7 @@ export async function adoptInstall(a: { url: string; hubName: string | null; ins
     installKey: a.installKey,
     joinedAt: new Date(),
     cursor: "0",
+    repoCursor: null, repoUploads: null, repoProbeAt: null,
     orderCursor: null,
     partnerCursor: "0",
     lastError: null,
@@ -481,6 +515,7 @@ export async function leaveHub() {
       installId: null,
       installKey: null,
       cursor: null,
+      repoCursor: null, repoUploads: null, repoProbeAt: null,
       orderCursor: null,
       discordUrl: null,
       scope: "member",
@@ -565,8 +600,10 @@ export type HubListing = {
   id: string;
   shopName: string;
   mine: boolean;
-  // The company on the seller's install that listed it (hubs from before per-company identity don't send it)
+  // The company on the seller's install that listed it (hubs from before per-company identity don't send it), and its
+  // id in the hub's shops table once it has claimed itself; shopName is then the company's current name
   shopRef?: string | null;
+  shopId?: string | null;
   title: string;
   description: string | null;
   kind: string;
@@ -592,6 +629,16 @@ export type HubListing = {
 };
 
 export type Reputation = { avg: number | null; count: number };
+/** GET /v1/reputation/:installId?shopRef=: a shop's standing, with the company's current name and hub id once it has claimed itself. */
+export type ReputationAnswer = {
+  installId: string;
+  shopRef: string | null;
+  shopId?: string | null;
+  shopName?: string | null;
+  asSeller: Reputation;
+  asBuyer: Reputation;
+  recent: { stars: number; comment: string | null; role: string; at: string }[];
+};
 export type Rating = { stars: number; comment: string | null; at: string } | null;
 
 export type HubOrder = {
@@ -602,9 +649,12 @@ export type HubOrder = {
   item: { title: string; brand: string | null; partNumber: string | null; condition: string; origin?: string | null };
   sellerShop: string;
   buyerShop: string;
-  // Which company on each install (hubs from before per-company identity don't send them)
+  // Which company on each install (hubs from before per-company identity don't send them), and their ids in the hub's
+  // shops table once claimed; sellerShop and buyerShop are then the companies' current names
   sellerShopRef?: string | null;
   buyerShopRef?: string | null;
+  sellerShopId?: string | null;
+  buyerShopId?: string | null;
   qty: number;
   unitPriceCents: number;
   shippingCents: number | null;
@@ -821,7 +871,9 @@ async function pushUsage() {
   const hubMonth = new Date().toISOString().slice(0, 7);
   type Item = { number: string; brand: string; qty: number; tickets: number };
   const offered: { id: string; name: string; months: { month: string; items: Item[] }[] }[] = [];
-  for (const shop of await db.shop.findMany({ select: { id: true, name: true, shareUsage: true, timeZone: true } })) {
+  // A company being moved (or moved) sends nothing from this copy: its counts come from the install it moves to, and an
+  // "off" from here would take back the install's own older reports with it.
+  for (const shop of await db.shop.findMany({ where: { movingAt: null }, select: { id: true, name: true, shareUsage: true, timeZone: true } })) {
     if (!shop.shareUsage) {
       if (usageOff.has(shop.id)) continue;
       // An older hub doesn't know "off" (400): it keeps what this install sent before, as it did.
@@ -910,7 +962,8 @@ export function usageSettingChanged(shopId: string) {
  */
 async function pushPending() {
   const pending = await db.sharedPost.findMany({
-    where: { hubId: null },
+    // Not from a company being moved: its notes go from the install it moves to (they travel in the move file).
+    where: { hubId: null, shop: { movingAt: null } },
     include: { photos: { orderBy: { sortOrder: "asc" } }, author: { select: { name: true } }, shop: { select: { name: true } } },
     take: 50,
   });
@@ -978,6 +1031,9 @@ async function doSync(): Promise<SyncResult> {
     // Every company says who it is and learns its standing, whatever the install's scope: a partner-only or pending
     // install still has an account and a key to keep (hub-accounts-billing-design.md 2.4).
     if (!(await claimShops(run))) return { skipped: true };
+    // Opted-in companies on the Windows program fetch the password resets their owner asked for on the hub (shown only
+    // in the program's own window). Never stops the sync.
+    await pullResetGrants(run).catch((e) => console.error("community hub: reset grants:", e instanceof Error ? e.message : e));
     // On the hub for partner shops only, or waiting for the account's email: nothing of the community's to sync.
     if (scope !== "member") {
       await writeState(run, { lastSyncAt: new Date(), lastError: null });
@@ -1019,6 +1075,10 @@ async function doSync(): Promise<SyncResult> {
       if (!(await writeState(run, { cursor: since }))) return { skipped: true };
       if (!ch.more) break;
     }
+    // The manual repository's feed (its own cursor) and the company's offers. A hub without one, or a failure here, never stops the rest.
+    await import("@/lib/manual-repository")
+      .then((m) => m.pullRepository(run, libraryDir()))
+      .catch((e) => console.error("community hub: manual repository:", e instanceof Error ? e.message : e));
     if (!(await pullOrders(s.orderCursor, run))) return { skipped: true };
     // A refused usage report mustn't stop the sync, but it's shown with the sync status rather than lost; an older hub
     // without usage at all (404) isn't worth reporting every time.
@@ -1043,8 +1103,10 @@ const claimUnknown = ((globalThis as unknown as { __hubClaimUnknown?: Set<string
  * which program and version; `sole` on a one-company install, so what the install listed, ordered, was rated for and
  * shared before it named its company becomes that company's (its ratings carry over).
  */
-function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean }, sole: boolean) {
-  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole };
+function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsRetail: boolean; hubResetOptIn: boolean }, sole: boolean) {
+  // resetOptIn: the owner allows a password reset from the StitchHub account (Windows only; src/lib/hub-reset-grants.ts).
+  // The hub offers the reset only while this says so; the program checks its own flag again before acting on a grant.
+  return { shopRef: shop.id, shopName: shop.name, kind: shopKindOf(shop), program: appName(), version: programVersion(), sole, resetOptIn: isDesktop() && shop.hubResetOptIn };
 }
 
 /**
@@ -1055,8 +1117,13 @@ function claimBody(shop: { id: string; name: string; doesRepair: boolean; sellsR
  */
 async function claimShops(run: SyncRun): Promise<boolean> {
   if (!run.installId || claimUnknown.has(run.installId)) return true;
-  const shops = await db.shop.findMany({ select: { id: true, name: true, doesRepair: true, sellsRetail: true }, orderBy: { createdAt: "asc" } });
+  const shops = await db.shop.findMany({
+    select: { id: true, name: true, doesRepair: true, sellsRetail: true, hubResetOptIn: true, movingAt: true, movedOutAt: true },
+    orderBy: { createdAt: "asc" },
+  });
   for (const shop of shops) {
+    // A company the hub has said moved to another install isn't this install's on the hub any more: not asked again.
+    if (shop.movedOutAt) continue;
     let answer: StandingAnswer;
     try {
       answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, shops.length === 1) })).json()) as StandingAnswer;
@@ -1065,20 +1132,51 @@ async function claimShops(run: SyncRun): Promise<boolean> {
         claimUnknown.add(run.installId);
         return true;
       }
+      // The company moved to another install (company-move-design.md 5.5): this copy learns where and when, stays
+      // read-only and says so; the install's other companies carry on.
+      const moved = movedAnswer(e);
+      if (moved) {
+        if (!(await sameHub(run))) return false;
+        await applyMovedOut(shop.id, moved);
+        continue;
+      }
       throw e;
     }
     if (!(await sameHub(run))) return false;
     await applyStanding(shop.id, answer);
+    if (!shop.movingAt) await forgetCancelledMove(shop.id);
   }
   return true;
 }
 
+/**
+ * A move the owner cancelled while the hub was out of reach: its token is still good there, so the hub is told now
+ * (company-move-design.md section 7). Quietly tried again next sync if it still doesn't answer.
+ */
+async function forgetCancelledMove(shopId: string) {
+  const pending = await db.companyMove.findMany({ where: { shopId, direction: "export", hubError: MOVE_CANCEL_PENDING }, select: { id: true } });
+  if (!pending.length) return;
+  try {
+    await hubFetch(`/v1/shops/${hubId(shopId)}/move-token`, { method: "DELETE", shopRef: shopId });
+  } catch (e) {
+    if (hubStatus(e) !== 404) return;
+  }
+  await db.companyMove.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { hubError: null } });
+}
+
 /** One company's claim and standing now (Settings → Account's "Check again"): the same request the sync makes. */
 export async function claimShopNow(shopId: string): Promise<StandingAnswer> {
-  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true } });
+  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, hubResetOptIn: true } });
   if (!shop) throw new UserError("Company not found.");
   const sole = (await db.shop.count()) === 1;
-  const answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole) })).json()) as StandingAnswer;
+  let answer: StandingAnswer;
+  try {
+    answer = (await (await hubFetch("/v1/shops/claim", { method: "POST", json: claimBody(shop, sole), shopRef: shop.id })).json()) as StandingAnswer;
+  } catch (e) {
+    const moved = movedAnswer(e);
+    if (moved) await applyMovedOut(shop.id, moved);
+    throw e;
+  }
   await applyStanding(shop.id, answer);
   return answer;
 }

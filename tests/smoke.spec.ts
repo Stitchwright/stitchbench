@@ -13,7 +13,7 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   // A part to use later
   await page.goto("/parts");

@@ -6,7 +6,7 @@ import { ticketNo } from "@/lib/format";
 import { siteJobsBetween } from "@/lib/vac/installs";
 
 export type CalItem = {
-  kind: "appointment" | "class" | "run" | "shift" | "install";
+  kind: "appointment" | "class" | "run" | "shift" | "install" | "longarm";
   id: string;
   start: Date;
   end: Date;
@@ -30,7 +30,26 @@ export async function calendarItems(shopId: string, from: Date, to: Date, o: { s
     o.shifts ? db.shift.findMany({ where: { shopId, ...overlap }, orderBy: { startsAt: "asc" } }) : Promise.resolve([]),
   ]);
   const linkNames = runs.length ? new Map((await db.partnerLink.findMany({ where: { shopId, id: { in: [...new Set(runs.map((r) => r.linkId))] } }, select: { id: true, partnerName: true } })).map((l) => [l.id, l.partnerName])) : new Map<string, string>();
+  // Quilting work orders on their due date (open ones only: a collected quilt is no longer due).
+  const quilts = await db.longarmOrder.findMany({
+    where: { shopId, status: { in: ["RECEIVED", "ON_FRAME", "READY"] }, dueAt: { gte: from, lt: to } },
+    select: { id: true, number: true, name: true, status: true, widthIn: true, lengthIn: true, dueAt: true },
+    orderBy: { dueAt: "asc" },
+  });
   const items: CalItem[] = [];
+  for (const q of quilts) {
+    const start = q.dueAt!;
+    items.push({
+      kind: "longarm",
+      id: q.id,
+      start,
+      end: new Date(start.getTime() + 3_600_000),
+      title: `Quilt due: ${q.name}`,
+      sub: `#${q.number} · ${q.widthIn} x ${q.lengthIn} in · ${q.status === "READY" ? "ready" : q.status === "ON_FRAME" ? "on the frame" : "received"}`,
+      href: `/longarm/${q.id}`,
+      tone: q.status === "READY" ? "ready" : start.getTime() < Date.now() ? "bad" : "work",
+    });
+  }
   for (const a of appts) {
     items.push({
       kind: "appointment",

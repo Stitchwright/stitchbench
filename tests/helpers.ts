@@ -4,7 +4,14 @@
 // generated Prisma client is an ES module (import.meta), which Playwright's CommonJS test loader can't compile.
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
-import { Pool } from "pg";
+import pg, { Pool } from "pg";
+
+// Prisma's DateTime columns are `timestamp without time zone` holding UTC. By default node-postgres sends a Date in this
+// PC's local time and the column drops the offset, so a date written here landed four hours early in summer (an
+// appointment "in two hours" became yesterday's after midnight Eastern), and it reads such a column back as local time
+// too. Both ways in UTC, as the program itself does.
+pg.defaults.parseInputDatesAsUTC = true;
+pg.types.setTypeParser(1114, (s: string) => new Date(`${s.replace(" ", "T")}Z`));
 import { expect, type Browser, type Page, type Route } from "@playwright/test";
 
 export type Login = { email: string; password: string };

@@ -12,7 +12,7 @@ test("labels, scanner and most-used parts", async ({ page }) => {
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD ?? "e2e-password-1");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   // A supply with another number it's sold under.
   await page.goto("/parts");
@@ -57,6 +57,9 @@ test("labels, scanner and most-used parts", async ({ page }) => {
   await page.getByRole("button", { name: "Save counts" }).click();
   await expect(page.getByText("Saved 1 count")).toBeVisible();
   await page.getByRole("tab", { name: "Use on ticket" }).click();
+  // The newest open ticket is the default; other specs leave a vacuum ticket (its module off) at the top, which is read-only. Pick a repair ticket.
+  const bench = await page.locator("#scan-ticket option", { hasText: "Janome MC6700P" }).first().getAttribute("value");
+  await page.locator("#scan-ticket").selectOption(bench!);
   await page.locator("#scan-qty").fill("1");
   await box.fill(pn);
   await box.press("Enter");
@@ -122,7 +125,7 @@ test("the same part new and used, and condition columns on import and export", a
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD ?? "e2e-password-1");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   // A number in stock new, then the same number used: a second item, "<number> (used)", that a scan finds too.
   const tw = `TW-${run}`;

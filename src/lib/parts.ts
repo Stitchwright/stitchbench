@@ -2,7 +2,8 @@ import "server-only";
 // Parts, their numbers, and the community cross-reference (synced XPart rows).
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
-import { modelKey, str, toCents } from "@/lib/format";
+import { audit } from "@/lib/audit";
+import { modelKey, parseCost, str, tenThouToCents, toCents } from "@/lib/format";
 import { sameText } from "@/lib/input";
 import { brandMatches } from "@/lib/model-info";
 import { numberNames, shopNumberText, twinNumber } from "@/lib/part-labels";
@@ -62,6 +63,19 @@ export function centsField(v: FormDataEntryValue | string | null | undefined, wh
   if (c == null) throw new UserError(`${what}: enter dollars and cents, like 12.50.`);
   if (c < 0 || c > MAX_CENTS) throw new UserError(`${what} must be between $0 and $${(MAX_CENTS / 100).toLocaleString("en-US")}.`);
   return c;
+}
+
+/**
+ * A supplier cost typed in dollars, kept to 4 decimals: the figure in ten-thousandths of a dollar and the same rounded
+ * to cents (what margins and exports read). Blank is none; a minus sign, a word or a huge number is an error.
+ */
+export function costField(v: FormDataEntryValue | string | null | undefined, what: string): { costCents: number; costTenThou: number } | null {
+  if (str(v) == null) return null;
+  const t = parseCost(v);
+  if (t == null) throw new UserError(`${what}: enter dollars and cents, like 12.50 (up to 4 decimals, like 0.125).`);
+  const c = tenThouToCents(t);
+  if (t < 0 || c > MAX_CENTS) throw new UserError(`${what} must be between $0 and $${(MAX_CENTS / 100).toLocaleString("en-US")}.`);
+  return { costCents: c, costTenThou: t };
 }
 
 /**
@@ -141,6 +155,17 @@ export async function countStock(shopId: string, partId: string, counted: number
     if (change === 0) return 0;
     await tx.part.update({ where: { id: partId }, data: { qtyOnHand: counted } });
     await tx.stockMove.create({ data: { shopId, partId, qty: change, reason: "ADJUSTED", userId, note } });
+    // Who changed the count and from what to what (audit log, design 4.1 Stock), in the same transaction.
+    const who = await tx.user.findFirst({ where: { id: userId, shopId }, select: { id: true, name: true, role: true } });
+    const part = await tx.part.findFirst({ where: { id: partId, shopId }, select: { partNumber: true } });
+    await audit(tx, { shopId, id: who?.id ?? null, name: who?.name ?? "StitchBench", role: who?.role ?? null, kind: who ? "user" : "system" }, {
+      action: "stock.count",
+      subjectType: "Part",
+      subjectId: partId,
+      subjectLabel: part?.partNumber ?? null,
+      changes: { qtyOnHand: [rows[0].qtyOnHand, counted] },
+      reason: note,
+    });
     return change;
   });
 }

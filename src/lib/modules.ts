@@ -4,19 +4,7 @@ import "server-only";
 import { cache } from "react";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
-import {
-  acceptScope,
-  adminPosition,
-  effectiveNow,
-  resolveStatus,
-  verifyLicense,
-  windows,
-  type AdminPosition,
-  type GrantRow,
-  type LicensePayload,
-  type Verified,
-  type Window,
-} from "@/lib/license";
+import { acceptScope, adminPosition, effectiveNow, resolveStatus, verifyLicense, windows, type AdminPosition, type GrantRow, type LicensePayload, type Verified, type Window } from "@/lib/license";
 import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";
 import { baseWritable, blockedMessage, canWrite, isModuleId, MODULE_IDS, MODULES, toNavGates, type KeyView, type ModuleId, type Modules, type ModuleState, type NavGate } from "@/lib/module-info";
 // license-signing imports isDesktop / devKeysAllowed from here; each file uses the other only inside functions, so the cycle is harmless.
@@ -90,12 +78,42 @@ type LicenseRow = { id: string; shopId: string; keyId: string; key: string; adde
 
 function keyView(row: LicenseRow, v: Verified, shopId: string, now: Date, tz: string): { view: KeyView; payload: LicensePayload | null } {
   if (!v.ok) {
-    return { view: { rowId: row.id, keyId: row.keyId, modules: [], plan: null, from: null, lastDay: null, graceLastDay: null, issuedTo: null, addedBy: row.addedBy, addedAt: row.createdAt, source: row.source, state: "not-valid", reason: v.reason }, payload: null };
+    return {
+      view: {
+        rowId: row.id,
+        keyId: row.keyId,
+        modules: [],
+        plan: null,
+        from: null,
+        lastDay: null,
+        graceLastDay: null,
+        issuedTo: null,
+        addedBy: row.addedBy,
+        addedAt: row.createdAt,
+        source: row.source,
+        state: "not-valid",
+        reason: v.reason,
+      },
+      payload: null,
+    };
   }
   const p = v.payload;
   const ws = windows(p, tz, "key");
   const w = ws[0];
-  const base = { rowId: row.id, keyId: p.id, modules: p.m, plan: p.p, from: p.f, lastDay: p.u, graceLastDay: w?.graceLastDay ?? null, issuedTo: p.n, addedBy: row.addedBy, addedAt: row.createdAt, source: row.source, reason: null as string | null };
+  const base = {
+    rowId: row.id,
+    keyId: p.id,
+    modules: p.m,
+    plan: p.p,
+    from: p.f,
+    lastDay: p.u,
+    graceLastDay: w?.graceLastDay ?? null,
+    issuedTo: p.n,
+    addedBy: row.addedBy,
+    addedAt: row.createdAt,
+    source: row.source,
+    reason: null as string | null,
+  };
   if (p.s !== shopId) return { view: { ...base, state: "other-company", reason: `For Company ID ${p.s}` }, payload: null };
   const state: KeyView["state"] = w && w.from > now ? "future" : w && now >= w.graceUntil ? "ended" : "current";
   return { view: { ...base, state }, payload: p };
@@ -134,9 +152,15 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
   if (!ids.length) return out;
   const desktop = isDesktop();
   const [shops, licenses, grants] = await Promise.all([
-    db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true } }),
-    db.license.findMany({ where: { shopId: { in: ids } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, shopId: true, keyId: true, key: true, addedBy: true, source: true, createdAt: true } }),
-    desktop ? Promise.resolve([] as { id: string; shopId: string; module: string; mode: string; key: string | null; createdAt: Date }[]) : db.moduleGrant.findMany({ where: { shopId: { in: ids } }, select: { id: true, shopId: true, module: true, mode: true, key: true, createdAt: true } }),
+    db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true, movingAt: true, movedTo: true, movedOutAt: true } }),
+    db.license.findMany({
+      where: { shopId: { in: ids } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, shopId: true, keyId: true, key: true, addedBy: true, source: true, createdAt: true },
+    }),
+    desktop
+      ? Promise.resolve([] as { id: string; shopId: string; module: string; mode: string; key: string | null; createdAt: Date }[])
+      : db.moduleGrant.findMany({ where: { shopId: { in: ids } }, select: { id: true, shopId: true, module: true, mode: true, key: true, createdAt: true } }),
   ]);
   const real = new Date();
   const isTest = testBuild();
@@ -144,7 +168,13 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
     const rows = licenses.filter((l) => l.shopId === shop.id);
     const checked = rows.map((row) => ({ row, v: verifyFor(row.key, "pasted") }));
     const good = checked.filter((c): c is { row: LicenseRow; v: Extract<Verified, { ok: true }> } => c.v.ok && c.v.payload.s === shop.id);
-    const eff = opts.now ? { now: opts.now, floor: null, clockBehind: false } : effectiveNow(real, good.map((c) => new Date(c.v.payload.t)), desktop);
+    const eff = opts.now
+      ? { now: opts.now, floor: null, clockBehind: false }
+      : effectiveNow(
+          real,
+          good.map((c) => new Date(c.v.payload.t)),
+          desktop,
+        );
     const now = eff.now;
     const keys = checked.map((c) => keyView(c.row, c.v, shop.id, now, shop.timeZone).view);
     const unknown = new Set<string>();
@@ -171,7 +201,17 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
       }
       states[id] = toState(id, resolveStatus(ws, now, pos), pos, shop.timeZone);
     }
-    out.set(shop.id, { shopId: shop.id, now, clockBehind: eff.clockBehind, floor: eff.floor, states, keys, testBuild: isTest, unknownModules: [...unknown].sort() });
+    out.set(shop.id, {
+      shopId: shop.id,
+      now,
+      clockBehind: eff.clockBehind,
+      floor: eff.floor,
+      states,
+      keys,
+      testBuild: isTest,
+      unknownModules: [...unknown].sort(),
+      moving: shop.movingAt ? { at: shop.movingAt, to: shop.movedTo, outAt: shop.movedOutAt } : null,
+    });
   }
   return out;
 }
@@ -217,7 +257,8 @@ export async function moduleResponse(shopId: string, id: ModuleId, admin = true)
 
 /**
  * Workers: the shops (all on the install, or the given ones) where the module is active now. A company whose program
- * key has lapsed (base read-only, hub-accounts-billing-design.md 3.5) is skipped for every module, as it is for new work.
+ * key has lapsed (base read-only, hub-accounts-billing-design.md 3.5), or that is being moved to another install
+ * (company-move-design.md section 7), is skipped for every module, as it is for new work.
  */
 export async function shopsWithModule(id: ModuleId, shopIds?: string[]): Promise<string[]> {
   const ids = shopIds ?? (await db.shop.findMany({ select: { id: true } })).map((s) => s.id);
@@ -226,7 +267,7 @@ export async function shopsWithModule(id: ModuleId, shopIds?: string[]): Promise
     const chunk = await loadModulesMany(ids.slice(i, i + 500));
     for (const id2 of ids.slice(i, i + 500)) {
       const m = chunk.get(id2);
-      if (m?.states[id].active && (id === "base" || baseWritable(m.states.base.status))) out.push(id2);
+      if (m?.states[id].active && !m.moving && (id === "base" || baseWritable(m.states.base.status))) out.push(id2);
     }
   }
   return out;
@@ -235,7 +276,11 @@ export async function shopsWithModule(id: ModuleId, shopIds?: string[]): Promise
 /** Companies page: the newest switch rows with their decoded last day (never the key text). */
 export async function grantHistory(limit: number): Promise<{ at: Date; shopId: string; module: string; mode: string; lastDay: string | null; byEmail: string; note: string | null }[]> {
   if (isDesktop()) return [];
-  const rows = await db.moduleGrant.findMany({ orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: limit, select: { createdAt: true, shopId: true, module: true, mode: true, key: true, byEmail: true, note: true } });
+  const rows = await db.moduleGrant.findMany({
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit,
+    select: { createdAt: true, shopId: true, module: true, mode: true, key: true, byEmail: true, note: true },
+  });
   return rows.map((r) => {
     let lastDay: string | null = null;
     if (r.key) {

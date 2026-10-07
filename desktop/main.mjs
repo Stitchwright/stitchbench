@@ -42,6 +42,15 @@ let gate = null; // the links gate (links-gate.mjs), running while publicUrl is 
 let quitting = false;
 let signupOpen = false;
 let setupToken = "";
+// The server's door for a move file (src/lib/move/local.ts): a secret made at each server start, never sent anywhere else.
+let moveSecret = "";
+// The program's own window (src/lib/hub-reset-grants.ts): every request this program's windows make to its own address
+// carries X-Stitch-Window with this secret, made at each server start and given only to the server. A browser tab or a
+// tablet on the shop's network never has it, so what only the PC's window may see (a reset asked for on the owner's
+// StitchHub account) is shown there and nowhere else.
+let windowSecret = "";
+// Companies on this PC that moved to another install (Shop.movedOutAt): the tray offers to remove their old copy.
+let movedAway = [];
 let stopping = false; // stopServer asked the server to exit
 let starting = false; // startServer is waiting for it to answer
 let dbOwned = false; // the postgres this program started is running (not one it only connected to, nor one that died)
@@ -392,6 +401,8 @@ async function startServer() {
   // program's own window can: it opens /signup with a token nobody on the network has.
   signupOpen = shops === 0;
   setupToken = signupOpen ? crypto.randomBytes(24).toString("base64url") : "";
+  moveSecret = crypto.randomBytes(32).toString("base64url");
+  windowSecret = crypto.randomBytes(32).toString("base64url");
   const child = spawn(process.execPath, [path.join(APP_DIR, "server.js")], {
     cwd: APP_DIR,
     env: {
@@ -413,6 +424,10 @@ async function startServer() {
       PLATFORM_ADMIN_EMAILS: cfg.platformAdminEmails,
       ALLOW_SIGNUP: signupOpen ? "true" : "false",
       SETUP_TOKEN: setupToken,
+      // Only this program can ask the server to read a move file from disk (tray: Restore a company from a move file).
+      MOVE_LOCAL_SECRET: moveSecret,
+      // Marks this program's own window (see windowSecret).
+      STITCH_WINDOW_SECRET: windowSecret,
       APP_NAME: NAME,
       DEFAULT_SHOP_KIND: FLAVOR === "stitchshop" ? "retail" : "repair",
       // The installer's version, told to StitchHub with each company's claim (src/lib/shops.ts programVersion).
@@ -527,6 +542,7 @@ setInterval(async () => {
   if (shops > 0) {
     log("first company created; sign-up is closed");
     signupOpen = false;
+    buildTray(); // "Restore a company from a move file" is for a PC without one
   }
 }, 15_000);
 
@@ -860,6 +876,227 @@ async function resetPasswordDialog() {
   if (done.response === 0) clipboard.writeText(password);
 }
 
+// ---------- a company from a move file ----------
+
+/** This PC is set up to keep several companies (platformAdminEmails; company-move-design.md decision 13). */
+const hostsMany = () =>
+  String(cfg?.platformAdminEmails ?? "")
+    .split(",")
+    .some((e) => e.trim());
+
+/**
+ * A one-use token for the server's door (src/lib/move/local.ts takeMoveToken, the same sum): an HMAC under the secret
+ * this program gave the server at start, of a fresh nonce, an expiry two minutes on and the file's path.
+ */
+function moveToken(file) {
+  const nonce = crypto.randomBytes(16).toString("base64url");
+  const until = String(Date.now() + 120_000);
+  const mac = crypto.createHmac("sha256", moveSecret).update(`${nonce}.${until}.${file}`).digest("base64url");
+  return `${nonce}.${until}.${mac}`;
+}
+
+/**
+ * Tray → "Restore a company from a move file..." (and the first-run page's link to /move-in?choose=1): pick the file
+ * the other install made, and the server reads it from disk and imports it (company-move-design.md section 8): no
+ * upload, no size limit but the disk's. Only while this PC has no company, or is set up to host several; the server
+ * checks that again. The window then shows the progress, what to enter again, and the way to sign in.
+ */
+async function restoreMoveFile() {
+  if (!pool || maintenance) return;
+  const title = `${NAME}: restore a company`;
+  if (!server) {
+    dialog.showErrorBox(title, `${NAME} isn't running right now. Try again in a minute.`);
+    return;
+  }
+  const shops = Number((await pool.query(`SELECT count(*) AS n FROM "Shop"`)).rows[0].n);
+  if (shops > 0 && !hostsMany()) {
+    await dialog.showMessageBox({
+      type: "info",
+      title,
+      message: `${NAME} on this PC already has its company.`,
+      detail:
+        "A move file brings a company to a PC that has none yet (the first time the program runs). To keep several companies on one PC, set platformAdminEmails in the settings file first (see INSTALL.md).",
+    });
+    return;
+  }
+  const pick = await dialog.showOpenDialog({
+    title: "Choose the move file",
+    properties: ["openFile"],
+    filters: [
+      { name: "Move files", extensions: ["gz"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (pick.canceled || !pick.filePaths[0]) return;
+  const file = pick.filePaths[0];
+  const ok = await dialog.showMessageBox({
+    type: "question",
+    buttons: ["Restore", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+    title,
+    message: `Bring in the company in ${path.basename(file)}?`,
+    detail: `Every line of the file is checked first: if anything is wrong, nothing is added and you are told why. The file stays where it is.${shops > 0 ? " The data already here is backed up first." : ""}`,
+  });
+  if (ok.response !== 0) return;
+  if (shops > 0 && !(await runBackup("before importing a company", { prune: false }))) {
+    dialog.showErrorBox(title, `The current data couldn't be backed up first, so nothing was imported.\n\nLog: ${LOG_FILE}`);
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(`http://127.0.0.1:${cfg.port}/api/move/local`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-move-token": moveToken(file) },
+      body: JSON.stringify({ path: file }),
+    });
+  } catch (e) {
+    dialog.showErrorBox(title, `${NAME} didn't answer: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.job) {
+    dialog.showErrorBox(title, body.error ?? `${NAME} refused the file (${res.status}).`);
+    return;
+  }
+  log(`importing a company from ${file}`);
+  showWindow();
+  win?.loadURL(`${base()}/move-in/${encodeURIComponent(body.job)}`);
+}
+
+// ---------- the old copy of a company that moved ----------
+
+const KEEP_MOVED_DAYS = 30; // as src/lib/move/format.ts: the old copy is kept this long after the company moved
+
+/** The companies here that moved to another install, for the tray item; the tray is rebuilt when the list changes. */
+async function refreshMovedAway() {
+  if (!pool || maintenance) return;
+  try {
+    const rows = (await pool.query(`SELECT id, name, "movedTo", "movedOutAt" FROM "Shop" WHERE "movedOutAt" IS NOT NULL ORDER BY "movedOutAt"`)).rows;
+    const changed = JSON.stringify(rows) !== JSON.stringify(movedAway);
+    movedAway = rows;
+    if (changed) buildTray();
+  } catch {
+    /* a database from before the move columns: nothing has moved */
+  }
+}
+setInterval(() => refreshMovedAway(), 10 * 60_000);
+
+/**
+ * Tray → "Remove the moved company..." (company-move-design.md section 7): a company that moved to another install
+ * leaves its old copy here, read-only. From 30 days after it moved, this removes it: a backup first, then the server
+ * deletes it through its own door (/api/move/remove, a one-use token as for a move file), under the same rules as the
+ * hosted Companies page. Nothing removes it by itself.
+ */
+async function removeMovedCompany() {
+  if (!pool || maintenance) return;
+  const title = `${NAME}: remove a moved company`;
+  await refreshMovedAway();
+  if (!movedAway.length) {
+    await dialog.showMessageBox({ type: "info", title, message: "No company on this PC has moved to another install." });
+    return;
+  }
+  const shown = movedAway.slice(0, 6);
+  let pick = 0;
+  if (shown.length > 1) {
+    pick = (
+      await dialog.showMessageBox({
+        type: "question",
+        title,
+        message: "Which company's old copy?",
+        buttons: [...shown.map((c) => c.name), "Cancel"],
+        cancelId: shown.length,
+        defaultId: shown.length,
+        noLink: true,
+      })
+    ).response;
+  }
+  const c = shown[pick];
+  if (!c) return;
+  const at = new Date(c.movedOutAt);
+  const from = new Date(at.getTime() + KEEP_MOVED_DAYS * 86_400_000);
+  const where = c.movedTo ? ` to ${c.movedTo}` : "";
+  if (Date.now() < from.getTime()) {
+    await dialog.showMessageBox({
+      type: "info",
+      title,
+      message: `${c.name} moved${where} on ${at.toLocaleDateString()}.`,
+      detail: `Its copy here is kept ${KEEP_MOVED_DAYS} days in case the move has to be undone. It can be removed from ${from.toLocaleDateString()}.`,
+    });
+    return;
+  }
+  if (!server) {
+    dialog.showErrorBox(title, `${NAME} isn't running right now. Try again in a minute.`);
+    return;
+  }
+  const ok = await dialog.showMessageBox({
+    type: "warning",
+    title,
+    message: `Remove ${c.name} from this PC?`,
+    detail: `It moved${where} on ${at.toLocaleDateString()} and runs there now. Everything of it here goes: customers, machines, tickets, photos, sales and logins. A backup of this PC's data is made first.`,
+    checkboxLabel: `I understand ${c.name} is deleted from this PC`,
+    buttons: ["Remove", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (ok.response !== 0) return;
+  if (!ok.checkboxChecked) {
+    await dialog.showMessageBox({ type: "info", title, message: "Nothing was removed.", detail: "Tick the box to say you understand, then try again." });
+    return;
+  }
+  if (!(await runBackup("before removing a moved company", { prune: false }))) {
+    dialog.showErrorBox(title, `This PC's data couldn't be backed up first, so nothing was removed.\n\nLog: ${LOG_FILE}`);
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(`http://127.0.0.1:${cfg.port}/api/move/remove`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-move-token": moveToken(`remove:${c.id}`) },
+      body: JSON.stringify({ shopId: c.id, name: c.name }),
+    });
+  } catch (e) {
+    dialog.showErrorBox(title, `${NAME} didn't answer: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    dialog.showErrorBox(title, body.error ?? `${NAME} refused (${res.status}).`);
+    return;
+  }
+  log(`removed the old copy of ${c.name} (${c.id}), which moved${where} on ${at.toISOString()}`);
+  await refreshMovedAway();
+  const left = Number((await pool.query(`SELECT count(*) AS n FROM "Shop"`)).rows[0].n);
+  if (left > 0) {
+    notify(NAME, `${c.name} was removed from this PC.`);
+    win?.loadURL(home());
+    return;
+  }
+  // The PC has no company now: a restart opens the first-run page (a new company, or one from a move file).
+  const again = await dialog.showMessageBox({
+    type: "info",
+    title,
+    message: `${c.name} was removed. This PC has no company now.`,
+    detail: `Restart ${NAME} to set one up (or bring one in from a move file), or uninstall it if this PC is done with it.`,
+    buttons: [`Restart ${NAME}`, "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (again.response === 0) {
+    app.relaunch();
+    quit();
+  }
+}
+
+/** The program's own links on its pages: /move-in?choose=1 opens the file dialog, /move-in?home=1 goes back to the start page. */
+function moveDoor(url) {
+  if (!isApp(url)) return null;
+  const u = new URL(url);
+  if (u.pathname !== "/move-in") return null;
+  return u.searchParams.get("choose") === "1" ? "choose" : u.searchParams.get("home") === "1" ? "home" : null;
+}
+
 // ---------- window & tray ----------
 
 function base() {
@@ -904,6 +1141,13 @@ function guardSessions() {
     callback(!SENSITIVE.has(permission) || isApp(details?.requestingUrl || wc?.getURL() || ""));
   });
   session.defaultSession.setPermissionCheckHandler((wc, permission, origin) => !SENSITIVE.has(permission) || isApp(origin || wc?.getURL() || ""));
+  // The program's own window says so on every request to the program's own address, and on nothing else (windowSecret).
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = { ...details.requestHeaders };
+    for (const name of Object.keys(headers)) if (name.toLowerCase() === "x-stitch-window") delete headers[name];
+    if (windowSecret && isApp(details.url)) headers["X-Stitch-Window"] = windowSecret;
+    callback({ requestHeaders: headers });
+  });
   // Every window and page the program shows, including manual windows opened from it: other sites go to the browser.
   app.on("web-contents-created", (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
@@ -915,6 +1159,13 @@ function guardSessions() {
     });
     if (contents.getType() === "window") {
       contents.on("will-navigate", (e, url) => {
+        const door = moveDoor(url);
+        if (door) {
+          e.preventDefault();
+          if (door === "home") win?.loadURL(home());
+          else restoreMoveFile().catch((err) => dialog.showErrorBox(NAME, String(err instanceof Error ? err.message : err)));
+          return;
+        }
         if (isApp(url)) return;
         e.preventDefault();
         openOutside(url);
@@ -987,6 +1238,26 @@ function buildTray() {
         enabled: !maintenance && !!pool,
         click: () => restoreFromBackup().catch((e) => dialog.showErrorBox(NAME, String(e))),
       },
+      // A company from another install's move file: on a PC without one yet, or one set up to host several.
+      ...(signupOpen || hostsMany()
+        ? [
+            {
+              label: signupOpen ? "Restore a company from a move file..." : "Import a company from a move file...",
+              enabled: !maintenance && !!pool,
+              click: () => restoreMoveFile().catch((e) => dialog.showErrorBox(NAME, String(e instanceof Error ? e.message : e))),
+            },
+          ]
+        : []),
+      // The old copy of a company that moved to another install: removed by hand, 30 days on.
+      ...(movedAway.length
+        ? [
+            {
+              label: "Remove the moved company...",
+              enabled: !maintenance && !!pool,
+              click: () => removeMovedCompany().catch((e) => dialog.showErrorBox(NAME, String(e instanceof Error ? e.message : e))),
+            },
+          ]
+        : []),
       {
         label: "Reset a password...",
         enabled: !maintenance && !!pool,
@@ -1066,6 +1337,7 @@ if (!app.requestSingleInstanceLock()) {
       log("reference data:", e),
     );
     buildTray(); // addresses can change while starting (Tailscale comes up late)
+    refreshMovedAway(); // a company that moved away: "Remove the moved company..." in the tray
     refreshTailscale().then(reapplyTailscale); // in the background: the CLI may take a moment
     setInterval(() => refreshTailscale().then(reapplyTailscale), 5 * 60_000);
     if (!process.argv.includes("--hidden") || signupOpen) showWindow();

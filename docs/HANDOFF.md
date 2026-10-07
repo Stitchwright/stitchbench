@@ -715,6 +715,236 @@ and Stripe Tax, not these).
   updated before it): back up, `prepare-app`, `update_installed.ps1`, then try the Tailscale tray item and a
   manual download on the real PC.
 
+## 2ac. Overnight 2-3 Oct: the second wave (agents, each reviewed and checked before its commit)
+
+Merged and deployed before this wave: GitHub main at deceaeb (everything through the ultra review fixes), both
+hosted services redeployed, `PUBLIC_URL` and `SETTINGS_KEY` set on both (names only ever shown; the keys were made
+with `openssl rand -hex 32` on the owner's PC). Everything below is on `scheduling-features` (or the stitchhub branch
+`hub-accounts`) and NOT on main or deployed.
+
+- **Standalone build size** (36ae0f1): the Windows app had grown to 807 MB because Turbopack read a dynamic
+  `path.join(root, category, brand)` with a literal fallback in `src/lib/manual-downloads.ts` as a file pattern and
+  traced the whole repository (installer output included) into `.next/standalone`. The library joins now go through a
+  spread the bundler can't follow, `next.config.ts` excludes desktop/, docs/, tests/, scripts/ and .railway/ from
+  output tracing, and tsconfig leaves the build copies out. The installed program was updated once before the fix (it
+  runs, with migrations 20261003110000 and 20261003130000 applied, but carries the large copy); the next
+  `prepare-app` + `update_installed.ps1` brings it back to about 150 MB. Rule: never pass a literal-fallback string
+  into `path.join` with a dynamic root in server code.
+- **Per-company identity, program side** (6c862f5, item 8 done end to end): `safe()` runs every action as the
+  signed-in company (`src/lib/acting-company.ts`, AsyncLocalStorage), so every hub call inside an action carries
+  `X-Shop-Ref`; background syncs speak as the install; order steps also carry `shopRef` in the body; the hub's 403 for
+  another company's row is a plain UserError; the marketplace shop page shows the company's current name.
+  `tests/account.spec.ts` (Settings → Account, doors 1 and 2) is written, not yet run: it needs the :3200 test hub on
+  the hub-accounts branch, started by `start_hub.bat` (now with `MAIL_DEV_LOG=true`, so the set-password link lands in
+  `scripts/local-test/.run/hub.log`).
+- **Sharing chosen per item** (92da4a1, item 9 done): "Offer a hint about this model" from a machine or ticket starts
+  with only brand and model (a serial or the customer's name in the text is refused); one "Offer this part" on the
+  part page (partner shops at the partner price, the marketplace, or both; status shown; each withdrawable); the
+  checkbox on the item form is gone. The audit found nothing else sends without a choice; the most-used report is off
+  by default. `scripts/checks/sharing.check.ts` (8 groups).
+- **Company move, package 1 `move-export`** (8d3b495): Settings → Company → "Move this company" freezes the company
+  (read-only through the same rule as a lapsed key: `base-gate.readOnlyReason` returns lapsed or moving; workers skip
+  it; no hub writes; a banner; Cancel lifts it) and streams one gzipped NDJSON file from a read-only repeatable-read
+  snapshot (meta header, 50 tables parents first, ids kept, Bytes as base64, trailer counts checked); sealed secrets
+  left out and named. Migration 20261003150000_company_move (CompanyMove; Shop movingAt / movedOutAt / movedTo /
+  movedInAt / movedFrom). `scripts/move/export.ts`; `scripts/checks/move-export.check.ts` (9 groups).
+- **Billing package 3 `hub-billing`** (stitchhub `hub-accounts` c7745a1): Stripe Billing on the hub ($25/month,
+  $250/year, Checkout + Portal, webhook `/v1/stripe`), standing trial / active / past_due (14 days' grace) / waived /
+  comped / lapsed, and the claim answer now carries a signed SB1 `base` key the program already accepts (package 2).
+  Nothing goes read-only while billing is closed (any Stripe variable unset), so merging is safe before the Stripe
+  set-up. `test/billing.mjs` (13 sections). **Before the hub signs or charges**, in this order: (1) `npm run
+  license:keygen -- --kid hub1 --hub` here, paste the printed `hub1` line into `src/lib/license-keys.ts`, release both
+  programs; (2) hub variables `HUB_LICENSE_KID=hub1`, `HUB_LICENSE_KEY`; check the `x` the hub logs matches; (3) comp
+  every current shop on the hub's /admin; (4) Stripe: one product, two prices (`STRIPE_PRICE_MONTHLY`,
+  `STRIPE_PRICE_YEARLY`), `STRIPE_SECRET_KEY`, the webhook with its eight events (`STRIPE_WEBHOOK_SECRET`), the
+  Customer Portal settings; (5) mail for accounts: `SMTP_URL`, `MAIL_FROM`, `HUB_URL`. Note: the hub's
+  `test/companies.mjs` needs an empty database each run (it failed on a reused one; passes on a fresh one).
+- **Company move, package 2 `move-import`** (3da81b8): a move file is read twice, the first pass checking everything
+  and writing nothing (format and version, the target's migrations by name, the company or any login email already
+  here, rows outside the company, children before parents by the database's own foreign keys, unknown columns,
+  counts and the end line, a damaged gzip, size caps), the second inserting every row in one transaction with ids
+  kept; afterwards email, texts and the shop are off, marketing held, a clashing booking address cleared, and a
+  summary says what to enter again. Doors: the tray's "Restore a company…" on a PC with no company (or "Import a
+  company…" with platformAdminEmails), a one-use HMAC token per file over a localhost route; the hosted Companies
+  page's resumable upload in 8 MB parts (platform admin, https); `scripts/move/import.ts`. `/move-in` needs no
+  sign-in (first run); it shows only imports started from the PC's own window, each behind a long random id, and
+  the public links host doesn't serve it. `scripts/checks/move-import.check.ts` (8 groups: a full round trip of all
+  50 tables, 18 refusals each writing nothing). PartnerSeen and PartnerFailure have no foreign key to Shop, so a
+  deleted company leaves rows there: the import clears its own, and package 3's delete must too.
+- **Spec helper dates** (d5b472b): `tests/helpers.ts` now sends and reads dates as UTC (`pg.defaults.parseInputDatesAsUTC`
+  and a type parser for `timestamp`), as Prisma stores them. node-postgres had sent local time into columns that drop
+  the offset, so every date a spec inserted landed four hours early; the calendar spec's "appointment in two hours"
+  became yesterday's after midnight Eastern. This was the third clock-dependent fixture of the night (with the dev key
+  start and the scheduling spec's "tomorrow"); none were product bugs.
+- **Spec run on the 3 Oct build** (all one at a time): smoke, modules-basics, modules-lapse, notices, campaigns (text
+  test skipped by the clock), classes, calendar, register-bookings, shifts, appliances, vac-shop,
+  scheduling-messaging, parts-in, online-booking, online-shop, tenant, two-servers (with :3500), move (export on :3501,
+  import on :3500), and **account** (doors 1 and 2 against the :3200 test hub on the hub-accounts branch, after two
+  label fixes): all pass. Not run: hub, market, partners, partner-runs (they need HUB_JOIN_KEY / PDF_URL and a joined
+  second install; scripts/local-test/README.md).
+- **Windows install** updated after the size fix: StitchBench 1.6.1 with migrations through
+  20261003150000_company_move; the packaged server is 176 MB again (807 MB before the fix), the whole installed
+  program 633 MB with its own Electron and Postgres. Not yet tried on the PC by hand: the Tailscale tray item, a manual
+  download, "Restore a company…".
+- **Company move, package 3 `move-hub`** (program 15d756f, stitchhub `hub-accounts` a4aeae2): a frozen move gets a
+  one-use hub token (sealed on the move row, written into the file); after an import commits, the new install
+  re-points the company on the hub (joining with the returned key if it had none) and pulls the moved partner links'
+  messages from the file's cursor; with the hub down the import stands and "Re-point the hub" retries; the old copy
+  learns from the hub's 410 that the company moved, stops partner sends, usage and note uploads, and can be deleted 30
+  days later (Companies, or the tray's "Remove the moved company…"; PartnerSeen, PartnerFailure, Listing and
+  MarketOrder rows removed explicitly, none has a foreign key to Shop). Hub migration 015_shop_moves, program
+  migration 20261003170000_company_move_hub, `scripts/checks/move-hub.check.ts` (11 groups), hub `test/move.mjs`,
+  INSTALL.md "Moving a company". The company move is now complete (three packages). Untested: the move spec's
+  partner half (it needs a third server on its own database, `E2E_THIRD_URL`).
+- **Windows app size, for good** (8f85b00): the 36ae0f1 fix covered routes, not the server's start-up hook, and the
+  move's temp-folder paths (`os.tmpdir()` joined with `${id}.json`) traced every .json file in the repository again,
+  the previous build nested inside included (232 MB). Paths built from folders the bundler can't evaluate now go
+  through `src/lib/opaque-path.ts` (`under()`), and `desktop/prepare-app.mjs` drops src, desktop, docs, scripts, tests
+  and the Railway files whatever the tracer does. Packaged server 144 MB; installed program 603 MB with Electron and
+  Postgres; the Windows install has every migration through 20261003170000.
+- **Final spec pass on the 3 Oct test build** (after every package): smoke, modules-lapse, online-shop, parts-in,
+  two-servers, account (both doors) and move (export/import half) pass against the test hub on the latest hub
+  branch. The test servers and the test hub were stopped afterwards; `.next` holds the test build.
+- **Railway Infrastructure as Code**: `railway config plan` (read-only) run against both projects after the new
+  variables: each "0 to add, 1 to change, 0 to destroy", only the four deploy settings. To apply, per project
+  (stitchshop as linked; for stitchbench link it first and link back after), from Bash:
+  `powershell -NoProfile -Command '$env:_ = "$env:APPDATA/npm/node_modules/@railway/cli/bin/railway.exe"; railway
+  config apply --yes; railway config migrate --apply'` (the wrapper gets past the SDK's Windows version check);
+  afterwards delete `railway.json` and commit.
+
+## 2ad. 3 Oct 2026 afternoon: prices, the two plans, the demo (committed, not pushed)
+
+- **Prices decided** (section 4): `docs/plans/pricing-recommendation.md` (0c3995a); the income-goals calculator is a
+  private artifact (https://claude.ai/artifact/USAwCv16eLsGAxVj3nRU7w). Website prices (stitchsite 66f70f0): two plan
+  cards, founding offer with `FOUNDING_SPOTS_LEFT`, $99 setup help, "two months free" on yearly. Draft terms in both
+  repos carry the plans, founding shops and the price-change promise with [LAWYER] flags (c776b81, stitchhub fbe38dc).
+- **Two plans, Solo and Shop** (program 4a8ee49, stitchhub `hub-accounts` 8a245b2): the hub sells Solo / Shop, monthly
+  or yearly, and founding prices for accounts the admin marks (25 places; a gap over 60 days loses the mark); "Switch
+  to Shop / Solo" with proration; the standing and the signed key carry the plan (`l`, `fs`). The program refuses a
+  third active login on Solo (SOLO_FULL), never locks anyone out when already over two, shows the plan on Settings ->
+  Account; no plan known = no limit. Check `scripts/checks/plans.check.ts` (11). **Owner sets on the hub:**
+  `STRIPE_PRICE_SOLO_MONTHLY`, `_SOLO_YEARLY`, `_SHOP_MONTHLY`, `_SHOP_YEARLY` (required) and the four `_FOUNDING`
+  ones; each a comma list, first id sold, later ids older prices of the same plan; the old `STRIPE_PRICE_MONTHLY` /
+  `_YEARLY` count as Shop. Customer Portal steps in the hub README are unverified against Stripe's dashboard. After
+  the deploy every shop gets a freshly signed key at its next sync.
+- **Demo company** (145723d, f1a6178): `npx tsx scripts/demo/seed-demo.ts` (`--remove` deletes it): "Bobbin & Bolt
+  Quilt Co.", repair and retail, every module on a dev key (so a `STITCH_TEST_BUILD=1` build), login
+  demo@stitchshop.test / demo-password-1 locally; refuses a non-local DB unless `DEMO_ALLOW_REMOTE=yes` and
+  `DEMO_PASSWORD`. An optional gitignored `scripts/demo/guest.local.json` adds a real guest (Denise) and her machines;
+  nothing about her is committed. Denise's tour (private artifact https://claude.ai/artifact/NUjTRMmBDQpcrjC3g55fr3)
+  and the shop-hop scouting routine are in memory (`shop-hop-scouting`).
+- **Fixes the demo found** (aa167db, bc5bcf5, b7f6d66, 7263ec5): the phone header is the logo, search and a Menu button
+  (about 55 px, was 450); "taken today" adds register sales (`src/lib/register-day.ts`; online orders aren't in the
+  register's day either, a decision if wanted); the dashboard heading is the company name for retail companies; the
+  logo says StitchShop on a StitchShop install and for a non-repair company on a StitchBench install; Settings ->
+  Modules names the install's program; "Parts on order" starts collapsed unless waiting on parts with nothing ordered.
+- **L6 count** (73053ef, cd24f13): the hosted databases have no public address; the owner runs the count in each app
+  container after the next deploy (LAUNCH_CHECKLIST, day 1-2). Claude Code's auto mode blocks Claude from production
+  reads, so it stays the owner's.
+- **Queued from today:** a model-name fallback for factory settings and test modes (a machine entered as "Designer
+  Diamond deLuxe" finds nothing keyed DESIGNERDIAMOND: every lookup is an exact modelKey match; try the longest known
+  key the machine's key starts with, same brand, labelled "for the Designer Diamond"); the dev DB has no Designer
+  Diamond tension or factory rows although the seed JSON does (`npm run db:seed` on the dev DB); retake the website's
+  screenshots from the release build (the header and dashboard changed).
+
+## 2ae. Review split since `review-part2` (3 Oct 2026; the owner has no free ultra reviews left)
+
+`review-part2` (1169f6a, 12 commits on main) is set up and not reviewed. After it, the work splits into parts under
+8,000 changed lines, each reviewed after the previous part is merged to main (ultra review diffs against local main):
+part 3 ends at ada57e9^ (about 1,550 lines); part 4 is ada57e9 alone (8,700 lines, almost all
+`prisma/seed-data/service_modes.json`: data, merge without a code review); part 5 ends at b5be68b^ (about 6,830);
+part 6 ends at 5482e9e^ (about 7,420, of which 2,840 are model keys in factory_settings.json); part 7 is the rest
+(docs and research, plus anything later). Branches are made when needed (`git branch review-part3 ada57e9^` etc.).
+Meanwhile Claude ran a focused local review of the riskiest code (billing, money, sign-in): see the next commit.
+
+## 2af. 3 Oct 2026 evening: fixes, a focused review, a full test run (committed, not pushed)
+
+- **Built:** round-3 batch A (8b01d97: removed payments leave a reversal, consignment returns pending until "Confirm it
+  arrived", part cost to 4 decimals; migration 20261003210000_money_records); the model-name fallback (2c3acad) and
+  model keys for 660 reference rows that had none (145031c; `scripts/library/fill_model_keys.py`, in AGENTS.md); hub
+  billing edge cases (stitchhub 0132f93 trial at Checkout, refund in trial, won chargeback; 32b1d9f card-company
+  inquiries flag instead of lock).
+- **Focused review instead of ultra review** (the owner had none left): three read-only reviewers on billing, money and
+  sign-in; every confirmed finding fixed. Program c71da9c (a paid online order is always booked, "Needs attention" +
+  "Try again" on the online orders page; fine cost for stock value and new `SaleLine.costTenThou`, migration
+  20261003220000_sale_line_fine_cost; empty-shelf consignment confirm; no register void of an online sale) and
+  91a7cac (move import refuses reserved admin emails; a move file's hub is adopted only if it's the default hub; a
+  reset request voids only older reset links; the known-device cookie carries sessionVersion, so existing ones stop
+  counting once after the deploy). Hub 4116a5f (an old subscription's late events can't overwrite the current one; a
+  full refund or lost chargeback cancels the Stripe subscription, and a new Checkout cancels an older one; upgrades
+  Solo to Shop charged at once with `always_invoice`, the Shop key signed when paid; late invoice.paid and dispute
+  events can't undo a refund or chargeback; several inquiries tracked; migration 021_dispute_lists.sql).
+- **Full spec run on a fresh test build (756588e): all 27 pass**, including the company move's partner half (third
+  server on :3502 with DB `stitchbench_third`, left in the dev Postgres). Eleven specs updated for today's intended
+  changes. inventory failed once at "Use on ticket" and passed twice on rerun: watch it.
+- **Deploy notes:** program migrations ...210000 and ...220000; hub migrations 019 to 021; ten Stripe webhook events;
+  Customer Portal proration (LAUNCH_CHECKLIST, Stripe day).
+- **Still queued:** wave 2 (W1 email unique per company, W2 signed partner invites: short designs first); the Windows
+  install update after a backup; the review split (2ae); Fabric Smarts after the test month (item 21). Stopped here on
+  purpose: the owner's weekly Claude limit was two thirds used (memory `use-fewer-tokens`).
+
+## 2ag. 4 Oct 2026: main fixed, hosted deployed, 1.6.2 installers
+
+- GitHub's Checks had failed on every push since 3 Oct: npm on Windows dropped `@emnapi/core` and `@emnapi/runtime`
+  from package-lock.json when the railway package was added (bcc0372), so `npm ci` failed on Linux (GitHub, and
+  Railway's builds). Fixed on the branch (5506c2f) and cherry-picked to main (8b4e4fd); AGENTS.md says to check.
+- Main is version 1.6.2 (d2ce61f). Hosted StitchShop and hosted StitchBench were deployed from main (health OK): the
+  work merged through 3 Oct. The 1.6.2 installers were built by GitHub Actions run 37230401641 (kept 7 days; unsigned).
+- Both branches pushed to GitHub (hub-accounts for the first time). Today's branch work is not on main or deployed.
+- The L6 count script (`scripts/hosted/count-unassigned-market.mjs`) is on the branch only, so its count waits for the
+  deploy of the branch, not today's deploy of main.
+
+## 2ah. 6 Oct 2026 evening: signed partner messages, designs, two feature branches (committed, not on main)
+
+- **W2 signed partner messages** (program 29913db design, ffa8cab build, migration 20261006100000_partner_signing;
+  hub f0879df, 614ce93, migration 023): each company signs its partner messages; partners pin each other's keys;
+  unsigned messages from old programs are accepted as "unverified" until 1 Apr 2027 (`PARTNER_UNSIGNED_UNTIL`); the
+  hub's partnership rule counts only the repair shop's own verified messages once both sides have keys. Upgrade the
+  hub first. A company move gets a new key, so its partners re-trust it with a new partner code (owner approved, 6 Oct).
+- Hub test setup fixed (0bf55d8: reused scratch DBs kept an old join key); `waiver_grace` added to the export (7597186).
+- **W1 email unique per company:** design `docs/plans/email-per-company-design.md` (d7af2bd), about 3.5 days; the owner took all six
+  recommended answers (6 Oct: chooser step, no in-app switcher, one reset link per login, admin may hold several
+  logins on the reserved address, reset mail names the companies, a one-time rename to go back); build next.
+- **Branch `manual-repo`** (stitchhub; worktree C:/Users/bwatt/stitchhub-manual-repo; pushed): repo-storage (065b664)
+  and repo-hub (feec653), migration 030 (renumber at merge), uploads off by default, the free /account Manuals page.
+  Takedowns (package 3) next.
+- **Branch `fabric-smarts`** (stitchbench; worktree C:/Users/bwatt/stitchbench-fabric; pushed): F1 fabric basics
+  (96e58d9), migration 20261010000000_fabric_basics (rename at merge); its own test DBs `stitchbench_fabric` and
+  `stitchbench_fabric_shadow` on the dev Postgres.
+
+## 2ai. 6-7 Oct 2026 night (committed and pushed, not on main)
+
+- **W1 email unique per company** built (a2dcddc, migration 20261006200000_email_per_company): unique on (shopId,
+  email); a "Choose a company" step when one password fits several logins (a 5-minute, one-use ticket bound to the
+  browser); three padded bcrypt compares; known-device per login (key v3); one reset mail with a link per login; move
+  import and adding people refuse only within the same company. Check `email-per-company` (8 groups) plus signin,
+  hosted-provisioning, move-import, base-license, plans pass; `tests/auth.spec.ts` updated, not yet run.
+- **Branch `manual-repo`:** package 3 takedowns (437b9cb, migration 031): /copyright (closed until the owner sets
+  `COPYRIGHT_AGENT_NAME`, `COPYRIGHT_AGENT_ADDRESS`, `COPYRIGHT_EMAIL`), notices, counter-notices with the business-day
+  window, strikes (three ends uploading), refused brands (refused outright), admin Notices / Strikes / Blocked, a CSV
+  log. `test:db` there still fails on `waiver_grace` only until merged with hub-accounts (fixed there in 7597186).
+- **Branch `fabric-smarts`:** F2 insight (47e01c6, migration 20261011000000_fabric_insight): What sells (velocity,
+  weeks of supply, A/B/C, GMROI, roll-ups), Slow fabric (FIFO age, mark down vs fat quarters with the numbers), the
+  markdown ladder with records and same-day undo, 18 shop settings. Next: F3 reorder and purchase orders, F4 kits.
+
+## 2aj. 6-7 Oct 2026: everything merged into the launch branches (pushed; main not yet merged)
+
+Owner decision (6 Oct): this week's feature branches ship with the launch release. `scheduling-features` (8d933f8)
+now holds `fabric-smarts` (F1-F7: bolt ends, insight, reorder and POs, kits, connectors, clubs with payments in the
+books, longarm), `manual-repo` (program packages 4-5), `assistant` (drafts, likely causes, plate reading, ask the
+manuals, parts helpers) and `later-round-1` (gift cards, store credit, audit log, tax-exempt customers, reports, books
+export, off-site backup). `hub-accounts` (00d6abf) holds `manual-repo` (storage, review queue, takedowns, OCR),
+`assistant` (proxy, allowance, admin page, Stripe prices) and `later-round-1` (backups); hub migrations renumbered
+024-028. Also fixed tonight: hub keys name `shop_ref` (every hub-signed key would have been refused); sign-in in a
+built app (login helpers at module level); sign-out keeps this browser known; machine merge moves AssistantCall;
+the move import may clear the audit log; a non-UTF-8 byte that broke the build. All 62 checks and every hub test pass
+(each hub test on its own scratch DB: never point one at the program's DB); the full Playwright suite passes except
+`calendar` and `scheduling-messaging` after about 8 pm Eastern and `base-license` when the UTC date is ahead
+(test-clock artifacts: rerun in daytime). No Playwright specs yet for fabric, assistant or gift cards (checks only).
+Switched off until the owner turns them on: the manual repository (`REPO_UPLOADS`), the Assistant (module + hub
+`ANTHROPIC_API_KEY`, `STRIPE_PRICE_ASSISTANT_*`), off-site backup (per shop; hub `BACKUP_S3_*`). Next: the owner
+merges main (commands in chat), then hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
@@ -803,8 +1033,9 @@ accounts and billing: design first).
 6. Later rounds (owner approved): off-site backup, gift cards/store credit, reports + sales-tax report +
    QuickBooks export, audit log; then layaway/special orders, block-of-the-month clubs, kits, purchase orders,
    loaners, per-ticket time clock, warranty claims, drop-off signature. Needs owner decisions first: card
-   reader (Square or Stripe), Shopify sync, online sign-up/booking pages, two-way texting inbox.
-7. **Split StitchBench and StitchShop into separate repositories** **Planned 2 Oct 2026** (section 2ab): `docs/plans/repo-split-design.md`; the move itself is not started. (owner request, 27 Sep 2026). Today StitchShop
+   reader (Square or Stripe), Shopify sync, two-way texting inbox (online sign-up and booking pages are built:
+   section 2z).
+7. **Split StitchBench and StitchShop into separate repositories** **Decided 3 Oct 2026: not now, keep one codebase.** The plan (`docs/plans/repo-split-design.md`, dry run `scripts/repo-split/plan.mjs`) found the two programs share every source file (the flavour is APP_NAME and DEFAULT_SHOP_KIND); a split would cost about three days plus a day of deploys and stall every in-flight package for little gain, while one codebase keeps fixes landing in both. Instead, if wanted: a version number per program in the installer setup (half a day). Revisit if StitchShop needs many pages StitchBench shouldn't have, someone must work on only one program, or one program's code is licensed separately. (owner request, 27 Sep 2026). Today StitchShop
    is a build flavor of this one codebase (desktop/package.json `flavor`, APP_NAME/DEFAULT_SHOP_KIND), so the
    register, inventory, partners and hub client are shared code. Decide the shape first, then do it:
    (a) two repos with a shared core package (register, partners, hub client, Prisma schema) published or
@@ -819,19 +1050,19 @@ accounts and billing: design first).
    `stitch-protocol` package can come later if wanted). Four repos (a core shared by all three plus one per
    program) only if access or licensing must differ between StitchBench and StitchShop.
 
-8. **Hosted = one shared instance for every shop** (owner decision, 27 Sep 2026): partner quilt shops and hosted
+8. **Hosted = one shared instance for every shop** **Done 3 Oct 2026** (sections 2ab and 2ac: every company acts on the hub under its own name, both sides; still open: the one-command template for a dedicated instance) (owner decision, 27 Sep 2026): partner quilt shops and hosted
    bench customers are companies on the one StitchShop/StitchBench instance, not one instance each. That makes the
    per-company hub identity (round-2/3 finding: every company posts, lists and is rated under the install's one
    name) the first hub job: send `shopRef` + `shopName` on marketplace, note and usage calls, and store/show them
    per company on the hub, as the partner channel already does. A dedicated instance stays an option for a shop
    that asks for it (template it: one command per shop).
-9. **Sharing is chosen per item, never automatic** (owner decision, 27 Sep 2026; wording is "offer"). From a
+9. **Sharing is chosen per item, never automatic** **Done 3 Oct 2026** (section 2ac) (owner decision, 27 Sep 2026; wording is "offer"). From a
    machine or ticket: "Offer a hint about this model" sends that hint only, with nothing private from the ticket
    pre-filled (fixes the "Share with other techs" pre-fill finding). From a part: one "Offer this part" action
    where the shop picks where it goes: to its partner shops (partner price; today's "Offer to partner shops"
    checkbox), on the marketplace, or both. Nothing reaches the hub unless chosen. The monthly most-used-parts
    report is the one automatic share today: make it a per-company setting, off unless turned on.
-10. **A shop chooses where it runs, and can change its mind** (owner decision, 27 Sep 2026): on the owner's shared
+10. **A shop chooses where it runs, and can change its mind** **Done 3 Oct 2026** (section 2ac: the company move, three packages; the move spec's partner half not yet run) (owner decision, 27 Sep 2026): on the owner's shared
    hosted instance, as the Windows program on its own PC, or self-hosted on its own Railway (INSTALL.md covers all
    three; same hub, same partner links). Missing piece: a per-company export/import so one company can leave the
    shared instance for a PC or its own server, or join it from one, keeping its ids (partner records are keyed by
@@ -851,7 +1082,7 @@ accounts and billing: design first).
    the link id with the file (index + a sidecar or the LibraryDoc row) so re-downloads and dedupe work.
    (c) Per model, show which doc types exist (service, parts, operator, error codes, wiring) and which are missing,
    so members know what to look for. Links already carry the doc type; the model page groups by it.
-13. **Look into what AI to add** **Scoped 2 Oct 2026** (section 2ab): `docs/plans/ai-assistant-scope.md`. (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
+13. **Look into what AI to add** **Scoped 2 Oct 2026** (section 2ab): `docs/plans/ai-assistant-scope.md`. **Decided 3 Oct 2026**: the owner took every recommended answer; the `assistant` package (write-ups + bench assistant + the plumbing through the hub, about 4.5 days) is queued after billing packages 4 and 5 and the test-mode card, because it adds a migration in each repo and edits the hub's server and the ticket page. (owner request, 27 Sep 2026): scope and cost it first, then build the one or two
    with the best return. Candidates that fit what the program already holds:
    - Bench assistant on a ticket: from the model and the problem reported, suggest likely causes and the checks to
      make, drawing on this shop's own tickets and notes, the community's gotchas, and the factory specs already in
@@ -893,6 +1124,101 @@ accounts and billing: design first).
    service's Settings show the healthcheck and the restart policy, and that the deprecation warning is gone. After
    both projects are done, delete `railway.json` and commit.
 
+16. **Online shop payments: no "through StitchShop's account"; Stripe Connect instead** (owner decision, 3 Oct 2026).
+   One account taking payments for other businesses is what Stripe Connect is for, and it would put every shop's
+   refunds, disputes, payouts and tax reporting on the owner. The option is now off unless `SHOP_PLATFORM_PAYMENTS=on`
+   (never set it). Queued: "Connect with Stripe" (Connect Standard or Express onboarding, payments straight to the
+   shop's account, an optional platform fee per order) as the easier door than pasting keys; a day or two.
+
+17. **Follow-ups found while drafting the terms and privacy text** (3 Oct 2026; drafts in `docs/legal/`, for a lawyer):
+   - **DECIDED 3 Oct 2026: keep sharing factory-setting figures automatically** (the owner is fine with it; the legal
+     draft discloses it). Was: **Owner decision: manual figures go to the hub automatically.** `src/app/api/figures/route.ts` calls `shareFigure`
+     whenever the program draws a factory-setting figure on a joined install (since the hub client's first version).
+     That predates and conflicts with item 9 ("chosen per item"), and figure crops from OEM manuals are a lawyer
+     question. Options: keep (the draft discloses it), an install setting off by default, or stop sharing figures.
+   - **Hub billing**: subscribing during the 30-day trial charges the same day (pass the trial end to Checkout so the
+     first charge falls when the trial ends); a refund inside the trial makes the shop read-only at once (should go
+     back to its trial); a won chargeback isn't undone (handle `charge.dispute.closed` with status won).
+   - **Customers can't be deleted or merged** (L126 decided, not built): needed to honour a customer's deletion request.
+   - **No LICENSE file** in this repository, so self-hosting shops have no stated licence for the code (the hub is
+     AGPL). Owner and lawyer decision.
+   - The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
+   - Before the pages go live: the hub's `/terms` and `/privacy` routes, Checkout recording the accepted version, and
+     `TERMS_VERSION` in `src/lib/hub-account.ts` (still "2026-10-02-draft"): billing package 5.
+
+18. **A manual repository on StitchHub** (owner decision, 3 Oct 2026, confirmed: seed with what makers publish freely, techs upload the rest; design first, then build). The owner chose to
+   host manuals on the hub, including manuals repair techs upload, and to handle takedown notices himself. This
+   replaces the old "manuals are local-only" rule (AGENTS.md updated to point here). Points for the design: the
+   US safe harbor for user uploads (17 U.S.C. 512(c)) needs a registered DMCA agent, a takedown and counter-notice
+   process, a repeat-uploader policy and prompt removal, and it covers what users upload, not what the operator
+   uploads himself, so the repository is seeded only with manuals makers publish freely and grows from techs'
+   uploads (each file chosen by the tech); storage with no download fees (e.g. Cloudflare R2); dedupe by hash and a
+   blocklist so a removed file can't come back; the existing download queue (item 12) fills shops' libraries from it;
+   the terms gain the uploader's licence and warranties. A lawyer reviews the takedown process before launch.
+   Design: `docs/plans/manual-repository-design.md`. **A free side (owner, 3 Oct 2026):** anyone with a free StitchHub account can
+   browse and download repository manuals on the hub's website without the program (section 0.1); the paid program adds
+   convenience (one-click into the library, filing, coverage), not access; never market manuals as part of the
+   subscription.
+
+19. **Launch first: running, tested for a month, sellable** (owner, 3 Oct 2026). Order from here: finish the work in
+   flight; billing package 5 (terms pages); the public website (`C:\Users\bwatt\stitchsite`: features, pricing,
+   install and setup guides, sign-up and subscribe through the hub; static, Cloudflare Pages recommended, installers on
+   Cloudflare R2 because both code repos are private); the round-3 money and sign-in batches; the hub billing edge
+   cases; the tests owed; the test-mode card. During the test month the shops run a fixed release and only fixes go
+   out; the queued features (the Assistant, Stripe Connect, the manual repository, the later-round features) keep
+   being built on the branch behind it. **Reward cards** (the owner's idea: shop-designed cards printed and mailed by
+   the owner, about $1.50 a card; a rewards program designed first; batches to the shop, or $3-4 mailed direct to
+   cover postage; Apple / Google Wallet passes as the free option): later, after launch. **Add-on prices decided 3 Oct 2026**: Scheduling $15/month,
+   Marketing $10, Vac Shop $10, Small Appliance Repair $5, the Assistant $15 when it ships; yearly is ten times the
+   monthly price; an "everything" bundle of the four modules at $30/month; the partnership waiver covers the base program
+   only, add-ons are paid as normal; until the hub sells modules (a later billing package) they are sold as license keys
+   the owner issues. **Domains decided 3 Oct 2026: stitchbench.app (the site) and stitchshop.app (to the StitchShop page)**, bought by
+   the owner at Namecheap with nameservers moved to Cloudflare's free plan (Pages for the site, R2 for downloads,
+   backups and the manual repository); planned hub.stitchbench.app for the hub and downloads.stitchbench.app for the
+   installers. Contact email on the site: bwattendorfdev@gmail.com (owner, 3 Oct 2026), set in one place in the site's config.
+
+20. **For the test month: small things to watch** (3 Oct 2026). On a phone the ticket page opens with the "Parts on
+   order" form expanded at the top, pushing "Status and work" down: consider starting it collapsed when nothing is on
+   order. The register's sale table scrolls inside its card on a phone (the line total sits off to the right): a
+   stacked line layout for phones is the bigger fix if testers find it awkward.
+
+21. **Fabric Smarts** (owner's idea, 3 Oct 2026; researched, designed, not built): a Fabric page for StitchShop with bolt
+   ends (cut into fat quarters, half yards, remnants in one tap), slow fabric (markdown or convert, with the numbers),
+   what sells, reorder suggestions and purchase orders, kits; fast entry by bolt-label photo and "add a collection";
+   pictures everywhere; wholesaler partners later (Notions Marketing first). Design `docs/plans/fabric-smarts-design.md`
+   (packages F1-F6, after the test month; owner decisions in its section 10), research in `docs/research/`, the
+   owner's report https://claude.ai/artifact/4DWQgNFGMYWve7E5k5Ytgy. Outreach emails are DRAFTS: the owner sends them.
+
+22. **A "real partnership" rule for free StitchShop** (recommended 4 Oct 2026; **owner said yes 5 Oct 2026; built 5 Oct, not pushed or deployed**):
+   the waiver (Shop plan, base only; add-ons stay paid) holds while the repair partner is a paying subscriber (active, or trialing with a
+   card; not a free trial, comp, past_due, lapsed or waived) and at least one repair passed in the last or current calendar quarter, which the hub
+   counts itself from partner messages (distinct `job.new` from the quilt shop plus `pickup.done`; no program reporting, no program schema change);
+   a new link is exempt 90 days. When either breaks: 30 days' grace (hub migration 022 `waiver_grace`), still waived, the program shows the hub's words
+   as a notice for owners/admins (`partnershipNotice` in `src/lib/hub-standing.ts`, bar in the layout), then the normal standing (trial if unused, else
+   the lapse rules). Hub: `waiverRule` in `src/billing.mjs`, admin page lists partner, its standing, last repair and grace end; tests in
+   `test/billing.mjs` sections 10 and 10b; program check `scripts/checks/partnership-rule.check.ts`. Weak spot: partner messages aren't signed
+   (L134), so a quilt shop could fake `job.new`; review partnered shops' support hours and add-on uptake after six months.
+
+23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
+   or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per
+   company, W2 signed partner invites: short designs first), the real-partnership rule (item 22) if the owner says
+   yes, the Windows install update after a backup, and a dry run of the owner's deploy sitting (merge with the hub
+   branch, Stripe prices, deploy). (2) Next-month features on their OWN branches off `scheduling-features`, so the
+   launch merge stays small: `manual-repo` (the hub side first: storage, the review queue, takedowns; uploads off
+   until the lawyer and the copyright agent) and `fabric-smarts` (F1 first). They ship after the test month; test
+   shops stay on one fixed release.
+
+15. **Diagnostic / test mode per model** (owner idea, 3 Oct 2026). **Data extracted 3 Oct**: `prisma/seed-data/service_modes.json`, 136 procedures from 124 service manuals (82 high, 53 medium, 1 low confidence; Brother 46, Janome 34, Elna 9, Baby Lock 8, Viking 7, Bernina 6, Pfaff 6, Juki 5 and more; Tajima's manuals have none); 249 of the 250 factory settings that mention test mode now have an entry procedure, and 167 of 168 numbered references match a test. No passwords recorded (a row stops at the prompt). The owner's sheet to check and correct: `C:\Manuals\_business-notes\Service_Modes.xlsx`, with `SERVICE_MODES_NOTES_2026-10-03.md` (eight things to try on a machine; the PC6500 factory row's "test mode 10" is probably wrong); `scripts/library/service_modes_from_xlsx.py` turns the corrected sheet back into the seed. Still to build: the ServiceMode table, the seed and Windows reference loaders, the card on the machine and ticket pages (match on modelKeys alone: rows carry twin models of other brands). **Owner, 3 Oct: the manual's pictures may be kept and shown**: each procedure gets the figure page and box (as FactorySetting has `figurePage` / `figureBox`), cropped from the local PDF and shared through the hub's figure path like the factory-setting figures, so the card shows the button diagram beside the steps; first for the rows whose entry keys are only drawn (Brother E100, Singer 9910-9940, EverSewn Sparrow QE, Elna 9006, Melco EP1B, Happy HCD2/HCD3), then the rest. Original plan: The factory settings refer to test
+   mode constantly (254 rows mention test or service mode, 233 of them Brother / Baby Lock, e.g. "measure in test
+   mode 36") but none says how to enter it. Plan: a reference set like TensionSpec / FactorySetting (per model family:
+   how to enter, how to exit, what the numbered tests do, a warning for modes that clear settings, source file and
+   page, confidence), extracted from the 650 service manuals in C:\Manuals with page numbers for the owner to verify
+   (Brother, Baby Lock, Janome first) and shipped as seed data; a card on the machine page and the ticket next to the
+   factory specs, opening the manual at the page when the PDF is in the library; "test mode 36" in a factory setting
+   becomes a link to it; techs fill gaps through "Offer a hint". Steps in our own words with the page reference,
+   never copied manual pages; the embroidery service-password notes stay private to the owner's shop. About a day for
+   the table and card; the extraction is the larger part.
+
 ## 4. Owner decisions already made (don't re-ask)
 
 - Scheduling (StitchShop): classes/workshops (seats, waitlist, fee at the register), customer appointments
@@ -905,6 +1231,19 @@ accounts and billing: design first).
   is waived once it connects to a repair shop; $250/year alongside). StitchShop is free when a repair shop sets it up
   for its quilt shops; hosted copies at cost; the hub free to everyone. Recurring (subscription) revenue preferred.
   Not charging until: signed installer, a month of real use in one or two shops, terms/privacy page and Stripe billing.
+- **Price list decided 3 Oct 2026** (the owner took `docs/plans/pricing-recommendation.md` sections 12 and 13 as
+  recommended; it replaces the single $25 above): **Solo** $25/month or $250/year, up to 2 active logins; **Shop**
+  $45/month or $450/year, every login; the same for StitchBench and StitchShop, Windows and hosted, every feature on
+  both; per location, no per-seat fees. Yearly is ten times monthly, shown as "two months free". **Founding shops**:
+  the first 25 at $15 / $30 a month ($150 / $300 a year), locked while the subscription runs without a gap over 60
+  days (two feedback calls and bug reports in return); the test-month shops get 12 months free first. Partnered retail
+  shops get Shop free. Add-ons unchanged; the Assistant $15 with 300 calls plus a $10 top-up of 300. Optional setup
+  and import help $99 once. A dedicated hosted copy at cost (about $10 on top). No fee on online orders, including
+  under Stripe Connect. Price rises: new shops first, existing shops keep their price 12 months with 60 days' notice,
+  founding shops stay locked, at most one rise a year. **Income goals**: $5,000 and $8,000 a month after costs; the
+  calculator (private artifact https://claude.ai/artifact/USAwCv16eLsGAxVj3nRU7w) puts it at about 148 and 225 paying
+  shops for a 60/40 Solo/Shop mix, 30% yearly, $10 of add-ons a shop, 25 founding and 10 partnered, with about $383 a
+  month of fixed costs (Railway, account email, domains, code signing, R2, insurance, bookkeeping, a Claude plan).
   Prerequisites to build first: code signing, a per-shop license key checked against the hub. Idea kept for later: a
   "software fee" line on the partner statement, waived on activity. Community first: keep the hub free.
 - Hosting: one shared instance for all companies (per-company identity on the hub to follow); sharing to the hub is

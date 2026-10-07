@@ -29,12 +29,15 @@ import {
   Send,
   Lock,
   Globe,
+  BarChart3,
   type LucideIcon,
+  Scissors,
+  Ruler,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
 // module: a paid module's item, shown while the module is on (or read-only with a lock once it has ended), hidden otherwise.
-type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId };
+type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean };
 
 // repair: shown to repair benches; retail: to shops with a counter; partners: to shops with partner shops. Unmarked: everyone.
 const items: Item[] = [
@@ -53,6 +56,8 @@ const items: Item[] = [
   // Marketing: the outbox (Campaigns is its tab), with a badge of customer replies nobody has looked at.
   { href: "/messages", label: "Messages", icon: Send, module: "marketing" },
   { href: "/parts", label: "Parts", icon: Package },
+  { href: "/fabric", label: "Fabric", icon: Scissors, retail: true },
+  { href: "/longarm", label: "Longarm", icon: Ruler, retail: true },
   { href: "/partners", label: "Partner shops", icon: Handshake },
   { href: "/market", label: "Marketplace", icon: Store, repair: true },
   { href: "/specs", label: "Factory specs", icon: Gauge, repair: true },
@@ -64,6 +69,7 @@ const items: Item[] = [
   { href: "/sales", label: "Sales log", icon: Receipt, repair: true },
   { href: "/register/sales", label: "Register sales", icon: Receipt, retail: true },
   { href: "/register/online", label: "Online orders", icon: Globe, retail: true },
+  { href: "/reports", label: "Reports", icon: BarChart3, admin: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 const platformItems: Item[] = [{ href: "/companies", label: "Companies", icon: Building2 }];
@@ -74,6 +80,7 @@ export function Nav({
   doesRepair = true,
   sellsRetail = false,
   retailPartners = false,
+  showReports = false,
   gates,
   badges,
   pausePill,
@@ -83,6 +90,8 @@ export function Nav({
   doesRepair?: boolean;
   sellsRetail?: boolean;
   retailPartners?: boolean;
+  /** Owners and admins: the Reports page. */
+  showReports?: boolean;
   gates?: Partial<Record<ModuleId, NavGate>>;
   /** href -> a count shown after the item's label (unhandled replies on Messages); nothing when 0. */
   badges?: Partial<Record<string, number>>;
@@ -92,6 +101,7 @@ export function Nav({
   const path = usePathname();
   const shown = items
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
+    .filter((i) => !i.admin || showReports)
     .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
     .map((i) => (i.href === "/parts" && !doesRepair ? { ...i, label: "Inventory" } : i));
   // The most specific menu entry wins (/register/sales over /register).
@@ -99,7 +109,7 @@ export function Nav({
     .filter((i) => (i.href === "/" ? path === "/" : path === i.href || path.startsWith(i.href + "/")))
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
   return (
-    <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-visible md:pb-0" aria-label="Main">
+    <nav className="flex flex-col gap-1 px-2 pb-2 md:pb-0" aria-label="Main">
       {chatUrl && (
         // The community's Discord (from the community hub); opens in the Discord app or the browser.
         <a

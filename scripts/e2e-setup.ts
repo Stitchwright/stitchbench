@@ -28,13 +28,12 @@ export const OTHER_SHOP = {
 // 1x1 PNG, the photo on the other shop's ticket
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
-/** A login in `shopId` with this password and role: made, or set back to that. Refuses an email that belongs to another shop. */
+/** A login in `shopId` with this password and role: made, or set back to that. (An email is unique inside one company.) */
 async function ensureUser(shopId: string, email: string, name: string, role: Role, password: string) {
   const passwordHash = await bcrypt.hash(password, 10);
-  const existing = await db.user.findUnique({ where: { email }, select: { id: true, shopId: true } });
+  const existing = await db.user.findUnique({ where: { shopId_email: { shopId, email } }, select: { id: true } });
   if (existing) {
-    if (existing.shopId !== shopId) throw new Error(`${email} already belongs to another shop; pick another email or remove that login.`);
-    await db.user.update({ where: { email }, data: { passwordHash, active: true, role } });
+    await db.user.update({ where: { shopId_email: { shopId, email } }, data: { passwordHash, active: true, role } });
     return existing.id;
   }
   return (await db.user.create({ data: { shopId, email, name, role, passwordHash }, select: { id: true } })).id;
@@ -42,7 +41,7 @@ async function ensureUser(shopId: string, email: string, name: string, role: Rol
 
 /** The company `email` owns, made with its owner login when there is none. */
 async function ensureShop(email: string, ownerName: string, password: string, shopName: string, menuPrices: boolean) {
-  const owner = await db.user.findUnique({ where: { email }, select: { shopId: true } });
+  const owner = await db.user.findFirst({ where: { email, role: "OWNER" }, select: { shopId: true } });
   if (owner) {
     await ensureUser(owner.shopId, email, ownerName, "OWNER", password);
     return owner.shopId;

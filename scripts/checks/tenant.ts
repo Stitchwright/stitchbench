@@ -37,7 +37,7 @@ export async function rowsOf(table: string, shopId: string): Promise<string> {
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(table)) throw new Error(`rowsOf: odd table name ${table}`);
   const column = table === "Shop" ? "id" : "shopId";
   const rows = await db.$queryRawUnsafe<unknown[]>(`SELECT * FROM "${table}" WHERE "${column}" = $1 ORDER BY id`, shopId);
-  return JSON.stringify(rows);
+  return JSON.stringify(rows, (_k, v) => (typeof v === "bigint" ? v.toString() : v)); // BigInt columns (PartnerLink sequence numbers) don't serialize by themselves
 }
 
 /** A company's rows in each of `tables`, keyed by table, to compare with assertUnchanged after the other company's calls. */
@@ -64,13 +64,16 @@ export async function makeCompany(name: string, opts: { kind?: ShopKind; timeZon
   made += 1;
   const email = `check-${RUN}-${made}@stitchbench.test`;
   const shop = await createShopWithOwner({ shopName: name, name: `Check owner ${made}`, email, password: "check-pass-1234", kind: opts.kind, timeZone: opts.timeZone }, { allowReserved: true });
-  const u = await db.user.findUniqueOrThrow({ where: { email }, select: { id: true, shopId: true, role: true, name: true, email: true } });
+  const u = await db.user.findUniqueOrThrow({ where: { shopId_email: { shopId: shop.id, email } }, select: { id: true, shopId: true, role: true, name: true, email: true } });
   return { shopId: shop.id, user: { id: u.id, shopId: u.shopId, role: u.role, name: u.name, email: u.email } };
 }
 
 /** Deletes the company and everything of its own (Shop cascades; tickets and stock units first, since Machine restricts them). */
 export async function removeCompany(shopId: string): Promise<void> {
   await db.$transaction([
+    // The audit log has no foreign key and refuses deletes unless the transaction says it is pruning (src/lib/audit.ts).
+    db.$executeRaw`SELECT set_config('stitchbench.audit_prune', 'on', true)`,
+    db.auditEntry.deleteMany({ where: { shopId } }),
     db.ticket.deleteMany({ where: { shopId } }),
     db.stockUnit.deleteMany({ where: { shopId } }),
     db.shop.deleteMany({ where: { id: shopId } }),

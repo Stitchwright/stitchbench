@@ -85,15 +85,16 @@ test("a tech has no People, company settings or Companies", async () => {
 test("a tech's save keeps a part's cost, price and partner price as they were", async () => {
   await page.goto(`/parts/${partId}`);
   for (const id of ["#cost", "#price", "#wholesale"]) await expect(page.locator(id)).toBeDisabled();
-  await expect(page.locator('input[name="offerToPartners"]')).toBeDisabled();
+  // Offering to partner shops is chosen in "Offer this part" (no checkbox on the item form any more): a tech can't tick it.
+  await page.locator("summary", { hasText: "Offer this part" }).click();
+  await expect(page.getByLabel(/To my partner shops/)).toBeDisabled();
   // Typed anyway (a crafted form would): the server keeps the money fields and saves the rest.
   await page.evaluate(() => {
-    for (const el of document.querySelectorAll<HTMLInputElement>("#cost, #price, #wholesale, input[name=offerToPartners]")) el.disabled = false;
+    for (const el of document.querySelectorAll<HTMLInputElement>("#cost, #price, #wholesale")) el.disabled = false;
   });
   await page.locator("#cost").fill("1.00");
   await page.locator("#price").fill("99.00");
   await page.locator("#wholesale").fill("2.00");
-  await page.locator('input[name="offerToPartners"]').check();
   await page.locator("#description").fill(`Role test part, described by the tech ${RUN}`);
   await page.locator("form", { has: page.locator("#description") }).getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
@@ -181,7 +182,7 @@ test("status changes set the dates, and a collected ticket's bill is locked for 
   await button("Remove line").click();
   await expectRefused(page, "The ticket is closed: only the owner or an admin can change its bill.");
   await page.locator('input[name="price"][aria-label="Amount"]').fill("5.00");
-  await page.getByRole("button", { name: "Add", exact: true }).first().click();
+  await page.locator("form").filter({ hasText: "Add fee or discount" }).getByRole("button", { name: /^(Add|Saving[.][.][.])$/ }).click(); // the fee form's own button: "Saving..." (disabled) while an earlier refused try settles
   await expectRefused(page, "The ticket is closed: only the owner or an admin can change its bill.");
   await page.getByLabel("Custom description").fill("After closing");
   await page.getByLabel("Price", { exact: true }).fill("10.00");
@@ -195,7 +196,7 @@ test("status changes set the dates, and a collected ticket's bill is locked for 
   expect(await dates()).toEqual({ readyAt: null, closedAt: null, warrantyUntil: null });
   // A tech may change the bill again.
   await page.locator('input[name="price"][aria-label="Amount"]').fill("5.00");
-  await page.getByRole("button", { name: "Add", exact: true }).first().click();
+  await page.locator("form").filter({ hasText: "Add fee or discount" }).getByRole("button", { name: /^(Add|Saving[.][.][.])$/ }).click(); // the fee form's own button: "Saving..." (disabled) while an earlier refused try settles
   await expect(page.locator("table tr").filter({ hasText: "Fee" }).filter({ hasText: "$5.00" })).toBeVisible();
   expect(await sql(`SELECT id FROM "TicketLine" WHERE "ticketId" = $1`, [ticketId])).toHaveLength(linesBefore.length + 1);
 });

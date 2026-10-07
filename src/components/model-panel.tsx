@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { Pin, Trash2 } from "lucide-react";
-import { specsFor, settingsFor, notesFor, gRange, pictureFor, libraryFor, type SpecRow } from "@/lib/model-info";
+import { specsLookup, settingsLookup, notesFor, gRange, pictureLookup, libraryLookup, type BaseModel, type SpecRow } from "@/lib/model-info";
 import { db } from "@/lib/db";
 import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { MachineInfo } from "@/components/machine-info";
 import { LibraryManuals } from "@/components/library-manuals";
 import { FactorySettings } from "@/components/factory-settings";
+import { ServiceModes } from "@/components/service-modes";
+import { modeAnchor, modesLookup, withTestLinks } from "@/lib/service-modes";
 import { OpenSpecSource } from "@/components/local-manuals";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addNote, deleteNote, toggleNotePin } from "@/actions/records";
@@ -91,6 +93,16 @@ export function SpecsTable({ specs, compact = false }: { specs: SpecRow[]; compa
   );
 }
 
+/** Says the section's data is the base model's, not this machine's own ("Designer Diamond deLuxe" using the Designer Diamond). */
+function FromBase({ base, what = "manual" }: { base: BaseModel | null; what?: string }) {
+  if (!base) return null;
+  return (
+    <p className="muted mb-2 text-xs" data-from-base>
+      {base.name ? `From the ${base.name}'s ${what}` : `From the base model's ${what}`}
+    </p>
+  );
+}
+
 export async function Gotchas({ shopId, brand, model }: { shopId: string; brand: string; model: string }) {
   const [notes, tz] = await Promise.all([notesFor(shopId, brand, model), shopTimeZone(shopId)]);
   return (
@@ -148,18 +160,35 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
 }
 
 /**
- * Everything known about one brand + model: factory tension, gotchas, manuals on this PC. A non-sewing `kind` (one
- * without the tension panel) skips the factory tension and timing sections and uses the kind's own quick links.
+ * Everything known about one brand + model: factory tension, timing, test mode, gotchas, manuals on this PC. A non-sewing
+ * `kind` (one without the tension panel) skips the factory tension, timing and test-mode sections and uses the kind's own
+ * quick links.
  */
 export async function ModelPanel({ shopId, brand, model, showLink = true, kind }: { shopId: string; brand: string; model: string; showLink?: boolean; kind?: EquipmentKind }) {
   const sewing = !kind || kind.panels.tension;
-  const [specs, settings, picture, library, shop] = await Promise.all([
-    sewing ? specsFor(brand, model) : [],
-    sewing ? settingsFor(brand, model) : [],
-    pictureFor(brand, model),
-    libraryFor(brand, model),
+  const none = { rows: [], from: null };
+  const [specsL, settingsL, modesL, pictureL, libraryL, shop] = await Promise.all([
+    sewing ? specsLookup(brand, model) : none,
+    sewing ? settingsLookup(brand, model) : none,
+    sewing ? modesLookup(brand, model) : none,
+    pictureLookup(brand, model),
+    libraryLookup(brand, model),
     db.shop.findUnique({ where: { id: shopId }, select: { libraryRoot: true } }),
   ]);
+  const { rows: specs, from: specsFrom } = specsL;
+  const { rows: rawSettings, from: settingsFrom } = settingsL;
+  const { rows: modes, from: modesFrom } = modesL;
+  const { picture, from: pictureFrom } = pictureL;
+  const { rows: library, from: libraryFrom } = libraryL;
+  // A setting's "test mode 36" links to test 36 in the test-mode card below. When the settings or the modes came from a
+  // base model's key, the two lists may not share one; the modes shown are this machine's, so they count as shared.
+  const modeKeys = specsFrom || settingsFrom || modesFrom ? [...new Set(modes.flatMap((m) => m.modelKeys))] : [];
+  const settings = withTestLinks(
+    modeKeys.length ? rawSettings.map((r) => ({ ...r, modelKeys: [...r.modelKeys, ...modeKeys] })) : rawSettings,
+    modes,
+    (l) => `#${modeAnchor(l.modeId, l.test)}`,
+  );
+  const baseName = pictureFrom ?? libraryFrom ?? specsFrom ?? settingsFrom ?? modesFrom;
   const category = library[0]?.category ?? settings[0]?.category ?? specs[0]?.category ?? null;
   const modelPage = showLink ? (
     <Link href={modelHref(brand, model, kind?.key)} className="link text-sm">
@@ -175,7 +204,10 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
         <>
           <Section title={`Factory tension - ${brand} ${model}`} actions={modelPage}>
             {specs.length ? (
-              <SpecsTable specs={specs} compact />
+              <>
+                <FromBase base={specsFrom} />
+                <SpecsTable specs={specs} compact />
+              </>
             ) : (
               <p className="muted text-sm">
                 No gauge spec on file for this model.{" "}
@@ -187,16 +219,24 @@ export async function ModelPanel({ shopId, brand, model, showLink = true, kind }
             )}
           </Section>
           <Section title={`Timing and adjustments${settings.length ? ` (${settings.length})` : ""}`}>
+            {settings.length > 0 && <FromBase base={settingsFrom} />}
             <FactorySettings settings={settings} brand={brand} />
           </Section>
+          {modes.length > 0 && (
+            <Section id="test-mode" title={modes.length === 1 ? "Test mode" : `Test modes (${modes.length})`}>
+              <FromBase base={modesFrom} />
+              <ServiceModes modes={modes} />
+            </Section>
+          )}
         </>
       )}
       <Section title="Important facts and gotchas">
         <Gotchas shopId={shopId} brand={brand} model={model} />
       </Section>
       <Section title={`Manuals${library.length ? ` (${library.length})` : ""}`}>
+        {library.length > 0 && libraryFrom && <FromBase base={libraryFrom.name ? libraryFrom : { ...libraryFrom, name: baseName?.name ?? null }} what="manuals" />}
         <LibraryManuals
-          docs={library.map((d) => ({ path: d.path, file: d.file, docType: d.docType, pages: d.pages, sizeBytes: d.sizeBytes }))}
+          docs={library.map((d) => ({ path: d.path, file: d.file, docType: d.docType, pages: d.pages, sizeBytes: d.sizeBytes, withdrawnWhy: d.withdrawnWhy }))}
           root={shop?.libraryRoot ?? "C:\\Manuals"}
           brand={brand}
           model={model}

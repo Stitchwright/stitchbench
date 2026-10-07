@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import type { EstimateLink, InboundText, OutMessage, Prisma } from "@/generated/prisma/client";
 import { SKIP_REASON_LABEL } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { actorOf, audit } from "@/lib/audit";
 import { UserError } from "@/lib/user-error";
 import { requireEquipment } from "@/lib/equipment/gate";
 import { answerRetailEstimate, answerTicketEstimate } from "@/lib/estimate-answer";
@@ -485,6 +486,13 @@ export async function recordEstimateAnswerAs(user: CurrentUser, target: "ticket"
       await closeOut(tx, shopId, { repairJobId: j.id }, phone, at, user, null);
     });
   }
+  await audit(db, actorOf(user), {
+    action: "estimate.answer",
+    subjectType: target === "ticket" ? "Ticket" : "RepairJob",
+    subjectId: id,
+    subjectLabel: `Estimate ${answer === "APPROVED" ? "approved" : "declined"} by ${via}`,
+    reason: note,
+  });
   refreshTarget(ids);
 }
 

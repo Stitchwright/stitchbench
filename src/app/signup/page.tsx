@@ -9,6 +9,7 @@ import { hubJoined } from "@/lib/hub";
 import { redeemPartnerCode } from "@/lib/partners";
 import { isUserError } from "@/lib/user-error";
 import { TimeZoneField } from "@/components/time-zone-field";
+import { HubLegalLinks } from "@/components/hub-legal-links";
 
 /**
  * The Windows program's first run passes SETUP_TOKEN: sign-up then only works from the program's own window (it opens
@@ -41,7 +42,6 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     const password = String(fd.get("password") ?? "");
     if (!shopName || !name || !email || password.length < 8) redirect(back("missing"));
     if (!isValidEmail(email)) redirect(back("email"));
-    if (await db.user.findUnique({ where: { email } })) redirect(back("taken"));
     // The StitchBench administrator's address: only the install's first company may take it (createShopWithOwner checks).
     if (isPlatformAdmin(email) && (await db.shop.count())) redirect(back("reserved"));
     const kind = (String(fd.get("kind") ?? "repair") || "repair") as ShopKind;
@@ -49,7 +49,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     try {
       shop = await createShopWithOwner({ shopName, name, email, password, kind, timeZone: String(fd.get("tz") ?? "") }, { firstOnly });
     } catch (e) {
-      // The first company already exists (this install's sign-up is closed), or the email was just taken.
+      // The first company already exists (this install's sign-up is closed),.
       if (isUserError(e)) redirect(firstOnly ? "/login" : back(e.message === RESERVED_EMAIL ? "reserved" : "taken"));
       throw e;
     }
@@ -127,6 +127,19 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           <input id="partnerCode" name="partnerCode" autoComplete="off" className="input mono" placeholder="7KQP-M2XH-9TRD" />
         </div>
         <button className="btn btn-primary w-full">Create shop</button>
+        {process.env.SETUP_TOKEN && (
+          // The Windows program's first run (company-move-design.md section 8): its window opens the tray's file
+          // dialog for this link (desktop/main.mjs); a plain link, so the window sees the navigation.
+          <p className="muted text-center text-sm">
+            Moving your company here from another {appName()}?{" "}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full navigation: the program's window (desktop/main.mjs) sees it and opens its file dialog */}
+            <a href="/move-in?choose=1" className="link">
+              Restore a company from a move file
+            </a>
+          </p>
+        )}
+        {/* StitchHub's Terms of Service and Privacy Policy, when this install is on a hub (the Windows first run isn't yet). */}
+        <HubLegalLinks />
       </form>
     </div>
   );

@@ -11,6 +11,7 @@ import { byWhom, hubFetch, hubId, hubReachable, joinHub, leaveHub, parseInvite, 
 import { libraryDir } from "@/lib/library-dir";
 import { alreadyHave, downloadLink, DownloadFailed, haveIndex, NO_LIBRARY, reportLink } from "@/lib/manual-downloads";
 import { requireHubWrites } from "@/lib/hub-writes";
+import { actorOf, audit } from "@/lib/audit";
 
 function refresh() {
   revalidatePath("/", "layout");
@@ -26,6 +27,7 @@ export const joinCommunityHub = safe.whileLapsed("joinCommunityHub")(async funct
   if (!inv.url || !inv.joinKey) throw new UserError("Paste the invite, or enter the hub address and the join key.");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
   await joinHub(inv.url, inv.joinKey, shop.name, shop.email ?? admin.email);
+  await audit(db, actorOf(admin), { action: "hub.join", subjectType: "Hub", subjectLabel: new URL(inv.url).host });
   if (inv.discord) await db.hubState.update({ where: { id: 1 }, data: { discordUrl: inv.discord } });
   await syncHub();
   refresh();
@@ -43,15 +45,20 @@ export const syncCommunityHub = safe.whileLapsed("syncCommunityHub")(async funct
 /** Whether this company offers its monthly parts counts to the community's most-used list (owner or admin). */
 export const setUsageSharing = safe(async function setUsageSharing(on: boolean) {
   const admin = await requireAdmin();
-  await db.shop.update({ where: { id: admin.shopId }, data: { shareUsage: on === true } });
+  const was = (await db.shop.findUniqueOrThrow({ where: { id: admin.shopId }, select: { shareUsage: true } })).shareUsage;
+  await db.$transaction(async (tx) => {
+    await tx.shop.update({ where: { id: admin.shopId }, data: { shareUsage: on === true } });
+    if (was !== (on === true)) await audit(tx, actorOf(admin), { action: "hub.usage", subjectType: "Shop", subjectId: admin.shopId, subjectLabel: "Parts used shared with the community", changes: { shareUsage: [was, on === true] } });
+  });
   // Sent (or taken back) with the next sync.
   usageSettingChanged(admin.shopId);
   revalidatePath("/parts/most-used");
 });
 
 export const leaveCommunityHub = safe.whileLapsed("leaveCommunityHub")(async function leaveCommunityHub() {
-  await requireInstallAdmin();
+  const admin = await requireInstallAdmin();
   await leaveHub();
+  await audit(db, actorOf(admin), { action: "hub.leave", subjectType: "Hub", subjectLabel: "StitchHub" });
   refresh();
 });
 
@@ -68,6 +75,11 @@ function linkFields(formData: FormData) {
 
 // Each change names the person and the company making it (byWhom): the hub's history shows the company, not the install.
 // requireHubWrites refuses a company whose sharing the StitchBench administrator switched off, and names the writer.
+/** A repository manual isn't a web link: its details are the hub owner's, so nobody edits, rolls back or removes it from here. */
+function repoLinkGuard(linkId: string) {
+  if (linkId.startsWith("repo_")) throw new UserError("That manual is in the hub's repository. Only the hub's owner changes or removes it.");
+}
+
 export const addManualLink = safe(async function addManualLink(formData: FormData) {
   const user = await requireUser();
   const byName = await requireHubWrites(user);
@@ -77,6 +89,7 @@ export const addManualLink = safe(async function addManualLink(formData: FormDat
 });
 
 export const editManualLink = safe(async function editManualLink(linkId: string, formData: FormData) {
+  repoLinkGuard(linkId);
   const user = await requireUser();
   const byName = await requireHubWrites(user);
   const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "PUT", json: { ...linkFields(formData), ...(await byWhom(user)), byName } })).json()) as HubLink;
@@ -85,6 +98,7 @@ export const editManualLink = safe(async function editManualLink(linkId: string,
 });
 
 export const revertManualLink = safe(async function revertManualLink(linkId: string, revisionId: string) {
+  repoLinkGuard(linkId);
   const user = await requireUser();
   const byName = await requireHubWrites(user);
   const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}/revert`, { method: "POST", json: { revisionId, ...(await byWhom(user)), byName } })).json()) as HubLink;
@@ -93,6 +107,7 @@ export const revertManualLink = safe(async function revertManualLink(linkId: str
 });
 
 export const removeManualLink = safe(async function removeManualLink(linkId: string) {
+  repoLinkGuard(linkId);
   const user = await requireUser();
   const byName = await requireHubWrites(user);
   const link = (await (await hubFetch(`/v1/links/${hubId(linkId)}`, { method: "DELETE", json: { ...(await byWhom(user)), byName } })).json()) as HubLink;

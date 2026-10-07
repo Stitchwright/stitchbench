@@ -12,7 +12,7 @@ test("manuals and figures come from the shop PC", async ({ page }) => {
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL ?? "e2e@stitchbench.test");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD ?? "e2e-password-1");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Bench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^(Bench|E2E Test Shop)$/ })).toBeVisible();
 
   expect(await (await page.request.get("/api/library/status")).json()).toEqual({ enabled: true });
   const pdf = await page.request.get("/api/library/file?path=Sewing/Janome/ServiceManuals/Janome_MC6700P_ServiceManual_2017.pdf");

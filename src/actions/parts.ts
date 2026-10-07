@@ -7,11 +7,12 @@ import { isUserError, safe, UserError, type ActionResult } from "@/lib/action";
 import { openWaits } from "@/lib/part-waits";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
+import { actorOf, audit, diff } from "@/lib/audit";
 import { str } from "@/lib/format";
-import { MAX_STOCK, centsField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
+import { MAX_STOCK, centsField, costField, countStock, isPartNumberClash, partKeys, partNumberClash, splitList, stockFor, takeShopNumber } from "@/lib/parts";
 import { assertId, assertIds, sameText } from "@/lib/input";
 import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
-import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
+import type { InPrint, PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 
@@ -21,6 +22,29 @@ function qtyValue(v: FormDataEntryValue | null, byYard = true) {
   if (!Number.isFinite(n)) return 0;
   if (n > MAX_STOCK) throw new UserError(`${MAX_STOCK.toLocaleString("en-US")} is the most it can be.`);
   return Math.max(0, byYard ? Math.round(n * 1000) / 1000 : Math.round(n));
+}
+
+/**
+ * The fabric fields (collection, designer, color tags, bolt size, in print). A form that doesn't send them (an older tab,
+ * a non-fabric item) leaves them as they are: nothing is returned for a field that wasn't there.
+ */
+function fabricData(formData: FormData) {
+  const out: { collection?: string | null; designer?: string | null; colorTags?: string[]; boltYards?: number; inPrint?: InPrint } = {};
+  if (formData.has("collection")) out.collection = str(formData.get("collection"));
+  if (formData.has("designer")) out.designer = str(formData.get("designer"));
+  if (formData.has("colorTags")) out.colorTags = [...new Set(splitList(str(formData.get("colorTags"))).map((t) => t.toLowerCase()))];
+  if (formData.has("boltYards")) {
+    const raw = str(formData.get("boltYards"));
+    const n = raw ? Number(raw) : 15;
+    if (!Number.isFinite(n) || n <= 0 || n > 100) throw new UserError("Yards on a full bolt: a number from 1/8 to 100 (15 is usual).");
+    out.boltYards = Math.round(n * 8) / 8;
+  }
+  const inPrint = str(formData.get("inPrint"));
+  if (inPrint) {
+    if (inPrint !== "YES" && inPrint !== "NO" && inPrint !== "UNKNOWN") throw new UserError("Pick whether it is still in print.");
+    out.inPrint = inPrint;
+  }
+  return out;
 }
 
 /** What the form says about the item. The part number is null when left blank: the shop gives such an item a number. */
@@ -47,21 +71,35 @@ function partData(formData: FormData) {
     location: str(formData.get("location")),
     reorderAt: qtyValue(formData.get("reorderAt")),
     unit: str(formData.get("unit")) === "yd" ? "yd" : null,
+    ...fabricData(formData),
+    // Whether partner shops see it in their catalog isn't a field of this form: it is chosen with "Offer this part" on
+    // the part's page (HANDOFF item 9), and a Save here keeps it as it is.
     wholesaleCents: centsField(formData.get("wholesale"), "Partner price"),
-    offerToPartners: formData.get("offerToPartners") === "on",
-    costCents: centsField(formData.get("cost"), "Cost"),
+    ...(costField(formData.get("cost"), "Cost") ?? { costCents: null, costTenThou: null }),
     priceCents: centsField(formData.get("price"), "Price"),
     supplier: str(formData.get("supplier")),
     notes: str(formData.get("notes")),
   };
 }
 
+const SWATCH_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+/** The picture a new fabric was made with (a bolt-label photo kept as the swatch): checked like the collection form's. */
+async function swatchFile(v: FormDataEntryValue | null) {
+  if (!(v instanceof File) || v.size === 0) return null;
+  if (!SWATCH_TYPES.has(v.type)) throw new UserError("The swatch picture must be a JPEG, PNG or WebP photo.");
+  if (v.size > 2_500_000) throw new UserError("That swatch picture is too large (2.5 MB at most).");
+  return { mime: v.type, data: new Uint8Array(await v.arrayBuffer()) };
+}
+
 export const createPart = safe(async function createPart(formData: FormData) {
   const user = await requireUser();
   const data = partData(formData);
   const qty = qtyValue(formData.get("qtyOnHand"), data.unit === "yd");
+  const swatch = await swatchFile(formData.get("swatch"));
   const row = {
     ...data,
+    photos: swatch ? { create: { shopId: user.shopId, mime: swatch.mime, data: swatch.data, sortOrder: 0 } } : undefined,
     shopId: user.shopId,
     qtyOnHand: qty,
     moves: qty ? { create: { shopId: user.shopId, qty, reason: "RECEIVED" as const, userId: user.id, note: "Opening stock" } } : undefined,
@@ -109,7 +147,7 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   if (!partNumber) throw new UserError("Enter a part number.");
   // What an item costs, sells for and is offered to partner shops at is for an owner or admin to change (the register
   // holds a tech to the price too): a tech's Save keeps those as they were.
-  if (user.role === "TECH") Object.assign(data, { costCents: p.costCents, priceCents: p.priceCents, wholesaleCents: p.wholesaleCents, offerToPartners: p.offerToPartners });
+  if (user.role === "TECH") Object.assign(data, { costCents: p.costCents, costTenThou: p.costTenThou, priceCents: p.priceCents, wholesaleCents: p.wholesaleCents });
   const clash = await db.part.findFirst({ where: { shopId: user.shopId, id: { not: partId }, partNumber: sameText(partNumber) } });
   if (clash) throw new UserError(`${clash.partNumber} is already another item in inventory.`);
   const altNumbers = data.altNumbers.filter((n) => n !== partNumber);
@@ -118,6 +156,8 @@ export const updatePart = safe(async function updatePart(partId: string, formDat
   await db.part.update({ where: { id: partId }, data: { ...data, partNumber, altNumbers, numberKeys: partKeys(partNumber, altNumbers) } }).catch(async (e: unknown) => {
     throw await partNumberClash(e, user.shopId, partNumber);
   });
+  const changes = diff(p, { costCents: data.costCents, priceCents: data.priceCents, wholesaleCents: data.wholesaleCents }, ["costCents", "priceCents", "wholesaleCents"]);
+  if (changes) await audit(db, actorOf(user), { action: "part.price", subjectType: "Part", subjectId: partId, subjectLabel: partNumber, changes });
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/parts");
 });
@@ -144,9 +184,9 @@ export async function moveStock(partId: string, formData: FormData): Promise<Act
       await countStock(user.shopId, partId, n, user.id, note ?? "Shelf count");
     } else {
       if (n <= 0) throw new UserError("Enter how many arrived.");
-      const cost = centsField(formData.get("cost"), "Cost");
+      const cost = costField(formData.get("cost"), "Cost");
       await db.$transaction([
-        db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost != null ? { costCents: cost } : {}) } }),
+        db.part.update({ where: { id: partId }, data: { qtyOnHand: { increment: n }, ...(cost ?? {}) } }),
         db.stockMove.create({ data: { shopId: user.shopId, partId, qty: n, reason: "RECEIVED", userId: user.id, note } }),
       ]);
     }

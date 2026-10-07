@@ -3,8 +3,10 @@
 import { parseTable } from "@/lib/parse-table";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { askMatchColumns } from "@/actions/assistant";
+import { runAction } from "@/components/action-form";
 import { importItems, type ImportRow } from "@/actions/inventory-import";
-import { money, toCents } from "@/lib/format";
+import { money, parseCost, toCents } from "@/lib/format";
 import { EXCEL_NUMBER } from "@/lib/input";
 import { CONDITION_NAME, ORIGIN_NAME, conditionFromText, originFromText } from "@/lib/part-labels";
 
@@ -54,6 +56,12 @@ function cents(v: string): number | null {
   return c != null && c >= 0 ? c : null;
 }
 
+/** The same cost to 4 decimals (ten-thousandths of a dollar), for a supplier price finer than a cent. */
+function tenThou(v: string): number | null {
+  const t = parseCost(v);
+  return t != null && t >= 0 ? t : null;
+}
+
 function guess(headers: string[]): Record<Field, number> {
   const used = new Set<number>();
   const map = {} as Record<Field, number>;
@@ -65,16 +73,39 @@ function guess(headers: string[]): Record<Field, number> {
   return map;
 }
 
-export function ImportItems() {
+/**
+ * `assist`: the Assistant's "Match the columns" can be offered here (module on, switch on); `unavailable` is the plain reason
+ * it can't ask now. Without it the picker works exactly as before.
+ */
+export function ImportItems({ assist }: { assist?: { unavailable?: string } | null }) {
   const [text, setText] = useState("");
   const [map, setMap] = useState<Record<Field, number> | null>(null);
   const [opts, setOpts] = useState({ kind: "NOTION", unit: "", supplier: "", addQty: true, updateExisting: true });
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [matching, setMatching] = useState(false);
+  const [proposed, setProposed] = useState(false);
   const table = useMemo(() => (text.trim() ? parseTable(text) : []), [text]);
   const headers = table[0] ?? [];
   const body = table.slice(1);
   const m = map ?? guess(headers);
+  // The fields an import needs to be useful: an item number (or a barcode), a description, a price and a quantity. Two or more
+  // left unmapped by the word guess is where the Assistant can propose the rest.
+  const unmapped = [m.partNumber < 0 && m.barcode < 0, m.description < 0, m.price < 0, m.qty < 0].filter(Boolean).length;
+  async function matchColumns() {
+    setMatching(true);
+    const r = await runAction(() => askMatchColumns(FIELDS.map((f) => ({ key: f.key, label: f.label })), headers, body.slice(0, 3)));
+    setMatching(false);
+    if (r?.error) return toast.error(r.error);
+    if (!r?.shown) return;
+    const found = (JSON.parse(r.shown) as { map: Partial<Record<Field, number>> }).map;
+    const next = { ...m };
+    // A column the Assistant gives to one field is taken from any other field the word guess had put on it.
+    for (const f of FIELDS) if (found[f.key] === undefined && Object.values(found).includes(next[f.key])) next[f.key] = -1;
+    for (const [k, v] of Object.entries(found)) next[k as Field] = v as number;
+    setMap(next);
+    setProposed(true);
+  }
   const cell = (r: string[], f: Field) => (m[f] >= 0 ? (r[m[f]] ?? "") : "");
   const typedCode = (r: string[]) => cell(r, "barcode").replace(/\s/g, "");
   const rows: ImportRow[] = body.map((r) => {
@@ -86,6 +117,7 @@ export function ImportItems() {
       description: cell(r, "description") || null,
       brand: cell(r, "brand") || null,
       costCents: cents(cell(r, "cost")),
+      costTenThou: tenThou(cell(r, "cost")),
       priceCents: cents(cell(r, "price")),
       qty: cell(r, "qty") === "" ? null : parseQty(cell(r, "qty")),
       location: cell(r, "location") || null,
@@ -138,6 +170,21 @@ export function ImportItems() {
 
       {headers.length > 0 && (
         <>
+          {assist && unmapped >= 2 && (
+            <div className="card card-pad space-y-1 text-sm" data-match-columns>
+              {assist.unavailable ? (
+                <p className="muted">{assist.unavailable}</p>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-sm" disabled={matching} onClick={matchColumns}>
+                    {matching ? "Matching..." : "Match the columns"}
+                  </button>
+                  <p className="muted text-xs">Some columns weren&apos;t recognised by name. This sends the column headings and the first three rows to the Assistant, which proposes a match; you check it in the lists below before anything is imported.</p>
+                </>
+              )}
+            </div>
+          )}
+          {proposed && <p className="card card-pad text-sm" role="status">The Assistant proposed these columns. Check each list below and change any that is wrong.</p>}
           <div className="card card-pad grid-form">
             {FIELDS.map((f) => (
               <div key={f.key} className="field">

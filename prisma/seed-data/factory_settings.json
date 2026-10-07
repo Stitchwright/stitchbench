@@ -2419,7 +2419,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Factory default: foot screwed into presser bar 7 revolutions (about 13-15 threads showing below the jam nut).",
-"modelKeys": [],
+"modelKeys": [
+"JEWEL"
+],
 "id": "07a2d3691f64b0244c7e"
 },
 {
@@ -2449,7 +2451,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"JEWEL"
+],
 "id": "29d88b132053691a3180"
 },
 {
@@ -2479,7 +2483,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"JEWEL"
+],
 "id": "20771a60bfcc20b2213b"
 },
 {
@@ -2509,7 +2515,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"JEWEL"
+],
 "id": "aecd170e7ddfc1a1eb18"
 },
 {
@@ -3330,7 +3338,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Assembly check when fitting the thread cutter module.",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "f78be27e44550c976873"
 },
 {
@@ -3360,7 +3371,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Sewing/embroidery combo.",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "8a9934e758c279df87c2"
 },
 {
@@ -3390,7 +3404,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "afccd062eb9b0043b564"
 },
 {
@@ -3420,7 +3437,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "534c5368efea26c0200d"
 },
 {
@@ -3450,7 +3470,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "d19a1941fc14457c0af7"
 },
 {
@@ -3480,7 +3503,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "9d72fd340343ecbaea51"
 },
 {
@@ -3510,7 +3536,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "e09df4c6c645f9cf1bab"
 },
 {
@@ -3540,7 +3569,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "64cbf24474bf79499373"
 },
 {
@@ -3570,7 +3602,10 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Setup condition for the BH lever switch adjustment.",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "cf588f65cb0835ba161f"
 },
 {
@@ -3600,7 +3635,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMO",
+"BLSO"
+],
 "id": "a9d8be737044ef4a7840"
 },
 {
@@ -8493,7 +8531,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Sewing/embroidery combo.; Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "cae828a95d14be9a5788"
 },
 {
@@ -8662,7 +8702,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "ad19ab9007660e8da7d8"
 },
 {
@@ -8831,7 +8873,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "a4675b23c71b335929d4"
 },
 {
@@ -9000,7 +9044,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "0995bb89fb8e7adf222a"
 },
 {
@@ -9174,7 +9220,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "1b8016dad9903019a468"
 },
 {
@@ -9348,7 +9396,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Adjust feed dog height/alignment.; Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "97754bd39528dd6da2ae"
 },
 {
@@ -9517,7 +9567,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "54ffffa3568f6d802d60"
 },
 {
@@ -9686,7 +9738,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "275165c14901e87c4486"
 },
 {
@@ -9855,7 +9909,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_NV4000D+NV4500D_ServiceManual.pdf; Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLL-Ellageo_ServiceManual_2005.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV1500D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV2500D+NV2800D_ServiceManual.pdf; Sewing\\Brother\\ServiceManuals\\Brother_QC1000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"BLLELLAGEO"
+],
 "id": "b4bf8676954ae0f3dea5"
 },
 {
@@ -9967,7 +10023,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Sewing/embroidery combo.",
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "5f8b5552e8250094911e"
 },
 {
@@ -9997,7 +10056,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "ef45f2d3bf512a563206"
 },
 {
@@ -10027,7 +10089,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "662d82f4a5dafcf466ae"
 },
 {
@@ -10057,7 +10122,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "42a0b10fc94ddad21e63"
 },
 {
@@ -10087,7 +10155,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "883ad40cf7f10deef74b"
 },
 {
@@ -10117,7 +10188,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Adjust feed dog height/alignment.",
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "729f2da27e0f070f7c3a"
 },
 {
@@ -10147,7 +10221,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "49b15ac876f92f15caca"
 },
 {
@@ -10177,7 +10254,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "fca1811d0fdf77fbe9d3"
 },
 {
@@ -10207,7 +10287,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELLEGANTE",
+"BLG"
+],
 "id": "b6dd912c718dad2ccdba"
 },
 {
@@ -10692,7 +10775,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Assembly check when fitting the thread cutter module.; Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "33bece9ee004ad342cd1"
 },
 {
@@ -10781,7 +10867,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Sewing/embroidery combo.; Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "677bdfd85cccdbf2cb55"
 },
 {
@@ -10870,7 +10959,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "7c909ea03b202cdacd6f"
 },
 {
@@ -10959,7 +11051,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "74ad40e69611921fbceb"
 },
 {
@@ -11048,7 +11143,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "514da0452661ad690fb8"
 },
 {
@@ -11137,7 +11235,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "3c520967698d5de4083f"
 },
 {
@@ -11226,7 +11327,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "34e4b7fe271a65fa1252"
 },
 {
@@ -11315,7 +11419,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "3667f0b490b2348e88d5"
 },
 {
@@ -11404,7 +11511,10 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Setup condition for the BH lever switch adjustment. (BLSO manual gives 0.5 mm.); Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "acd2efe3c8b52383041d"
 },
 {
@@ -11493,7 +11603,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Baby-Lock\\ServiceManuals\\BabyLock_BLSOG2-EllisimoGold2_ServiceManual_2013.pdf; Sewing\\Brother\\ServiceManuals\\Brother_NV6000D_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELLISIMOGOLD",
+"BLSOG"
+],
 "id": "d27d985dc44fa3073cf5"
 },
 {
@@ -11582,7 +11695,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESP"
+],
 "id": "74ceb9455421dc6daf24"
 },
 {
@@ -11644,7 +11759,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESP"
+],
 "id": "a17b24fa6a4dc5574d3d"
 },
 {
@@ -11706,7 +11823,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit not printed; mm per the equivalent Brother CS8072 manual.; Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESP"
+],
 "id": "f8ca947c6d224a454f68"
 },
 {
@@ -11768,7 +11887,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESP"
+],
 "id": "6e29fe4a536465e66c83"
 },
 {
@@ -11830,7 +11951,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as: Sewing\\Brother\\ServiceManuals\\Brother_PC6000_ServiceManual.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ESP"
+],
 "id": "d448b992b497ee09adb0"
 },
 {
@@ -15926,10 +16049,10 @@
 "confidence": "high",
 "notes": "approx; verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "e7773b1e6138fc616714"
 },
@@ -15956,10 +16079,10 @@
 "confidence": "high",
 "notes": "verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "a8f65025bde007313426"
 },
@@ -15986,10 +16109,10 @@
 "confidence": "high",
 "notes": "Needle-to-driver spacing must equal needle-to-shuttle-tip spacing; verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "378c41949a0ae50ea77a"
 },
@@ -16016,10 +16139,10 @@
 "confidence": "high",
 "notes": "verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "716a7192af3e4b60724c"
 },
@@ -16075,10 +16198,10 @@
 "confidence": "medium",
 "notes": "0 mm offset (flush). OCR value not image-checked.",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "90d782fee862c0c4f9a8"
 },
@@ -16105,10 +16228,10 @@
 "confidence": "high",
 "notes": "verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "3b1764e56aa3b025472f"
 },
@@ -16135,10 +16258,10 @@
 "confidence": "high",
 "notes": "approx; verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "12659198803aa4eeee65"
 },
@@ -16165,10 +16288,10 @@
 "confidence": "medium",
 "notes": "Qualitative standard; no separate correction. OCR value not image-checked.",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "ae834bef4275928de1da"
 },
@@ -16195,10 +16318,10 @@
 "confidence": "high",
 "notes": "Unit = feed dog teeth; verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "7109aa8b8ac4b5471b30"
 },
@@ -16225,10 +16348,10 @@
 "confidence": "high",
 "notes": "verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "8f30865094d5932c590b"
 },
@@ -16255,10 +16378,10 @@
 "confidence": "high",
 "notes": "verified on page image",
 "modelKeys": [
-"800818",
 "800818SERIES",
 "807",
-"817"
+"817",
+"VARIANTS"
 ],
 "id": "e1f53c24ccc1fe1ec11b"
 },
@@ -52621,7 +52744,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SUPERMATIC",
+"TRANSFORMA"
+],
 "id": "c919a3cf9ca2c45b7660"
 },
 {
@@ -52651,7 +52777,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx; gauge check implies at least 0.8 and under 1.0 mm",
-"modelKeys": [],
+"modelKeys": [
+"SUPERMATIC",
+"TRANSFORMA"
+],
 "id": "47f83104dfac8ed45ad8"
 },
 {
@@ -55694,7 +55823,6 @@
 "notes": "set to 3.4 mm",
 "modelKeys": [
 "8200",
-"ALSOFILEDASJANOMEMC350E",
 "MC350E"
 ],
 "id": "7ed6ede5dcfa7c0ffa95"
@@ -55755,7 +55883,6 @@
 "notes": null,
 "modelKeys": [
 "8200",
-"ALSOFILEDASJANOMEMC350E",
 "MC350E"
 ],
 "id": "116e81d577af2a598fc4"
@@ -55816,7 +55943,6 @@
 "notes": null,
 "modelKeys": [
 "8200",
-"ALSOFILEDASJANOMEMC350E",
 "MC350E"
 ],
 "id": "1545ef1726b134fddf53"
@@ -55877,7 +56003,6 @@
 "notes": null,
 "modelKeys": [
 "8200",
-"ALSOFILEDASJANOMEMC350E",
 "MC350E"
 ],
 "id": "921cb20b3ed409bde714"
@@ -55938,7 +56063,6 @@
 "notes": "adjust upper shaft shield/sensor",
 "modelKeys": [
 "8200",
-"ALSOFILEDASJANOMEMC350E",
 "MC350E"
 ],
 "id": "7d4a7ff84aaae5aa9ae3"
@@ -55999,7 +56123,6 @@
 "notes": null,
 "modelKeys": [
 "8200",
-"ALSOFILEDASJANOMEMC350E",
 "MC350E"
 ],
 "id": "9bd17483ec06102f7616"
@@ -59672,7 +59795,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "set to 6.0 mm",
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "e8a5aaabbfaa8de44f15"
 },
 {
@@ -59702,7 +59827,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "8e9f7f951d9f20f8eb02"
 },
 {
@@ -59732,7 +59859,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "set to 1.6 mm",
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "3d17258a504d190c0e7d"
 },
 {
@@ -59762,7 +59891,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "text says left side of needle from left lowest position; procedure and figure use right side",
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "2af7b56d054c9121704e"
 },
 {
@@ -59792,7 +59923,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "minus sign garbled in text layer",
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "4dda8acdb4a1377fd95f"
 },
 {
@@ -59822,7 +59955,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "55b84973e4798dc06316"
 },
 {
@@ -59852,7 +59987,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "75691f346695a1f3a011"
 },
 {
@@ -59882,7 +60019,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "21814fcba3b267537c37"
 },
 {
@@ -59912,7 +60051,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "5a41f9e9e3d954554c74"
 },
 {
@@ -59942,7 +60083,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"STAREDITION"
+],
 "id": "06f27e7bb559d3006240"
 },
 {
@@ -60530,7 +60673,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -60663,7 +60805,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -60796,7 +60937,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -60929,7 +61069,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -61062,7 +61201,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -61195,7 +61333,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -61328,7 +61465,6 @@
 "notes": "text says foot raised, procedure step 1 says lower the presser foot",
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -61461,7 +61597,6 @@
 "notes": null,
 "modelKeys": [
 "520",
-"ALSOFILEDASJANOMEDC2012",
 "DC2012",
 "DC2013",
 "DC2014",
@@ -63906,7 +64041,6 @@
 "confidence": "high",
 "notes": "foot parallel to feed dog slots",
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -63973,7 +64107,6 @@
 "confidence": "high",
 "notes": "adjust rotary sensor collar",
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64035,7 +64168,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64097,7 +64229,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64164,7 +64295,6 @@
 "confidence": "high",
 "notes": "set with needle bar supporter",
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64231,7 +64361,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64298,7 +64427,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64365,7 +64493,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64432,7 +64559,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64499,7 +64625,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"30",
 "30S",
 "SPARROW30"
 ],
@@ -64565,7 +64690,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "7bca3f5d62a6cbbe3791"
 },
 {
@@ -64595,7 +64722,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "must not touch (X > 0)",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "2e4aca6c185632957e24"
 },
 {
@@ -64625,7 +64754,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "set to 1.3 mm by turning handwheel with hook race held (timing)",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "ec269619e8dfd007ab4f"
 },
 {
@@ -64655,7 +64786,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "40aef41d740f20d88fa3"
 },
 {
@@ -64685,7 +64818,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "lower shaft pulley mark faces front at needle lowest point",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "95a674838a12293c7070"
 },
 {
@@ -64715,7 +64850,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "dfc725cef08007e4a601"
 },
 {
@@ -64745,7 +64882,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "11d6e88ce710fcea103e"
 },
 {
@@ -64775,7 +64914,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "cc859690d94f3264d7b2"
 },
 {
@@ -64805,7 +64946,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWQE"
+],
 "id": "8e9a26abe01b7f8ac9e8"
 },
 {
@@ -64835,7 +64978,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "9bc97c831d6d0e50be6c"
 },
 {
@@ -64865,7 +65010,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "gauge table lists 6.0-6.2 mm; procedure says 6.0-6.5 mm",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "ed31ec5c36210754e791"
 },
 {
@@ -64895,7 +65042,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "f6f31fb7439a56d46e56"
 },
 {
@@ -64925,7 +65074,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "4a048b0cf94e450ddb77"
 },
 {
@@ -64955,7 +65106,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "out of range = hook timing too fast/slow",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "8c594bff04a5dfeb951a"
 },
 {
@@ -64985,7 +65138,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "set with needle bar supporter pin",
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "558124563b040b981ec3"
 },
 {
@@ -65015,7 +65170,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "866107ba96dc69c010c4"
 },
 {
@@ -65045,7 +65202,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "a5024a9e38af8fd4c234"
 },
 {
@@ -65075,7 +65234,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "77fd03abab30f7debc7c"
 },
 {
@@ -65105,7 +65266,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "3a217c4621a07339f4ff"
 },
 {
@@ -65135,7 +65298,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SPARROWX"
+],
 "id": "1756cecb1e034a66392a"
 },
 {
@@ -65166,8 +65331,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "d23cbdea6ef7ca6b0c8c"
 },
@@ -65198,7 +65362,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "c8264e776bb1a8b57ea7"
 },
 {
@@ -65229,8 +65395,7 @@
 "confidence": "high",
 "notes": "needle should always be pushed away from the hook",
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "5b029fa981bfb08f0108"
 },
@@ -65261,7 +65426,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "needle should always be pushed away from the hook",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "9d7f6bee750db2baac79"
 },
 {
@@ -65292,8 +65459,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "eb8b13a7fef159874acc"
 },
@@ -65324,7 +65490,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "e88eb359dc38d93d4eec"
 },
 {
@@ -65355,8 +65523,7 @@
 "confidence": "high",
 "notes": "affects needle height and hook timing",
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "6c1f74a907b7e24bb399"
 },
@@ -65387,7 +65554,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "affects needle height and hook timing",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "0a63952c9649ff22a549"
 },
 {
@@ -65418,8 +65587,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "f1fe584bb30d0ac1acb2"
 },
@@ -65450,7 +65618,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "56435a8412e68cab2028"
 },
 {
@@ -65481,8 +65651,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "5c3325222152750305f0"
 },
@@ -65513,7 +65682,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "d4aa014f15c38727023c"
 },
 {
@@ -65544,8 +65715,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "23758b8a6da45ab1f8ad"
 },
@@ -65576,7 +65746,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "3a442a170f0afcc7c71e"
 },
 {
@@ -65607,8 +65779,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "3d8895432f6539b6099c"
 },
@@ -65639,7 +65810,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "69bc50f6abf97654821a"
 },
 {
@@ -65670,8 +65843,7 @@
 "confidence": "high",
 "notes": "approx; adjustment step on the detail page says approx. 13 mm",
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "a4fceef2cf41a60c4183"
 },
@@ -65702,7 +65874,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx; adjustment step on the detail page says approx. 13 mm",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "77b15036db3c2c353394"
 },
 {
@@ -65728,8 +65902,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "f1767ae25ed403a71579"
 },
@@ -65755,7 +65928,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "3750b31b2a52e00a78c4"
 },
 {
@@ -65786,8 +65961,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "c727fb30eea297565606"
 },
@@ -65818,7 +65992,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "5c0b392b49764e1a0ba6"
 },
 {
@@ -65849,8 +66025,7 @@
 "confidence": "high",
 "notes": "feed dog must not touch needle plate in Left/Right positions",
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "908e79c87d31b3a272cc"
 },
@@ -65876,7 +66051,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "feed dog must not touch needle plate in Left/Right positions",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "e9a29cbf259d23113034"
 },
 {
@@ -65907,8 +66084,7 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"200909",
-"ALSOFILEDAS200909EDITION"
+"DESIGNERDIAMOND"
 ],
 "id": "e92e345e8acec104b7a5"
 },
@@ -65939,7 +66115,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERDIAMOND"
+],
 "id": "84089c86dd33f81f308b"
 },
 {
@@ -65969,7 +66147,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "4ac0b3d70ebeec41c2fa"
 },
 {
@@ -65999,7 +66179,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "needle should always be pushed away from the hook",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "f791c4f611b4bd66f591"
 },
 {
@@ -66029,7 +66211,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "36710de5f8baecfbc3d2"
 },
 {
@@ -66059,7 +66243,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "affects needle height and hook timing",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "545a6ee9d6e8269d364e"
 },
 {
@@ -66089,7 +66275,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "3168342242dbc08103b1"
 },
 {
@@ -66119,7 +66307,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "4d6ae9c8a07579db1882"
 },
 {
@@ -66149,7 +66339,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "fecdb3ff59f867f72d75"
 },
 {
@@ -66179,7 +66371,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "885fa75ab6260c4f89ce"
 },
 {
@@ -66209,7 +66403,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "4abdd1e20ea2aeab0eb7"
 },
 {
@@ -66234,7 +66430,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "27035d7c342c48edb568"
 },
 {
@@ -66264,7 +66462,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "ccfda02887233023dc91"
 },
 {
@@ -66294,7 +66494,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "feed dog must not touch needle plate in Left/Right positions",
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "123e2c3892190a41cab0"
 },
 {
@@ -66324,7 +66526,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DESIGNERRUBYROYALE"
+],
 "id": "0bd9efeb37cbfeb7a2b5"
 },
 {
@@ -66801,7 +67005,6 @@
 "notes": "approx; adjust worm wheel on lower shaft; verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -66831,7 +67034,6 @@
 "notes": "verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -66861,7 +67063,6 @@
 "notes": "verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -66891,7 +67092,6 @@
 "notes": "verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -66921,7 +67121,6 @@
 "notes": "verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -66951,7 +67150,6 @@
 "notes": "tolerance superscripts small on scan; verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -66981,7 +67179,6 @@
 "notes": "approx; verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -67011,7 +67208,6 @@
 "notes": "verified on page image",
 "modelKeys": [
 "2000",
-"2003",
 "2003MANUAL",
 "SERIES2000"
 ],
@@ -67048,7 +67244,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "4eed26bad745d9fac8fb"
 },
@@ -67083,7 +67280,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "2e57f1209ff83d133bf3"
 },
@@ -67118,7 +67316,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "a1e1c73205bafa77fcb8"
 },
@@ -67148,7 +67347,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "45c6493bc08876e5e922"
 },
@@ -67183,7 +67383,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "9a368f803dfa17980754"
 },
@@ -67254,7 +67455,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "220e55bcc8c23f131e11"
 },
@@ -67323,7 +67525,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "1c26cc57bf7f759447be"
 },
@@ -67353,7 +67556,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "f36ee7855747b0ad5ea7"
 },
@@ -67383,7 +67587,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "15682620a510a19283ec"
 },
@@ -67413,7 +67618,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "74d8943481eda0a60a3a"
 },
@@ -67443,7 +67649,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "74785856152c775f492f"
 },
@@ -67504,7 +67711,8 @@
 "6000",
 "6000SERIES",
 "6000SERIES6570",
-"6570"
+"TECHNICALBRIEFING",
+"OTHERVIKINGMODELS"
 ],
 "id": "4e858ab6b6761201d7e8"
 },
@@ -69086,7 +69294,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69121,7 +69328,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69156,7 +69362,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69191,7 +69396,6 @@
 "confidence": "medium",
 "notes": "manual says this is hard to estimate; use the right-hand position check instead",
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69226,7 +69430,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69261,7 +69464,6 @@
 "confidence": "high",
 "notes": "approx; not adjustable",
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69296,7 +69498,6 @@
 "confidence": "high",
 "notes": "approx",
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -69331,7 +69532,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"7000",
 "7000SERIES",
 "945990",
 "PRISMA945990"
@@ -112482,7 +112682,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "059b28389f33901fec93"
 },
 {
@@ -112544,7 +112746,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Alternative procedure 2",
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "28f0043f2cc120fd013a"
 },
 {
@@ -112606,7 +112810,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "82b338d727f8bfd7f41d"
 },
 {
@@ -112668,7 +112874,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "cd88fcb8246c47fb4792"
 },
 {
@@ -112730,7 +112938,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "68c2a13afb6862731378"
 },
 {
@@ -112792,7 +113002,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "0d837afa88c7c4e9d600"
 },
 {
@@ -112854,7 +113066,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "2bd3dc457852179c6b3e"
 },
 {
@@ -112916,7 +113130,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "67f4b5adc600dbc42cc7"
 },
 {
@@ -112978,7 +113194,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "85cb5546924abd32d24d"
 },
 {
@@ -113040,7 +113258,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "5a81c06c1e8e9a6d2e99"
 },
 {
@@ -113102,7 +113322,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Reference points only shown in figure",
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "45a6429f106443568714"
 },
 {
@@ -113164,7 +113386,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Reference points only shown in figure",
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "f49eeeafa2a8598d1a38"
 },
 {
@@ -113226,7 +113450,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "dce2345b760d62da9fa9"
 },
 {
@@ -113293,7 +113519,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "2149fc021c099b959411"
 },
 {
@@ -113355,7 +113583,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "1180a6d0c689192cf967"
 },
 {
@@ -113422,7 +113652,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "8195a7281269a47b484f"
 },
 {
@@ -113484,7 +113716,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "dd920cd5bf291589af46"
 },
 {
@@ -113546,7 +113780,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "b3d01137867089429c05"
 },
 {
@@ -113608,7 +113844,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HZLG"
+],
 "id": "0a5ed17e29d69c02bded"
 },
 {
@@ -127695,7 +127933,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127730,7 +127967,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872; spec sheet p3 lists presser foot height 4.5 mm",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127765,7 +128001,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127800,7 +128035,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127835,7 +128069,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127870,7 +128103,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127905,7 +128137,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127940,7 +128171,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -127975,7 +128205,6 @@
 "notes": "Gauge dimension; procedure in service manual 4872",
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -128010,7 +128239,6 @@
 "notes": null,
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -128045,7 +128273,6 @@
 "notes": null,
 "modelKeys": [
 "4852",
-"4872",
 "BASEDONSERVICEMANUAL4872",
 "COVERLOCK4852"
 ],
@@ -132568,10 +132795,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "02180dc3594af3e8bb07"
 },
@@ -132627,10 +132852,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "a853dac4fab6cd27c4c2"
 },
@@ -132686,10 +132909,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "f706ad21c04febfb76c8"
 },
@@ -132745,10 +132966,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "8481ae78fd3dad435c8d"
 },
@@ -132804,10 +133023,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "2a40780646bc56360207"
 },
@@ -132863,10 +133080,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "47e5caee6b7c00a014ce"
 },
@@ -132922,10 +133137,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "490f8914fda92d7b28ea"
 },
@@ -132981,10 +133194,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "fba7b80d4db95cc23889"
 },
@@ -133040,10 +133251,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "09a8d8c5185eee433fba"
 },
@@ -133099,10 +133308,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "2144af9d7c07889dea56"
 },
@@ -133158,10 +133365,8 @@
 "modelKeys": [
 "1030",
 "1036",
-"2000",
 "900",
-"920",
-"ALSOFILEDASATHENA2000"
+"920"
 ],
 "id": "1afcec1ccf5aa36e65e7"
 },
@@ -138911,7 +139116,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Printed in inches (3/32 in = 2.4 mm). Adjust needle bar to the 3/32 in setting. Third-party repair book (Sincere's), generic guidance, not a factory spec.",
-"modelKeys": [],
+"modelKeys": [
+"DIALNSEW"
+],
 "id": "8b38efe00893b29b7cdc"
 },
 {
@@ -139719,7 +139926,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Printed in inches (1/32 in = 0.8 mm). Third-party repair book (Sincere's), generic guidance, not a factory spec. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"SUPERMATIC"
+],
 "id": "778b3cd7da1578266a79"
 },
 {
@@ -139744,7 +139953,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Third-party repair book (Sincere's), generic guidance, not a factory spec. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"SUPERMATIC"
+],
 "id": "f6009d72c4f00b72da78"
 },
 {
@@ -139769,7 +139980,9 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Figure dimension reads 75 mm; text says less than 3 in. Third-party repair book (Sincere's), generic guidance, not a factory spec. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"SUPERMATIC"
+],
 "id": "2abf7bd034ec1b4b0bb4"
 },
 {
@@ -139799,7 +140012,9 @@
 "docType": "Bulletin/Training",
 "confidence": "low",
 "notes": "Printed 5/32 in with metric 3.6 (5/32 in is actually 4.0 mm). Third-party repair book (Sincere's), generic guidance, not a factory spec. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"SERIESR"
+],
 "id": "8b4dc7d807bcff904eec"
 },
 {
@@ -139829,7 +140044,9 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Printed 3/32 in (2.5 mm). Third-party repair book (Sincere's), generic guidance, not a factory spec. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"SERIESR"
+],
 "id": "a1c7e801ec92c7b150fb"
 },
 {
@@ -139859,7 +140076,9 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Printed in inches (3/32 in = 2.4 mm). Third-party repair book (Sincere's), generic guidance, not a factory spec.",
-"modelKeys": [],
+"modelKeys": [
+"SERIESR"
+],
 "id": "f578a5fd7c7a470677c2"
 },
 {
@@ -139889,7 +140108,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Printed in inches (1/32 in = 0.8 mm). Third-party repair book (Sincere's), generic guidance, not a factory spec.",
-"modelKeys": [],
+"modelKeys": [
+"SERIESR"
+],
 "id": "c736c071ec64d9391024"
 },
 {
@@ -139919,7 +140140,9 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Printed in inches (1/32 in = 0.8 mm). Text calls it an arbitrary setting that may vary on some models. Third-party repair book (Sincere's), generic guidance, not a factory spec.",
-"modelKeys": [],
+"modelKeys": [
+"SERIESR"
+],
 "id": "bc91e53f0e4e8c217a3b"
 },
 {
@@ -139949,7 +140172,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Printed in inches (1/4 in = 6.4 mm). Third-party repair book (Sincere's), generic guidance, not a factory spec.",
-"modelKeys": [],
+"modelKeys": [
+"SERIESR"
+],
 "id": "a1382f348cf196574804"
 },
 {
@@ -141433,7 +141658,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Figure value. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "cfd62a6d9440a496efb6"
 },
 {
@@ -141463,7 +141690,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Figure value. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "2893c483179eab0d95cf"
 },
 {
@@ -141493,7 +141722,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Figure value. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "9e8a01a5623f00d815c6"
 },
 {
@@ -141523,7 +141754,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Figure value. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "4c11f42a5b35fe49b471"
 },
 {
@@ -141553,7 +141786,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Figure value. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "47050910b8871328d3d9"
 },
 {
@@ -141583,7 +141818,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Figure value. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "076172727a4fa8f4e50b"
 },
 {
@@ -141613,7 +141850,9 @@
 "docType": "Service/Technical manual",
 "confidence": "low",
 "notes": "Figure value; which guard is meant is not labelled. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "bbcd134d7f9021d0c099"
 },
 {
@@ -141643,7 +141882,9 @@
 "docType": "Service/Technical manual",
 "confidence": "low",
 "notes": "Figure value; back guard also shown touching (0). Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "ae0a796e81260c9a87b6"
 },
 {
@@ -141673,7 +141914,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Figure: 0.9 +0.1/0. Verified on page image.",
-"modelKeys": [],
+"modelKeys": [
+"BLCS"
+],
 "id": "5df6e1b28d25c372bdfd"
 },
 {
@@ -145790,7 +146033,10 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Section 'Needle Depth - ZN/ZQ Sewing Heads'. Also filed as Barudan_ZQ+ZN-Heads_Bulletin_NeedleDepth.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ELITEXL",
+"ELITEPRO"
+],
 "id": "4d647ff203b92a0acb44"
 },
 {
@@ -145815,7 +146061,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Section 'Needle Depth - ZN/ZQ Sewing Heads'. Also filed as Barudan_ZQ+ZN-Heads_Bulletin_NeedleDepth.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ZNHEADS"
+],
 "id": "e121b89fa8f7084a50c8"
 },
 {
@@ -145845,7 +146093,10 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ELITEXL",
+"ELITEPRO"
+],
 "id": "9babdab2958d80fb3543"
 },
 {
@@ -145870,7 +146121,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ZNHEADS"
+],
 "id": "b61e479224d4818b0ec9"
 },
 {
@@ -145900,7 +146153,10 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "No mm value printed",
-"modelKeys": [],
+"modelKeys": [
+"ELITEXL",
+"ELITEPRO"
+],
 "id": "04e1fe371a5ab459ef3f"
 },
 {
@@ -145925,7 +146181,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "No mm value printed",
-"modelKeys": [],
+"modelKeys": [
+"ZNHEADS"
+],
 "id": "3e083cf4b884e71a715a"
 },
 {
@@ -145950,7 +146208,10 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Visual standard, no mm value",
-"modelKeys": [],
+"modelKeys": [
+"ELITEXL",
+"ELITEPRO"
+],
 "id": "bdaff7100ed468e001fe"
 },
 {
@@ -145975,7 +146236,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": "Visual standard, no mm value",
-"modelKeys": [],
+"modelKeys": [
+"ZNHEADS"
+],
 "id": "96140e54295eb5e995db"
 },
 {
@@ -146005,7 +146268,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Controller parameter default, not a mechanical adjustment; needle clears throat plate at ~60 deg",
-"modelKeys": [],
+"modelKeys": [
+"BEKS"
+],
 "id": "1da5fdb707962d0e4993"
 },
 {
@@ -146035,7 +146300,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Controller parameter default, not a mechanical adjustment; needle clears throat plate at ~60 deg. Applique presser-foot stop parameter on same page: default 80 deg (60-120)",
-"modelKeys": [],
+"modelKeys": [
+"BEKT"
+],
 "id": "4587c42661bbf15a25bc"
 },
 {
@@ -146928,7 +147195,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"BEXS"
+],
 "id": "159b9452e85149a0f676"
 },
 {
@@ -146958,7 +147227,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"BEXS"
+],
 "id": "eba83a841a4269356aa4"
 },
 {
@@ -146983,7 +147254,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "verified on page image; no mm value",
-"modelKeys": [],
+"modelKeys": [
+"BEXS"
+],
 "id": "5ffb8de3b0f9e4ddb536"
 },
 {
@@ -147013,7 +147286,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "1 mm from figure label",
-"modelKeys": [],
+"modelKeys": [
+"BEXS"
+],
 "id": "10cec6a79c10605ca9b9"
 },
 {
@@ -147376,7 +147651,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "52bf7b03ef944062bf40"
 },
 {
@@ -147406,7 +147683,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "55524177eb5026551b9c"
 },
 {
@@ -147431,7 +147710,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "As close as possible without bending needle; 0.5 mm if needle #9 bends",
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "6d924a7bcee03e783726"
 },
 {
@@ -147461,7 +147742,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Visual standard, no mm value",
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "cb736984a9fce86f7069"
 },
 {
@@ -147491,7 +147774,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Qualitative; no mm value",
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "386561bcc84150389e25"
 },
 {
@@ -147521,7 +147806,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "46fc0898dc9be05cd023"
 },
 {
@@ -147551,7 +147838,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "ade856b94388027100e3"
 },
 {
@@ -147581,7 +147870,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "74b7223493dbdca9ac51"
 },
 {
@@ -147611,7 +147902,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"YNE"
+],
 "id": "d2a70be5eed9356754aa"
 },
 {
@@ -147642,8 +147935,9 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "c106b24737a3c462ab44"
 },
@@ -147669,7 +147963,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "79106d7aa346de34f2c6"
 },
 {
@@ -147700,8 +147996,9 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "657ef6f5e8f52c9df272"
 },
@@ -147727,7 +148024,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "888bbd5cd9d0862d642e"
 },
 {
@@ -147753,8 +148052,9 @@
 "confidence": "medium",
 "notes": "As close as possible without bending needle; 0.5 mm if needle #7 bends",
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "7b3bb15f0232aed25e24"
 },
@@ -147780,7 +148080,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "As close as possible without bending needle; 0.5 mm if needle #7 bends",
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "b3001cac46669856b0cb"
 },
 {
@@ -147811,8 +148113,9 @@
 "confidence": "high",
 "notes": "Visual standard, no mm value",
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "fd8574a5d0431e9d6fe9"
 },
@@ -147838,7 +148141,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Visual standard, no mm value",
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "60b43a4d2352d881e8bc"
 },
 {
@@ -147869,8 +148174,9 @@
 "confidence": "high",
 "notes": "Qualitative; no mm value",
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "19e709067e8b2f12e57a"
 },
@@ -147896,7 +148202,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Qualitative; no mm value",
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "50e4f9eca65881c74b05"
 },
 {
@@ -147927,8 +148235,9 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "c843b7ee30abc43fbd5a"
 },
@@ -147954,7 +148263,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "1aa7bf9be3271b37d380"
 },
 {
@@ -147985,8 +148296,9 @@
 "confidence": "high",
 "notes": "approx",
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "2416cebd688b05649b41"
 },
@@ -148012,7 +148324,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "d35326af37163f6248b0"
 },
 {
@@ -148043,8 +148357,9 @@
 "confidence": "medium",
 "notes": "Printed as '.033 mm'; gangshaft must rotate smoothly with no bottom-shaft end play",
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "d72f174f7574fb466cc8"
 },
@@ -148070,7 +148385,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Printed as '.033 mm'; gangshaft must rotate smoothly with no bottom-shaft end play",
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "a34542290e6f66190179"
 },
 {
@@ -148101,8 +148418,9 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOFILEDASUGHEADTL02002",
-"TL02002"
+"TL02002",
+"YSE",
+"YSA"
 ],
 "id": "e5ab9e662940b495b4ae"
 },
@@ -148128,7 +148446,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"UGHEAD"
+],
 "id": "11e73427e21d07967aca"
 },
 {
@@ -148358,7 +148678,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ZNA",
+"ZQA"
+],
 "id": "e689ccab59d4a332c427"
 },
 {
@@ -148383,7 +148706,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ZQHEAD"
+],
 "id": "f07bec42d8eaa557dd36"
 },
 {
@@ -148413,7 +148738,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as Barudan_ZQ-Head_TechnicalManual_HookTiming_1999.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ZNA",
+"ZQA"
+],
 "id": "b05726c6df4f00f8f012"
 },
 {
@@ -148443,7 +148771,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Also filed as Barudan_ZQ-Head_TechnicalManual_HookTiming_1999.pdf",
-"modelKeys": [],
+"modelKeys": [
+"ZQHEAD"
+],
 "id": "94fd1968bbb1d8daa41f"
 },
 {
@@ -148473,7 +148803,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"ZNA",
+"ZQA"
+],
 "id": "0f9cc0ad6a76625a6a0c"
 },
 {
@@ -148503,7 +148836,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"ZQHEAD"
+],
 "id": "2f30d4d5866327dbe29d"
 },
 {
@@ -148528,7 +148863,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Visual standard, no mm value",
-"modelKeys": [],
+"modelKeys": [
+"ZNA",
+"ZQA"
+],
 "id": "96becc8a47e81a3e53be"
 },
 {
@@ -148553,7 +148891,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Visual standard, no mm value",
-"modelKeys": [],
+"modelKeys": [
+"ZQHEAD"
+],
 "id": "8c795234ed7dc31d5299"
 },
 {
@@ -148578,7 +148918,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Qualitative; no mm value",
-"modelKeys": [],
+"modelKeys": [
+"ZNA",
+"ZQA"
+],
 "id": "ca5b5eb508c3f233de71"
 },
 {
@@ -148603,7 +148946,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Qualitative; no mm value",
-"modelKeys": [],
+"modelKeys": [
+"ZQHEAD"
+],
 "id": "e1712b6e36de21f48e64"
 },
 {
@@ -155414,7 +155759,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155478,7 +155822,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155542,7 +155885,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155611,7 +155953,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155675,7 +156016,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155739,7 +156079,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155803,7 +156142,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155867,7 +156205,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page); 'needle hole' here = needle eye",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155931,7 +156268,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -155995,7 +156331,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156059,7 +156394,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156123,7 +156457,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page); approx",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156187,7 +156520,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156251,7 +156583,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page); table says 4.3 mm, figure says 3.9 mm (verified on page image)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156315,7 +156646,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156379,7 +156709,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page); step text and table disagree (0.45-1.05 vs 0.95-1.05); table value used",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156443,7 +156772,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156507,7 +156835,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156571,7 +156898,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156635,7 +156961,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page)",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156699,7 +157024,6 @@
 "notes": "Same value in PR600II chapter (first page) and PR620/BMP8 chapter (second page); frame origin, qualitative",
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156763,7 +157087,6 @@
 "notes": null,
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -156827,7 +157150,6 @@
 "notes": null,
 "modelKeys": [
 "2003",
-"ALSOFILEDASPR6002003",
 "BMP8",
 "PR600",
 "PR600II",
@@ -157891,7 +158213,11 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"TEMPLATE",
+"TOUCHPANELE",
+"AUTOMATICPATTERNSEWING"
+],
 "id": "7374011853d389c2c043"
 },
 {
@@ -157983,7 +158309,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Timing table on p212 of the same manual says 23 deg",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "6f4df4584df9c10b4c62"
 },
 {
@@ -158041,7 +158369,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "verified on page image; procedure on p74 says 25 deg",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "8d04970cf42c81694c0d"
 },
 {
@@ -158099,7 +158429,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "35bd5f585b86d81ba299"
 },
 {
@@ -158157,7 +158489,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "c7ad7e95cca7deb8290a"
 },
 {
@@ -158210,7 +158544,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Value is the shaft angle for the gauge check",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "393c9b971ddd8b90a0d5"
 },
 {
@@ -158268,7 +158604,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "approx; orientation of needle stop on needle bar",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "411f89365c6bc3ce56e0"
 },
 {
@@ -158326,7 +158664,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "d9ea202f0a62966056f6"
 },
 {
@@ -158379,7 +158719,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "dd4dfd320708f050efe6"
 },
 {
@@ -158437,7 +158779,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "4afe5ad185441bdebb31"
 },
 {
@@ -158495,7 +158839,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "ea01dccee4572ab7e024"
 },
 {
@@ -158548,7 +158894,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "64ddb0545617c21b7cc8"
 },
 {
@@ -158601,7 +158949,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "fde5494d0b542644106b"
 },
 {
@@ -158659,7 +159009,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "bf69c57edb5c9a0eac24"
 },
 {
@@ -158717,7 +159069,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "bb6e1beea5b7a9e15d11"
 },
 {
@@ -158770,7 +159124,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Needle to centre of needle hole (back/forth) set with positioning plate near L point",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "015eefecd3f29978e68b"
 },
 {
@@ -158828,7 +159184,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "cc0fe58da5c2508ac1ed"
 },
 {
@@ -158886,7 +159244,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "5c26a93a305df715e74e"
 },
 {
@@ -158944,7 +159304,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "e14ab109e78f99bbfbac"
 },
 {
@@ -159002,7 +159364,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "e37b9ee9a8108328ddd7"
 },
 {
@@ -159060,7 +159424,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "0d1d4c12078829fa19e8"
 },
 {
@@ -159118,7 +159484,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "e421f4dc1eb195fc7cfc"
 },
 {
@@ -159176,7 +159544,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx; figure label about 1.0 mm",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "c2e9ef83801e8c33d1a4"
 },
 {
@@ -159234,7 +159604,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "9f8ab7a75140810463f8"
 },
 {
@@ -159292,7 +159664,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "da6601fb9da62c736522"
 },
 {
@@ -159350,7 +159724,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "35da0e636d4b6c6b27cf"
 },
 {
@@ -159403,7 +159779,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Qualitative",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "d35172df4daa50a76460"
 },
 {
@@ -159456,7 +159834,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "d8100baae327b2e7cea6"
 },
 {
@@ -159514,7 +159894,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "9da68fee86c92a5a0626"
 },
 {
@@ -159572,7 +159954,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "5f548fd8fe7cc37afeca"
 },
 {
@@ -159630,7 +160014,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "3195f3a97aeaadb20f47"
 },
 {
@@ -159688,7 +160074,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "2bafdce4b28f94a49da0"
 },
 {
@@ -159741,7 +160129,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "4655624c07852c6add0f"
 },
 {
@@ -160948,7 +161338,6 @@
 "confidence": "high",
 "notes": "Value is the shaft angle for the gauge check",
 "modelKeys": [
-"2009",
 "HCD2"
 ],
 "id": "3cd310057ec84f5228a9"
@@ -160975,7 +161364,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Value is the shaft angle for the gauge check",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "19be1e78c83f2e7e0d3d"
 },
 {
@@ -161006,7 +161397,6 @@
 "confidence": "medium",
 "notes": "From figure label L+23",
 "modelKeys": [
-"2009",
 "HCD2"
 ],
 "id": "79044f82c0e853764c28"
@@ -161038,7 +161428,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "From figure label L+23",
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "1b1fffbd7dce570905cf"
 },
 {
@@ -161069,7 +161461,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"2009",
 "HCD2"
 ],
 "id": "4d9a20ebe56b372e2f95"
@@ -161101,7 +161492,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "de72a3cf8ebc3aa1180c"
 },
 {
@@ -162078,7 +162471,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "a2fe0b4847a23a8e9d8f"
 },
 {
@@ -162108,7 +162503,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "8f5924492a921390fcb4"
 },
 {
@@ -162138,7 +162535,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCD"
+],
 "id": "ba08033e059a1c45c859"
 },
 {
@@ -162163,7 +162562,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"HCG"
+],
 "id": "655132bd2f82448557b6"
 },
 {
@@ -162188,7 +162589,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"HCG"
+],
 "id": "9087f19b4d98d704e1e3"
 },
 {
@@ -162213,7 +162616,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"HCG"
+],
 "id": "100255473b9b5460845c"
 },
 {
@@ -162238,7 +162643,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V; verified on page image",
-"modelKeys": [],
+"modelKeys": [
+"HCG"
+],
 "id": "b16eb19cc883a3f0aac3"
 },
 {
@@ -163466,7 +163873,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "47e99388b785246efd04"
 },
 {
@@ -163496,7 +163905,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "ddcbdcfe966190830330"
 },
 {
@@ -163526,7 +163937,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "22008eb9d5c391e8a10e"
 },
 {
@@ -163551,7 +163964,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Value is the shaft angle for the gauge check",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "54523cdc68e28b5d9066"
 },
 {
@@ -163581,7 +163996,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "c3cada19961533f5d27a"
 },
 {
@@ -163611,7 +164028,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Procedure uses 340 deg and 23 deg set points; no single numeric standard",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "728c10c9c34094107084"
 },
 {
@@ -163641,7 +164060,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "106f21f35a7780cfe718"
 },
 {
@@ -163671,7 +164092,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "1470fc65617d98d28527"
 },
 {
@@ -163701,7 +164124,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "0d6b18013a219c1e52f9"
 },
 {
@@ -163731,7 +164156,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "b97c9ec7759ab09e4233"
 },
 {
@@ -163761,7 +164188,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "0a5a0f3f176fda4b6b7d"
 },
 {
@@ -163791,7 +164220,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "8e2db6c99778ee5defe7"
 },
 {
@@ -163821,7 +164252,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "49a00e4c2dade62249d1"
 },
 {
@@ -163851,7 +164284,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "08ce8a3980d12ecadfb3"
 },
 {
@@ -163881,7 +164316,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "eb6047a18227dcf4090d"
 },
 {
@@ -163911,7 +164348,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "0ca852bce7cf543bf62f"
 },
 {
@@ -163941,7 +164380,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "bf154f1f1756cc6981f5"
 },
 {
@@ -163971,7 +164412,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "447a035589fc9488bafd"
 },
 {
@@ -164001,7 +164444,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "35a2381eb3f8ed3e66ed"
 },
 {
@@ -164031,7 +164476,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "ad11022da5db602051b5"
 },
 {
@@ -164061,7 +164508,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "222d5357b10c5b56af2d"
 },
 {
@@ -164091,7 +164540,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "e4ea0ce344a7b30dd277"
 },
 {
@@ -164121,7 +164572,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "489f0689d607cf912764"
 },
 {
@@ -164151,7 +164604,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "b15bd2a25f852cc5fd3f"
 },
 {
@@ -164181,7 +164636,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "5b3030dadc227fd846e6"
 },
 {
@@ -164211,7 +164668,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "aa2876e5ef1637dcce2a"
 },
 {
@@ -164241,7 +164700,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "cc1ffd7ffb83a2fcff07"
 },
 {
@@ -164271,7 +164732,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "a3527f77ee3c013c1de3"
 },
 {
@@ -164301,7 +164764,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit V",
-"modelKeys": [],
+"modelKeys": [
+"HCR"
+],
 "id": "3abbb29f55468dcb104e"
 },
 {
@@ -165923,7 +166388,9 @@
 "docType": "Bulletin/Training",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HCSVOYAGER"
+],
 "id": "5314d9ff5bdf03b796d4"
 },
 {
@@ -166047,7 +166514,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "a001b73989cac3e9ba18"
 },
 {
@@ -166137,7 +166606,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "393a98a22670a3307f05"
 },
 {
@@ -166261,7 +166732,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Inspection range 0.10-0.30 mm (critical-measurements table lists it as reference); adjustment target 0.1 mm.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "d2c0d9d47e66eb699ff4"
 },
 {
@@ -166351,7 +166824,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Inspection range 0.10-0.30 mm (critical-measurements table lists it as reference); adjustment target 0.1 mm.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "8d99356ab85ceda496de"
 },
 {
@@ -166475,7 +166950,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Needle must show no movement through 179.5-180.5 deg (lower dwell).",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "80c42de3aeea530e976e"
 },
 {
@@ -166565,7 +167042,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Needle must show no movement through 179.5-180.5 deg (lower dwell).",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "82b436507161f6caaacb"
 },
 {
@@ -166689,7 +167168,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "842678a9ed6af6a695f5"
 },
 {
@@ -166779,7 +167260,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "a32051acb97421e445fd"
 },
 {
@@ -166903,7 +167386,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Head up is not top dead center.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "25612293277d858e3bc4"
 },
 {
@@ -166983,7 +167468,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Head up is not top dead center.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "cc010c83acfc32fa760f"
 },
 {
@@ -167102,7 +167589,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit = fraction of the needle eye through-portion. ",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "1ebe52f976e6802f1756"
 },
 {
@@ -167182,7 +167671,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit = fraction of the needle eye through-portion. ",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "efb19af4f645c73357ad"
 },
 {
@@ -167301,7 +167792,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Table wording says \"minimum\".",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "fec1355ac545b2ea3291"
 },
 {
@@ -167381,7 +167874,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Table wording says \"minimum\".",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "197428c2be20d722f694"
 },
 {
@@ -167500,7 +167995,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "35162745fe73d1424423"
 },
 {
@@ -167580,7 +168077,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "352adc91b693713fbc11"
 },
 {
@@ -167704,7 +168203,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "nominal",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "1674c96a311694715857"
 },
 {
@@ -167794,7 +168295,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "nominal",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "8617965b3555c95e427f"
 },
 {
@@ -167918,7 +168421,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Head alignment is a factory/depot repair.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "14d209d460d7c368df01"
 },
 {
@@ -167998,7 +168503,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Head alignment is a factory/depot repair.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "b551bd73788d83ce6b40"
 },
 {
@@ -168112,7 +168619,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "92edc5e9d21c6dd89403"
 },
 {
@@ -168192,7 +168701,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "b072a15e41e1299b5f9d"
 },
 {
@@ -168311,7 +168822,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "No adjustment; report to manufacturer if out.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "e3d7ba6a588eda75fdb0"
 },
 {
@@ -168391,7 +168904,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "No adjustment; report to manufacturer if out.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "9ebf40ca499bd6fbc5e9"
 },
 {
@@ -168510,7 +169025,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "062210e8d1baa5ca5d39"
 },
 {
@@ -168590,7 +169107,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "4d52de70673777f98322"
 },
 {
@@ -168709,7 +169228,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Text section prints [0.75-1mm] for 0.030-0.040\".",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "d888f1b67c82a1a829ed"
 },
 {
@@ -168789,7 +169310,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Text section prints [0.75-1mm] for 0.030-0.040\".",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "0c8212dde335793e20ed"
 },
 {
@@ -168908,7 +169431,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit: lbf. Adjust take-up lever spring preload if out.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "5aab6f4195f5df49e3d3"
 },
 {
@@ -168988,7 +169513,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit: lbf. Adjust take-up lever spring preload if out.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "2c4556a41aa3351c8149"
 },
 {
@@ -169112,7 +169639,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit: in-lb. Factory fixture required to adjust.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "d5b8331bec82890bde9a"
 },
 {
@@ -169192,7 +169721,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit: in-lb. Factory fixture required to adjust.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "1c1423eb1f8ad8bbb9d2"
 },
 {
@@ -169311,7 +169842,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "085a5cb5d66850bc70a4"
 },
 {
@@ -169391,7 +169924,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "94e5c129909d80c6d888"
 },
 {
@@ -169510,7 +170045,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "2704f94c5c26a59252cf"
 },
 {
@@ -169590,7 +170127,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "6c4751182020640a4231"
 },
 {
@@ -169709,7 +170248,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Recommended 5 deg.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "e95e345c8af6806648e5"
 },
 {
@@ -169789,7 +170330,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Recommended 5 deg.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "d3495d26bcc7845cb8d2"
 },
 {
@@ -169908,7 +170451,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit Hz. Critical-measurements table prints 68-72 Hz [6.8±0.3 lbs]; procedure and belt-spec pages print 72-78 Hz.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "8d5dcf0315f6484e397c"
 },
 {
@@ -169998,7 +170543,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit Hz. Critical-measurements table prints 68-72 Hz [6.8±0.3 lbs]; procedure and belt-spec pages print 72-78 Hz.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "e1a466846606edfff089"
 },
 {
@@ -170112,7 +170659,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit Hz.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "a85182f0e3e70123685e"
 },
 {
@@ -170192,7 +170741,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit Hz.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "31249926ede946ce7822"
 },
 {
@@ -170311,7 +170862,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit Hz.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "abed1235e261a02c38c9"
 },
 {
@@ -170406,7 +170959,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit Hz.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "d89b1ff1626f3d51c8f4"
 },
 {
@@ -170535,7 +171090,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit lbf.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "3cf5b2e53bb9456d53b2"
 },
 {
@@ -170630,7 +171187,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit lbf.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "b938f6967ac8c29497e2"
 },
 {
@@ -170759,7 +171318,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "b67e435669f7475b82a3"
 },
 {
@@ -170854,7 +171415,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "29b22819691b74d06fb3"
 },
 {
@@ -170983,7 +171546,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "45cde814e7c49d1f7a9c"
 },
 {
@@ -171078,7 +171643,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "e28006eba0633dcff932"
 },
 {
@@ -171207,7 +171774,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit lbf; column layout on page is garbled, value assignment from table order.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "c8732795a6989facb4be"
 },
 {
@@ -171302,7 +171871,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit lbf; column layout on page is garbled, value assignment from table order.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "d8bce14a65a6ca1e3102"
 },
 {
@@ -171431,7 +172002,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit lbf; column layout on page is garbled.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "21b1a84b0dc7ff8aaaa5"
 },
 {
@@ -171526,7 +172099,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit lbf; column layout on page is garbled.",
-"modelKeys": [],
+"modelKeys": [
+"BRAVO"
+],
 "id": "72df64ee5f198e078832"
 },
 {
@@ -174042,7 +174617,6 @@
 "confidence": "high",
 "notes": "Re-check hook timing after re-synchronizing a head.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174137,7 +174711,6 @@
 "confidence": "medium",
 "notes": "Unit inch; approx.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174232,7 +174805,6 @@
 "confidence": "high",
 "notes": "Unit inch.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174327,7 +174899,6 @@
 "confidence": "high",
 "notes": "Factory service advised.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174422,7 +174993,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174512,7 +175082,6 @@
 "confidence": "high",
 "notes": "Unit inch.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174607,7 +175176,6 @@
 "confidence": "high",
 "notes": "typical",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174702,7 +175270,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174802,7 +175369,6 @@
 "confidence": "high",
 "notes": "X +/-71 mm, Y +/-34 mm.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174897,7 +175463,6 @@
 "confidence": "high",
 "notes": "X +/-204 mm, Y +/-143 mm.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -174992,7 +175557,6 @@
 "confidence": "high",
 "notes": null,
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175087,7 +175651,6 @@
 "confidence": "high",
 "notes": "approx.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175182,7 +175745,6 @@
 "confidence": "high",
 "notes": "Unit inch.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175277,7 +175839,6 @@
 "confidence": "high",
 "notes": "Unit = gauge reading; both sides of a belt within 2 units.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175377,7 +175938,6 @@
 "confidence": "high",
 "notes": "Unit = gauge reading; both sides of a belt within 2 units.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175477,7 +176037,6 @@
 "confidence": "high",
 "notes": "Unit = gauge reading; both sides of a belt within 2 units.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175577,7 +176136,6 @@
 "confidence": "high",
 "notes": "Unit = gauge reading; both sides of a belt within 2 units.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -175677,7 +176235,6 @@
 "confidence": "high",
 "notes": "Unit = gauge reading; both sides of a belt within 2 units.",
 "modelKeys": [
-"ALSOEMC1012",
 "EMC1012",
 "EMC1012LV",
 "EMC104",
@@ -176317,7 +176874,6 @@
 "notes": null,
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176411,7 +176967,6 @@
 "notes": null,
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176505,7 +177060,6 @@
 "notes": "Unit inch.",
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176599,7 +177153,6 @@
 "notes": "typical",
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176693,7 +177246,6 @@
 "notes": null,
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176787,7 +177339,6 @@
 "notes": null,
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176886,7 +177437,6 @@
 "notes": "Unit inch.",
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -176980,7 +177530,6 @@
 "notes": "Unit = tensiometer reading.",
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -177074,7 +177623,6 @@
 "notes": "Unit lbf.",
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -177168,7 +177716,6 @@
 "notes": "Unit = tensiometer reading.",
 "modelKeys": [
 "104",
-"ALSOEMT104",
 "EMC104",
 "EMC1M",
 "EMT104",
@@ -178892,7 +179439,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"CREATOR"
+],
 "id": "a1d779d9304bcb88d8db"
 },
 {
@@ -178922,7 +179471,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Unit inch (approx 0.1-0.3 mm).",
-"modelKeys": [],
+"modelKeys": [
+"CREATOR"
+],
 "id": "ad30694cd8ff9a0563b3"
 },
 {
@@ -179605,7 +180156,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "4fdd124b43bc866f736b"
 },
 {
@@ -179635,7 +180188,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Checklist p.18 says re-set if no gap or \"over 3mm\" (probably 0.3 mm).",
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "75541e1bc6b70b2ef72d"
 },
 {
@@ -179665,7 +180220,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "0062747f811023f93012"
 },
 {
@@ -179695,7 +180252,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Stated while setting the middle supporter; same jig used for needle point check.",
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "140565cf9a5167194bd3"
 },
 {
@@ -179720,7 +180279,9 @@
 "docType": "Service/Technical manual",
 "confidence": "low",
 "notes": "Terms appear swapped in translation; other SWF manuals: needle point (jig) at 201°, upper dead point stopper at 0°.",
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "d48e0dd8c607f2f5b41d"
 },
 {
@@ -179750,7 +180311,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "1d4ec296b9f7fe433ab7"
 },
 {
@@ -179775,7 +180338,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Chenille arm. Section heading on p.14 says \"2.5T from needle plate\" but procedure and checklist use 2.0 mm.",
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "f9dac2bcf2c7cbd47504"
 },
 {
@@ -179805,7 +180370,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "af40333a84b4805ca7a2"
 },
 {
@@ -179835,7 +180402,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "36c6635eea51634c8ce8"
 },
 {
@@ -179865,7 +180434,9 @@
 "docType": "Service/Technical manual",
 "confidence": "low",
 "notes": "Checklist line; meaning of 185° not explained.",
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "20fb9d82df963c205251"
 },
 {
@@ -179895,7 +180466,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EMBROIDERYCHENILLE"
+],
 "id": "5be1ad916c308325dfd1"
 },
 {
@@ -180285,7 +180858,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Figures may change with needle specification/number.",
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "a940ecfb8cc7ffb1ab14"
 },
 {
@@ -180310,7 +180885,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Figures may change with needle specification/number.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "e86ae9e2899833c1da67"
 },
 {
@@ -180335,7 +180912,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Figures may change with needle specification/number.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "635690dc4e70d9679c04"
 },
 {
@@ -180360,7 +180939,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Figures may change with needle specification/number.",
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "12a53cc248f879974345"
 },
 {
@@ -180448,7 +181029,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure (checked on page image for D-series).",
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "ae493ec89b8c9b87fcb5"
 },
 {
@@ -180473,7 +181056,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure (checked on page image for D-series).",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "ea6de0550e7dcb0acfda"
 },
 {
@@ -180498,7 +181083,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure (checked on page image for D-series).",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "748b10c506edd3c309f9"
 },
 {
@@ -180523,7 +181110,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure (checked on page image for D-series).",
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "d24d2037778f6363a44a"
 },
 {
@@ -180611,7 +181200,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "2b7cf1aca1287109e9e5"
 },
 {
@@ -180636,7 +181227,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "a66382a8e6109d491d53"
 },
 {
@@ -180661,7 +181254,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "4bf7f690ec6bbf7aa357"
 },
 {
@@ -180686,7 +181281,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "89f8baf8f77e7e416d0d"
 },
 {
@@ -180774,7 +181371,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "01e3262056a6e2c1cdff"
 },
 {
@@ -180799,7 +181398,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "fc14ceb3b4e843efac7b"
 },
 {
@@ -180824,7 +181425,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "a1e16b3e0c1aeefe948d"
 },
 {
@@ -180849,7 +181452,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "38838bca8399a47046ba"
 },
 {
@@ -180937,7 +181542,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "80bd851afbfd313a80d2"
 },
 {
@@ -180962,7 +181569,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "2e79de9e975b0893092c"
 },
 {
@@ -180987,7 +181596,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "132f12034a13618320ff"
 },
 {
@@ -181012,7 +181623,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "96678f23b8f4cd7b3cd8"
 },
 {
@@ -181100,7 +181713,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "f4660f45125223d554c8"
 },
 {
@@ -181125,7 +181740,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "f2ef102261a77a97571e"
 },
 {
@@ -181150,7 +181767,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "aa57efbd1c0e777090a2"
 },
 {
@@ -181175,7 +181794,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "a758673317d6f6111b3a"
 },
 {
@@ -181258,7 +181879,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "32558c051bd82f470a3b"
 },
 {
@@ -181283,7 +181906,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "d57c5a4deb01c4d434ca"
 },
 {
@@ -181308,7 +181933,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "28fc523c45378bb38317"
 },
 {
@@ -181333,7 +181960,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "5e6efafffb7e3aa4d0ba"
 },
 {
@@ -181421,7 +182050,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.; manual color change must be done at 100°.",
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "9f69c6b86fb28303a5c6"
 },
 {
@@ -181446,7 +182077,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.; manual color change must be done at 100°.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "e755f9aaf39a8dda23f0"
 },
 {
@@ -181471,7 +182104,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.; manual color change must be done at 100°.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "73c3a55e2b0e28ee831b"
 },
 {
@@ -181496,7 +182131,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.; manual color change must be done at 100°.",
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "ce3ede8c3a0f48bd83e3"
 },
 {
@@ -181584,7 +182221,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "dc7cc29c3e067f6ec5eb"
 },
 {
@@ -181609,7 +182248,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "8bbfc4fc930586204145"
 },
 {
@@ -181634,7 +182275,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "bf0d5cb3a7a356f2601a"
 },
 {
@@ -181659,7 +182302,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "ed5405683d18a6997324"
 },
 {
@@ -181747,7 +182392,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DSERIESFLAT"
+],
 "id": "1730c8f6ca78a00de2b4"
 },
 {
@@ -181772,7 +182419,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESMULTIHEAD"
+],
 "id": "bc5870203866ae6c501e"
 },
 {
@@ -181797,7 +182446,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIESTUBULARMULTIHEAD"
+],
 "id": "e970c4da0ee0312da29a"
 },
 {
@@ -181822,7 +182473,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"KUKSERIESMULTIHEAD"
+],
 "id": "6363e8f9461287c259f2"
 },
 {
@@ -181881,7 +182534,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Figures may change with needle specification/number.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "e851b52958ddb7f0a2e7"
 },
 {
@@ -181911,7 +182566,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure (checked on page image for D-series).",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "b7e6aa8db2da6b1573a1"
 },
 {
@@ -181941,7 +182598,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "12569c649e33b10b5554"
 },
 {
@@ -181971,7 +182630,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "c6163c8ce7afc382435d"
 },
 {
@@ -182001,7 +182662,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "375f62084e5d9e5dd16c"
 },
 {
@@ -182031,7 +182694,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "5c1c47a7f986cf1aaa00"
 },
 {
@@ -182056,7 +182721,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "2c4748a3b4a14972bf59"
 },
 {
@@ -182086,7 +182753,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.; manual color change must be done at 100°.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "fb9f0a6c34e554615f19"
 },
 {
@@ -182116,7 +182785,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Figures may change with needle specification/number.",
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "a57077543e097563324b"
 },
 {
@@ -182146,7 +182817,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure (checked on page image for D-series).",
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "7dbf5229bed0da3b862c"
 },
 {
@@ -182176,7 +182849,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "bdd9e5ee0d9803e9edcb"
 },
 {
@@ -182206,7 +182881,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Reference points read from figure.",
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "9f4e06861124b8d0b8e4"
 },
 {
@@ -182236,7 +182913,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "214afd2625a61a149089"
 },
 {
@@ -182266,7 +182945,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "b0d09a00fa953f0743ed"
 },
 {
@@ -182296,7 +182977,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.; manual color change must be done at 100°.",
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "3ed83b5c14c6e1cc3d1d"
 },
 {
@@ -182326,7 +183009,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "8d5f455d3169ae33872d"
 },
 {
@@ -182356,7 +183041,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "86805737f7b6f29994bc"
 },
 {
@@ -182909,7 +183596,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "No explicit height value; default shim stack.",
-"modelKeys": [],
+"modelKeys": [
+"GSERIES"
+],
 "id": "b768a6521442ed6451a5"
 },
 {
@@ -182939,7 +183628,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Unit kgf; table columns for several variants all 18 kgf.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "4b5762d170ab8595aa76"
 },
 {
@@ -182969,7 +183660,9 @@
 "docType": "Operator manual",
 "confidence": "low",
 "notes": "Unit kgf; table column headers not legible in text layer (19 kgf for most spans, 25 kgf for one 35 mm span).",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "212706286fc5475c3e97"
 },
 {
@@ -182999,7 +183692,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Unit kgf.",
-"modelKeys": [],
+"modelKeys": [
+"ESERIES"
+],
 "id": "d9ca31fa29f10680d2bd"
 },
 {
@@ -183939,7 +184634,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SINGLEBRIDGE"
+],
 "id": "5fb0f0389961bf688361"
 },
 {
@@ -183969,7 +184666,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SINGLEBRIDGE"
+],
 "id": "1bcdcd4febbb35d8279d"
 },
 {
@@ -183999,7 +184698,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SINGLEBRIDGE"
+],
 "id": "6fa4d7d4aa448dc9c425"
 },
 {
@@ -184024,7 +184725,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Manual labels this \"upper dead point setting\" (translation).",
-"modelKeys": [],
+"modelKeys": [
+"SINGLEBRIDGE"
+],
 "id": "9a4d2230be397a457c9b"
 },
 {
@@ -184049,7 +184752,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Manual labels this \"bottom dead point\" (translation).",
-"modelKeys": [],
+"modelKeys": [
+"SINGLEBRIDGE"
+],
 "id": "a97eb235a4fb39f2cd66"
 },
 {
@@ -184079,7 +184784,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Template checklist line on p.8 also mentions general head 1.2 mm.",
-"modelKeys": [],
+"modelKeys": [
+"SINGLEBRIDGE"
+],
 "id": "e8fc08bcad017ef393c9"
 },
 {
@@ -184203,7 +184910,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HARVF"
+],
 "id": "d976313cb4fedbf35996"
 },
 {
@@ -184228,7 +184937,10 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"PARVF",
+"PAXVF"
+],
 "id": "0a1727961c4cee9b6b03"
 },
 {
@@ -184258,7 +184970,11 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Page gives the angle for the needle/rotary hook check; Tajima TMAR-K lists 213° as its standard hook timing.",
-"modelKeys": [],
+"modelKeys": [
+"HHEAD",
+"PAX",
+"HAR"
+],
 "id": "ddc24a497d6fe04426cb"
 },
 {
@@ -184288,7 +185004,11 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HHEAD",
+"PAX",
+"HAR"
+],
 "id": "8ae279b4f9cf06c85356"
 },
 {
@@ -184313,7 +185033,11 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Gauge dimension not printed.",
-"modelKeys": [],
+"modelKeys": [
+"HHEAD",
+"PAX",
+"HAR"
+],
 "id": "80665452828b61e751d4"
 },
 {
@@ -184343,7 +185067,11 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Calibrates panel lower-dead-point value to actual height.",
-"modelKeys": [],
+"modelKeys": [
+"HHEAD",
+"PAX",
+"HAR"
+],
 "id": "af1ac3b07e0f9b32ddf5"
 },
 {
@@ -184373,7 +185101,11 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HHEAD",
+"PAX",
+"HAR"
+],
 "id": "11f80aa53e2df455dcb2"
 },
 {
@@ -184403,7 +185135,11 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"PHEAD",
+"PAX",
+"PAR"
+],
 "id": "d5ab99c620829d1af781"
 },
 {
@@ -184433,7 +185169,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"FMHEAD",
+"TCMX"
+],
 "id": "28b78a869d890f69ce13"
 },
 {
@@ -184463,7 +185202,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"FMHEAD",
+"TCMX"
+],
 "id": "97223c418e091ced97fa"
 },
 {
@@ -184488,7 +185230,10 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"FMHEAD",
+"TCMX"
+],
 "id": "8a5c230d1d4715105144"
 },
 {
@@ -184518,7 +185263,10 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"FMHEAD",
+"TCMX"
+],
 "id": "23dc7e97e9993f7a1eb8"
 },
 {
@@ -184548,7 +185296,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TCMX"
+],
 "id": "79396ac795551d03165f"
 },
 {
@@ -184573,7 +185323,11 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"CMHEAD",
+"CHENILLE",
+"TCMX"
+],
 "id": "a807a654f09c283e4c5a"
 },
 {
@@ -184598,7 +185352,11 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "No gap.",
-"modelKeys": [],
+"modelKeys": [
+"CMHEAD",
+"CHENILLE",
+"TCMX"
+],
 "id": "3bffd753bfb79a2f45eb"
 },
 {
@@ -184628,7 +185386,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TCMX"
+],
 "id": "702a0bcb7816000d6a3c"
 },
 {
@@ -184658,7 +185418,11 @@
 "docType": "Operator manual",
 "confidence": "low",
 "notes": "Control-panel parameter default, not a mechanical adjustment.",
-"modelKeys": [],
+"modelKeys": [
+"LCD",
+"TEHXC",
+"TFHX"
+],
 "id": "f6af3addc1708bd8bd64"
 },
 {
@@ -184683,7 +185447,9 @@
 "docType": "Operator manual",
 "confidence": "low",
 "notes": "Control-panel parameter default, not a mechanical adjustment.",
-"modelKeys": [],
+"modelKeys": [
+"TEHXCSINGLEHEADLCD"
+],
 "id": "2234e3d2d9fe3f8c78d6"
 },
 {
@@ -184713,7 +185479,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Troubleshooting table columns are shifted in the text layer; assigned to \"timing between needle and rotary hook\" row. Fixed (stop) position 97.5-107.5° (p.26).",
-"modelKeys": [],
+"modelKeys": [
+"TFGNII"
+],
 "id": "76fb74b00f0bbe18508b"
 },
 {
@@ -184743,7 +185511,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Column shift in text layer; mapped to \"clearance between needle and hook point not suitable\".",
-"modelKeys": [],
+"modelKeys": [
+"TFGNII"
+],
 "id": "848780c475f22a50a4cd"
 },
 {
@@ -184773,7 +185543,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "approx.; column shift in text layer.",
-"modelKeys": [],
+"modelKeys": [
+"TFGNII"
+],
 "id": "f8dd414587b1c3d2fc66"
 },
 {
@@ -184803,7 +185575,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFGNII"
+],
 "id": "6125ff8fc6f40db65489"
 },
 {
@@ -184888,7 +185662,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMXIIC"
+],
 "id": "29279f77c1ddf5584fe6"
 },
 {
@@ -184913,7 +185689,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMARKC"
+],
 "id": "bff314bcec35a7bce533"
 },
 {
@@ -184938,7 +185716,12 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMBRSC",
+"TMBPSC",
+"TFMXC",
+"TWMXC"
+],
 "id": "4a89c650153a30c13a0b"
 },
 {
@@ -184968,7 +185751,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCPVF"
+],
 "id": "13aade3f1535a7b10a3e"
 },
 {
@@ -184998,7 +185783,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "5901ef6739056389a62b"
 },
 {
@@ -185028,7 +185815,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMXIIC"
+],
 "id": "1d8a89a7846e2455fee4"
 },
 {
@@ -185053,7 +185842,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMARKC"
+],
 "id": "78af25d493a097e62193"
 },
 {
@@ -185078,7 +185869,12 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMBRSC",
+"TMBPSC",
+"TFMXC",
+"TWMXC"
+],
 "id": "5f6ff7142a42133dbb09"
 },
 {
@@ -185103,7 +185899,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCPVF"
+],
 "id": "ee9952ee63360f39e942"
 },
 {
@@ -185128,7 +185926,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "57cd2665f11ce937f0c7"
 },
 {
@@ -185158,7 +185958,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMXIIC"
+],
 "id": "f6b273901464ea2e8299"
 },
 {
@@ -185183,7 +185985,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMARKC"
+],
 "id": "f60767d8544e2e72c56a"
 },
 {
@@ -185208,7 +186012,12 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMBRSC",
+"TMBPSC",
+"TFMXC",
+"TWMXC"
+],
 "id": "36f59a83771353d0158f"
 },
 {
@@ -185233,7 +186042,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCPVF"
+],
 "id": "443e71f585782e834445"
 },
 {
@@ -185258,7 +186069,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "a10bbf58487c7103f2ca"
 },
 {
@@ -185288,7 +186101,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMXIIC"
+],
 "id": "666e6047834960019d42"
 },
 {
@@ -185313,7 +186128,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMARKC"
+],
 "id": "dcc38b3773cabc5f1654"
 },
 {
@@ -185338,7 +186155,12 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMBRSC",
+"TMBPSC",
+"TFMXC",
+"TWMXC"
+],
 "id": "e627ba6c1d5458983b23"
 },
 {
@@ -185363,7 +186185,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCPVF"
+],
 "id": "01d411cd13f1858daca1"
 },
 {
@@ -185388,7 +186212,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "d9ad6cc49799e1a1071b"
 },
 {
@@ -185418,7 +186244,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TFMXIIC"
+],
 "id": "c8e3113d03bfdcc75e26"
 },
 {
@@ -185443,7 +186271,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMARKC"
+],
 "id": "b0053ac64523499ff4d4"
 },
 {
@@ -185468,7 +186298,12 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMBRSC",
+"TMBPSC",
+"TFMXC",
+"TWMXC"
+],
 "id": "aea3266c982e8b03e17d"
 },
 {
@@ -185493,7 +186328,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCPVF"
+],
 "id": "03d8f5a6b934a1319393"
 },
 {
@@ -185518,7 +186355,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMCRVF"
+],
 "id": "e39d73135f27992430a4"
 },
 {
@@ -185581,7 +186420,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Troubleshooting table columns shifted in text layer; assigned to \"timing between needle and rotary hook\" row. Standard 213°.",
-"modelKeys": [],
+"modelKeys": [
+"TMARK"
+],
 "id": "c991fc36a62e84b406a9"
 },
 {
@@ -185611,7 +186452,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Column shift; mapped to needle/hook clearance row.",
-"modelKeys": [],
+"modelKeys": [
+"TMARK"
+],
 "id": "52e3f61fdcc947a181ca"
 },
 {
@@ -185641,7 +186484,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "approx.; column shift.",
-"modelKeys": [],
+"modelKeys": [
+"TMARK"
+],
 "id": "0454913349d2dd3221b5"
 },
 {
@@ -185671,7 +186516,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"TMARK"
+],
 "id": "fe083202947df422b7c1"
 },
 {
@@ -185861,7 +186708,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Pages 4-20 are drawings without text layer; not checked for specs.",
-"modelKeys": [],
+"modelKeys": [
+"TMEXCLONGCYLINDER"
+],
 "id": "0b68acd6adbd9237fc45"
 },
 {
@@ -185891,7 +186740,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Preliminary adjustment; no numeric value.",
-"modelKeys": [],
+"modelKeys": [
+"TMEXCLONGCYLINDER"
+],
 "id": "699e856230fda067fb80"
 },
 {
@@ -186770,7 +187621,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"KHEAD"
+],
 "id": "7287c5d5186770c1e2f0"
 },
 {
@@ -186833,7 +187686,13 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Knowledge-base notes (M. Hecker). Earlier: P11 at 64° (pre-F heads), P1 70° flatbed / 68-72° free-arm, P3 129° later 126°.",
-"modelKeys": [],
+"modelKeys": [
+"RACER",
+"SPRINT",
+"FLATBED",
+"FHEADS",
+"ZSKMULTIHEAD"
+],
 "id": "40c3b4f66f1eac603d6f"
 },
 {
@@ -186858,7 +187717,10 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Page text partly garbled; value from legible line.",
-"modelKeys": [],
+"modelKeys": [
+"RACER",
+"SPRINT"
+],
 "id": "390eac925bdcace1170c"
 },
 {
@@ -186883,7 +187745,9 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Page text partly garbled.",
-"modelKeys": [],
+"modelKeys": [
+"ZSKFLATBED"
+],
 "id": "3c8602a1f86f8ecde3b0"
 },
 {
@@ -186908,7 +187772,13 @@
 "docType": "Bulletin/Training",
 "confidence": "medium",
 "notes": "Early F-heads with P11 used 2.5 mm loop stroke / 1.5 mm needle depth (p.99).",
-"modelKeys": [],
+"modelKeys": [
+"RACER",
+"SPRINT",
+"FLATBED",
+"FHEADS",
+"ZSKMULTIHEAD"
+],
 "id": "2b3dab20d86395e6dbf2"
 },
 {
@@ -187613,7 +188483,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "dca76c27ffb591c8c4e3"
 },
 {
@@ -187643,7 +188515,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit inch.",
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "727043a37d99521fb5f6"
 },
 {
@@ -187673,7 +188547,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "0deb30bd98fba52ff49d"
 },
 {
@@ -187703,7 +188579,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "53be18c2867aced90300"
 },
 {
@@ -187733,7 +188611,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "ff5d88247067129e08ce"
 },
 {
@@ -187763,7 +188643,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit inch; approx.",
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "9f2c8d26815945f93866"
 },
 {
@@ -187793,7 +188675,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQFUSION"
+],
 "id": "c273b5bdd98c1710fa30"
 },
 {
@@ -187823,7 +188707,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "de26ffc8f1e80f01d6ae"
 },
 {
@@ -187848,7 +188734,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Unit inch.",
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "39ce112d384b02d9fe08"
 },
 {
@@ -187873,7 +188761,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "62eb2f68b88416c0c95a"
 },
 {
@@ -187903,7 +188793,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "4922e90851bf90275ccc"
 },
 {
@@ -187933,7 +188825,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "1fd36136a54ad5ad9b10"
 },
 {
@@ -187963,7 +188857,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "Unit inch; approx.",
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "ee19cd8d2e5d5c57b354"
 },
 {
@@ -187993,7 +188889,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "4adb97fe55c255b6d655"
 },
 {
@@ -188018,7 +188916,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "Then set loop lift 2.2 mm.",
-"modelKeys": [],
+"modelKeys": [
+"HQSWEETSIXTEEN"
+],
 "id": "0085f6f5fa2bd3cf8bd0"
 },
 {
@@ -188052,7 +188952,6 @@
 "18",
 "22",
 "26",
-"ALSOSERVICEMANUALV5",
 "INNOVA18",
 "V5"
 ],
@@ -188118,7 +189017,6 @@
 "18",
 "22",
 "26",
-"ALSOSERVICEMANUALV5",
 "INNOVA18",
 "V5"
 ],
@@ -188184,7 +189082,6 @@
 "18",
 "22",
 "26",
-"ALSOSERVICEMANUALV5",
 "INNOVA18",
 "V5"
 ],
@@ -188250,7 +189147,6 @@
 "18",
 "22",
 "26",
-"ALSOSERVICEMANUALV5",
 "INNOVA18",
 "V5"
 ],
@@ -188312,7 +189208,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Spacer dimension not printed.",
-"modelKeys": [],
+"modelKeys": [
+"INNOVAMSERIES"
+],
 "id": "39357a8b9f4f698e637f"
 },
 {
@@ -188342,7 +189240,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Just touching.",
-"modelKeys": [],
+"modelKeys": [
+"INNOVAMSERIES"
+],
 "id": "048d8f5b93e66dc06554"
 },
 {
@@ -188372,7 +189272,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Unit = fraction of scarf height.",
-"modelKeys": [],
+"modelKeys": [
+"INNOVAMSERIES"
+],
 "id": "405c96adbeb45e089b63"
 },
 {
@@ -188402,7 +189304,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "approx.",
-"modelKeys": [],
+"modelKeys": [
+"INNOVAMSERIES"
+],
 "id": "e04a17d861e2e931aa2e"
 },
 {
@@ -188432,7 +189336,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Unit inch.",
-"modelKeys": [],
+"modelKeys": [
+"INNOVAMSERIES"
+],
 "id": "5c42cdc9a41c4b9a9021"
 },
 {
@@ -189091,9 +189997,7 @@
 "notes": "Hook must not rub against needle (clearance between notch bottom of needle and hook point).",
 "modelKeys": [
 "18",
-"18ESPLIMITED",
-"26",
-"ALSOANSLEY26ESPLIMITED"
+"18ESPLIMITED"
 ],
 "id": "34ab168cc46e6a2893b3"
 },
@@ -189158,9 +190062,7 @@
 "notes": "Qualitative check only.",
 "modelKeys": [
 "18",
-"18ESPLIMITED",
-"26",
-"ALSOANSLEY26ESPLIMITED"
+"18ESPLIMITED"
 ],
 "id": "416eb643fca3618dc260"
 },
@@ -189220,9 +190122,7 @@
 "notes": "Dime thickness not printed.",
 "modelKeys": [
 "18",
-"18ESPLIMITED",
-"26",
-"ALSOANSLEY26ESPLIMITED"
+"18ESPLIMITED"
 ],
 "id": "fae286edf5eb8f579e0b"
 },
@@ -189572,7 +190472,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "Hook must not rub against needle (clearance between notch bottom of needle and hook point).",
-"modelKeys": [],
+"modelKeys": [
+"RAM"
+],
 "id": "dd3aa26db4fca9f96d88"
 },
 {
@@ -189602,7 +190504,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Qualitative check only.",
-"modelKeys": [],
+"modelKeys": [
+"RAM"
+],
 "id": "cba62c66c9b7569b81c0"
 },
 {
@@ -189627,7 +190531,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "Dime thickness not printed.",
-"modelKeys": [],
+"modelKeys": [
+"RAM"
+],
 "id": "e65f6432b28882b6f500"
 },
 {
@@ -218162,7 +219068,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"TEVER"
+],
 "id": "1610e9c57497b7b588ce"
 },
 {
@@ -218187,7 +219095,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"TEVER"
+],
 "id": "86d8cc2eee8913ffb83b"
 },
 {
@@ -218212,7 +219122,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"TEVER"
+],
 "id": "7a60ed5da329c2874259"
 },
 {
@@ -218237,7 +219149,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"TEVER"
+],
 "id": "97e869ef9dd4f19f6d03"
 },
 {
@@ -219103,7 +220017,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as _teamworksales\\SC-510_Supplement_Ver02.pdf",
-"modelKeys": [],
+"modelKeys": [
+"SUPPLEMENT"
+],
 "id": "ead3c5ca70230b705cef"
 },
 {
@@ -230238,7 +231154,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on OCR page text; LZH-1290-7 within this family is set to 15mm instead",
-"modelKeys": [],
+"modelKeys": [
+"DSU"
+],
 "id": "6187d7bc43c247af5dab"
 },
 {
@@ -230263,7 +231181,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on OCR page text; LZH-1290-7 within this family is set to 15mm instead",
-"modelKeys": [],
+"modelKeys": [
+"DSU"
+],
 "id": "c410a53f266509e69a8c"
 },
 {
@@ -230288,7 +231208,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on OCR page text; LZH-1290-7 within this family is set to 15mm instead",
-"modelKeys": [],
+"modelKeys": [
+"DSU"
+],
 "id": "2015105a3ecea08d52e9"
 },
 {
@@ -230313,7 +231235,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on OCR page text",
-"modelKeys": [],
+"modelKeys": [
+"DSC"
+],
 "id": "2b24b1839ec29a021fa4"
 },
 {
@@ -230338,7 +231262,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on OCR page text",
-"modelKeys": [],
+"modelKeys": [
+"DSC"
+],
 "id": "7c48bcd94f005e141a78"
 },
 {
@@ -230363,7 +231289,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "verified on OCR page text",
-"modelKeys": [],
+"modelKeys": [
+"DSC"
+],
 "id": "708305d1e1db6cf673af"
 },
 {
@@ -231779,7 +232707,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "b7f0e8a8adca57effc10"
 },
 {
@@ -231804,7 +232734,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "5fde1f29d3c36eed7866"
 },
 {
@@ -231834,7 +232766,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "96fcf9f3c096868ac535"
 },
 {
@@ -231859,7 +232793,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "b39abfafee8ddd85bcab"
 },
 {
@@ -231889,7 +232825,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "53191a2087eb19b5b668"
 },
 {
@@ -231914,7 +232852,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "5d3d334e1b080e7d30ea"
 },
 {
@@ -231944,7 +232884,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "75aa99ec843595dc06ba"
 },
 {
@@ -231969,7 +232911,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "1e9631981f028120a304"
 },
 {
@@ -231999,7 +232943,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "fe8ad230e2ccafa27a6f"
 },
 {
@@ -232024,7 +232970,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "9b57ef8e4c6168567257"
 },
 {
@@ -232703,7 +233651,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "b1eaaab9b3bb52df0301"
 },
 {
@@ -232728,7 +233678,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "d2f4e859688dbb96dc97"
 },
 {
@@ -232753,7 +233705,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "5cf0a209e80fc08f4a5e"
 },
 {
@@ -232778,7 +233732,9 @@
 "docType": "Service/Technical manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "abeb6970d8e0d35ff14b"
 },
 {
@@ -233048,7 +234004,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "058a462d7b71a084ae2c"
 },
 {
@@ -233078,7 +234036,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "36ec3e89053270e88995"
 },
 {
@@ -233108,7 +234068,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "8a1be19ae0177ed65474"
 },
 {
@@ -233138,7 +234100,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "4133dd294a250c69eca3"
 },
 {
@@ -233168,7 +234132,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "a75cea14d1c28ea56fcd"
 },
 {
@@ -233198,7 +234164,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "87faeb5f9698a20e6ff7"
 },
 {
@@ -233228,7 +234196,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "5f59acf8aaa47de283c2"
 },
 {
@@ -233258,7 +234228,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DLRP"
+],
 "id": "0f4de64f198437786878"
 },
 {
@@ -234315,7 +235287,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"WXUTC"
+],
 "id": "6f074f501b04381d6db6"
 },
 {
@@ -234345,7 +235319,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "approx value; end of sentence truncated in extraction",
-"modelKeys": [],
+"modelKeys": [
+"WXUTC"
+],
 "id": "a772d86412b653bd5e60"
 },
 {
@@ -242162,7 +243138,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "approx OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"PII"
+],
 "id": "7c05925e2befd6ba5f7f"
 },
 {
@@ -242925,7 +243903,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"VESUT"
+],
 "id": "b299374dda385c25961f"
 },
 {
@@ -242975,7 +243955,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"VESUT"
+],
 "id": "4db7d6b863986c17cfcd"
 },
 {
@@ -243025,7 +244007,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"VESUT"
+],
 "id": "db13dc660ff52ac6d981"
 },
 {
@@ -243075,7 +244059,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"VESUTA"
+],
 "id": "a982089080891b7cc01c"
 },
 {
@@ -243125,7 +244111,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"VESUTA"
+],
 "id": "b32f1d0e299f0ee9f71e"
 },
 {
@@ -243175,7 +244163,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"VESUTA"
+],
 "id": "eb511fb760095c64c69a"
 },
 {
@@ -245974,7 +246964,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"PII"
+],
 "id": "79d34244ff8deea0e1a3"
 },
 {
@@ -246026,7 +247018,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"PII"
+],
 "id": "2815fc563db240cc806d"
 },
 {
@@ -246078,7 +247072,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"PII"
+],
 "id": "622512f36f9d44054054"
 },
 {
@@ -246130,7 +247126,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"PII"
+],
 "id": "65ae8e8a18efb418f3f9"
 },
 {
@@ -246182,7 +247180,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"PII"
+],
 "id": "d78cecb59b2fbbd22e0c"
 },
 {
@@ -268986,7 +269986,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"LZSR"
+],
 "id": "2580194ce7ae253ca59b"
 },
 {
@@ -269016,7 +270018,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"LZSR"
+],
 "id": "d3d8f53ef01e0f4c5dde"
 },
 {
@@ -269046,7 +270050,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": "value appears twice on page (possible duplication in source table)",
-"modelKeys": [],
+"modelKeys": [
+"LZSR"
+],
 "id": "27dfa9596789523bc729"
 },
 {
@@ -269076,7 +270082,9 @@
 "docType": "Service/Technical manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"LZSR"
+],
 "id": "57418fd2119c58f4eddf"
 },
 {
@@ -286846,7 +287854,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "cd1cc8d4311a03f979fd"
 },
 {
@@ -286876,7 +287886,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "be582de5ca5cf02fe27b"
 },
 {
@@ -286906,7 +287918,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "dd6633aac6a2e6efe366"
 },
 {
@@ -286936,7 +287950,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "d7a920236cc3acf1f893"
 },
 {
@@ -286966,7 +287982,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "696ff1dcf05edb273e72"
 },
 {
@@ -286996,7 +288014,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "5c324ae17ce3ecb25f6c"
 },
 {
@@ -287026,7 +288046,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "b7371ec89383d6dff5ac"
 },
 {
@@ -287056,7 +288078,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "b7eaafd14a2860982c16"
 },
 {
@@ -287086,7 +288110,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "67f7d5c1351926cbd7bf"
 },
 {
@@ -287116,7 +288142,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as KS-DLR-P-INST.pdf; KS-DLR-V-INST.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DLR"
+],
 "id": "b771053eec13ef411251"
 },
 {
@@ -287141,7 +288169,10 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"PMDBBK",
+"DVK"
+],
 "id": "aa46a789102d337b8612"
 },
 {
@@ -287166,7 +288197,10 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"MLH",
+"DVK"
+],
 "id": "9348ff24bbacbf9ddc1a"
 },
 {
@@ -287196,7 +288230,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "b71c5ec6e70d9338c3ee"
 },
 {
@@ -287226,7 +288262,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "b52cc0184e8fd28cb70d"
 },
 {
@@ -287256,7 +288294,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "9dceb79f432817e0b316"
 },
 {
@@ -287286,7 +288326,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "b9f4e91bba30a3d5cb6b"
 },
 {
@@ -287316,7 +288358,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "c991122b740095faef6e"
 },
 {
@@ -287346,7 +288390,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "fd22207228ee16105ff3"
 },
 {
@@ -287376,7 +288422,10 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"EHD",
+"DVK"
+],
 "id": "3579227d43b81a133c51"
 },
 {
@@ -287406,7 +288455,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "1524ea2056d81254b4e3"
 },
 {
@@ -287436,7 +288487,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DVK"
+],
 "id": "fd1ef4239ef39499ee30"
 },
 {
@@ -287466,7 +288519,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DXUTC"
+],
 "id": "226fe2de4ce216632290"
 },
 {
@@ -287496,7 +288551,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DXUTC"
+],
 "id": "2ea820d6efa739de1b19"
 },
 {
@@ -287551,7 +288608,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"COVERSTITCH"
+],
 "id": "bddd4bfc5c273e96e07c"
 },
 {
@@ -288273,7 +289332,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "0bd188d0117377cea07b"
 },
 {
@@ -288303,7 +289364,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "f06226d23ebb3aa6e12a"
 },
 {
@@ -288333,7 +289396,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "99e2536561a6671318f3"
 },
 {
@@ -288363,7 +289428,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "a03118a074254b5489e4"
 },
 {
@@ -288393,7 +289460,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "14735f699d12aed73dc4"
 },
 {
@@ -288423,7 +289492,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "841e4e1a449b1c7be230"
 },
 {
@@ -288453,7 +289524,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "8afa53b4f103c6612d87"
 },
 {
@@ -288483,7 +289556,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "c47fca7b0ab62bc631de"
 },
 {
@@ -288513,7 +289588,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "952cca39deeb2bf65044"
 },
 {
@@ -288543,7 +289620,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"BLX"
+],
 "id": "27bcf03be5c5d423c992"
 },
 {
@@ -288605,7 +289684,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "2f1efd56073857888f78"
 },
 {
@@ -288635,7 +289716,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "1e37a8cc5bbee0052cdf"
 },
 {
@@ -288660,7 +289743,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "52f2227ef4deabf95041"
 },
 {
@@ -288690,7 +289775,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "77a3c3505b09117d5ffe"
 },
 {
@@ -288720,7 +289807,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "969814a898fe196172b5"
 },
 {
@@ -288745,7 +289834,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "b90b4fa81d66ea6b2af2"
 },
 {
@@ -288775,7 +289866,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "8d67b0f188a4b4288dc6"
 },
 {
@@ -288805,7 +289898,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "91c6bb9bb2f3cd7bafe9"
 },
 {
@@ -288830,7 +289925,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "8c3dc78f24570619540e"
 },
 {
@@ -288860,7 +289957,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "2a2d49e55241a2f5673c"
 },
 {
@@ -288890,7 +289989,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "92e0865a809a31aff69a"
 },
 {
@@ -288915,7 +290016,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "6fafbbc0c4ff12d5fd12"
 },
 {
@@ -288945,7 +290048,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "20d17ad4e5362d3f173c"
 },
 {
@@ -288975,7 +290080,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "8a27e6b4add1674f08e1"
 },
 {
@@ -289000,7 +290107,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "e3e3a0221f4bb636838f"
 },
 {
@@ -289030,7 +290139,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "1b732fbff6d73511375b"
 },
 {
@@ -289060,7 +290171,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "ff13847990dbc52c36d2"
 },
 {
@@ -289085,7 +290198,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as DFB(ENG).pdf; KS-DFB-INST-NEW.pdf",
-"modelKeys": [],
+"modelKeys": [
+"DFB"
+],
 "id": "b85a98eeec718f71d02b"
 },
 {
@@ -291327,7 +292442,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as WX UTC(ENG).pdf",
-"modelKeys": [],
+"modelKeys": [
+"WXUTC"
+],
 "id": "8a2e51006062849e3a9a"
 },
 {
@@ -291357,7 +292474,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as WX UTC(ENG).pdf",
-"modelKeys": [],
+"modelKeys": [
+"WXUTC"
+],
 "id": "360ec19b0c6ae7022326"
 },
 {
@@ -291387,7 +292506,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as WX UTC(ENG).pdf",
-"modelKeys": [],
+"modelKeys": [
+"WXUTC"
+],
 "id": "2066ff2655ea1aac36cf"
 },
 {
@@ -291417,7 +292538,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": "also filed as WX UTC(ENG).pdf",
-"modelKeys": [],
+"modelKeys": [
+"WXUTC"
+],
 "id": "afa3ced04f81c6857439"
 },
 {
@@ -291796,7 +292919,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"RXUTC"
+],
 "id": "7919c609588cc1ef8416"
 },
 {
@@ -291826,7 +292951,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"RXUTC"
+],
 "id": "b2f559c7d710d1ba6e16"
 },
 {
@@ -291856,7 +292983,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"RXUTC"
+],
 "id": "eff3ec82968bbf1c2b8c"
 },
 {
@@ -292279,7 +293408,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SXPD"
+],
 "id": "1da89964d54b5381fe19"
 },
 {
@@ -292309,7 +293440,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SXPD"
+],
 "id": "40ff5a34e9a91e83b7d2"
 },
 {
@@ -292339,7 +293472,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SXPD"
+],
 "id": "e2a97571c8dddfff128b"
 },
 {
@@ -292369,7 +293504,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SXPD"
+],
 "id": "4854d15a8618e63f20b0"
 },
 {
@@ -292645,7 +293782,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"OVERLOCK"
+],
 "id": "0b3aa5602c0b2c0731b5"
 },
 {
@@ -292675,7 +293814,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"OVERLOCK"
+],
 "id": "399c7e7e90be75654fa5"
 },
 {
@@ -292705,7 +293846,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DOUBLECHAINSTITCH"
+],
 "id": "2949b8448c820fd7080e"
 },
 {
@@ -292735,7 +293878,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"DOUBLECHAINSTITCH"
+],
 "id": "a529476802dafa04d8da"
 },
 {
@@ -292765,7 +293910,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"MCLASS"
+],
 "id": "e6f9334fc28b58a18bdf"
 },
 {
@@ -318966,7 +320113,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "f546fbec76b73eb133a4"
 },
 {
@@ -319018,7 +320167,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "9b7507418dfe7712c8bb"
 },
 {
@@ -319070,7 +320221,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "9d044035722d2467e4e6"
 },
 {
@@ -319123,7 +320276,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "2eb1197c115e5a80fba1"
 },
 {
@@ -319176,7 +320331,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "7236622c25735d21fc72"
 },
 {
@@ -319229,7 +320386,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "5c3bc3757b6689320416"
 },
 {
@@ -319282,7 +320441,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "1cc68825f6761c598aff"
 },
 {
@@ -319335,7 +320496,9 @@
 "docType": "Operator manual",
 "confidence": "medium",
 "notes": "OCR value not image-checked.",
-"modelKeys": [],
+"modelKeys": [
+"UTL"
+],
 "id": "2c58e9ab17c6d9f31a23"
 },
 {
@@ -424791,7 +425954,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SUPPLEMENT"
+],
 "id": "7ee1a13d458e8beebe1a"
 },
 {
@@ -424887,7 +426052,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SUPPLEMENT"
+],
 "id": "7b53132e9c39862acb44"
 },
 {
@@ -424983,7 +426150,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SUPPLEMENT"
+],
 "id": "f0be1b2c6cca53725107"
 },
 {
@@ -425079,7 +426248,9 @@
 "docType": "Operator manual",
 "confidence": "high",
 "notes": null,
-"modelKeys": [],
+"modelKeys": [
+"SUPPLEMENT"
+],
 "id": "fc9938b17180a103241b"
 },
 {

@@ -2,11 +2,9 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
-import { hubFetch, type Reputation } from "@/lib/hub";
+import { hubFetch, type ReputationAnswer } from "@/lib/hub";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { ListingCard, MarketNav, Stars } from "@/components/market-ui";
-
-type Rep = { asSeller: Reputation; asBuyer: Reputation; recent: { stars: number; comment: string | null; role: string; at: string }[] };
 
 // A shop on the marketplace: how other shops rated it, and what it has for sale. `ref` is the company on that install
 // (a StitchBench can hold several, each rated on its own).
@@ -18,13 +16,14 @@ export default async function ShopPage({ params, searchParams }: { params: Promi
   const ref = (typeof refParam === "string" && refParam.trim().slice(0, 64)) || null;
   const [found, rep] = await Promise.all([
     db.listing.findMany({ where: { sellerId: id, status: "ACTIVE", ...(ref ? { sellerRef: ref } : {}) }, orderBy: { createdAt: "desc" } }),
-    hubFetch(`/v1/reputation/${id}${ref ? `?shopRef=${encodeURIComponent(ref)}` : ""}`, { quick: true })
-      .then((r) => r.json() as Promise<Rep>)
+    hubFetch(`/v1/reputation/${id}${ref ? `?shopRef=${encodeURIComponent(ref)}` : ""}`, { quick: true, shopRef: user.shopId })
+      .then((r) => r.json() as Promise<ReputationAnswer>)
       .catch(() => null),
   ]);
   // This install's own page: "mine" means this company's; another company here sees its listings like any shop's.
   const listings = found.map((l) => ({ ...l, mine: l.mine && l.shopId === user.shopId }));
-  const name = listings[0]?.shopName ?? (await db.listing.findFirst({ where: { sellerId: id, ...(ref ? { sellerRef: ref } : {}) }, select: { shopName: true } }))?.shopName ?? "Shop";
+  // The company's name as the hub has it now (its own, once it has claimed itself), else as its listings carry it.
+  const name = rep?.shopName ?? listings[0]?.shopName ?? (await db.listing.findFirst({ where: { sellerId: id, ...(ref ? { sellerRef: ref } : {}) }, select: { shopName: true } }))?.shopName ?? "Shop";
 
   return (
     <div className="space-y-6">

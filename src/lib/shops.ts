@@ -59,7 +59,7 @@ export async function createShopWithOwner(
     throw new UserError("Fill in every field; password 8+ characters.");
   }
   if (!isValidEmail(email)) throw new UserError(EMAIL_HELP);
-  if (await db.user.findUnique({ where: { email } })) throw new UserError("That email already has an account.");
+  // A new company has no logins, so its owner's address can't clash; the same address may be a login elsewhere (round 3 W1).
   const modes = shopModes(input.kind);
   const passwordHash = await bcrypt.hash(input.password, 10);
   const reserved = isPlatformAdmin(email) && !opts.allowReserved;
