@@ -28,6 +28,7 @@ import { GIFT_MAX_CENTS, GIFT_MIN_CENTS, looksLikeGiftCard, type Issued } from "
 import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
+import { ColorFinder } from "@/components/color-finder";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
@@ -742,6 +743,7 @@ export function Register({
           <button type="button" className="btn btn-sm" onClick={openBookings}>
             <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
           </button>
+          <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
           {layaway && !returnMode && (
@@ -854,14 +856,19 @@ export function Register({
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      {it.photoId && (
-                        // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
-                        <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                      {it.colorHex ? (
+                        <span aria-hidden="true" className="h-10 w-10 shrink-0 rounded border border-line" style={{ backgroundColor: it.colorHex }} />
+                      ) : (
+                        it.photoId && (
+                          // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
+                          <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                        )
                       )}
                       <span className="min-w-0">
                       <span className="mono">{it.partNumber}</span> {it.description}
                       {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                      {it.details && <span className="block text-sm">{it.details}</span>}
                       </span>
                     </span>
                     <span className="num">

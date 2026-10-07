@@ -1038,3 +1038,26 @@ Decisions made while building:
   `thread-photo` (9.10).
 - Browser test needed: the add form and an item's Details with each type (the details box appears and swaps; the swatch
   picker and "No swatch"), the item page's summary line, the Parts list's summary and search ("0015", "navy", "PETG").
+
+**`color-lookup` (2.2, 7 Oct 2026).** Migration `20261020200000_color_lookup` (`Part.sameAs`, plain ids kept both
+ways). Code: `src/lib/color-match.ts` (pure: the words split and scored), `src/lib/colors.ts` (the lookup, "colors
+bought before", the shop's own matches), `src/actions/colors.ts`; the register's search puts color hits first and shows
+each hit's swatch and details, and its new **Find a color** button (`src/components/color-finder.tsx`) shows big swatches
+with stock, bin and price, one tap to add; "Colors bought before" on the customer's page
+(`src/components/customer-colors.tsx`); "Same color as" on an item's page (`src/components/same-color.tsx`). Check:
+`scripts/checks/color-lookup.check.ts` (5 groups); `base-license` passes again (see below).
+Decisions made while building:
+- Every word typed has to match something on the item's details (color number, maker, color name, material, specs);
+  a word found only in the description doesn't make a color hit. An exact color number ("15" = "0015") ranks above a
+  near one, then in stock, then the shop's own before a partner's consigned stock.
+- "Order it for her" waits for special orders (1.2, phase 1, not built on this branch): meanwhile a color with none on
+  the shelf has **Order more**, which puts it on its supplier's draft order (`po-any-item`).
+- With a customer chosen, Find a color opens on the colors she bought before (from sales that stand; voids and returns
+  left out), each with when, in the shop's time zone. The headings use her first name, or "Colors bought before".
+- The shop's matches ("same as Madeira 1147") are linked by number on the item's page, both ways, and shown under each
+  hit with their stock; the program never guesses equivalents.
+- `lapse-allow.ts`: `findColors` is a read; the layaway actions from `sales-features` that `base-license` was missing
+  (`startLayaway`, `payLayaway`, `pickUpLayaway` by hand; `openLayaways`, `planChoices` reads) are listed, so that check
+  passes again.
+- Browser test needed: the register's search ("isa 15", "navy", "PLA black 1.75") and Find a color (big swatches, Add,
+  Order more, the matches, a customer's colors), the customer page's "Colors bought before", an item's "Same color as".

@@ -23,6 +23,7 @@ import { CertifyButton } from "@/components/longarm-forms";
 import { StoreCreditSection } from "@/components/store-credit-section";
 import { classCreditsFor } from "@/lib/units/units";
 import { CustomerLayaways } from "@/components/customer-layaways";
+import { CustomerColors } from "@/components/customer-colors";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -131,6 +132,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
           </Section>
         )}
         {c.kind === "RETAIL" && <CustomerLayaways shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerColors shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}
         {orders.length > 0 && (
           <Section title="Online orders">
