@@ -66,5 +66,5 @@ desktop/dist-stitchshop/
 scripts/demo/*.local.json
 
 # deep-research working notes and reports (the finished report is copied into docs/research/)
-research_notes/
-reports/
+/research_notes/
+/reports/
