@@ -168,7 +168,7 @@ export async function ReorderTab({ shopId }: { shopId: string }) {
                 <details className="text-sm">
                   <summary className="cursor-pointer">
                     How orders go ({connectorFor(s.connector).label}) and catalog import
-                    {s.catalogAt ? <span className="muted text-xs"> · catalog imported {fmtDate(s.catalogAt, shop.timeZone)}: {s.catalogNote}</span> : null}
+                    {s.catalogAt ? <span className="muted text-xs"> Â· catalog imported {fmtDate(s.catalogAt, shop.timeZone)}: {s.catalogNote}</span> : null}
                   </summary>
                   <div className="space-y-4 pt-3">
                     <ConnectorForm name={s.name} connector={s.connector} accountNumber={s.accountNumber} layout={s.orderLayout ? layoutText(s.orderLayout) : ""} choices={choices} defaultLayout={layoutText(DEFAULT_ORDER_LAYOUT)} />
