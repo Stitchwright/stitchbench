@@ -46,7 +46,7 @@ async function signIn(page: Page) {
 
 async function syncNow(page: Page) {
   await page.goto("/settings");
-  await page.getByRole("button", { name: "Sync now" }).click();
+  await page.getByRole("button", { name: "Update from StitchHub" }).click();
   await expect(page.getByText("Synced with the hub")).toBeVisible({ timeout: 180_000 });
 }
 

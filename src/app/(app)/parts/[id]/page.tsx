@@ -212,10 +212,10 @@ export default async function PartPage({ params, searchParams }: { params: Promi
             </details>
           </Section>
 
-          <Section title="Cross-reference">
+          <Section title="Other part numbers">
             {!joined ? (
               <p className="muted text-sm">
-                Join the community hub (
+                Join StitchHub (
                 <Link href="/settings#hub" className="link">
                   Settings
                 </Link>

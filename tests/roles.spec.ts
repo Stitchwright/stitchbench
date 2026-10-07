@@ -111,7 +111,7 @@ test("a tech's save keeps a part's cost, price and partner price as they were", 
 
 test("a tech can bill and take payment, but not refund, remove a payment or void a sale", async () => {
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill(`Role Customer ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Role Customer ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
   await page.getByLabel("Serial number", { exact: true }).fill(serial);

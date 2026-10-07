@@ -35,11 +35,11 @@ async function createCompany(name: string, kind: string, email: string): Promise
   return id;
 }
 
-/** "Sync now" on the Partners page, as a person would, until both sides hold the same run. */
+/** "Update from StitchHub" on the Partners page, as a person would, until both sides hold the same run. */
 async function syncBoth(a: Page, b: Page) {
   for (const p of [a, b, a]) {
     await p.goto("/partners");
-    const btn = p.getByRole("button", { name: /Sync now/ });
+    const btn = p.getByRole("button", { name: /Update from StitchHub/ });
     if (await btn.count()) {
       await btn.click();
       await p.waitForTimeout(1500);

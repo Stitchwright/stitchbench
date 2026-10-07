@@ -23,7 +23,7 @@ export function ModuleNotice({ state, what, admin = false, shop }: { state: Modu
             <span>
               To start new work, renew it in{" "}
               <Link href={SETTINGS_MODULES_HREF} className="link">
-                Settings → Modules
+                Settings → Add-ons
               </Link>
               .
             </span>
@@ -59,7 +59,7 @@ export function ModuleNotice({ state, what, admin = false, shop }: { state: Modu
           <span>
             To add it, see{" "}
             <Link href={SETTINGS_MODULES_HREF} className="link">
-              Settings → Modules
+              Settings → Add-ons
             </Link>
             .
           </span>

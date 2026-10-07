@@ -51,7 +51,7 @@ export async function RepositoryPanel({ user, timeZone }: { user: CurrentUser; t
           library under its usual name.
         </p>
         {soon && <p className="pill tone-wait inline-block">{SOON} Offering a manual switches on here once it does; nothing is sent until then.</p>}
-        {!soon && user.role === "TECH" && !shop?.techsOfferManuals && <p className="muted">Offering manuals is for the shop owner or an admin. The owner can allow techs in Settings → Community hub.</p>}
+        {!soon && user.role === "TECH" && !shop?.techsOfferManuals && <p className="muted">Offering manuals is for the shop owner or an admin. The owner can allow techs in Settings → StitchHub.</p>}
         {!soon && allowed && root && (
           <div>
             <div className="label mb-1">Offer a file from the library&apos;s _inbox</div>
@@ -109,7 +109,7 @@ export async function RepositoryPanel({ user, timeZone }: { user: CurrentUser; t
             </ul>
           )}
           <p className="muted mt-1 text-xs">
-            States are refreshed at each sync with the hub. <Link href="/settings#hub" className="link">Sync now in Settings</Link>.
+            States are refreshed at each sync with the hub. <Link href="/settings#hub" className="link">Update from StitchHub in Settings</Link>.
           </p>
         </div>
       </div>

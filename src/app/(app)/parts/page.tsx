@@ -95,7 +95,7 @@ export default async function Parts({
               On order
             </Link>
             <Link href="/xref" className="btn">
-              Cross-reference
+              Other part numbers
             </Link>
             <Link href="/market" className="btn">
               Marketplace

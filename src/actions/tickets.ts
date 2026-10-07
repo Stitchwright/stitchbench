@@ -174,7 +174,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
 
   // A paper ticket number typed in (blank takes the next one).
   const typed = typedTicketNumber(str(formData.get("number")));
-  const preApprovedCents = amountOf(formData.get("preApproved"), "Pre-approved");
+  const preApprovedCents = amountOf(formData.get("preApproved"), "OK to spend up to");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
   const { equipment, key: kindName } = kind;
 
@@ -298,7 +298,7 @@ const TEXT_FIELDS = [
   ["diagnosis", "diagnosis", text, "What we found"],
   ["workDone", "workDone", text, "Work done"],
   ["notes", "notes", text, "Internal notes"],
-  ["preApprovedCents", "preApproved", toCents, "Pre-approved"],
+  ["preApprovedCents", "preApproved", toCents, "OK to spend up to"],
   ["approvedCents", "approved", toCents, "Customer approved"],
   ["techId", "techId", str, "Tech"],
 ] as const;

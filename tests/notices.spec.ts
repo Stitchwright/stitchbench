@@ -36,7 +36,7 @@ function seedMarketing(email: string): string {
 /** A direct ticket for a new customer who wants email. */
 async function newTicket(page: Page, customer: { name: string; email: string }): Promise<string> {
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill(customer.name);
+  await page.getByLabel("new customer's name").fill(customer.name);
   await page.getByLabel("Email address").fill(customer.email);
   const notify = page.getByRole("radio", { name: "Email", exact: true }); // not asked while Marketing is off
   if (await notify.count()) await notify.check();

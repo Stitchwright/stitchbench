@@ -22,7 +22,7 @@ const made: string[] = [];
 /** A direct ticket for a new customer, with $145.00 on the bill, waiting for the customer's OK (set on the page). */
 async function waitingTicket(page: Page, customer: { name: string; email?: string; phone?: string; notify: "Email" | "Text" }): Promise<string> {
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill(customer.name);
+  await page.getByLabel("new customer's name").fill(customer.name);
   if (customer.phone) await page.getByLabel("Phone", { exact: true }).fill(customer.phone);
   if (customer.email) await page.getByLabel("Email address").fill(customer.email);
   await page.getByRole("radio", { name: customer.notify, exact: true }).check();

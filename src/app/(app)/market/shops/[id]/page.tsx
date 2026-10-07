@@ -33,7 +33,7 @@ export default async function ShopPage({ params, searchParams }: { params: Promi
         <div className="space-y-6 xl:col-span-2">
           <Section title="Ratings">
             {!rep ? (
-              <p className="muted text-sm">Couldn&apos;t reach the community hub for ratings right now.</p>
+              <p className="muted text-sm">Couldn&apos;t reach StitchHub for ratings right now.</p>
             ) : (
               <div className="space-y-4 text-sm">
                 <div className="grid grid-cols-2 gap-3">

@@ -221,7 +221,7 @@ function emailText(row: LogRow): string {
     "",
     `Here is your StitchBench key for ${what}, good through ${fmtYmd(row.until)}. It is for ${row.name} (Company ID ${row.companyId}).`,
     "",
-    "In StitchBench, go to Settings → Modules, paste the key (or this whole email) in the box and press Add key. It works without the internet.",
+    "In StitchBench, go to Settings → Add-ons, paste the key (or this whole email) in the box and press Add key. It works without the internet.",
     "",
     row.key,
     "",
@@ -388,7 +388,7 @@ async function interactive(log: string) {
         if (!l.trim()) break;
         text += "\n" + l;
       }
-      shopId = /Company ID:\s*(\S+)/i.exec(text)?.[1] ?? fail("No \"Company ID: …\" line in that email. Ask the shop for the ID shown in Settings → Modules.");
+      shopId = /Company ID:\s*(\S+)/i.exec(text)?.[1] ?? fail("No \"Company ID: …\" line in that email. Ask the shop for the ID shown in Settings → Add-ons.");
       name = /^\s*Company:\s*(.+)$/im.exec(text)?.[1]?.trim() ?? "";
     }
     if (!shopId) fail("A Company ID is needed.", 2);

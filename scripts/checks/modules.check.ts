@@ -311,9 +311,9 @@ async function main() {
       assert.ok(msg.endsWith(tail), `${who}: ${msg}`);
       return true;
     };
-    await assert.rejects(requireModule({ shopId: a.shopId, role: "OWNER" }, "vac"), expectEnded("OWNER", "renew it in Settings → Modules."));
-    await assert.rejects(requireModule({ shopId: a.shopId, role: "ADMIN" }, "vac"), expectEnded("ADMIN", "renew it in Settings → Modules."));
-    await assert.rejects(requireModule(a.shopId, "vac"), expectEnded(null, "renew it in Settings → Modules."));
+    await assert.rejects(requireModule({ shopId: a.shopId, role: "OWNER" }, "vac"), expectEnded("OWNER", "renew it in Settings → Add-ons."));
+    await assert.rejects(requireModule({ shopId: a.shopId, role: "ADMIN" }, "vac"), expectEnded("ADMIN", "renew it in Settings → Add-ons."));
+    await assert.rejects(requireModule(a.shopId, "vac"), expectEnded(null, "renew it in Settings → Add-ons."));
     await assert.rejects(requireModule({ shopId: a.shopId, role: "TECH" }, "vac"), expectEnded("TECH", "Ask the shop owner to renew it."));
     assert.equal(await hasModule(a.shopId, "vac"), false);
     ok("requireModule: 'Vac Shop ended on ...' for admins and techs");

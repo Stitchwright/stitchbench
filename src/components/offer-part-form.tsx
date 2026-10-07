@@ -79,7 +79,7 @@ export function OfferPartForm({
           <input type="checkbox" name="market" className="check mt-0.5" checked={market} onChange={(e) => setMarket(e.target.checked)} disabled={!hubJoined} />
           <span>
             On the community marketplace, for any shop on the hub to buy
-            {!hubJoined && <span className="muted"> (join the community hub in Settings first)</span>}
+            {!hubJoined && <span className="muted"> (join StitchHub in Settings first)</span>}
           </span>
         </label>
       </fieldset>
