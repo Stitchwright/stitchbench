@@ -839,6 +839,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               e.preventDefault();
               const price = toCents(misc.price);
               if (!misc.description.trim() || price == null) return toast.error("Give the item a description and a price.");
+              setDone(null);
               setCart((c) => [
                 ...c,
                 { key: newKey(), description: misc.description.trim(), unit: null, qty: returnMode ? -1 : 1, unitPriceCents: price, discountPct: 0, taxable: misc.taxable },
