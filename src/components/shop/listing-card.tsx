@@ -6,15 +6,19 @@ import { MAX_PHOTOS } from "@/lib/shop/online-shop";
 import { addPhoto, removePhoto, saveListing } from "@/actions/online-shop";
 import { ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
+import { DraftFill, PostDraft } from "@/components/assistant/marketing-drafts";
 
 export async function ListingCard({
   part,
   admin,
   shopOn,
+  drafting,
 }: {
   part: { id: string; online: boolean; onlineTitle: string | null; onlineText: string | null; priceCents: number | null; consignLinkId: string | null; description: string };
   admin: boolean;
   shopOn: boolean;
+  /** The Assistant's marketing drafts (shop-features-round-2-design.md 5.2): "Draft it" for the text, and a social post. */
+  drafting?: { unavailable?: string } | null;
 }) {
   const photos = await db.partPhoto.findMany({ where: { partId: part.id }, orderBy: { sortOrder: "asc" }, select: { id: true } });
   return (
@@ -50,9 +54,15 @@ export async function ListingCard({
                 Text for customers (optional)
               </label>
               <textarea id="ol-text" name="onlineText" defaultValue={part.onlineText ?? ""} rows={3} maxLength={2000} className="input" />
+              {drafting && <DraftFill what={{ kind: "item", partId: part.id, bodyId: "ol-text" }} unavailable={drafting.unavailable} />}
             </div>
             <Submit className="btn btn-sm">Save listing</Submit>
           </ActionForm>
+          {drafting && !drafting.unavailable && (
+            <div className="mt-3">
+              <PostDraft about="item" id={part.id} />
+            </div>
+          )}
           <div className="mt-4 space-y-2">
             <div className="label">
               Photos ({photos.length} of {MAX_PHOTOS})

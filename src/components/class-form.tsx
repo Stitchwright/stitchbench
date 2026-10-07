@@ -4,6 +4,7 @@
 import { useState } from "react";
 import type { ActionResult } from "@/lib/action";
 import { ActionForm, Submit } from "@/components/action-form";
+import { DraftFill } from "@/components/assistant/marketing-drafts";
 
 export type ClassDraft = {
   title: string;
@@ -71,7 +72,21 @@ export function MeetingFields({ prefix = "", defaults }: { prefix?: string; defa
   );
 }
 
-export function ClassForm({ action, draft, isNew }: { action: (fd: FormData) => Promise<ActionResult>; draft: ClassDraft | null; isNew: boolean }) {
+/**
+ * `drafting`: the Assistant's "Draft it" for "About the class" (shop-features-round-2-design.md 5.2), when its marketing
+ * drafts are on; the class's id for a saved class (its meetings go in too), null for a new one.
+ */
+export function ClassForm({
+  action,
+  draft,
+  isNew,
+  drafting,
+}: {
+  action: (fd: FormData) => Promise<ActionResult>;
+  draft: ClassDraft | null;
+  isNew: boolean;
+  drafting?: { classId: string | null; unavailable?: string } | null;
+}) {
   return (
     <ActionForm action={action} success={isNew ? undefined : "Saved"} className="space-y-4">
       <Field id="cl-title" label="Class name">
@@ -109,6 +124,7 @@ export function ClassForm({ action, draft, isNew }: { action: (fd: FormData) => 
       </Field>
       <Field id="cl-description" label="About the class" hint="Shown on the roster and the newsletter print.">
         <textarea id="cl-description" name="description" rows={3} maxLength={4000} className="input" defaultValue={draft?.description ?? ""} />
+        {drafting && <DraftFill what={{ kind: "class", classId: drafting.classId, bodyId: "cl-description" }} unavailable={drafting.unavailable} />}
       </Field>
       <Field id="cl-supplies" label="What to bring" hint="Goes in the sign-up message and the reminders.">
         <textarea id="cl-supplies" name="supplies" rows={2} maxLength={4000} className="input" defaultValue={draft?.supplies ?? ""} />

@@ -12,6 +12,7 @@ import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
 import { askShop } from "@/lib/assistant/ask";
+import { draftArrivals, draftClassBlurb, draftProductText, draftSocialPost } from "@/lib/assistant/marketing";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
 export const draftTicketText = safe(async (ticketId: string, kind: string, shorthand: string, instruction: string) => {
@@ -133,4 +134,28 @@ export const tagFabric = safe(async (partId: string, data: string, mediaType: st
 export const askYourShop = safe(async (question: string) => {
   const user = await requireUser();
   return shownOnce(JSON.stringify(await askShop(user, question)));
+});
+
+/** "Draft it" on a new campaign: a new arrivals email (subject and body) from what was received lately. */
+export const draftArrivalsEmail = safe(async (days: number, instruction: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await draftArrivals(user, { days, instruction })));
+});
+
+/** "Draft it" for a class's "About the class", from the form as typed (and the saved class's meetings). */
+export const draftClassText = safe(async (classId: string | null, fields: { title?: string; teacher?: string; location?: string; supplies?: string; fee?: string }, instruction: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify({ text: await draftClassBlurb(user, { classId, ...fields, instruction }) }));
+});
+
+/** "Draft it" for an item's online text. */
+export const draftItemText = safe(async (partId: string, instruction: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify({ text: await draftProductText(user, { partId, instruction }) }));
+});
+
+/** "Draft a social post" about what came in, a class or an item: text to copy. */
+export const draftPostText = safe(async (about: string, id: string | null, days: number, instruction: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify({ text: await draftSocialPost(user, { about, id, days, instruction }) }));
 });

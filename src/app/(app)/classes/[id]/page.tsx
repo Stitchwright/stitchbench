@@ -14,6 +14,8 @@ import { CLASS_REMIND_LABEL, CLASS_STATUS_LABEL, CLASS_STATUS_TONE } from "@/lib
 import { addMeetings, applyClassCredit, cancelEnrollment, cancelMeeting, deleteClass, deleteMeeting, enroll, messageClass, moveUp, saveClass, saveMeeting, setClassStatus, setEnrollmentFee } from "@/actions/classes";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { ClassForm, MeetingFields } from "@/components/class-form";
+import { entryFor } from "@/lib/assistant/ui";
+import { PostDraft } from "@/components/assistant/marketing-drafts";
 import { CustomerPicker } from "@/components/customer-picker";
 import { ModuleOff } from "@/components/module-off";
 import { KV, PageHeader, Section } from "@/components/ui";
@@ -37,6 +39,8 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   if (!c) notFound();
   const on = gate === "on";
   const admin = user.role !== "TECH" && on;
+  // Marketing drafts (shop-features-round-2-design.md 5.2): "Draft it" for About the class, and a social post.
+  const mk = admin ? await entryFor(shopId, "marketing") : ({ show: false } as const);
   const now = new Date();
   const [tz, marketing, rows] = await Promise.all([
     shopTimeZone(shopId),
@@ -354,7 +358,12 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
       {admin && (
         <>
           <Section title="Edit the class">
-            <ClassForm action={saveClass.bind(null, c.id)} draft={c} isNew={false} />
+            <ClassForm action={saveClass.bind(null, c.id)} draft={c} isNew={false} drafting={mk.show ? { classId: c.id, unavailable: mk.unavailable } : null} />
+            {mk.show && !mk.unavailable && c.status !== "CANCELLED" && (
+              <div className="mt-4">
+                <PostDraft about="class" id={c.id} />
+              </div>
+            )}
           </Section>
           {marketing && c.status !== "CANCELLED" && (
             <Section title="Message everyone">
