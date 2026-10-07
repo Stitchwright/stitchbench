@@ -78,6 +78,8 @@ export default async function OffsitePage() {
             <select id="target" name="target" className="select" defaultValue={s?.target === "folder" ? "folder" : s?.target === "bucket" ? "bucket" : "hub"}>
               <option value="hub">With StitchHub (arranged for you)</option>
               {desktop && <option value="folder">In a folder (a USB disk, OneDrive or Dropbox folder)</option>}
+              {/* A folder saved in the Windows program, moved to hosted: shown as it is, not as StitchHub, until another is picked. */}
+              {!desktop && s?.target === "folder" && <option value="folder">A folder (Windows program only): choose StitchHub or your own bucket</option>}
               <option value="bucket">In my own bucket (R2, B2, Wasabi, S3 or MinIO)</option>
             </select>
           </div>
