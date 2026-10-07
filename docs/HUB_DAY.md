@@ -82,6 +82,9 @@ read and write on that bucket only). Set `BACKUP_S3_ENDPOINT` (`https://<account
 ! cd C:/Users/bwatt/stitchbench && railway link --project stitchbench && railway up --service stitchbench --ci ; railway link --project stitchshop --service stitchshop
 ```
    Both hosted services: set `HUB_URL` = `https://hub.stitchbench.app` if they don't already point there.
+   The round-2 migrations run on start. One of them (`20261025000000_locations`) gives every existing sale, ticket,
+   stock move and login its company's main store: one `UPDATE` a table, each holding that table's write lock for a few
+   seconds on a big shop (fine at deploy; do it outside opening hours, and don't stop a deploy that is migrating).
 3. Right after: the marketplace count (L6), at the PC terminal:
    `railway ssh -p 10264d2c-c4d5-4f20-9604-4f72c672005b -e production -s stitchbench -- node scripts/hosted/count-unassigned-market.mjs`
    and the same with `-p 2426d0d0-b2af-4f64-bff8-1db1ee1305ae -s stitchshop`. Send Claude the numbers.
