@@ -188,6 +188,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "StoreNote", key: "id" },
   { t: "StoreNoteRead", key: `"noteId" || '|' || "userId"`, via: { column: "noteId", parent: "StoreNote" } }, // -> StoreNote, User
   { t: "Approval", key: "id" },
+  { t: "SlipReceipt", key: `"shopId" || '|' || "key"` }, // packing slips already received (so a retry receives nothing twice)
 ];
 
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */
