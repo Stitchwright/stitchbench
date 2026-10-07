@@ -31,6 +31,9 @@ import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
+import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
+
+const NO_PROMOS: Promo[] = [];
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
@@ -66,6 +69,8 @@ type CartLine = {
   kind?: string;
   /** A tax holiday covers it but the cashier charges the tax anyway. */
   taxAnyway?: boolean;
+  /** The item's or machine's brand: a promotion may cover a brand. */
+  brand?: string | null;
   /** A class seat or an appointment paid or refunded here (design 12.3): one each, priced by the server. */
   enrollmentId?: string;
   appointmentId?: string;
@@ -102,6 +107,7 @@ export function Register({
   layaway,
   holiday,
   lenders = [],
+  promotions = NO_PROMOS,
   preload,
 }: {
   taxRatePct: number;
@@ -116,6 +122,8 @@ export function Register({
   holiday?: Holiday | null;
   /** The lenders the shop offers financing through: the Financing payment button shows when there are any. */
   lenders?: { id: string; name: string }[];
+  /** The promotions in force today (percent or amount off, the price including the tax). */
+  promotions?: Promo[];
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -172,21 +180,31 @@ export function Register({
   const pending = useRef<{ key: string; sent: string } | null>(null);
 
   // A partner's repair bill is paid as billed, and a trade-in is credit: a whole-sale discount doesn't come off them.
-  // A tax holiday takes the tax off the lines it covers (the server applies the same rule when the sale is saved).
+  // A promotion in force today gives an item its best percent or amount off, a tax holiday takes the tax off the lines
+  // it covers, and a "price includes the tax" promotion backs the tax out of the price (the server applies the same rules
+  // when the sale is saved; only the discount typed here is sent).
   const lines = useMemo(
     () =>
       cart.map((l) => {
-        const line = { ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard };
+        const manual = discountOf(l);
+        const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard };
+        const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf;
+        const best = item ? bestDiscount(promotions, start) : null;
+        const line = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
         const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
-        return { ...line, holidayCovered: covered, taxable: line.taxable && !(covered && !line.taxAnyway) };
+        const taxable = line.taxable && !(covered && !line.taxAnyway);
+        const included = item && taxable && !covered && !line.discountCents && ratePct > 0 ? includedPromo(promotions, line) : null;
+        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (best && best.cents > manual ? best.promo.name : null), taxIncluded: !!included, holidayCovered: covered, taxable };
       }),
-    [cart, holiday],
+    [cart, holiday, promotions, returnOf, ratePct],
   );
-  const base = discountBase(lines);
+  // The totals count a tax-included line at its price before tax (the tax is added back on top).
+  const priced = lines.map((l) => (l.taxIncluded ? { ...l, unitPriceCents: priceBeforeTax(l.unitPriceCents, ratePct) } : l));
+  const base = discountBase(priced);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
   const receiptRate = returnOf && lines.length > 0 && lines.every((l) => l.qty < 0) ? returnOf.taxRatePct : null;
-  const t = saleTotals(lines, orderDiscountCents, receiptRate ?? ratePct, tenders);
+  const t = saleTotals(priced, orderDiscountCents, receiptRate ?? ratePct, tenders);
   const refund = t.total < 0;
   // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
   const problem = tenderProblem(t, tenders);
@@ -210,7 +228,7 @@ export function Register({
         return;
       }
       setDone(null);
-      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT" }]);
+      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT", brand: it.brand ?? null }]);
       return;
     }
     setDone(null);
@@ -228,6 +246,7 @@ export function Register({
           partNumber: it.partNumber,
           unit: it.unit,
           kind: it.kind,
+          brand: it.brand ?? null,
           qty: sign * (it.unit === "yd" ? 1 : 1),
           unitPriceCents: it.priceCents ?? 0,
           priced: it.priceCents != null,
@@ -622,7 +641,7 @@ export function Register({
         description: l.description,
         qty: l.qty,
         unitPriceCents: l.unitPriceCents,
-        discountCents: l.discountCents,
+        discountCents: l.manualDiscountCents,
         taxable: l.taxable,
         machineId: l.machineId ?? null,
         stockUnitId: l.stockUnitId ?? null,
@@ -1013,6 +1032,7 @@ export function Register({
                     {l.partNumber && <span className="mono mr-1">{l.partNumber}</span>}
                     {l.description}
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
+                    {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">

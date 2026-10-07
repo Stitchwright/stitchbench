@@ -135,6 +135,9 @@ model Shop {
   layawayRefund        String        @default("credit")
   layawayTerms         String?
   nextLayawayNumber    Int           @default(1)
+  // "Price includes the tax" promotions allowed (tax-machine-sales-layaway-design.md section 2, owner's answer 5): off
+  // until the owner turns it on past the warning that some states forbid advertising it.
+  taxIncludedOn        Boolean       @default(false)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
   checkInKind          String        @default("sewing")
   // Vac Shop "bags due": days between bag purchases
@@ -230,6 +233,7 @@ model Shop {
   layaways          Layaway[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
+  promotions        Promotion[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -1337,6 +1341,8 @@ model SaleLine {
   // Why a line that could be taxed wasn't (or was taxed differently): null, "exempt" (the customer's certificate),
   // "holiday:<TaxHoliday id>" (a sales tax holiday), "included" (the price includes the tax): for the receipt, a return and the tax report
   taxNote        String?
+  // The promotion that priced this line (percent or amount off, or the price including the tax), plain id
+  promotionId    String?
   // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
   // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
   layawayId      String?
@@ -3108,4 +3114,24 @@ model FinancedSale {
   @@index([shopId, paidAt])
   @@index([saleId])
   @@index([lenderId])
+}
+
+// A promotion (tax-machine-sales-layaway-design.md section 2): whole days in the shop's zone, what it covers (scope:
+// { kinds: [...], brands: [...], partIds: [...] }, any of them), and one effect: PERCENT off (value: the percent),
+// AMOUNT off each (value: cents), or TAX_INCLUDED (the price includes the tax, backed out at the shop's rate; only
+// while Shop.taxIncludedOn). The register applies it by date as the line's own discount.
+model Promotion {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  firstDay  String
+  lastDay   String
+  scope     Json     @default("{}")
+  effect    String
+  value     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([shopId, firstDay])
 }

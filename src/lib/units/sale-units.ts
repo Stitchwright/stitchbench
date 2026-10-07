@@ -297,5 +297,6 @@ export async function registerUnitHits(a: { shopId: string; q: string; mode: "co
     consigned: false,
     disclosure: unitDisclosure(u.condition),
     stockUnitId: u.id,
+    brand: u.machine.brand,
   }));
 }

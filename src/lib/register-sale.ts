@@ -25,6 +25,8 @@ import { exemptCertificate } from "@/lib/tax-exempt";
 import { saleLineKind } from "@/lib/sale-kind";
 import { holidaysOn } from "@/lib/tax-holidays";
 import { prepareFinanced, recordFinanced, voidFinanced } from "@/lib/financing";
+import { promotionsOn } from "@/lib/promotions";
+import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
 import { holidayCovers } from "@/lib/tax-holiday-math";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
@@ -376,6 +378,25 @@ export async function completeSaleAs(
       }),
     );
     const taxNotes: (string | null)[] = lines.map(() => null);
+    // Promotions in force today (tax-machine-sales-layaway-design.md section 2): the best percent or amount off that
+    // covers an item being bought becomes its own discount (a bigger one an owner typed stands). Not for a return, a
+    // layaway (its prices were settled when it began), the online shop (priced at checkout) or a given tax amount.
+    const promoIds: (string | null)[] = lines.map(() => null);
+    const promos = lay || original || givenTax != null || opts.paidOnline ? [] : await promotionsOn(shopId, ymdOf(new Date(), shop.timeZone));
+    const unitBrands = new Map<string, string>();
+    if (promos.length) {
+      const ids = lines.map((l) => l.stockUnitId).filter((x): x is string => !!x);
+      if (ids.length) for (const u of await db.stockUnit.findMany({ where: { shopId, id: { in: ids } }, select: { id: true, machine: { select: { brand: true } } } })) unitBrands.set(u.id, u.machine.brand);
+    }
+    const promoLine = (l: (typeof lines)[number], i: number) => ({ ...l, kind: lineKinds[i], brand: l.partId ? parts.get(l.partId)?.brand : l.stockUnitId ? unitBrands.get(l.stockUnitId) : null });
+    for (const [i, l] of lines.entries()) {
+      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind) continue;
+      const best = bestDiscount(promos, promoLine(l, i));
+      if (best && best.cents > l.discountCents) {
+        l.discountCents = best.cents;
+        promoIds[i] = best.promo.id;
+      }
+    }
     if (original) {
       // A return from a receipt gives each item back as it was taxed: one bought on a tax holiday comes back tax free.
       for (const [i, l] of lines.entries()) {
@@ -403,6 +424,16 @@ export async function completeSaleAs(
           l.taxable = false;
           taxNotes[i] = `holiday:${h.id}`;
         }
+      }
+      // "Price includes the tax" (off unless the owner turned it on): the sticker price is the most the customer pays;
+      // the line keeps the price before tax, worked out at the shop's rate, so the books and the tax report show the real tax.
+      for (const [i, l] of lines.entries()) {
+        if (l.qty <= 0 || !l.taxable || taxNotes[i] || l.discountCents || !(l.partId || l.stockUnitId)) continue;
+        const p = includedPromo(promos, promoLine(l, i));
+        if (!p) continue;
+        l.unitPriceCents = priceBeforeTax(l.unitPriceCents, shop.taxRatePct);
+        taxNotes[i] = "included";
+        promoIds[i] = p.id;
       }
     }
     const taxRatePct = original ? original.taxRatePct : givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
@@ -456,7 +487,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], layawayId: lay?.id ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });

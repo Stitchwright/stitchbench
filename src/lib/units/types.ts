@@ -25,4 +25,6 @@ export type UnitCartLine = {
   stockUnitId?: string;
   tradeIn?: TradeInInput;
   servicePlan?: PlanCart;
+  /** The machine's brand: a promotion may cover a brand. */
+  brand?: string | null;
 };
