@@ -238,6 +238,11 @@ model Shop {
   movedTo                  String?
   movedInAt                DateTime?
   movedFrom                String?
+  // Joining this company into another as a store (round-2 7.6): a one-time code its owner makes while signed in here
+  // (hashed), good for 30 minutes, typed into the other company by the same person (never matched by email)
+  joinCodeHash             String?
+  joinCodeUntil            DateTime?
+  joinCodeById             String?
   // Made by StitchHub's "Start a hosted shop" (POST /api/platform/companies, package hosted-provisioning): the Companies
   // page says "Started from StitchHub"
   startedFromHubAt         DateTime?
@@ -426,6 +431,11 @@ model User {
   locationId     String?
   // A manager's approval code at the register (7.5), hashed; null = none
   approveCode    String?
+  // The code was set before codes were 6 numbers: Settings -> Stores asks her to change it
+  approveCodeOld Boolean  @default(false)
+  // Wrong approval codes typed by this person (counted before each try), and the 15 minutes' wait after five
+  approveFails   Int      @default(0)
+  approveLockedUntil DateTime?
   email          String
   name           String
   passwordHash   String
@@ -3572,6 +3582,8 @@ model TaxHoliday {
   lastDay      String
   kinds        String[]
   maxUnitCents Int?
+  // The stores it covers (Location ids); empty = every store (a preset fills in the stores in its state)
+  locationIds  String[] @default([])
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
@@ -4284,6 +4296,9 @@ model Location {
   phone              String?
   timeZone           String   @default("America/New_York")
   taxRatePct         Float    @default(0)
+  // Wrong approval codes typed at this store's register (counted before each try), and the 15 minutes' wait after five
+  approveFails       Int      @default(0)
+  approveLockedUntil DateTime?
   hours              String?
   receiptFooter      String?
   dailyAt            String?
@@ -4427,4 +4442,15 @@ model Approval {
   createdAt     DateTime  @default(now())
 
   @@index([shopId, status])
+}
+
+// A packing slip received through the slip reader (round-2 3.x): its key, made once per reading, so "Receive these"
+// sent again (a retry, a double tap) receives nothing twice
+model SlipReceipt {
+  shopId    String
+  key       String
+  words     String?
+  createdAt DateTime @default(now())
+
+  @@id([shopId, key])
 }
