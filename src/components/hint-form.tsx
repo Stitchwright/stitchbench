@@ -16,7 +16,7 @@ export function HintForm({ hint }: { hint: HintFormData }) {
         <Lightbulb size={16} aria-hidden /> Offer a hint about this model
       </summary>
       <p className="muted mt-2 text-sm">
-        Goes to the {model} page for every shop on the community hub, with the photos you tick. Only what you write here is sent: nothing from the ticket, the customer or the serial number.
+        Goes to the {model} page for every shop on StitchHub, with the photos you tick. Only what you write here is sent: nothing from the ticket, the customer or the serial number.
       </p>
       <ActionForm action={sharePost.bind(null, hint.machineId)} reset success="Hint offered to every shop" className="mt-3 space-y-3">
         <div className="grid-form">

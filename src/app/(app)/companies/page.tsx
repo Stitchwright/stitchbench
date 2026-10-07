@@ -210,7 +210,7 @@ export default async function Companies() {
 
       <Section title="Modules for a company">
         {desktop ? (
-          <p className="muted text-sm">Modules are switched on from the hosted StitchBench. Here, each company pastes its license key in Settings → Modules.</p>
+          <p className="muted text-sm">Modules are switched on from the hosted StitchBench. Here, each company pastes its license key in Settings → Add-ons.</p>
         ) : (
           <div className="space-y-4">
             <p className="muted text-sm">

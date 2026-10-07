@@ -167,7 +167,7 @@ test("how to tell them, consent on the tablet, opt-outs and a STOP reply", async
 test("check-in asks how to tell a new customer while email is ready", async ({ browser }) => {
   const page = await login(browser, owner);
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill(`Needs Asking ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Needs Asking ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
   // The question is required in the browser (the server refuses too: "Ask how they'd like to be told").

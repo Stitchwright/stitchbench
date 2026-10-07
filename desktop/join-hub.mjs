@@ -1,11 +1,11 @@
-// Join the program's StitchBench to a community hub from the command line (same as Settings → Community hub → Join).
+// Join the program's StitchBench to a community hub from the command line (same as Settings → StitchHub → Join).
 // usage: node join-hub.mjs <hub url> <join key>        (the program picks it up at its next sync, within 10 minutes)
-// SB_FLAVOR=stitchshop for StitchShop. Settings → Community hub is the better way: it also upgrades a partner-only
+// SB_FLAVOR=stitchshop for StitchShop. Settings → StitchHub is the better way: it also upgrades a partner-only
 // install on the same hub without breaking its partnerships, which this script refuses to touch.
 import pg from "pg";
 import { programConfig } from "./cli-config.mjs";
 
-/** The same rule as Settings → Community hub (checkHubUrl in src/lib/hub.ts, which a script can't import): https, or http only for this computer. */
+/** The same rule as Settings → StitchHub (checkHubUrl in src/lib/hub.ts, which a script can't import): https, or http only for this computer. */
 function checkHubUrl(url) {
   let u;
   try {
@@ -31,7 +31,7 @@ try {
   const active = Number((await db.query(`SELECT count(*) AS n FROM "PartnerLink" WHERE status = 'ACTIVE'`)).rows[0].n);
   // Partner links live on the current hub, under this install's id: a new registration would cut them off.
   if (cur?.installKey && active) {
-    throw new Error(`This install has ${active} active partner shop(s) on ${cur.url}. Join from Settings → Community hub, or end those partnerships first.`);
+    throw new Error(`This install has ${active} active partner shop(s) on ${cur.url}. Join from Settings → StitchHub, or end those partnerships first.`);
   }
   const shop = (await db.query(`SELECT name, email FROM "Shop" ORDER BY "createdAt" LIMIT 1`)).rows[0];
   const r = await fetch(`${base}/v1/register`, {

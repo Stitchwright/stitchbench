@@ -68,7 +68,7 @@ async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZo
   const [s, links, notes, figures] = await Promise.all([db.hubState.findUnique({ where: { id: 1 } }), db.manualLink.count(), db.hubPost.count(), db.hubFigure.count()]);
   const joined = Boolean(s?.url && s.installKey);
   return (
-    <Section title="Community hub">
+    <Section title="StitchHub">
       {joined ? (
         <div className="space-y-3 text-sm">
           <p>
@@ -110,7 +110,7 @@ async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZo
           )}
           <div className="flex flex-wrap gap-2">
             <ActionButton action={syncCommunityHub} className="btn btn-sm" success="Synced with the hub">
-              Sync now
+              Update from StitchHub
             </ActionButton>
             {admin && (
               <ActionButton action={leaveCommunityHub} className="btn btn-sm btn-danger" confirm="Disconnect from the hub? Your listings come off the marketplace." success="Disconnected">
@@ -120,7 +120,7 @@ async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZo
           </div>
         </div>
       ) : admin ? (
-        <ActionForm action={joinCommunityHub} success="Joined the community hub" className="space-y-3">
+        <ActionForm action={joinCommunityHub} success="Joined StitchHub" className="space-y-3">
           <p className="muted text-sm">
             The hub shares manual links (never the manuals themselves), tech notes and photos, and manual figure snapshots between shops. Your customers, tickets and prices never leave this
             StitchBench. The hub admin gives you an invite (a code or a .stitchhub file).
@@ -152,7 +152,7 @@ async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZo
           <Submit>Join</Submit>
         </ActionForm>
       ) : (
-        <p className="muted text-sm">Not connected to a community hub. The shop owner or an admin can join one here (when several companies share this StitchBench, its administrator does).</p>
+        <p className="muted text-sm">Not connected to StitchHub. The shop owner or an admin can join one here (when several companies share this StitchBench, its administrator does).</p>
       )}
     </Section>
   );
@@ -240,7 +240,7 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      <Section title="Modules" id="modules">
+      <Section title="Add-ons" id="modules">
         <div className="space-y-2 text-sm">
           {moduleLines.length ? (
             <ul className="space-y-1">
@@ -252,7 +252,7 @@ export default async function SettingsPage() {
             <p className="muted">No modules are on. Vac Shop, Small Appliance Repair, Scheduling and Marketing can be added.</p>
           )}
           <Link href={SETTINGS_MODULES_HREF} className="link">
-            Modules and license keys
+            Add-ons and license keys
           </Link>
           <div>
             <Link href="/settings/booking" className="link">

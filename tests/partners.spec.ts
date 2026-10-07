@@ -28,7 +28,7 @@ async function login(browser: Browser, who: { email: string; password: string })
 async function sync(page: Page) {
   for (let i = 0; i < 2; i++) {
     await page.goto("/partners");
-    await page.getByRole("button", { name: "Sync now" }).click();
+    await page.getByRole("button", { name: "Update from StitchHub" }).click();
     await expect(page.getByText("Synced with partners")).toBeVisible();
     await page.waitForTimeout(500);
   }

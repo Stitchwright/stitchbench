@@ -11,10 +11,10 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
   const [notes, joined, tz] = await Promise.all([sharedNotes(user, { term: term || undefined, take: 100 }), hubJoined(), shopTimeZone(user.shopId)]);
   return (
     <div className="max-w-4xl space-y-6">
-      <PageHeader title="Shared by techs" sub="Issues, fixes and photos techs at every shop on the community hub have shared. Share yours from a machine page." />
+      <PageHeader title="Shared by techs" sub="Issues, fixes and photos techs at every shop on StitchHub have shared. Share yours from a machine page." />
       {!joined && (
         <p className="pill tone-wait inline-block">
-          Not connected to the community hub yet. <Link href="/settings#hub" className="link">Join it in Settings</Link> to see other shops&apos; notes.
+          Not connected to StitchHub yet. <Link href="/settings#hub" className="link">Join it in Settings</Link> to see other shops&apos; notes.
         </p>
       )}
       <form className="flex gap-2">

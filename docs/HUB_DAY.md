@@ -28,13 +28,12 @@ Never paste the password or key into chat: type it straight into Railway.
    cloud)** so Railway issues the certificate. Save. Railway shows the domain as verified within minutes.
 3. Hub variable `HUB_URL` = `https://hub.stitchbench.app`.
 
-## 3. The hub's signing key (10 min)
+## 3. The hub's signing key (2 min: made 7 Oct)
 
-1. Claude runs, on this PC: `npm run license:keygen -- --kid hub1 --hub` in the StitchBench repo, writes the private
-   half to `Documents\StitchHub hub1 signing key.txt` (never into chat) and puts the public line into
-   `src/lib/license-keys.ts` (the `hub1` entry) and commits it.
-2. You open that file and paste into the hub's variables: `HUB_LICENSE_KEY` = the private key text, `HUB_LICENSE_KID`
-   = `hub1`. Keep the file in Documents with the other admin notes.
+Claude made the key on 7 Oct and the release already carries its public half (`hub1` in `src/lib/license-keys.ts`).
+Open `Documents\StitchHub hub1 Railway variables.txt` and paste its two lines into the hub's variables:
+`HUB_LICENSE_KID` = `hub1` and `HUB_LICENSE_KEY` = the long value. Keep that file and
+`Documents\StitchHub hub1 signing key.txt` private, with a second copy somewhere safe (a password manager or a USB stick).
 
 ## 4. Merge and deploy the hub (15 min)
 
@@ -64,6 +63,13 @@ read and write on that bucket only). Set `BACKUP_S3_ENDPOINT` (`https://<account
 - `REPO_UPLOADS`: leave it unset. It is the switch that lets techs upload manuals; set it to `on` only after the lawyer's go-ahead.
 - `REPO_OCR`: reading scanned manuals so they can be searched is on by default; set it to `off` to switch it off. The hub image is about 130 MB bigger because of the OCR engine. **Before opening uploads, test one scanned upload on Railway** (a scanned manual page, as a shop would send it) and check the text comes out and the build and memory held.
 
+**Set by the 7 Oct review fixes (all optional; the defaults are sensible):**
+- `ASSISTANT_FREE_READS_PER_INSTALL` (default 100 a month, for installs whose companies don't pay their own way) and
+  `ASSISTANT_FREE_DAILY` (default 500 in any 24 hours on the whole hub): the free plate reads.
+- `REPO_CHECK_MS` (default 60000) and `REPO_CHECK_HEAP_MB` (default 1024, never below twice the upload size): the
+  uploaded-manual check runs apart from the hub with these limits.
+- `BACKUP_INSTALL_QUOTA_GB` (default 250, for companies that don't pay their own way) and `BACKUP_SWEEP_MS`.
+
 ## 5. Release the programs (30 to 45 min)
 
 1. Claude merges nothing on its own; you run, after Claude's last check:
@@ -79,8 +85,18 @@ read and write on that bucket only). Set `BACKUP_S3_ENDPOINT` (`https://<account
 3. Right after: the marketplace count (L6), at the PC terminal:
    `railway ssh -p 10264d2c-c4d5-4f20-9604-4f72c672005b -e production -s stitchbench -- node scripts/hosted/count-unassigned-market.mjs`
    and the same with `-p 2426d0d0-b2af-4f64-bff8-1db1ee1305ae -s stitchshop`. Send Claude the numbers.
-4. Installers: Claude bumps the version (1.7.0) on main for you to push, then starts the GitHub build.
+4. Installers: the release is already 1.7.0; after the merge Claude starts the GitHub installer build from main.
 5. The PC's own StitchBench: Claude backs it up (`node desktop/backup-now.mjs`) and updates it in place.
+
+## 5a. Five-minute check after the deploys
+
+- `https://hub.stitchbench.app/` and `/account` load; `/admin` opens with your admin token.
+- `https://stitchshop-production.up.railway.app/login` and `https://stitchbench-production-e554.up.railway.app/login`
+  load (the big 16px sign-in page).
+- Sign in to a test company on hosted StitchShop: the dashboard opens, Settings → StitchHub says Connected, and
+  Settings → Account shows the shop's standing from the hub (the hub signed its key with hub1).
+- Railway → each service → Deployments: the newest one is Active, its log shows the migrations applied and no errors.
+If one fails, roll it back (below) and send Claude the log.
 
 ## 6. Comp the shops already on the hub (5 min)
 

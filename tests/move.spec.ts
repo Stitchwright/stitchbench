@@ -128,7 +128,7 @@ const thirdAdmin: Login = { email: process.env.E2E_THIRD_EMAIL ?? "", password: 
 async function syncPartners(page: Page) {
   for (let i = 0; i < 2; i++) {
     await page.goto("/partners");
-    await page.getByRole("button", { name: "Sync now" }).click();
+    await page.getByRole("button", { name: "Update from StitchHub" }).click();
     await expect(page.getByText("Synced with partners")).toBeVisible();
   }
 }
@@ -222,7 +222,7 @@ test("a partner sewing shop moves to another install: the hub re-points it, part
 
     // The old copy hears it at this install's next hub sync: the moved notice, read-only, and the note never came here.
     await r.goto("/settings");
-    await r.getByRole("button", { name: "Sync now" }).first().click();
+    await r.getByRole("button", { name: "Update from StitchHub" }).first().click();
     await expect(r.getByText("Synced with the hub")).toBeVisible();
     const old = await login(browser, sewing);
     await old.goto(jobPath);

@@ -103,20 +103,21 @@ export function Nav({
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
     .filter((i) => !i.admin || showReports)
     .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
-    .map((i) => (i.href === "/parts" && !doesRepair ? { ...i, label: "Inventory" } : i));
+    // A shop that sells (retail, or retail and repair) calls its stock Inventory; a repair-only shop calls it Parts.
+    .map((i) => (i.href === "/parts" && sellsRetail ? { ...i, label: "Inventory" } : i));
   // The most specific menu entry wins (/register/sales over /register).
   const activeHref = [...shown, ...platformItems]
     .filter((i) => (i.href === "/" ? path === "/" : path === i.href || path.startsWith(i.href + "/")))
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
   return (
-    <nav className="flex flex-col gap-1 px-2 pb-2 md:pb-0" aria-label="Main">
+    <nav className="flex flex-col gap-1 px-2 pb-2 side:pb-0" aria-label="Main">
       {chatUrl && (
         // The community's Discord (from the community hub); opens in the Discord app or the browser.
         <a
           href={chatUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink md:order-last"
+          className="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-base font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink side:order-last"
         >
           <MessagesSquare size={16} aria-hidden />
           Community chat
@@ -131,7 +132,7 @@ export function Nav({
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm font-semibold ${
+              className={`flex shrink-0 items-center gap-2 rounded px-3 py-2 text-base font-semibold ${
                 active ? "bg-navy text-navy-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"
               }`}
             >

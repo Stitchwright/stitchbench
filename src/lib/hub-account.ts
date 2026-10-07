@@ -119,7 +119,7 @@ export async function startHubAccountFor(user: CurrentUser, fd: FormData): Promi
     } else {
       answer = await hubRequest<StartAnswer>(base, "/v1/accounts/start", { json: { ...start, contact: email }, shopRef: shop.id }).catch(explain);
       if (!answer.installId || !answer.installKey)
-        throw new UserError("The hub started the account but gave this program no install key. Join the hub with an invite (Settings → Community hub), then try again.");
+        throw new UserError("The hub started the account but gave this program no install key. Join the hub with an invite (Settings → StitchHub), then try again.");
       await adoptInstall({ url: base, hubName: answer.hubName ?? null, installId: answer.installId, installKey: answer.installKey, scope: "pending" });
     }
   }
@@ -147,7 +147,7 @@ export async function linkCodeFor(user: CurrentUser): Promise<{ code: string; ex
   const s = await hubState();
   if (!s?.url || !s.installKey) {
     throw new UserError(
-      "This program isn't connected to StitchHub yet. Create the account from here with your email (the hub connects as part of it), or join the hub with an invite under Settings → Community hub first.",
+      "This program isn't connected to StitchHub yet. Create the account from here with your email (the hub connects as part of it), or join the hub with an invite under Settings → StitchHub first.",
     );
   }
   const { body } = await companyBody(user.shopId);

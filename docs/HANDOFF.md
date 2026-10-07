@@ -1231,6 +1231,15 @@ accounts and billing: design first).
    request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
    ten owner questions in its section 7: **all answered as recommended (7 Oct); building on branch `sales-features`**.
 
+25. **Everything in the shop research** (owner, 7 Oct 2026: "I want it all"): every recommendation in
+   `docs/research/shop-retail-features-and-ai.md` except the two it says not to build, plus selling thread, accessories
+   and software. Design: `docs/plans/shop-features-round-2-design.md` (done; every question answered as recommended, 7 Oct), built
+   in its phases on their own branches after `sales-features`, after the test month for the test shops.
+26. **Ease of use first** (owner, 7 Oct 2026): "like Apple, very intuitive"; most shop staff are older women. Principles
+   and an audit with ranked fixes: `docs/plans/ease-of-use.md`, `docs/plans/ease-of-use-audit.md`. Owner, 7 Oct: fix the
+   top 10 before hub day (on `scheduling-features`); 11-15 during the test month.
+   Every new screen follows them.
+
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
    or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per
    company, W2 signed partner invites: short designs first), the real-partnership rule (item 22) if the owner says
@@ -1252,6 +1261,14 @@ accounts and billing: design first).
    the table and card; the extraction is the larger part.
 
 ## 4. Owner decisions already made (don't re-ask)
+
+- **Prices reviewed 7 Oct 2026: every recommendation in `docs/plans/pricing-review-2026-10.md` taken.** Solo $25/$250,
+  Shop $45/$450 unchanged; each extra store $25/$250 (with multi-store); founding $15/$30 closes at 25 shops or 6 months
+  after paid launch; the ready-for-pickup text and the estimate-approval link move into the base (out of Marketing);
+  Maker Shop module $10, the all-add-ons bundle (five) $30/$300; Assistant $15 with $10 top-ups, outside the bundle; a
+  partnership counts with one repair job between the shops in 6 months (checked by hand); written promises: export any
+  time (also when lapsed), 12-month price hold with 60 days' notice, founding price for life. Advertising: $100 until
+  revenue, then reinvest; no SBA loan.
 
 - Scheduling (StitchShop): classes/workshops (seats, waitlist, fee at the register), customer appointments
   (lessons, longarm time, drop-off; day/week calendar), partner repair pickup runs (both shops see them),

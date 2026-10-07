@@ -68,7 +68,7 @@ test("a vacuum is checked in, its checklist and readings filled, billed and coll
   const page = await login(browser, owner);
   await page.goto("/tickets/new?kind=vacuum");
   await expect(page.getByRole("heading", { name: "Check in a vacuum" })).toBeVisible();
-  await page.getByLabel("New customer name").fill(customerName);
+  await page.getByLabel("new customer's name").fill(customerName);
   await page.getByLabel("Phone", { exact: true }).fill("+12125550190");
   await page.getByLabel("Brand", { exact: true }).fill("Hoover");
   await page.getByLabel("Model", { exact: true }).fill("UH70120");

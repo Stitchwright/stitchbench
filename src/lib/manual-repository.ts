@@ -91,9 +91,9 @@ export async function mayOffer(user: CurrentUser): Promise<string> {
   const byName = await requireHubWrites(user);
   if (user.role === "TECH") {
     const shop = await db.shop.findUnique({ where: { id: user.shopId }, select: { techsOfferManuals: true } });
-    if (!shop?.techsOfferManuals) throw new UserError("Offering a manual to the repository is for the shop owner or an admin. The owner can allow techs in Settings → Community hub.");
+    if (!shop?.techsOfferManuals) throw new UserError("Offering a manual to the repository is for the shop owner or an admin. The owner can allow techs in Settings → StitchHub.");
   }
-  if (!(await hubJoined())) throw new UserError("Join the community hub first (Settings → Community hub).");
+  if (!(await hubJoined())) throw new UserError("Join the community hub first (Settings → StitchHub).");
   const st = (await hubState())?.repoUploads;
   if (st === "soon") throw new UserError(SOON);
   if (st === "none") throw new UserError("This hub doesn't have a manual repository.");

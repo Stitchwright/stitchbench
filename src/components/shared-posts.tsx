@@ -90,7 +90,7 @@ export async function sharedNotes(user: CurrentUser, f: Filter = {}): Promise<Sh
       createdAt: p.createdAt,
       photos: p.photos.map((ph) => ({ src: `/api/shared-photos/${ph.id}`, kind: ph.kind, caption: ph.caption })),
       remove: admin || (p.shopId === user.shopId && (p.authorId === user.id || user.role !== "TECH")) ? deleteSharedPost.bind(null, p.id) : undefined,
-      pending: joined ? "Sending to the community hub" : "Only in this StitchBench: join the community hub to share it with other shops",
+      pending: joined ? "Sending to StitchHub" : "Only in this StitchBench: join StitchHub to share it with other shops",
     })),
   ];
   return notes

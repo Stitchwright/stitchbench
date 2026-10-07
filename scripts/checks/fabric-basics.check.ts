@@ -12,6 +12,7 @@ import { modelKey } from "@/lib/format";
 import type { CurrentUser } from "@/lib/session";
 import { addCollectionFor, boltEndsFor, cutFor } from "@/lib/fabric";
 import { cutPlan, cutPrices, cutWords } from "@/lib/fabric-math";
+import { completeSaleAs } from "@/lib/register-sale";
 import { FIRST_PHOTO, viewItem } from "@/lib/register-item";
 import { checkShop, cleanup, type CheckShop } from "./lib";
 import { assertUnchanged, expectNotFound, snapshot } from "./tenant";
@@ -84,6 +85,9 @@ async function main() {
     assert.equal(cutWords("FQ", 1.375), "1 3/8 yd makes 5 fat quarters, with 1/8 yd left.");
     assert.equal(cutWords("FQ", 1), "1 yd makes 4 fat quarters.");
     assert.equal(cutWords("FQ", 0.25), "1/4 yd makes 1 fat quarter.");
+    // Yards that aren't eighths are said exactly, not rounded to the nearest eighth.
+    assert.equal(cutWords("FQ", 0.24), "0.24 yd is too short for a fat quarter.");
+    assert.equal(cutWords("REMNANT", 1.3), "1.3 yd goes to the remnant bin.");
     // $14.00 a yard: 350 x 1.15 = 402.5 cents rounds up to 403 (no float slip to 402).
     assert.equal(cutPrices("FQ", { priceCents: 1400, costCents: 700, costTenThou: null }).priceCents, 403);
     assert.equal(cutPrices("HALF", { priceCents: 1400, costCents: 700, costTenThou: null }).priceCents, 770);
@@ -152,6 +156,12 @@ async function main() {
     const rem = await part(b2r.remnantId!);
     assert.deepEqual([rem.partNumber, rem.qtyOnHand, rem.unit, rem.priceCents], ["MO-1002-REM", 0.375, "yd", 600]);
     assert.equal(rem.moves[0].qty, 0.375);
+    // A remnant sells whole at the register whatever its yardage; other fabric is still cut in eighths.
+    await db.part.update({ where: { id: rem.id }, data: { qtyOnHand: 1.3 } });
+    await completeSaleAs(user(a), { lines: [{ partId: rem.id, description: "x", qty: 1.3, unitPriceCents: 600, discountCents: 0, taxable: false }], tenders: [{ method: "CASH", amountCents: 780 }] });
+    assert.equal((await part(rem.id)).qtyOnHand, 0, "the 1.3 yd remnant sold whole");
+    const b2y = await fabric(a.shopId, "MO-1002Y", { qty: 3, price: 1000 });
+    await expectError("non-eighth yards of plain fabric", () => completeSaleAs(user(a), { lines: [{ partId: b2y.id, description: "x", qty: 1.3, unitPriceCents: 1000, discountCents: 0, taxable: false }], tenders: [{ method: "CASH", amountCents: 1300 }] }), /eighths/);
     assert.equal(b2r.moves.filter((m) => m.reason === "CUT").reduce((s, m) => s + m.qty, 0), -1.375);
     const b3 = await fabric(a.shopId, "MO-1003", { qty: 0.5, price: 1000 });
     await cutFor(user(a), b3.id, "FQ");

@@ -281,6 +281,13 @@ async function main() {
     await expectError("the old number is dead", () => completeSaleAs(owner, { lines: [goods(1)], tenders: [{ method: "GIFT", amountCents: 500, cardNumber: old.number }, cash(620)] }), /has only \$0\.00 left|is void/);
     await expectError("move a void card", () => moveCardAs(admin, old.id, null, "again"), /already void/);
     await expectError("a tech can't move", () => moveCardAs(tech, moved.id, null, "x"), /owner or an admin/);
+    // A card sold, then moved to a new number: voiding the sale takes the money off the new number (and voids it).
+    const soldThenMoved = await completeSaleAs(owner, { lines: [cardLine("new", 1500)], tenders: [cash(1500)] });
+    const smCard = await db.giftCard.findFirstOrThrow({ where: { shopId: a.shopId, number: soldThenMoved.cards![0].number } });
+    const smNew = await moveCardAs(admin, smCard.id, null, "lost it");
+    await voidSaleAs(owner, soldThenMoved.saleId, "sold by mistake");
+    const smAfter = await db.giftCard.findUniqueOrThrow({ where: { id: smNew.id } });
+    assert.deepEqual([smAfter.balanceCents, smAfter.status], [0, "void"], "the money came off the new number");
     for (const action of ["giftcard.opening", "giftcard.adjust", "giftcard.move"] as const) {
       assert.ok(AUDIT_ACTIONS[action]);
       assert.ok(await db.auditEntry.findFirst({ where: { shopId: a.shopId, action } }), `${action} is in the audit log`);

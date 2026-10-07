@@ -99,7 +99,7 @@ test("keys: off, refused keys, a good key, and the kinds it unlocks", async ({ p
   await page.goto("/tickets/new?kind=vacuum");
   await expect(page.getByRole("heading", { name: "Check in a vacuum" })).toBeVisible();
   await expect(page.getByLabel("Bags or bagless")).toBeVisible();
-  await page.getByLabel("New customer name").fill(`Vac Customer ${RUN}`);
+  await page.getByLabel("new customer's name").fill(`Vac Customer ${RUN}`);
   await page.getByLabel("Brand", { exact: true }).fill("Hoover");
   await page.getByLabel("Model", { exact: true }).fill("UH70120");
   await page.getByLabel("Serial number", { exact: true }).fill(`VAC${RUN}`);
@@ -148,7 +148,7 @@ test("work already in can be finished after a module is switched off", async ({ 
   const c = await login(browser, owner);
   await pasteKey(c, devKey({ shopId: cId, modules: ["vac"] }));
   await c.goto("/tickets/new?kind=vacuum");
-  await c.getByLabel("New customer name").fill("C Customer");
+  await c.getByLabel("new customer's name").fill("C Customer");
   await c.getByLabel("Brand", { exact: true }).fill("Miele");
   await c.getByLabel("Model", { exact: true }).fill("C3");
   await c.getByLabel("Bags or bagless").selectOption("Bagged");

@@ -34,7 +34,7 @@ const made: string[] = [];
 /** A ticket for a new customer with an email, in the given status. Returns its id. */
 async function newTicket(page: Page, name: string, email: string, status?: string) {
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill(name);
+  await page.getByLabel("new customer's name").fill(name);
   await page.getByLabel("Email address").fill(email);
   const notify = page.getByRole("radio", { name: "Email", exact: true }); // asked while Marketing is on
   if (await notify.count()) await notify.check();

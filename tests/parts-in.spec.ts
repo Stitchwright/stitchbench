@@ -64,7 +64,7 @@ test("email is set up", async ({ browser }) => {
 test("a ticket records a part on order and goes to Waiting on parts; the on-order page lists it", async ({ browser }) => {
   const page = await login(browser, owner);
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill(customer.name);
+  await page.getByLabel("new customer's name").fill(customer.name);
   await page.getByLabel("Email address").fill(customer.email);
   const notify = page.getByRole("radio", { name: "Email", exact: true });
   if (await notify.count()) await notify.check();

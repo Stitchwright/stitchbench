@@ -58,7 +58,7 @@ test("community hub: links and shared notes", async ({ page }) => {
       body: JSON.stringify(rows),
     });
     expect(r.ok).toBe(true);
-    await page.getByRole("button", { name: "Sync now" }).click();
+    await page.getByRole("button", { name: "Update from StitchHub" }).click();
     await expect(page.getByText("Synced with the hub")).toBeVisible({ timeout: 180_000 });
   }
   await page.goto("/models/Janome/MC6700P");
@@ -110,7 +110,7 @@ test("community hub: links and shared notes", async ({ page }) => {
   await page.getByRole("button", { name: "Offer the hint", exact: true }).click();
   const shared = page.locator("li", { has: page.getByText(note, { exact: true }) });
   await expect(shared).toBeVisible();
-  await expect(shared.getByText(/Sending to the community hub/)).toHaveCount(0);
+  await expect(shared.getByText(/Sending to StitchHub/)).toHaveCount(0);
   await expect(shared.getByText(/E2E Test Shop/)).toBeVisible();
   await page.screenshot({ path: "test-results/hub-note.png", fullPage: true });
   await twoTap(page, shared.getByRole("button", { name: "Remove" }), "Stop sharing this?");

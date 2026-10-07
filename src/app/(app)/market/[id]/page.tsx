@@ -81,7 +81,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             {l.shippingNote && <p className="muted mt-2 text-sm">Shipping: {l.shippingNote}</p>}
             {xpart && (
               <p className="mt-3 text-sm">
-                Cross-reference:{" "}
+                Other part numbers:{" "}
                 <Link href={`/xref/${xpart.id}`} className="link">
                   {xpart.name}
                 </Link>{" "}

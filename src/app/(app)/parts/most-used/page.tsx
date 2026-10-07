@@ -66,7 +66,7 @@ export default async function MostUsed({ searchParams }: { searchParams: Promise
     try {
       top = (await (await hubFetch(`/v1/usage/top?months=${months}&limit=200${brand ? `&brand=${encodeURIComponent(brand)}` : ""}`, { quick: true, shopRef: user.shopId })).json()) as Top;
     } catch (e) {
-      topError = e instanceof Error ? e.message : "Couldn't reach the community hub.";
+      topError = e instanceof Error ? e.message : "Couldn't reach StitchHub.";
     }
   }
   const mine = top
@@ -154,7 +154,7 @@ export default async function MostUsed({ searchParams }: { searchParams: Promise
         ) : !joined ? (
           <div className="card-pad">
             <Empty>
-              Join the community hub (<Link href="/settings#hub" className="link">Settings</Link>) to see what shops everywhere use most.
+              Join StitchHub (<Link href="/settings#hub" className="link">Settings</Link>) to see what shops everywhere use most.
             </Empty>
           </div>
         ) : topError ? (

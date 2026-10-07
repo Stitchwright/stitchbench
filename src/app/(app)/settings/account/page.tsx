@@ -104,7 +104,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               Everything stays here to look at, print and export; open work can be finished and payments taken. New tickets, sales and edits wait for a new key: it comes from your StitchHub account
               below, or by email from StitchBench and is pasted in{" "}
               <Link href="/settings/modules" className="link">
-                Settings → Modules
+                Settings → Add-ons
               </Link>
               .
             </p>
@@ -293,7 +293,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
         {v.scope === "pending" && " (waiting for the account's email to be opened)"}
         {v.scope === "partner" && " (for partner shops only)"}. Company made {fmtDate(shop.createdAt, tz)}.{" "}
         <Link href="/settings#hub" className="link">
-          Community hub settings
+          StitchHub settings
         </Link>
       </p>
     </div>

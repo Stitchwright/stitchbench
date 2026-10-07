@@ -50,7 +50,7 @@ test("check in, work, bill and review a machine", async ({ page }) => {
 
   // Intake
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill("E2E Customer");
+  await page.getByLabel("new customer's name").fill("E2E Customer");
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
   await page.getByLabel("Serial number", { exact: true }).fill(serial);
@@ -78,7 +78,9 @@ test("check in, work, bill and review a machine", async ({ page }) => {
   // Charges
   await page.getByLabel("Hours", { exact: true }).fill("0.5");
   await page.getByRole("button", { name: "Add labor" }).click();
-  await expect(page.getByText("Repair labor")).toBeVisible();
+  // In the Charges table: the Assistant's prompt log on the page has the words too.
+  const charges = page.getByRole("table").filter({ has: page.getByRole("columnheader", { name: "Each" }) });
+  await expect(charges.getByText("Repair labor")).toBeVisible();
   await page.getByLabel("Part", { exact: true }).fill(pn);
   await page.getByRole("button", { name: "Add part" }).click();
   await expect(page.getByText(`${pn} Bobbin case (test)`)).toBeVisible();

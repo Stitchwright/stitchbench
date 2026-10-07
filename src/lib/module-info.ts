@@ -144,7 +144,7 @@ export function toNavGates(m: Modules): Record<ModuleId, NavGate> {
 }
 
 export const SETTINGS_MODULES_HREF = "/settings/modules";
-export const MODULE_SALES_NOTE = "Modules are sold by StitchBench, monthly or yearly. After you pay, you get a key by email. Paste it here. It works without the internet.";
+export const MODULE_SALES_NOTE = "Add-ons are sold by StitchBench, monthly or yearly. After you pay, you get a key by email. Paste it here. It works without the internet.";
 
 export function canWrite(status: ModuleStatus): boolean {
   return status === "on" || status === "renew" || status === "grace";
@@ -173,10 +173,10 @@ export function blockedMessage(s: ModuleState, admin: boolean): string {
   }
   if (s.status === "lapsed") {
     if (s.switchedOff) return `${label} was switched off for this company on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.`;
-    return `${label} ended on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.${admin ? " To start new work, renew it in Settings → Modules." : " Ask the shop owner to renew it."}`;
+    return `${label} ended on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.${admin ? " To start new work, renew it in Settings → Add-ons." : " Ask the shop owner to renew it."}`;
   }
   if (s.status === "off" && s.startsOn) return `${label} starts on ${fmtYmd(s.startsOn)}.`;
-  return `${label} isn't turned on for this company.${admin ? " An owner can add it in Settings → Modules." : " Ask the shop owner about it."}`;
+  return `${label} isn't turned on for this company.${admin ? " An owner can add it in Settings → Add-ons." : " Ask the shop owner about it."}`;
 }
 
 /** write when canWrite; read when lapsed, or off with records; none when off without records. */

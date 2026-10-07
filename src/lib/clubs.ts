@@ -570,8 +570,9 @@ export async function handleClubEvent(shopId: string, ev: WebhookEvent, now = ne
     const sub = str1(obj.subscription);
     // A link paid after the member was paused or cancelled, or a second link paid on top of a running subscription: the
     // new subscription is stopped at Stripe so it never charges again. Its first payment still goes in the books below
-    // (the money was taken), for the shop to refund in Stripe; the refund then voids it here.
-    const stop = !!sub && (m.status !== "ACTIVE" || (!!m.stripeSubscriptionId && m.stripeSubscriptionId !== sub));
+    // (the money was taken), for the shop to refund in Stripe; the refund then voids it here. The member's own subscription
+    // (this event sent again) is never stopped here, paused or not.
+    const stop = !!sub && sub !== m.stripeSubscriptionId && (m.status !== "ACTIVE" || !!m.stripeSubscriptionId);
     if (stop) await cancelSubscription(await stripeKeyOf(shopId), sub!);
     else
       await db.clubMember.update({

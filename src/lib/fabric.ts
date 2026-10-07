@@ -7,8 +7,8 @@ import { UserError } from "@/lib/user-error";
 import { assertId } from "@/lib/input";
 import { str } from "@/lib/format";
 import { MAX_CENTS, MAX_STOCK, centsField, partKeys, partNumberClash } from "@/lib/parts";
-import { inEighths, yards } from "@/lib/register-math";
-import { CUT_INFO, cutPlan, cutPrices, type CutKind } from "@/lib/fabric-math";
+import { inEighths } from "@/lib/register-math";
+import { CUT_INFO, cutPlan, cutPrices, exactYards, type CutKind } from "@/lib/fabric-math";
 import { onOrderFor } from "@/lib/fabric-orders";
 import type { CurrentUser } from "@/lib/session";
 import type { InPrint } from "@/generated/prisma/enums";
@@ -35,7 +35,7 @@ export async function cutFor(user: CurrentUser, partId: string, kind: CutKind): 
       if (src.unit !== "yd") throw new UserError(`${src.partNumber} isn't sold by the yard, so there are no yards to cut.`);
       if (src.qtyOnHand <= 0) throw new UserError(`${src.partNumber} has no yards left to cut.`);
       const plan = cutPlan(kind, src.qtyOnHand);
-      if (plan.count <= 0) throw new UserError(`${yards(src.qtyOnHand)} yd is too short for a ${info.one}.`);
+      if (plan.count <= 0) throw new UserError(`${exactYards(src.qtyOnHand)} yd is too short for a ${info.one}.`);
       if (src.priceCents == null) throw new UserError(`Give ${src.partNumber} a price per yard first: the ${info.tag} price is worked out from it.`);
       const shop = await tx.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { fatQuarterMarkupPct: true, halfYardMarkupPct: true, remnantPricePct: true } });
       const link = src[LINK[kind]];
@@ -76,15 +76,15 @@ export async function cutFor(user: CurrentUser, partId: string, kind: CutKind): 
       const took = await tx.part.updateMany({ where: { id: src.id, shopId: user.shopId, qtyOnHand: { gte: plan.usedYards } }, data: { qtyOnHand: { decrement: plan.usedYards } } });
       if (took.count !== 1) throw new UserError(`${src.partNumber} changed while you were cutting it. Look at the yards left and try again.`);
       await tx.part.update({ where: { id: target.id }, data: { qtyOnHand: { increment: plan.count } } });
-      const what = kind === "REMNANT" ? `${yards(plan.count)} yd of remnant` : `${plan.count} ${plan.count === 1 ? info.one : info.many}`;
+      const what = kind === "REMNANT" ? `${exactYards(plan.count)} yd of remnant` : `${plan.count} ${plan.count === 1 ? info.one : info.many}`;
       await tx.stockMove.createMany({
         data: [
           { shopId: user.shopId, partId: src.id, qty: -plan.usedYards, reason: "CUT", userId: user.id, note: `Cut into ${what}`, otherPartId: target.id },
-          { shopId: user.shopId, partId: target.id, qty: plan.count, reason: "CUT", userId: user.id, note: `Cut from ${yards(plan.usedYards)} yd of ${src.partNumber}`, otherPartId: src.id },
+          { shopId: user.shopId, partId: target.id, qty: plan.count, reason: "CUT", userId: user.id, note: `Cut from ${exactYards(plan.usedYards)} yd of ${src.partNumber}`, otherPartId: src.id },
         ],
       });
-      const left = plan.leftYards > 0 ? ` ${yards(plan.leftYards)} yd left on the bolt.` : "";
-      return { text: `Cut ${yards(plan.usedYards)} yd into ${what}${made ? ` (new item ${target.partNumber})` : ""}.${left}`, number: `${src.partNumber}-${info.suffix}` };
+      const left = plan.leftYards > 0 ? ` ${exactYards(plan.leftYards)} yd left on the bolt.` : "";
+      return { text: `Cut ${exactYards(plan.usedYards)} yd into ${what}${made ? ` (new item ${target.partNumber})` : ""}.${left}`, number: `${src.partNumber}-${info.suffix}` };
     })
     .catch(async (e: unknown) => {
       // Two cuts made the target item at the same moment: the database's key on the number refused the second.

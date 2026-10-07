@@ -34,7 +34,7 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
   for (const [l, i] of mine) {
     if (l.stockUnitId && l.tradeIn) throw new UserError("A line can only be one thing.");
     const price = Math.round(Number(l.unitPriceCents));
-    if (!Number.isFinite(price) || price < 0) throw new UserError("Prices can't be negative. For a return, use Return mode (negative quantity).");
+    if (!Number.isFinite(price) || price < 0) throw new UserError("Prices can't be negative. For a return, press 'Return an item' at the register (it rings up a negative quantity).");
     if (l.tradeIn) {
       await needActive();
       const t = l.tradeIn;

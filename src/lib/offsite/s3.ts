@@ -88,6 +88,20 @@ export function isPrivate(ip: string): boolean {
 const asBody = (data: Buffer) => new Uint8Array(data);
 
 /**
+ * The bucket's answer as a Response. A status Response can't carry (outside 200 to 599) is refused as a UserError, and the
+ * statuses that have no body (204, 205, 304) get none, so making it never throws past the caller.
+ */
+export function responseOf(status: number, body: Readable): Response {
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    body.resume();
+    throw new UserError(`Your backup bucket gave an answer this program doesn't understand (${status}). Check the bucket's address.`);
+  }
+  const empty = status === 204 || status === 205 || status === 304;
+  if (empty) body.resume();
+  return new Response(empty ? null : (Readable.toWeb(body) as unknown as ReadableStream<Uint8Array>), { status });
+}
+
+/**
  * One request to the bucket, no redirect followed. On the hosted server the connection resolves the name itself through the
  * public-only lookup (src/lib/safe-fetch.ts) rather than fetch's own: checkEndpoint's look at the name can't be undone by the
  * name answering with a private address a moment later (DNS rebinding).
@@ -99,11 +113,13 @@ function send(cfg: S3Config, url: string, init: { method?: string; body?: Buffer
   if (!cfg.publicOnly || loop) return fetch(url, { method: init.method, body: init.body && asBody(init.body), redirect: "manual", signal });
   return new Promise((resolve, reject) => {
     const headers = init.body ? { "Content-Length": String(init.body.length) } : undefined;
+    // The signal (the call's time limit) also ends a request whose answer never comes, which rejects through "error".
     const req = (u.protocol === "https:" ? https : http).request(u, { method: init.method ?? "GET", headers, signal, lookup: publicLookup }, (res) => {
-      const status = res.statusCode ?? 0;
-      const empty = status === 204 || status === 304;
-      if (empty) res.resume();
-      resolve(new Response(empty ? null : (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>), { status }));
+      try {
+        resolve(responseOf(res.statusCode ?? 0, res));
+      } catch (e) {
+        reject(e);
+      }
     });
     req.on("error", (e: NodeJS.ErrnoException) => reject(e.code === "EPRIVATE" ? new UserError("Your backup bucket's address now points inside a private network, which isn't allowed here.") : e));
     req.end(init.body);

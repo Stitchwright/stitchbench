@@ -87,7 +87,7 @@ export default async function ClubPage({ params, searchParams }: { params: Promi
                     </span>
                   )}
                 </div>
-                <PickControls clubId={club.id} month={month} r={{ memberId: r.memberId, fulfil: r.fulfil, billing: r.billing, paid: r.paid, doneAt: r.doneAt ? r.doneAt.toISOString() : null }} />
+                <PickControls clubId={club.id} month={month} canTakeBack={user.role !== "TECH"} r={{ memberId: r.memberId, fulfil: r.fulfil, billing: r.billing, paid: r.paid, doneAt: r.doneAt ? r.doneAt.toISOString() : null }} />
               </li>
             ))}
           </ul>
@@ -130,6 +130,7 @@ export default async function ClubPage({ params, searchParams }: { params: Promi
             clubId={club.id}
             closed={club.closed}
             series={series}
+            canEdit={user.role !== "TECH"}
             init={{ name: club.name, kind: club.kind, price: (club.monthlyCents / 100).toFixed(2), fulfil: club.fulfil, billDay: club.billDay ? String(club.billDay) : "", seriesId: club.series?.id ?? "", note: club.note ?? "" }}
           />
         </div>

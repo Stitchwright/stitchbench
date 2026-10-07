@@ -73,13 +73,13 @@ export default async function CrossRef({ searchParams }: { searchParams: Promise
   return (
     <div className="max-w-5xl space-y-6">
       <PageHeader
-        title="Parts cross-reference"
-        sub="One entry per physical part: every number it's sold under, the machines and makers it fits, and where to buy it. Shared by every shop on the community hub."
+        title="Other part numbers"
+        sub="One entry per physical part: every number it's sold under, the machines and makers it fits, and where to buy it. Shared by every shop on StitchHub."
         back={{ href: "/parts", label: "Parts" }}
       />
       {!joined ? (
         <p className="pill tone-wait inline-block">
-          Not connected to the community hub. <Link href="/settings#hub" className="link">Join it in Settings</Link> to get the shared cross-reference.
+          Not connected to StitchHub. <Link href="/settings#hub" className="link">Join it in Settings</Link> to get the shared cross-reference.
         </p>
       ) : (
         <>

@@ -315,6 +315,12 @@ async function main() {
     ok("tenant: B's backup holds B's rows only, in B's store; A's index names none of B's; a company with nothing set up is refused");
 
     delete process.env.STITCH_DESKTOP;
+    // A folder saved in the Windows program, now on the hosted server: the run fails, and says why on its row.
+    await assert.rejects(runOffsiteBackup(a.shopId, { now: new Date(Date.UTC(2031, 0, 1, 6)) }), /folder is for the Windows program/);
+    const folderRun = await db.offsiteRun.findFirstOrThrow({ where: { shopId: a.shopId }, orderBy: { startedAt: "desc" } });
+    assert.equal(folderRun.status, "failed");
+    assert.match(folderRun.error ?? "", /Pick StitchHub or your own bucket/);
+    ok("a folder target on the hosted server: a failed run row says to pick StitchHub or a bucket");
     // ---------- the hub target, against a mock StitchHub and a mock bucket ----------
     const bucket = new Map<string, Buffer>();
     const objs = new Map<string, Map<string, { size: number; confirmed: boolean }>>(); // by company
