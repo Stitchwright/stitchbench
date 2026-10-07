@@ -25,7 +25,9 @@ export type LiabilityReport = {
 export async function liabilityReport(shopId: string, start: Date, end: Date): Promise<LiabilityReport> {
   // Every card, void ones too (their balance today is 0): a card moved to a new number or voided since the start still
   // held its balance back then, and its MOVED line nets against the new card's.
-  const cards = await db.giftCard.findMany({ where: { shopId }, select: { id: true, kind: true, balanceCents: true } });
+  const cards = await db.giftCard.findMany({ where: { shopId }, select: { id: true, kind: true, balanceCents: true, status: true } });
+  // Today's liability and the card count: active cards only (a void card owes nothing, whatever its row says).
+  const owing = (c: { status: string; balanceCents: number }) => c.status === "active" && c.balanceCents > 0;
   const kindOf = new Map(cards.map((c) => [c.id, c.kind]));
   // Entries since the start: today's balance less these is the balance back then.
   const entries = await db.giftCardEntry.findMany({ where: { shopId, at: { gte: start } }, select: { cardId: true, at: true, amountCents: true, reason: true } });
@@ -45,8 +47,8 @@ export async function liabilityReport(shopId: string, start: Date, end: Date): P
       opening: now - all,
       movement: [...byReason].filter(([, c]) => c !== 0).map(([reason, cents]) => ({ reason, label: ENTRY_LABEL[reason] ?? reason, cents })),
       closing: now - after,
-      cardsWithBalance: mine.filter((c) => c.balanceCents > 0).length,
+      cardsWithBalance: mine.filter(owing).length,
     });
   }
-  return { kinds: out, today: cards.reduce((a, c) => a + c.balanceCents, 0) };
+  return { kinds: out, today: cards.filter(owing).reduce((a, c) => a + c.balanceCents, 0) };
 }
