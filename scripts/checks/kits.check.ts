@@ -145,6 +145,19 @@ async function main() {
     const second = await saveKitFor(user(a), null, form({ name: "Bake Shop Throw", lines, patternNote: "Moda Bake Shop, personal use", patternCost: "5.00" }));
     const k2 = (await kitFor(a.shopId, second.id))!;
     assert.deepEqual([k2.cost, k2.retail, k2.priceCents, k2.suggestion.basis, k2.pattern, k2.patternNote], [4150, 7898, 8300, "margin", null, "Moda Bake Shop, personal use"]);
+    // A tech's typed pattern cost moves nothing: the kit's pattern cost, price and stock item's cost stay; a new kit gets none.
+    const tech: CurrentUser = { ...user(a), role: "TECH" };
+    const stockOf = async (id: string) => db.part.findUniqueOrThrow({ where: { id: (await db.kit.findUniqueOrThrow({ where: { id } })).partId! }, select: { costCents: true, priceCents: true } });
+    const stock2 = await stockOf(second.id);
+    await saveKitFor(tech, second.id, form({ name: "Bake Shop Throw", lines, patternNote: "Moda Bake Shop, personal use", patternCost: "50.00", price: "1.00" }));
+    assert.equal((await db.kit.findUniqueOrThrow({ where: { id: second.id } })).patternCostCents, 500);
+    assert.deepEqual([(await kitFor(a.shopId, second.id))!.priceCents, await stockOf(second.id)], [8300, stock2]);
+    const techKit = await saveKitFor(tech, null, form({ name: "Tech Throw", lines, patternNote: "Their pattern", patternCost: "50.00" }));
+    const tk = (await kitFor(a.shopId, techKit.id))!;
+    assert.deepEqual([(await db.kit.findUniqueOrThrow({ where: { id: techKit.id } })).patternCostCents, tk.cost, (await stockOf(techKit.id)).costCents], [0, 3650, 3650], "a new kit: no pattern cost");
+    const techPart = (await db.kit.findUniqueOrThrow({ where: { id: techKit.id } })).partId!;
+    await db.kit.delete({ where: { id: techKit.id } });
+    await db.part.delete({ where: { id: techPart } });
     // A fabric with no cost adds nothing to the cost (and the line says so).
     const k3 = await saveKitFor(user(a), null, form({ name: "Cheap One", lines: [["BT-3", "1"]] }));
     assert.equal((await kitFor(a.shopId, k3.id))!.cost, 0);

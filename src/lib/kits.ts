@@ -258,18 +258,23 @@ export async function saveKitFor(user: CurrentUser, kitId: string | null, fd: Fo
       if (!lines.size) throw new UserError("Add at least one fabric or notion to the kit.");
       const parts: KitPart[] = [...lines.values()].map(({ part, qty }) => ({ qty, costCents: part.costCents, costTenThou: part.costTenThou, priceCents: part.priceCents }));
       if (pattern) parts.push({ qty: 1, costCents: pattern.costCents, costTenThou: pattern.costTenThou, priceCents: pattern.priceCents });
-      const cost = partsCost(parts) + (pattern?.costCents != null ? 0 : patternCost);
+      // A tech can't set prices or costs (as in updatePart): a pattern cost they type is ignored (the kit's own kept, none
+      // on a new kit), so it moves neither the suggestion nor the stock item's cost.
+      const tech = user.role === "TECH";
+      const patternCostCents = tech ? (existing?.patternCostCents ?? 0) : patternCost;
+      const cost = partsCost(parts) + (pattern?.costCents != null ? 0 : patternCostCents);
       const suggestion = suggestKitPrice({ costCents: cost, retailCents: partsRetail(parts), marginPct: settings.fabKitMarginPct, bundlePct: settings.fabBundleDiscountPct });
-      // A tech can't set prices (as in updatePart): their save keeps the kit's price, or takes the suggestion for a new kit.
-      const price = user.role === "TECH" ? (existing?.priceCents ?? suggestion.priceCents) : (typedPrice ?? suggestion.priceCents);
-      const data = { name, note, patternPartId: pattern?.id ?? null, patternNote, patternCostCents: patternCost, priceCents: price };
+      // A tech's save keeps the kit's price, or takes the suggestion for a new kit.
+      const price = tech ? (existing?.priceCents ?? suggestion.priceCents) : (typedPrice ?? suggestion.priceCents);
+      const data = { name, note, patternPartId: pattern?.id ?? null, patternNote, patternCostCents, priceCents: price };
       const kit = existing ? await tx.kit.update({ where: { id: existing.id }, data }) : await tx.kit.create({ data: { shopId: user.shopId, ...data } });
       await tx.kitLine.deleteMany({ where: { kitId: kit.id, shopId: user.shopId } });
       await tx.kitLine.createMany({ data: [...lines.values()].map(({ part, qty }) => ({ shopId: user.shopId, kitId: kit.id, partId: part.id, qty })) });
       // The kit's own stock item: made now, then kept in step.
       const stockData = { description: `${name} (kit)`, priceCents: price, costCents: cost, costTenThou: null };
       if (existing?.partId && (await tx.part.findFirst({ where: { id: existing.partId, shopId: user.shopId }, select: { id: true } }))) {
-        await tx.part.update({ where: { id: existing.partId }, data: stockData });
+        // A tech's save leaves the stock item's cost as it is (updatePart does the same).
+        await tx.part.update({ where: { id: existing.partId }, data: tech ? { description: stockData.description, priceCents: price } : stockData });
       } else {
         let partNumber = kitPartNumber(name);
         for (let n = 2; await tx.part.findFirst({ where: { shopId: user.shopId, partNumber: { equals: partNumber, mode: "insensitive" } }, select: { id: true } }); n++) partNumber = `${kitPartNumber(name)}-${n}`;
