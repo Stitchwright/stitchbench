@@ -7,6 +7,7 @@ export type PaperTab = "warranty" | "coop" | "consign" | "commissions" | "accoun
 
 const TABS: { key: PaperTab; href: string; label: string; admin?: boolean }[] = [
   { key: "warranty", href: "/paperwork/warranty", label: "Warranty claims" },
+  { key: "coop", href: "/paperwork/coop", label: "Co-op and rebates" },
 ];
 
 export function PaperFrame({

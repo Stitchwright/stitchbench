@@ -1267,3 +1267,18 @@ Decisions made while building:
   lines and the amount expected are fixed; the amount expected follows the lines until an owner types over it (makers
   pay labour at their own rate). A tech can claim lines and send; recording money, refusals and undo are owner or admin.
 - Nothing connects to the makers' portals (Brother's and others are closed): the shop sends there by hand.
+
+**`coop-claims` (9.2, 7 Oct 2026).** Migration `20261024100000_coop_claims` (`CoopClaim`, `CoopProof`,
+`Shop.nextCoopNumber`; both carried by the company file). Code: `src/lib/coop-claims.ts`, `src/actions/coop-claims.ts`,
+Paperwork → **Co-op and rebates** (`/paperwork/coop`: owed to you by maker, not sent yet by deadline, "Add a claim",
+sent and settled) and each claim's page (the proof photos, "I sent it to Brother", Record what came in, They turned it
+down, Undo, details), the proof route `/api/paperwork/coop-proof/[id]`, and a dashboard and register line "Send co-op
+claim #3 to Brother: due Tue, Oct 21, 2026" 14 days before the deadline while it isn't sent (owners and admins). Books:
+"Co-op and Rebates Received" when the money comes in. Check: `scripts/checks/coop-claims.check.ts` (5 groups);
+`books-export`, `move-export` still pass. Spec: `tests/coop-claims.spec.ts`.
+Decisions made while building:
+- Co-op and rebates are one list with a kind (co-op advertising or rebate). A co-op claim left blank claims half of
+  what was spent (the usual program); a rebate's amount is typed.
+- Owners and admins keep the list (it is marketing money); techs can read it.
+- The proof is a photo (JPEG, PNG, WebP, HEIC) or a PDF, 5 MB at most, as many as needed. Nothing is booked when the ad
+  is paid (that is the shop's own bill); the books get the money back when it comes in.
