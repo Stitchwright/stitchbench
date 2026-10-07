@@ -29,7 +29,7 @@ export async function assistantAvailable(shopId: string, o: { module?: boolean; 
   if (o.module !== false && !(await hasModule(shopId, "assistant"))) return { ok: false, why: "module", message: "The Assistant isn't turned on for this company." };
   if (o.group) {
     const s = await db.assistantSettings.findUnique({ where: { shopId } });
-    const on = !s ? true : o.group === "draft" ? s.draftOn : o.group === "causes" ? s.causesOn : o.group === "manuals" ? s.manualsOn : o.group === "parts" ? s.partsOn : o.group === "fabric" ? s.fabricOn : s.plateOn;
+    const on = !s ? true : o.group === "draft" ? s.draftOn : o.group === "causes" ? s.causesOn : o.group === "manuals" ? s.manualsOn : o.group === "parts" ? s.partsOn : o.group === "fabric" ? s.fabricOn : o.group === "stock" ? s.stockOn : s.plateOn;
     if (!on) return { ok: false, why: "feature", message: "This part of the Assistant is switched off in Settings → Assistant." };
   }
   if (!(await hubJoined())) return { ok: false, why: "no-hub", message: OFFLINE_MESSAGE };
@@ -44,7 +44,7 @@ export async function assistantKeyText(shopId: string): Promise<string | null> {
   return (await db.license.findUnique({ where: { shopId_keyId: { shopId, keyId: s.keyId } }, select: { key: true } }))?.key ?? null;
 }
 
-export type CallTarget = { ticketId?: string; repairJobId?: string; machineId?: string; partId?: string };
+export type CallTarget = { ticketId?: string; repairJobId?: string; machineId?: string; partId?: string; purchaseOrderId?: string };
 export type Photo = { mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string }; // data: base64
 
 type HubAnswer = {

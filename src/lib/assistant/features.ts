@@ -17,10 +17,11 @@ export const FEATURES = {
   match_columns: { label: "Match the columns (inventory import)", cls: "read", group: "parts" },
   read_label: { label: "Read the bolt label", cls: "read", group: "fabric" },
   tag_fabric: { label: "Color and theme tags", cls: "read", group: "fabric" },
+  read_invoice: { label: "Read the packing slip or invoice", cls: "read", group: "stock" },
 } as const satisfies Record<string, { label: string; cls: ModelClass; group: FeatureGroup }>;
 
 export type FeatureId = keyof typeof FEATURES;
-export type FeatureGroup = "draft" | "causes" | "plate" | "manuals" | "parts" | "fabric";
+export type FeatureGroup = "draft" | "causes" | "plate" | "manuals" | "parts" | "fabric" | "stock";
 export const FEATURE_IDS = Object.keys(FEATURES) as FeatureId[];
 export const isFeature = (s: unknown): s is FeatureId => typeof s === "string" && Object.hasOwn(FEATURES, s);
 
@@ -35,6 +36,7 @@ export const GROUP_LABEL: Record<FeatureGroup, { label: string; blurb: string }>
   plate: { label: "Read the plate", blurb: "At check-in: a photo of the rating plate fills in make, model and serial." },
   parts: { label: "Parts helpers", blurb: "\"Looks like\" suggestions on a part, \"Parts this job usually needs\" on a ticket, and \"Match the columns\" on the inventory import. Part numbers, descriptions and column headings only; never a customer." },
   fabric: { label: "Fabric helpers", blurb: "A photo of a bolt label fills in a new fabric (number, color, maker, width, content), and a fabric's swatch picture gets color and theme tags. Only the picture is sent; never a customer." },
+  stock: { label: "Stock helpers", blurb: "A photo of a packing slip or invoice fills in receiving: the lines are matched to the order and your items by item number, and changed costs are shown. Only the picture is sent; never a customer." },
   manuals: { label: "Ask the manuals", blurb: "On a model page or ticket: answers a question from the text of your own indexed manuals, citing the pages. Only the few matching pages go to the model." },
 };
 
