@@ -144,6 +144,13 @@ model Shop {
   bagReminderDays      Int           @default(180)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff         Boolean       @default(false)
+  // Customer answers (shop-features-round-2-design.md 5.6): the shop's opening hours for the public page's Hours answer
+  // ([{ day: 0-6, from: "HH:MM", to: "HH:MM" }], the appointment types' shape), a line under them ("Closed on holidays"),
+  // and the phone-answering service's key (sha256 of it; the key is shown once) with when it was made.
+  openHours            Json          @default("[]")
+  hoursNote            String?
+  statusKeyHash        String?
+  statusKeyAt          DateTime?
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
   techsOfferManuals    Boolean       @default(false)
   manualOffers         ManualOffer[]
@@ -235,6 +242,10 @@ model Shop {
   lenders           Lender[]
   promotions        Promotion[]
   fitGroups         FitGroup[]
+  // Phase 4 AI (shop-features-round-2-design.md section 5)
+  patternNeeds      PatternNeed[]
+  careTips          CareTip[]
+  customerQuestions CustomerQuestion[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -628,6 +639,10 @@ model Ticket {
   // Since when it has been waiting on the pickup shelf: set on every move into READY_FOR_PICKUP, cleared on leaving it
   // (uncollected-machine notices count from here)
   pickupReadyAt       DateTime?
+  // The pickup sheet (shop-features-round-2-design.md 5.5): "What we did" in plain words and the care tips chosen from
+  // the shop's own list (their text, as printed), printed with the invoice
+  pickupWhat          String?
+  pickupTips          String[]     @default([])
   closedAt            DateTime?
   warrantyUntil       DateTime?
   // The trade account's commission % as it was when the ticket closed (null while open): editing the account later
@@ -2836,17 +2851,24 @@ model LongarmPhoto {
 // A company's Assistant settings (Settings -> Assistant): a switch per feature group, the shop's voice sample, and the
 // consent switch for customers' first names in drafts (off: drafts carry {first_name}, filled in on this PC).
 model AssistantSettings {
-  shopId          String   @id
-  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  draftOn         Boolean  @default(true)
-  causesOn        Boolean  @default(true)
-  plateOn         Boolean  @default(true)
-  manualsOn       Boolean  @default(true)
-  partsOn         Boolean  @default(true)
-  fabricOn        Boolean  @default(true)
-  offerFirstNames Boolean  @default(false)
-  voice           String?
-  updatedAt       DateTime @updatedAt
+  shopId           String   @id
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  draftOn          Boolean  @default(true)
+  causesOn         Boolean  @default(true)
+  plateOn          Boolean  @default(true)
+  manualsOn        Boolean  @default(true)
+  partsOn          Boolean  @default(true)
+  fabricOn         Boolean  @default(true)
+  // Phase 4 (shop-features-round-2-design.md section 5): Ask your shop, marketing drafts, the quilt planner's picks, and
+  // customer answers on the booking page (off until the shop turns it on; typed questions at most customerDailyCap a day)
+  askOn            Boolean  @default(true)
+  marketingOn      Boolean  @default(true)
+  quiltOn          Boolean  @default(true)
+  customerOn       Boolean  @default(false)
+  customerDailyCap Int      @default(20)
+  offerFirstNames  Boolean  @default(false)
+  voice            String?
+  updatedAt        DateTime @updatedAt
 }
 
 // What the Assistant was asked and what it said, per company: the record a tech can check, and the month's count.
@@ -3181,4 +3203,50 @@ model Promotion {
   createdAt DateTime @default(now())
 
   @@index([shopId, firstDay])
+}
+
+// A pattern's yardage per size and role, typed once from the back of the pattern (shop-features-round-2-design.md 5.3):
+// "Throw: background 2 1/4 yd". patternPartId is a plain id of this company's PATTERN item (no foreign key, so a company
+// file imports in any order); src/lib/quilt.ts reads only the company's own.
+model PatternNeed {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  patternPartId String
+  size          String
+  role          String
+  yards         Float
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([shopId, patternPartId])
+}
+
+// The shop's own care tips per kind of machine (5.5): the pickup sheet picks from these; the model never writes advice.
+model CareTip {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind      String // sewing | vacuum | a shop kind's key
+  text      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([shopId, kind])
+}
+
+// A customer's question from the public page that goes to a person (5.6): her name and contact as she typed them, and
+// when staff dealt with it.
+model CustomerQuestion {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  at        DateTime  @default(now())
+  name      String?
+  contact   String?
+  text      String
+  handledAt DateTime?
+  handledBy String?
+
+  @@index([shopId, handledAt])
 }

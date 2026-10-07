@@ -12,7 +12,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { monthPeriod } from "@/lib/time-zone";
 import { assistantAvailable } from "@/lib/assistant/client";
 import { assistantSettings } from "@/lib/assistant/context";
-import { FEATURES, FREE_PLATE_READS, GROUP_LABEL, type FeatureId } from "@/lib/assistant/features";
+import { FEATURES, FREE_PLATE_READS, GROUP_LABEL, SWITCH_GROUPS, type FeatureId } from "@/lib/assistant/features";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { HubLegalLinks } from "@/components/hub-legal-links";
@@ -72,7 +72,7 @@ export default async function AssistantSettingsPage() {
       <Section title="What it may do">
         {canEdit ? (
           <ActionForm action={saveAssistantSettings} success="Saved" className="space-y-3">
-            {(["draft", "causes", "plate", "manuals", "parts", "fabric"] as const).map((g) => (
+            {SWITCH_GROUPS.map((g) => (
               <label key={g} className="flex items-start gap-2 text-sm">
                 <input type="checkbox" name={`${g}On`} defaultChecked={settings[`${g}On` as "draftOn"]} className="check mt-1" />
                 <span>
@@ -98,7 +98,7 @@ export default async function AssistantSettingsPage() {
           </ActionForm>
         ) : (
           <ul className="space-y-1 text-sm">
-            {(["draft", "causes", "plate", "manuals", "parts", "fabric"] as const).map((g) => (
+            {SWITCH_GROUPS.map((g) => (
               <li key={g}>
                 {GROUP_LABEL[g].label}: {settings[`${g}On` as "draftOn"] ? "on" : "off"}
               </li>

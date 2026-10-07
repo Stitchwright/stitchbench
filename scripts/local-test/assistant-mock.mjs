@@ -12,6 +12,9 @@ const answer = (rec) => {
     return JSON.stringify({ found: true, answer: `Loosen the timing screw and set the hook to the needle [${ref}].`, sources: [ref] });
   }
   if (rec.system.startsWith("You help the staff")) return "We replaced the bobbin case and reset the hook timing, then tested the stitch.";
+  // Phase 4 (shop-features-round-2-design.md section 5): Ask your shop picks best sellers and words the first row.
+  if (rec.system.startsWith("You pick which")) return /unicorn/i.test(rec.userText) ? '{"report":"none"}' : '{"report":"best_sellers","from":"2020-01-01","to":"2099-12-31","kind":"FABRIC","collection":"Kona Solids","top":5}';
+  if (rec.system.startsWith("You answer a shop owner")) return `The best seller was ${/1\. ([^\n]+)/.exec(rec.userText)?.[1] ?? "nothing"}.`;
   return "unexpected request";
 };
 

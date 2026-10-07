@@ -1117,3 +1117,34 @@ Decisions made while building:
 - The free-text `fits` stays, labelled "Fits (notes)".
 - Browser test needed: an item's Fits these machines (add, take off, groups), /parts/fit-groups, a customer's page, the
   register with a customer who owns a machine and with a machine for sale on the sale, the online shop's picker.
+
+**Phase 4 schema (7 Oct 2026, branch `phase4-ai`).** One migration for the whole phase,
+`20261022000000_phase4_ai`: `AssistantSettings.askOn`, `marketingOn`, `quiltOn` (on), `customerOn` (off),
+`customerDailyCap` (20); `Shop.openHours`, `hoursNote`, `statusKeyHash`, `statusKeyAt`; `Ticket.pickupWhat`,
+`pickupTips`; tables `PatternNeed`, `CareTip`, `CustomerQuestion` (all three carried by the company file; the status key
+is left out of it: the owner makes a new one after a move). The Assistant's new feature ids are in
+`src/lib/assistant/features.ts` with their groups; `groupOn` in `client.ts` reads each group's switch (no settings row:
+everything on except customer answers). Settings → Assistant shows a switch for Ask your shop, Marketing drafts and
+Quilt from your stock; customer answers have their own page (below).
+
+**`ask-your-shop` (5.1, 7 Oct 2026).** Code: the report registry `src/lib/reports/registry-defs.ts` (pure: ten reports
+and their settings, `checkChoice`) and `src/lib/reports/registry.ts` (`runReport`: best sellers, slow items, sales by
+kind, margins, waited for parts, tickets by status, class fill, gift cards owed, discounts given, machines for sale);
+the prompts `src/lib/assistant/ask-prompt.ts`; the body `src/lib/assistant/ask.ts` (`askShop`); the action
+`askYourShop`; the box `src/components/assistant/ask-shop.tsx` at the top of Reports. Check:
+`scripts/checks/ask-your-shop.check.ts` (6 groups; the shared stand-in hub for the phase is
+`scripts/checks/assistant-hub.ts`). Spec: `tests/ask-your-shop.spec.ts` (the spec mock
+`scripts/local-test/assistant-mock.mjs` answers the new prompts).
+Decisions made while building:
+- A question is **two calls**, both logged as `ask_shop` and counted: one to pick the report and its settings, one to
+  word the answer from the report's rows. The box says so. A question no report covers costs the one call. If the
+  wording call fails, the table still shows with the reason.
+- The model's pick is checked by the program: an unknown report is "can't answer"; dates must be real days, at most
+  today and five years back (none given: this year so far; from after to: swapped); kind and collection only from the
+  lists (a collection matched in any case); top N 1 to 50. Settings a report doesn't take are dropped.
+- Only item names, part descriptions, machine models, ticket numbers and class titles reach the model; there is no
+  customer report in the registry (Top customers stays off it), and the question is redacted like any typed text.
+- Owners and admins only, like Reports. "Special orders waiting" and "discounts by price group" join the registry
+  when `special-orders` and `price-groups` (phase 1) land; "at the Florida store" when `locations` does.
+- Browser test needed: Reports with the Assistant off (no box), a question (answer, table, Open this report), a question
+  nothing covers (the list), the switch off.
