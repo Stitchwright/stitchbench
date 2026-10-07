@@ -264,6 +264,8 @@ async function main() {
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
     await db.makeJob.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", title: "Name tags" } });
+    const live = await db.liveSale.create({ data: { shopId: A, name: "Merge live" } });
+    await db.liveClaim.create({ data: { shopId: A, liveSaleId: live.id, customerId: dup.id, name: "Jane Doe", description: "Charm pack", qty: 1, priceCents: 1200, status: "PAID" } });
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     await db.softwareLicense.create({ data: { shopId: A, customerId: dup.id, description: "PE-Design 11", code: "ABC-123", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: dup.id, equipment: "Laser" } });
@@ -447,6 +449,8 @@ async function main() {
     await db.softwareLicense.create({ data: { shopId: A, customerId: del.id, description: "PE-Design 11", code: "DEL-1", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: del.id, equipment: "Longarm" } });
     await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
+    const dLive = await db.liveSale.create({ data: { shopId: A, name: "Delete live" } });
+    const dClaim = await db.liveClaim.create({ data: { shopId: A, liveSaleId: dLive.id, customerId: del.id, name: "Del Person", phone: "555-0177", description: "Jelly roll", qty: 1, priceCents: 3000, status: "PAID" } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -537,6 +541,8 @@ async function main() {
     const e2 = await db.estimateLink.findUniqueOrThrow({ where: { id: est.id } });
     assert.ok(e2.revokedAt && e2.tokenSealed === null && e2.customerId === null && e2.answer === "APPROVED");
     assert.equal((await db.partnerLink.findUniqueOrThrow({ where: { shopId_id: { shopId: A, id: delLink.id } } })).accountId, null);
+    const lc = await db.liveClaim.findUniqueOrThrow({ where: { id: dClaim.id } });
+    assert.deepEqual([lc.customerId, lc.name, lc.phone, lc.priceCents], [null, DELETED_NAME, null, 3000], "a paid live-sale claim stays, without the person");
     ok(
       "customer delete: refused while a ticket, order, booking, class seat, partner repair or partnership is open and while money is owed; then money records kept without the person, consent records and opt-outs kept, queued messages cancelled, bare machines deleted",
     );

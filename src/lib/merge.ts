@@ -53,6 +53,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
   { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
+  { model: "LiveClaim", field: "customerId", label: ["live-sale claim", "live-sale claims"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -325,6 +326,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
   }
+  // A live-sale claim still held for them or waiting in their pay link (LiveClaim.customerId is a plain id).
+  const claims = await tx.liveClaim.count({ where: { shopId, customerId: c.id, status: { in: ["HELD", "SENT"] } } });
+  if (claims) out.push(`${say(claims, ["live-sale claim is", "live-sale claims are"])} still held or waiting to be paid. Let them go or wait for the payment first.`);
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
     select: { shopClass: { select: { title: true } } },
@@ -433,6 +437,7 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
+    await tx.liveClaim.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });
