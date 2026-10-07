@@ -1252,3 +1252,38 @@ Decisions made while building:
   built: it needs the special orders' DEPOSIT lines (1.2, phase 1); the payments count as income when paid.
 - Selling a door ticket happens on the event's door page, not in the register's search.
 - Browser test needed: `tests/events.spec.ts`.
+
+**`switch-imports` (4.7, 7 Oct 2026, branch `phase3-channels`).** No migration. Code: `src/lib/switch/formats.ts` (pure:
+each system's layout by column names for items, customers and gift cards, recognising a file by its columns, reading
+the rows, the export steps), `src/lib/switch/import.ts` (preview and "Bring them in"), `src/actions/switch.ts`
+(`previewSwitchFile` only reads, listed in `lapse-allow.ts` HAND_ALLOWED; `bringSwitchIn` is a safe() action);
+Settings → **Switching from another system** (`/settings/switch`, `src/components/switch-import.tsx`: From Square / From
+Rain or Like Sew / From QuickBooks Point of Sale, Items / Customers / Gift card balances, the export steps, open the
+file, "See what will come in" with new and already-here counts, the first ten and the rows that can't be read, "Bring
+them in"). Check: `scripts/checks/switch-imports.check.ts` (5 groups). Spec: `tests/switch-imports.spec.ts`.
+Decisions made while building:
+- Items go through the existing spreadsheet import (`runImport`: new added, ones here by number updated, stock received
+  unless untold), with each row's supplier filled on items that have none. Square's variations become "Item, Variation";
+  a row without a number uses its barcode. One kind for the whole file (More choices; Notions by default).
+- Customers are matched by email or phone (missing email, phone and address filled, nothing overwritten); a new one is
+  added. "History where possible": what the export says she spent, her visits and first and last visit go in her notes
+  ("From Square: spent $1234.50, 42 visits, first ..., last ..."), once; a birthday and memo too. Past sales themselves
+  are not brought in as sales (they would change the books and the tax reports). Nobody is signed up for marketing.
+- This import doesn't need Marketing (the customer list import in Messages does).
+- Gift cards become existing cards (`addExistingCardAs`: OPENING on the ledger, in the liability, not in sales) under
+  their own numbers, linked to a customer by email when the file has one; a used-up or deactivated card is left out; a
+  number shown masked ("****1234") is refused in words; a number already here is named, not doubled.
+- **Formats not verified against real files** (question 13: ask the first switching shop for its files): Square's item
+  library ("Item Name", "Variation Name", "SKU", "GTIN", "Price", "Default Unit Cost", "Default Vendor Name", "Current
+  Quantity <location>") and customer directory ("First Name", "Last Name", "Email Address", "Phone Number", "Street
+  Address 1", "Postal Code", "Memo", "Square Customer ID", "First Visit", "Last Visit", "Transaction Count", "Total
+  Spend") are from Square's documented import template and exports as remembered; Square's gift card export (whole
+  numbers and balances) is unconfirmed: Square may mask the numbers. Rain and Like Sew publish no export layout: their
+  columns are the usual names ("SKU", "Name", "UPC", "Price", "Cost", "Quantity On Hand", "Manufacturer", "Vendor").
+  QuickBooks Desktop POS's item list ("Item Number", "Item Name", "UPC", "Regular Price", "Average Unit Cost", "On Hand
+  Qty", "Vendor Name") and customer list ("First Name", "Last Name", "Phone 1", "EMail", "Street", "ZIP") follow its
+  Data Import Wizard templates; its gift certificate report layout is a guess. Each field takes several names, and the
+  file's own columns are shown under "Columns read", so a different version only needs another name added in
+  `LAYOUTS`. Square's item library comes as Excel: the page says to save it as CSV (no .xlsx reader in the program).
+  The export steps are words, not pictures.
+- Browser test needed: `tests/switch-imports.spec.ts`.
