@@ -377,6 +377,9 @@ async function main() {
 
     // 9. Marking down: the ladder moves, the row records it, undo works the same day only.
     const lad = (id: string) => ladderViewsFor(a.shopId, [id]).then((m) => m.get(id)!);
+    // A tech can't: a markdown is a price change.
+    await expectError("a tech marks down", () => markDownFor({ ...user(a), role: "TECH" }, slowP.id, "slow"), /Only an owner or admin/);
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: slowP.id } })).priceCents, 1400, "the tech's try changed nothing");
     const msg1 = await markDownFor(user(a), slowP.id, "slow");
     assert.match(msg1, /SL-1: \$14\.00 to \$11\.20 a yard \(20% off\)/);
     let p = await db.part.findUniqueOrThrow({ where: { id: slowP.id } });
@@ -389,6 +392,7 @@ async function main() {
     assert.equal(l.step, 1);
     assert.equal(l.offer?.pct, 35);
     assert.equal(l.undo?.id, rows[0].id);
+    await expectError("a tech undoes", () => undoMarkdownFor({ ...user(a), role: "TECH" }, rows[0].id), /Only an owner or admin/);
     // Undo: back to $14.00; the ladder is at step 0 again.
     assert.match(await undoMarkdownFor(user(a), rows[0].id), /back to \$14\.00/);
     p = await db.part.findUniqueOrThrow({ where: { id: slowP.id } });
