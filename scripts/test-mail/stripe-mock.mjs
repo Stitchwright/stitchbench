@@ -232,6 +232,8 @@ export async function startStripeMock(o = {}) {
           return json(res, 200, sub);
         }
         if (req.method === "DELETE") {
+          // Stripe answers a cancelled subscription's cancel with resource_missing.
+          if (sub.status === "canceled") return json(res, 404, { error: { message: `No such subscription: '${m[1]}'`, type: "invalid_request_error", code: "resource_missing" } });
           sub.status = "canceled";
           const ev = event("customer.subscription.deleted", sub);
           if (webhookBase) {

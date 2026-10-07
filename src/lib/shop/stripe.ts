@@ -35,7 +35,8 @@ export type StripeSession = {
   line_items?: { data: SessionLine[] } | null;
 };
 
-async function call<T>(key: string, method: "GET" | "POST" | "DELETE", path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
+/** `missingOk`: Stripe saying the object is gone (404, resource_missing) answers null instead of an error. */
+async function call<T>(key: string, method: "GET" | "POST" | "DELETE", path: string, body?: Record<string, unknown>, idempotencyKey?: string, missingOk = false): Promise<T> {
   const headers: Record<string, string> = { authorization: `Bearer ${key}`, "stripe-version": "2024-06-20" };
   if (body) headers["content-type"] = "application/x-www-form-urlencoded";
   if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
@@ -54,6 +55,7 @@ async function call<T>(key: string, method: "GET" | "POST" | "DELETE", path: str
   }
   if (!res.ok) {
     const err = (json as { error?: { message?: string; type?: string; code?: string } } | null)?.error;
+    if (missingOk && (res.status === 404 || err?.code === "resource_missing")) return null as T;
     const msg = err?.message ?? `Stripe answered ${res.status}`;
     // Stripe's words go to the log (they can name the shop's set-up); the person sees a plain line with the code.
     console.error(`stripe ${method} ${path}: ${res.status} ${err?.type ?? ""} ${err?.code ?? ""} ${msg.slice(0, 300)}`);
@@ -216,7 +218,10 @@ export async function setSubscriptionPaused(key: string, id: string, paused: boo
   return call<StripeSubscription>(key, "POST", `/v1/subscriptions/${encodeURIComponent(id)}`, { pause_collection: paused ? { behavior: "void" } : "" }, idempotencyKey);
 }
 
-/** Cancels the subscription now (Stripe sends customer.subscription.deleted). */
-export async function cancelSubscription(key: string, id: string): Promise<StripeSubscription> {
-  return call<StripeSubscription>(key, "DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`);
+/**
+ * Cancels the subscription now (Stripe sends customer.subscription.deleted). One already cancelled (Stripe answers
+ * resource_missing) is fine: null, so a webhook replayed after the cancel doesn't fail on it.
+ */
+export async function cancelSubscription(key: string, id: string): Promise<StripeSubscription | null> {
+  return call<StripeSubscription | null>(key, "DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`, undefined, undefined, true);
 }

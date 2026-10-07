@@ -565,6 +565,8 @@ async function unpayClubSale(tx: Tx, shopId: string, saleId: string, at: Date) {
     await tx.clubPayment.update({ where: { id: p.id }, data: { voidedAt: at } });
     const m = await tx.clubMember.findFirst({ where: { id: p.memberId, shopId }, select: { id: true, paidMonth: true } });
     if (!m || m.paidMonth !== p.month) continue;
+    // Another payment still standing covers that month (a stray second subscription refunded beside the real one): it stays paid.
+    if (await tx.clubPayment.count({ where: { shopId, memberId: m.id, voidedAt: null, id: { not: p.id }, month: { gte: p.month } } })) continue;
     const prev = await tx.clubPayment.findFirst({ where: { shopId, memberId: m.id, voidedAt: null, id: { not: p.id }, month: { lt: p.month } }, orderBy: [{ month: "desc" }, { createdAt: "desc" }] });
     await tx.clubMember.update({ where: { id: m.id }, data: { paidMonth: prev?.month ?? null, lastPaidAt: prev?.createdAt ?? null } });
   }
