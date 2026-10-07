@@ -87,7 +87,7 @@ function parseGrace(s: string | undefined, fallback: number): number {
 }
 
 function checkSpec(s: Spec): Spec {
-  if (!s.shopId || s.shopId.length > 64 || /\s/.test(s.shopId)) fail("The Company ID is one word of up to 64 characters (Settings -> Modules shows it).", 2);
+  if (!s.shopId || s.shopId.length > 64 || /\s/.test(s.shopId)) fail("The Company ID is one word of up to 64 characters (Settings -> Add-ons shows it).", 2);
   if (!okYmd(s.from)) fail(`Start date "${s.from}" isn't a real date (YYYY-MM-DD).`, 2);
   if (!okYmd(s.until)) fail(`Last day "${s.until}" isn't a real date (YYYY-MM-DD).`, 2);
   if (s.until < s.from) fail(`The last day (${s.until}) is before the start (${s.from}).`, 2);
