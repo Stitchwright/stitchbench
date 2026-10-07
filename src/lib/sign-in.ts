@@ -128,9 +128,12 @@ async function passwordMatches(logins: Login[], password: string): Promise<Match
  * against each login it was compared with.
  */
 export async function signInStep(credentials: unknown, request: Request | Headers | undefined): Promise<Matched[] | null> {
-  const found = await checkPassword(credentials, request);
-  // Not awaited: a refused try (a flood) must not wait for the log.
+  const missed: string[] = [];
+  const found = await checkPassword(credentials, request, missed);
+  // Not awaited: a refused try (a flood) must not wait for the log. A password that fit one login and not another with
+  // the same email (perhaps a guesser's own login) is a wrong try for that other one.
   if (!found) void logFailure(credentials);
+  else if (missed.length) void logFailure(credentials, missed);
   return found;
 }
 
@@ -139,7 +142,7 @@ export async function signInStep(credentials: unknown, request: Request | Header
 const FAIL_LOG_EVERY = 60_000;
 const failLogged = ((globalThis as unknown as { __signInFailLogged?: Map<string, number> }).__signInFailLogged ??= new Map());
 
-async function logFailure(credentials: unknown): Promise<void> {
+async function logFailure(credentials: unknown, only?: string[]): Promise<void> {
   try {
     const parsed = credentialsSchema.safeParse(credentials);
     if (!parsed.success) return;
@@ -153,6 +156,7 @@ async function logFailure(credentials: unknown): Promise<void> {
     // them gets the sender's address in its log.
     const users = await db.user.findMany({ where: { email: key, active: true }, select: { id: true, shopId: true, name: true, role: true, email: true } });
     for (const u of users) {
+      if (only && !only.includes(u.id)) continue;
       await audit(db, { shopId: u.shopId, id: u.id, name: u.name, role: u.role }, { action: "signin.fail", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})`, noIp: users.length > 1 });
     }
   } catch (e) {
@@ -169,69 +173,85 @@ async function logSignIn(u: SignedIn): Promise<SignedIn> {
   return u;
 }
 
-async function checkPassword(credentials: unknown, request: Request | Headers | undefined): Promise<Matched[] | null> {
+/** `missed` gets each login the password was compared with and didn't fit. */
+async function checkPassword(credentials: unknown, request: Request | Headers | undefined, missed: string[] = []): Promise<Matched[] | null> {
   const parsed = credentialsSchema.safeParse(credentials);
   if (!parsed.success) return null;
   const { email, password } = parsed.data;
   const ip = clientAddress(request);
   if (ip && count(`i:${ip}`) >= PER_ADDRESS) return null;
 
-  let logins = await loginsFor(email);
-  const run = async (of: Login[]): Promise<Matched[] | null> => {
-    const found = await passwordMatches(of, password);
-    return found.length ? found : null;
+  const logins = await loginsFor(email);
+  // The address counts once a try, whenever a compared login didn't fit (a fit on another login, perhaps a guesser's own
+  // with the same email, doesn't make the try a right one for this login).
+  const addr = ip ? `i:${ip}` : null;
+  let wrong = false;
+  // Compares `of` (each login's count key beside it) and settles the counts: a login that didn't fit counts one wrong
+  // try whatever else fitted; one that fitted has its own count cleared, nobody else's.
+  const run = async (of: { l: Login; key: string }[]): Promise<Matched[]> => {
+    const found = await passwordMatches(of.map((o) => o.l), password);
+    for (const o of of) {
+      if (found.some((f) => f.id === o.l.id)) state.failures.delete(o.key);
+      else {
+        fail(o.key);
+        missed.push(o.l.id);
+      }
+    }
+    if (found.length < of.length) wrong = true;
+    return found;
   };
-
-  // A browser one of these logins signed in on before: its own count, not the account's queue. An entry covers only the
-  // login it names (an email can have a login in another company, perhaps one a guesser made), so only those logins are
-  // compared here; the password not fitting them, the try goes on to the others under their own limits.
-  const cookie = knownDeviceCookie(request);
-  const now = Date.now();
-  const known: { l: Login; key: string }[] = [];
-  if (cookie)
-    for (const l of logins) {
-      const d = knownDeviceFor(cookie, l.id, now, l.sv);
-      if (d && count(`d:${d}`) < PER_DEVICE) known.push({ l, key: `d:${d}` });
-    }
-  const rest = logins.filter((l) => !known.some((k) => k.l.id === l.id));
-  if (known.length) {
-    // The address counted once a try: here only when no other login is left to try.
-    const keys = known.map((k) => k.key).concat(ip && !rest.length ? [`i:${ip}`] : []);
-    for (const k of keys) begin(k);
-    try {
-      const found = await run(known.map((k) => k.l));
-      if (found) {
-        // The account's own count stays: whoever is guessing at it elsewhere gets no fresh start from the owner's sign-in.
-        for (const k of known) if (found.some((f) => f.id === k.l.id)) state.failures.delete(k.key);
-        return found;
-      }
-      for (const k of keys) fail(k);
-    } finally {
-      for (const k of keys) end(k);
-    }
-    if (!rest.length) return null;
-    logins = rest;
-  }
-
-  // Counted per login (an email unknown here: per email, so it is held back just the same), never cleared by another
-  // login's sign-in: a guesser's own login with the same email can't hand them a fresh start at someone else's. Counted,
-  // and this try marked as under way, before anything is awaited: no other try can slip in between.
-  const own = logins.length ? logins.map((l) => `u:${l.id}`) : [`e:${email}`];
-  const n = Math.max(...own.map(count));
-  const keys = ip ? [...own, `i:${ip}`] : own;
-  for (const k of keys) begin(k);
+  if (addr) begin(addr);
   try {
-    return await paced(email, n, async () => {
-      const found = await run(logins);
-      if (!found) {
-        for (const k of keys) fail(k);
-        return null;
+    // A browser one of these logins signed in on before: its own count, not the account's queue. An entry covers only the
+    // login it names (an email can have a login in another company, perhaps one a guesser made). The others are compared
+    // with it, under their own counts, while none of them is being guessed at (no wait due); otherwise they wait their
+    // turn in the queue below when the known login didn't fit, and are left out when it did.
+    const cookie = knownDeviceCookie(request);
+    const now = Date.now();
+    const known: { l: Login; key: string }[] = [];
+    if (cookie)
+      for (const l of logins) {
+        const d = knownDeviceFor(cookie, l.id, now, l.sv);
+        if (d && count(`d:${d}`) < PER_DEVICE) known.push({ l, key: `d:${d}` });
       }
-      for (const f of found) state.failures.delete(`u:${f.id}`);
-      return found;
-    });
+    // Counted per login (an email unknown here: per email, so it is held back just the same), never cleared by another
+    // login's sign-in: a guesser's own login with the same email can't hand them a fresh start at someone else's. Counted,
+    // and this try marked as under way, before anything is awaited: no other try can slip in between.
+    const rest = logins.filter((l) => !known.some((k) => k.l.id === l.id)).map((l) => ({ l, key: `u:${l.id}` }));
+    const own = rest.length ? rest.map((r) => r.key) : known.length ? [] : [`e:${email}`];
+    const n = own.length ? Math.max(...own.map(count)) : 0;
+    if (known.length) {
+      const free = n < FREE_TRIES;
+      const of = free ? [...known, ...rest] : known;
+      for (const o of of) begin(o.key);
+      let found: Matched[];
+      try {
+        found = await run(of);
+      } finally {
+        for (const o of of) end(o.key);
+      }
+      // The account's own count stays: whoever is guessing at it elsewhere gets no fresh start from the owner's sign-in.
+      if (found.length) return found;
+      if (free || !rest.length) return null;
+    }
+    for (const k of own) begin(k);
+    try {
+      const found = await paced(email, n, async () => {
+        if (rest.length) return run(rest);
+        await passwordMatches([], password); // an unknown email: the same compares as a known one
+        for (const k of own) fail(k);
+        wrong = true;
+        return [];
+      });
+      return found?.length ? found : null;
+    } finally {
+      for (const k of own) end(k);
+    }
   } finally {
-    for (const k of keys) end(k);
+    if (addr) {
+      if (wrong) fail(addr);
+      end(addr);
+    }
   }
 }
 
