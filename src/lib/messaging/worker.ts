@@ -372,8 +372,8 @@ async function sendRow(t: Turn, row: OutMessage) {
 
   // 8.5 Marketing daily caps: at the cap, every due marketing row of the channel moves to the next shop-day. Online-order
   // mail counts too when Settings -> Online shop says so (online-and-parts-design.md section 3).
-  const capped: Prisma.OutMessageWhereInput = v.ordersInCap ? { OR: [{ purpose: "marketing" }, { kind: "order_notice" }] } : { purpose: "marketing" };
-  if (marketing || (v.ordersInCap && kind === "order_notice")) {
+  const capped: Prisma.OutMessageWhereInput = v.ordersInCap ? { OR: [{ purpose: "marketing" }, { kind: { in: ["order_notice", "pay_link"] } }] } : { purpose: "marketing" };
+  if (marketing || (v.ordersInCap && (kind === "order_notice" || kind === "pay_link"))) {
     const dayStart = zonedTime(ymdOf(now, t.tz), 0, t.tz);
     const cap = channel === "email" ? v.emailDailyCap : v.smsDailyCap;
     const n = await db.outMessage.count({

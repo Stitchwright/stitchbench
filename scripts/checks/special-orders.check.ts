@@ -70,7 +70,8 @@ async function main() {
   const mock = await startStripeMock({ port: 0, webhookBase: null, webhookSecret: WHSEC });
   process.env.STRIPE_API_BASE = `http://127.0.0.1:${mock.port}`;
   process.env.PUBLIC_URL = "http://localhost:3999";
-  const a = await checkShop({ retail: true, modules: ["marketing"] });
+  // A base shop (no Marketing): "it's here" (order_in) is in the base since 7 Oct 2026.
+  const a = await checkShop({ retail: true });
   const b = await checkShop({ retail: true });
   const tech = { ...a.user, role: "TECH" as const };
   try {

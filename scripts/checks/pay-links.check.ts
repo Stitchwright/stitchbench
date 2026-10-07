@@ -47,7 +47,8 @@ async function main() {
   process.env.STRIPE_API_BASE = `http://127.0.0.1:${mock.port}`;
   process.env.PUBLIC_URL = "http://localhost:3999";
   delete process.env.STRIPE_SECRET_KEY;
-  const a = await checkShop({ retail: true, modules: ["marketing"] });
+  // A base shop (no Marketing): pay links are in the base since 7 Oct 2026.
+  const a = await checkShop({ retail: true });
   const b = await checkShop({ retail: true });
   try {
     await messagingFor(a.shopId, { email: true });
@@ -77,9 +78,10 @@ async function main() {
     assert.match(r1.told, /Sent to her by email/);
     const msg = await db.outMessage.findFirstOrThrow({ where: { shopId: a.shopId, refType: "web_order", refId: o1.id } });
     assert.ok(msg.body.includes(r1.link) && msg.body.includes("$36.70"), "the message carries the link and the total");
+    assert.ok(msg.kind === "pay_link" && msg.purpose === "notice", "a pay link is its own base notice kind");
     const view = (await orderByToken(tokenOf(r1.link)))!;
     assert.ok(view.payLink && view.status === "PENDING");
-    ok("a link made: taxed lines at the shop's rate, 14 days, the email queued with the link and the total");
+    ok("a link made on a base shop (no Marketing): taxed lines at the shop's rate, 14 days, the pay_link email queued with the link and the total");
 
     // 3. The Pay button: one Stripe page, reused; paid by the webhook into a sale; money only is done at once.
     const url1 = await openPayLink(tokenOf(r1.link), now);
