@@ -19,7 +19,8 @@ import { SharedPosts } from "@/components/shared-posts";
 import { ManualLinks } from "@/components/manual-links";
 import { PartsThatFit } from "@/components/parts-that-fit";
 import { IntakeFields } from "@/components/equipment/intake-fields";
-import { UnitBadge } from "@/components/vac/unit-badge";
+import { UnitBadge } from "@/components/units/unit-badge";
+import { PlanList } from "@/components/units/plan-list";
 import { SuppliesThatFit } from "@/components/vac/supplies-that-fit";
 import { ActionForm, Submit } from "@/components/action-form";
 import { convertMachineKind, updateMachine } from "@/actions/records";
@@ -108,10 +109,11 @@ export default async function MachinePage({ params, searchParams }: { params: Pr
           </>
         }
       />
-      {m.equipment === "VACUUM" && <UnitBadge machineId={m.id} user={user} />}
+      <UnitBadge machineId={m.id} user={user} />
 
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
+          <PlanList machineId={m.id} user={user} />
           <Section title="Photos">
             <PhotoStrip machineId={m.id} ticketId={current && OPEN_STATUSES.includes(current.status) ? current.id : undefined} photos={m.photos} timeZone={tz} />
           </Section>

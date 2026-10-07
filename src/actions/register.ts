@@ -12,7 +12,7 @@ import { sameText } from "@/lib/input";
 import { lineNet, type Tender } from "@/lib/register-math";
 import type { Issued } from "@/lib/gift-card-number";
 import { splitForReturn } from "@/lib/sale-return";
-import { registerUnitHits } from "@/lib/vac/sale-units";
+import { registerUnitHits } from "@/lib/units/sale-units";
 import { FIRST_PHOTO, viewItem, type RegisterItem } from "@/lib/register-item";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs, type SaleInput } from "@/lib/register-sale";
@@ -21,7 +21,7 @@ import { exemptCertificate } from "@/lib/tax-exempt";
 import type { BookingDue } from "@/lib/booking-types";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
-// functions (even a type re-export trips the bundler), and the Vac Shop unit hooks (src/lib/vac/sale-units.ts) build items too.
+// functions (even a type re-export trips the bundler), and the machines-for-sale hooks (src/lib/units/sale-units.ts) build items too.
 const view = viewItem;
 
 /**
@@ -50,7 +50,7 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   };
   const rank = (p: (typeof matches)[number]) => (exact(p) || twin(p) ? 0 : 8) + (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
   matches.sort((a, b) => rank(a) - rank(b));
-  // No part by that number: a vacuum in stock whose serial it is (Vac Shop).
+  // No part by that number: a machine for sale whose serial it is.
   return matches[0] ? view(matches[0]) : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code" }))[0] ?? null);
 }
 
@@ -69,7 +69,7 @@ export async function findItems(q: string): Promise<RegisterItem[]> {
     take: 25,
     include: FIRST_PHOTO,
   });
-  // Vacuums in stock whose brand or model matches come after the parts (Vac Shop).
+  // Machines for sale whose brand or model matches come after the parts.
   return [...parts.map(view), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];
 }
 

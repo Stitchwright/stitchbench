@@ -12,9 +12,9 @@ import { modelKey } from "@/lib/format";
 import { loadModules } from "@/lib/modules";
 import { completeSaleAs, voidSaleAs, type SaleInput } from "@/lib/register-sale";
 import type { CurrentUser } from "@/lib/session";
-import { prepareUnitLines, registerUnitHits } from "@/lib/vac/sale-units";
-import type { TradeInInput } from "@/lib/vac/types";
-import { listUnits, receiveUnitsFor, recordRegistrationFor, setUnitOffSaleFor, unitDetail, unitFromAbandonedFor, unitsForSaleFor, unitsToReturnFor, updateUnitFor, warrantyEnd } from "@/lib/vac/units";
+import { prepareUnitLines, registerUnitHits } from "@/lib/units/sale-units";
+import type { TradeInInput } from "@/lib/units/types";
+import { listUnits, receiveUnitsFor, recordRegistrationFor, setUnitOffSaleFor, unitDetail, unitFromAbandonedFor, unitsForSaleFor, unitsToReturnFor, updateUnitFor, warrantyEnd } from "@/lib/units/units";
 import { addDays, dayStart, ymdOf, zonedTime } from "@/lib/zoned";
 import { grantDevLicense } from "../license/dev";
 import { checkShop, cleanup, type CheckShop } from "./lib";
@@ -47,7 +47,7 @@ async function expectError(label: string, fn: () => Promise<unknown>, re: RegExp
 
 const unit = (id: string) => db.stockUnit.findUniqueOrThrow({ where: { id }, include: { machine: true } });
 const cash = (amountCents: number) => [{ method: "CASH" as const, amountCents }];
-const RECEIVE = { brand: "Miele", model: "C3", condition: "NEW", "f:bagged": "Bagged", "f:bagType": "GN", priceCents: "499.00", costCents: "300.00" };
+const RECEIVE = { kind: "vacuum", brand: "Miele", model: "C3", condition: "NEW", "f:bagged": "Bagged", "f:bagType": "GN", priceCents: "499.00", costCents: "300.00" };
 
 async function main() {
   const a = await checkShop({ retail: true, repair: true, modules: ["vac"] });

@@ -8,7 +8,7 @@ import { fmtDate } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { BAG_DAYS_MAX, BAG_DAYS_MIN, bagsDue } from "@/lib/vac/bags-due";
-import { fmtYmdLong } from "@/lib/vac/units";
+import { fmtYmdLong } from "@/lib/units/units";
 import { markCalled, saveBagDays, sendBagReminders, snoozeBags, stopBags } from "@/actions/vac-bags-due";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Empty, Section } from "@/components/ui";

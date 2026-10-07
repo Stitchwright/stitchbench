@@ -21,6 +21,7 @@ import { ordersOfCustomer } from "@/lib/longarm";
 import { STATUS_LABEL as LONGARM_STATUS } from "@/lib/longarm-math";
 import { CertifyButton } from "@/components/longarm-forms";
 import { StoreCreditSection } from "@/components/store-credit-section";
+import { classCreditsFor } from "@/lib/units/units";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -118,6 +119,14 @@ export default async function CustomerPage({ params, searchParams }: { params: P
                 ))}
               </ul>
             )}
+            {(await classCreditsFor(user.shopId, c.id)).map((x) => (
+              <p key={x.unitId} className="mt-2 text-sm">
+                <span className={`pill ${x.left ? "tone-ready" : "tone-neutral"}`}>
+                  Owner&apos;s classes: {x.left} of {x.granted} left
+                </span>{" "}
+                <span className="muted">came with the {x.machine}; book them from a class&apos;s sign-up list</span>
+              </p>
+            ))}
           </Section>
         )}
         {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}

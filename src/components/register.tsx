@@ -28,11 +28,11 @@ import { GIFT_MAX_CENTS, GIFT_MIN_CENTS, looksLikeGiftCard, type Issued } from "
 import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
-import { VacUnitTools } from "@/components/vac/unit-tools";
+import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
-import type { TradeInInput, VacCartLine } from "@/lib/vac/types";
+import type { PlanCart, TradeInInput, UnitCartLine } from "@/lib/units/types";
 
 type CartLine = {
   key: string;
@@ -55,10 +55,11 @@ type CartLine = {
   consigned?: boolean;
   /** "used", "compatible, not genuine Brother"...: the receipt says it after the description. */
   disclosure?: string;
-  /** Vac Shop: the customer's vacuum this supply is for; a vacuum sold from stock; a trade-in taken as credit. */
+  /** Vac Shop: the customer's vacuum this supply is for. Any shop: a machine sold from stock; a trade-in taken as credit; a service plan. */
   machineId?: string | null;
   stockUnitId?: string;
   tradeIn?: TradeInInput;
+  servicePlan?: PlanCart;
   /** A class seat or an appointment paid or refunded here (design 12.3): one each, priced by the server. */
   enrollmentId?: string;
   appointmentId?: string;
@@ -86,7 +87,22 @@ function setFieldText(el: HTMLInputElement | HTMLTextAreaElement, text: string) 
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { taxRatePct: number; hasPartners: boolean; canSell: boolean; vac?: "on" | "readonly" | "off"; preload?: BookingDue | null }) {
+export function Register({
+  taxRatePct,
+  hasPartners,
+  canSell,
+  vac,
+  unitKinds,
+  preload,
+}: {
+  taxRatePct: number;
+  hasPartners: boolean;
+  canSell: boolean;
+  vac?: "on" | "readonly" | "off";
+  /** Machines for sale: the kinds the shop may sell and take in trade now (empty: returns only); absent while it has no machines for sale or plans. */
+  unitKinds?: TradeKind[] | null;
+  preload?: BookingDue | null;
+}) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [returnMode, setReturnMode] = useState(false);
@@ -161,10 +177,10 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   /** An item scanned or picked, with the customer's vacuum it was bought for when the Vac Shop's picker found it. */
   function addItem(it: RegisterItem, machineId: string | null = null) {
     const sign = returnMode ? -1 : 1;
-    // A vacuum in stock is sold once, as one line of 1.
+    // A machine for sale is sold once, as one line of 1.
     if (it.stockUnitId) {
       if (cart.some((l) => l.stockUnitId === it.stockUnitId)) {
-        toast.warning("That vacuum is already on this sale.");
+        toast.warning("That machine is already on this sale.");
         return;
       }
       setDone(null);
@@ -200,8 +216,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
   }
 
-  /** A unit, trade-in or return line the Vac Shop tools made: added as it comes. */
-  function addLine(line: VacCartLine) {
+  /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
+  function addLine(line: UnitCartLine) {
     setDone(null);
     setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line }]);
   }
@@ -554,6 +570,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         machineId: l.machineId ?? null,
         stockUnitId: l.stockUnitId ?? null,
         tradeIn: l.tradeIn ?? null,
+        servicePlan: l.servicePlan ?? null,
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
       })),
@@ -643,9 +660,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
           </button>
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
-          {vac && vac !== "off" && (
-            <VacUnitTools vac={vac} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />
-          )}
+          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
           <button type="button" className={`btn btn-sm ${returnMode ? "btn-primary" : ""}`} aria-pressed={returnMode} onClick={() => setReturnMode((r) => !r)}>
             <Undo2 size={14} aria-hidden /> Return mode {returnMode ? "on" : "off"}
           </button>
@@ -657,12 +672,12 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               Add it to inventory
             </Link>{" "}
             (a store barcode can be looked up online there), or ring it up as a misc item.
-            {vac === "on" && (
+            {unitKinds && unitKinds.length > 0 && (
               <>
                 {" "}
-                A vacuum for sale? Add it under{" "}
-                <Link href="/vac/units" className="link" target="_blank">
-                  Vac Shop → For sale
+                A machine for sale? Add it under{" "}
+                <Link href="/units" className="link" target="_blank">
+                  Machines for sale
                 </Link>
                 .
               </>
@@ -936,8 +951,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       aria-label={`Qty for ${l.description}`}
                       className="input num min-w-[4.5rem]"
                       step={l.unit === "yd" ? 0.125 : 1}
-                      // A repair is paid as one line; a vacuum from stock or a trade-in is one machine; a class seat or appointment is one each.
-                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      // A repair is paid as one line; a machine from stock, a trade-in or a plan is one; a class seat or appointment is one each.
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.servicePlan || l.enrollmentId || l.appointmentId || l.giftCard)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}

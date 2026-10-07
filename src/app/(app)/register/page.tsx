@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { getModules } from "@/lib/modules";
+import { shopKinds } from "@/lib/equipment/shop";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader } from "@/components/ui";
@@ -35,7 +36,13 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   // Vac Shop tools: on while the module is active; read-only (returns, no sales from stock) while the shop still holds
   // vacuums it sold or stocked after the module ended; off otherwise.
   const vacState = (await getModules(user.shopId)).states.vac;
-  const vac = vacState.active ? "on" : (await db.stockUnit.count({ where: { shopId: user.shopId } })) > 0 ? "readonly" : "off";
+  const units = await db.stockUnit.count({ where: { shopId: user.shopId } });
+  const vac = vacState.active ? "on" : units > 0 ? "readonly" : "off";
+  // Machines for sale (every shop): the tools show once the shop has a machine for sale or a service plan; sales and
+  // trade-ins of the kinds it may work on now (a vacuum while Vac Shop is on), returns always.
+  const plans = await db.servicePlan.count({ where: { shopId: user.shopId } });
+  const unitKinds =
+    units + plans > 0 ? (await shopKinds(user.shopId)).usable.map((k) => ({ key: k.key, label: k.label, types: k.types, brands: k.brands, modelHint: k.modelHint })) : null;
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
   const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
@@ -65,7 +72,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} preload={preload} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} preload={preload} />
     </div>
   );
 }

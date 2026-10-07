@@ -213,6 +213,10 @@ model Shop {
   webOrders         WebOrder[]
   partPhotos        PartPhoto[]
   stockUnits        StockUnit[]
+  // Machines for sale (tax-machine-sales-layaway-design.md section 3)
+  makerWarranties   MakerWarranty[]
+  servicePlans      ServicePlan[]
+  machinePlans      MachinePlan[]
   vacCares          VacCare[]
   manualDownloads   ManualDownload[]
   // Scheduling and messages
@@ -406,6 +410,7 @@ model Machine {
   repairJobs RepairJob[]
   stock      StockUnit?
   vacCare    VacCare?
+  plans      MachinePlan[]
 
   @@index([shopId, serial])
   @@index([shopId, brand, modelKey])
@@ -653,9 +658,14 @@ model TicketLine {
   taxable        Boolean  @default(true)
   partId         String?
   part           Part?    @relation(fields: [partId], references: [id], onDelete: SetNull)
+  // Covered by the machine's service plan (MachinePlan id, plain): the line charges 0 and coveredCents keeps what it
+  // would have cost, for the report
+  coveredPlanId  String?
+  coveredCents   Int?
   createdAt      DateTime @default(now())
 
   @@index([ticketId])
+  @@index([coveredPlanId])
 }
 
 enum PaymentMethod {
@@ -1304,6 +1314,8 @@ model SaleLine {
   appointmentId  String?
   // A gift card sold, loaded or paid out on this line (plain id)
   giftCardId     String?
+  // A service plan sold on this line (the MachinePlan it made, plain id)
+  machinePlanId  String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1853,6 +1865,12 @@ model StockUnit {
   registeredAt    DateTime? // warranty registered with the maker
   registrationRef String?
   note            String?
+  // What comes with it, one item a line (accessories, software, a cabinet discount): printed on the receipt
+  bundle          String?
+  // Owner's classes ("guide classes") the buyer gets with it; used by signing up with Enrollment.creditUnitId
+  classCredits    Int       @default(0)
+  // A service plan included in the price (ServicePlan id, plain): put on the machine when it sells
+  includedPlanId  String?
   events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -2231,6 +2249,8 @@ model Enrollment {
   refundLineId  String?
   note          String?
   source        String    @default("counter") // counter | online
+  // An owner's class that came with a machine bought here (the StockUnit id, plain): the seat is free
+  creditUnitId  String?
   cancelledAt   DateTime?
   createdById   String?
   createdAt     DateTime  @default(now())
@@ -2889,4 +2909,67 @@ model GiftCardEntry {
   @@index([shopId, at])
   @@index([saleId])
   @@index([paymentId])
+}
+
+// Machines for sale (tax-machine-sales-layaway-design.md section 3): a maker's warranty terms as the shop types them
+// (no built-in claims about any maker), shown on the unit, the receipt and a ticket for a machine sold here. One row per
+// brand; brandKey is the brand in lower case.
+model MakerWarranty {
+  id               String   @id @default(cuid())
+  shopId           String
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand            String
+  brandKey         String
+  partsYears       Float?
+  laborYears       Float?
+  electronicsYears Float?
+  // The maker's warranty registration page
+  registerUrl      String?
+  note             String?
+  updatedAt        DateTime @updatedAt
+
+  @@unique([shopId, brandKey])
+}
+
+// The shop's own service plan: "Free cleaning yearly for 3 years" (3 visits in 36 months) or an extended warranty (no
+// visit limit). Sold as a register line or included with a machine for sale; each sale makes a MachinePlan.
+model ServicePlan {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // Covered visits (repair tickets) in the term; null: no limit (an extended warranty)
+  visits      Int?
+  months      Int
+  priceCents  Int      @default(0)
+  taxable     Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([shopId])
+}
+
+// A service plan on one machine: copied from the ServicePlan when sold (later changes to the plan don't touch it). A
+// ticket's line covered by it points here (TicketLine.coveredPlanId); a visit is a ticket with a covered line.
+model MachinePlan {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  machineId   String
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  planId      String? // the ServicePlan it came from (plain id)
+  name        String
+  visits      Int?
+  startsAt    DateTime
+  endsAt      DateTime
+  // The register line that sold it, or the line that sold the machine it came with (plain ids)
+  saleLineId  String?
+  stockUnitId String?
+  // Ended early: its sale was voided or the machine returned
+  voidedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([shopId, machineId])
+  @@index([saleLineId])
 }
