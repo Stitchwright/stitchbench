@@ -113,6 +113,10 @@ export const BY_HAND = [
   "paySpecialOrder",
   // Lending a loaner or demo (1.7) is new work; its deposit goes through completeSaleAs
   "lendMachine",
+  // Rentals (1.8): renting one out is new work; rent and a buy-out go through completeSaleAs
+  "rentOut",
+  "payRent",
+  "buyRental",
 ] as const;
 
 /**

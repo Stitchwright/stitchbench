@@ -139,7 +139,8 @@ export async function completeSaleAs(
     if (!lay && input.lines.some((l) => l.layawayKind)) throw new UserError("A line can only be one thing.");
     // Deposits and rent are written by the program (special orders, pay links, rentals), never sent from a browser.
     if (!opts.internal && input.lines.some((l) => l.depositKind || l.rentKind)) throw new UserError("A line can only be one thing.");
-    const priceRole: CurrentUser["role"] = lay ? "OWNER" : user.role;
+    // Prices the program set (a layaway's, a rental's buy-out credit) stand for whoever rings them up.
+    const priceRole: CurrentUser["role"] = lay || opts.internal ? "OWNER" : user.role;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
     const made = await saleByKey(shopId, clientKey);
@@ -353,7 +354,7 @@ export async function completeSaleAs(
         discountCents: disc,
         // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc
         // line only. Layaway money is never taxed nor discounted (it isn't a sale).
-        taxable: job || l.layawayKind || l.depositKind || l.rentKind || part?.membershipGroupId ? false : part || so.priced.has(i) ? true : Boolean(l.taxable),
+        taxable: l.rentKind === "RENT" ? true : job || l.layawayKind || l.depositKind || l.rentKind || part?.membershipGroupId ? false : part || so.priced.has(i) ? true : Boolean(l.taxable),
         discountable: !job && !l.layawayKind && !l.depositKind && !l.rentKind,
         costCents: part?.costCents ?? null,
         costTenThou: part ? fineCost(part.costCents, part.costTenThou) : null,
@@ -425,7 +426,7 @@ export async function completeSaleAs(
     }
     const promoLine = (l: (typeof lines)[number], i: number) => ({ ...l, kind: lineKinds[i], brand: l.partId ? parts.get(l.partId)?.brand : l.stockUnitId ? unitBrands.get(l.stockUnitId) : null });
     for (const [i, l] of lines.entries()) {
-      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId) continue;
+      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].unitLoanId) continue;
       const best = bestDiscount(promos, promoLine(l, i));
       if (best && best.cents > l.discountCents) {
         l.discountCents = best.cents;
@@ -443,7 +444,7 @@ export async function completeSaleAs(
     if (!noRules && input.birthday && bday?.kind !== "pct") throw new UserError("Her birthday offer isn't there today (not her birthday month, or used this year). Take it off the sale.");
     const ruleCtx: RuleCtx = noRules ? {} : { ...(await ruleCtxFor(shopId, customerId, today)), yardBreaks: await yardBreaksFor(shopId), birthdayPct: bday?.kind === "pct" ? bday.value : null };
     for (const [i, l] of lines.entries()) {
-      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].noRule || lineKinds[i] === "MEMBERSHIP") continue;
+      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].unitLoanId || input.lines[i].noRule || lineKinds[i] === "MEMBERSHIP") continue;
       const part = l.partId ? parts.get(l.partId) : null;
       const hit = bestRule(ruleCtx, { ...l, kind: lineKinds[i], wholesaleCents: part?.wholesaleCents ?? null, breakMinQty: part?.breakMinQty ?? null, breakPriceCents: part?.breakPriceCents ?? null, onPromo: !!promoIds[i] || !!(promos.length && bestDiscount(promos, promoLine(l, i))) });
       if (hit && hit.cents > l.discountCents) {
@@ -453,6 +454,8 @@ export async function completeSaleAs(
         priceNotes[i] = hit.label;
       }
     }
+    // A rental bought: the rent credit off the machine's price says so on the receipt.
+    for (const [i, l] of lines.entries()) if (l.stockUnitId && input.lines[i].unitLoanId && l.discountCents > 0) priceNotes[i] = "Rent credit";
     // A membership sold names its buyer (she joins its group).
     if (lines.some((l, i) => lineKinds[i] === "MEMBERSHIP" && l.qty > 0) && !customerId) throw new UserError("Pick the customer first: a membership is for someone.");
     if (original) {

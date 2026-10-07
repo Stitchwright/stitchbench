@@ -1257,3 +1257,24 @@ Decisions made while building:
   deposit by default: a "card on file" note instead.
 - A demo needs no customer; a loaner does. One loan at a time per machine.
 - Browser test needed: `tests/loaners.spec.ts`.
+
+**`rentals-trials` (1.8, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021060000_rentals_trials` (`UnitLoan.rateCents`,
+`ratePer`, `ownPct`, `ownUntil`; `StockUnit.trialUntil`; `Shop.trialDays`). Code: `src/lib/rentals.ts`,
+`src/actions/rentals.ts`, `src/components/rental-forms.tsx`; on **Loaners, demos and rentals** (`/units/loans`): rentals
+out (paid through, rent overdue, rent-to-own credit, Take rent, Buy it now, the rent as a pay link, It's back), Rent one
+out, and the trial days under its settings; the receipt's "Try it until ..." and each line's price label; a to-do line
+for rentals behind. Check: `scripts/checks/rentals-trials.check.ts` (6 groups); `pay-links`, `special-orders`, `loaners`,
+`machine-sales`, `vac-units`, `price-groups`, `online-shop`, `books-export`, `base-license`, `move-export` pass.
+Decisions made while building:
+- A rental is a machine for sale whose use is Rental, rented out as a loan of kind RENTAL. Rent is a RENT line naming it
+  ("Rentals" income), taxed as a rental of goods (at the counter and by pay link); a tech can take rent, only an owner or
+  admin sets a rate. "Paid through" is worked out from the rent paid (whole periods from the day it went out), so rent by
+  pay link counts without anything else to update; past it, "Rent overdue".
+- Rent-to-own: by default 100% of the rent counts toward buying it for 3 months (changeable when renting out). "Buy it
+  now" ends the rental and sells the machine with the credit as its line discount ("Rent credit"; no promotion or group
+  on that line), so the rent already counted isn't counted twice. Voiding that sale puts the machine back in stock for
+  sale (the rental stays ended: rent it out again if needed).
+- Trial purchases: a shop setting (off by default); a machine sold while it is set carries "Try it until <day>: bring it
+  back by then for a full refund" on the receipt; the return is the existing Return a machine (it refunds what she paid).
+  After the window the shop's own rule applies (nothing enforced).
+- Browser test needed: `tests/rentals-trials.spec.ts`.

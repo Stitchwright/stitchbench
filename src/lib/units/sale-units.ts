@@ -99,7 +99,7 @@ export async function applyUnitLine(
   const desc = unitDescription(unit);
   const when = at.toISOString();
   if (line.qty > 0) {
-    const shop = await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true } });
+    const shop = await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true, trialDays: true } });
     const months = unit.warrantyMonths ?? (isCondition(unit.condition) ? DEFAULT_WARRANTY_MONTHS[unit.condition] : 12);
     const { until } = warrantyEnd(at, months, a.timeZone);
     const sold = await tx.stockUnit.updateMany({
@@ -110,6 +110,8 @@ export async function applyUnitLine(
         soldLineId: line.id,
         soldNetCents: lineNet(line) - a.discountShareCents,
         returnLineId: null,
+        // A trial purchase (shop-features-round-2-design.md 1.8): "Try it for N days".
+        trialUntil: shop.trialDays > 0 ? new Date(at.getTime() + shop.trialDays * 86_400_000) : null,
         warrantyUntil: until,
         warrantyMonths: months,
         warrantyBy: unit.warrantyBy ?? warrantyByDefault(unit.condition, unit.machine.brand, shop.name),
@@ -222,7 +224,7 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
       if (!unit) continue;
       const r = await tx.stockUnit.updateMany({
         where: { shopId, id: unit.id, status: "SOLD", soldLineId: l.id },
-        data: { status: "IN_STOCK", soldAt: null, soldLineId: null, soldNetCents: null, warrantyUntil: null, registeredAt: null, registrationRef: null, events: pushEvent(unit.events, { at: when, note: `Sale #${a.saleNumber} void: back in stock` }) },
+        data: { status: "IN_STOCK", soldAt: null, soldLineId: null, soldNetCents: null, warrantyUntil: null, trialUntil: null, registeredAt: null, registrationRef: null, events: pushEvent(unit.events, { at: when, note: `Sale #${a.saleNumber} void: back in stock` }) },
       });
       if (!r.count) throw new UserError(`${unitDescription(unit)} was returned since this sale; void that return first.`);
       await tx.machine.updateMany({ where: { id: unit.machineId, shopId }, data: { customerId: null } });

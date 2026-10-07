@@ -899,7 +899,7 @@ async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: b
         description: i.description,
         qty: i.qty,
         unitPriceCents: i.unitPriceCents,
-        taxable: i.specialOrderId || i.loanId ? false : i.taxable !== false,
+        taxable: i.specialOrderId ? false : i.taxable !== false,
         ...(i.specialOrderId ? { specialOrderId: i.specialOrderId, depositKind: "DEPOSIT" as const } : {}),
         ...(i.loanId ? { unitLoanId: i.loanId, rentKind: "RENT" as const } : {}),
       }));
