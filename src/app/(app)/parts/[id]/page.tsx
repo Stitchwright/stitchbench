@@ -24,6 +24,13 @@ import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XN
 import { partTags } from "@/lib/part-labels";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { qtyText } from "@/lib/register-math";
+import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
+import { ColorDot } from "@/components/color-dot";
+import { SameColor } from "@/components/same-color";
+import { FitsSection } from "@/components/fits-section";
+import { SoftwareItem } from "@/components/software-item";
+import { OrderMoreForm } from "@/components/fabric-orders-forms";
+import { eachSuggestion } from "@/lib/fabric-orders-math";
 
 const REASON: Record<string, string> = {
   RECEIVED: "Received",
@@ -78,7 +85,13 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 {t}
               </span>
             ))}
-            {`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {`${p.kind !== "PART" ? `${typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {detailsLine(p) && (
+              <span className="mt-1 flex items-center gap-2 text-base text-ink">
+                <ColorDot hex={p.colorHex} size="lg" />
+                {detailsLine(p)}
+              </span>
+            )}
           </>
         }
         actions={
@@ -134,6 +147,23 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                   <input name="note" aria-label="Note" className="input" placeholder="reason (optional)" />
                   <Submit className="btn btn-sm">Set count</Submit>
                 </ActionForm>
+                {/* Ordering from a supplier (shop-features-round-2-design.md 1.1): onto its supplier's draft order. */}
+                <div className="space-y-2 rounded border border-line p-3 sm:col-span-2">
+                  <div className="label">Order more</div>
+                  {p.supplier?.trim() ? (
+                    <OrderMoreForm
+                      partId={p.id}
+                      supplier={p.supplier.trim()}
+                      fabric={p.unit === "yd"}
+                      suggest={p.unit === "yd" ? 1 : Math.max(1, eachSuggestion({ reorderAt: p.reorderAt, onHand: p.qtyOnHand, onOrder: 0 }))}
+                    />
+                  ) : (
+                    <p className="muted text-sm">Give it a supplier under Details, then order it here.</p>
+                  )}
+                  <Link href="/parts/orders" className="link text-sm">
+                    Orders to suppliers
+                  </Link>
+                </div>
               </div>
             )}
           </Section>
@@ -143,6 +173,12 @@ export default async function PartPage({ params, searchParams }: { params: Promi
               <TagOneButton partId={p.id} photoId={swatchPhoto.id} unavailable={tagEntry.unavailable} />
             </Section>
           )}
+          {/* Software (shop-features-round-2-design.md 2.5): once or a subscription, its words, codes on hand. */}
+          {p.kind === "SOFTWARE" && <SoftwareItem shopId={user.shopId} partId={p.id} />}
+          {/* Which machines it fits (shop-features-round-2-design.md 2.4); a machine model or fabric fits nothing. */}
+          {p.kind !== "MACHINE" && p.kind !== "FABRIC" && <FitsSection shopId={user.shopId} partId={p.id} />}
+          {/* The shop's own color matches (shop-features-round-2-design.md 2.2), for items with a color. */}
+          {shopFlags.sellsRetail && (p.colorNumber || p.colorName || p.colorHex || typeOf(p) === "thread") && <SameColor shopId={user.shopId} partId={p.id} />}
           {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (

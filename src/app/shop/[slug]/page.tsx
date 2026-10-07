@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { allowPublic } from "@/lib/rate-limit";
-import { catalog, catalogKinds, decodeCartParam, encodeCart, publicStore } from "@/lib/shop/online-shop";
+import { catalog, catalogFitModels, catalogKinds, decodeCartParam, encodeCart, publicStore } from "@/lib/shop/online-shop";
 import { Price, ShopShell, Thumb } from "@/components/shop/shell";
 import { listLenders } from "@/lib/financing";
 
@@ -28,12 +28,14 @@ export default async function ShopHome({ params, searchParams }: { params: Promi
   }
   const q = typeof sp.q === "string" ? sp.q.slice(0, 80) : "";
   const k = typeof sp.k === "string" ? sp.k : "";
-  const [items, kinds, lenders] = await Promise.all([catalog(store.id, { q, kind: k || null }), catalogKinds(store.id), listLenders(store.id, true)]);
+  // "Fits your machine" (shop-features-round-2-design.md 2.4): a model key from the picker.
+  const m = typeof sp.m === "string" ? sp.m.slice(0, 80) : "";
+  const [items, kinds, lenders, fitModels] = await Promise.all([catalog(store.id, { q, kind: k || null, fits: m || null }), catalogKinds(store.id), listLenders(store.id, true), catalogFitModels(store.id)]);
   // Financing the shop offers (tax-machine-sales-layaway-design.md section 5): each lender's own "apply now" page.
   const apply = lenders.filter((l) => l.applyUrl);
   return (
     <ShopShell shop={store} cart={cart}>
-      {store.welcome && !q && !k && <p className="whitespace-pre-wrap">{store.welcome}</p>}
+      {store.welcome && !q && !k && !m && <p className="whitespace-pre-wrap">{store.welcome}</p>}
       {apply.length > 0 && !q && !k && (
         <p className="text-sm">
           Financing available:{" "}
@@ -51,9 +53,30 @@ export default async function ShopHome({ params, searchParams }: { params: Promi
       <form method="get" className="flex gap-2" role="search">
         {cart.size > 0 && <input type="hidden" name="c" value={encodeCart(cart)} />}
         {k && <input type="hidden" name="k" value={k} />}
+        {m && <input type="hidden" name="m" value={m} />}
         <input name="q" defaultValue={q} aria-label="Search the shop" placeholder="Part number, brand, model or words" className="input flex-1" maxLength={80} />
         <button className="btn">Search</button>
       </form>
+      {fitModels.length > 0 && (
+        <form method="get" className="flex flex-wrap items-end gap-2">
+          {cart.size > 0 && <input type="hidden" name="c" value={encodeCart(cart)} />}
+          {k && <input type="hidden" name="k" value={k} />}
+          <div className="field">
+            <label htmlFor="fits-m" className="label">
+              Fits your machine
+            </label>
+            <select id="fits-m" name="m" defaultValue={m} className="select">
+              <option value="">Any machine</option>
+              {fitModels.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn">Show what fits</button>
+        </form>
+      )}
       {kinds.length > 1 && (
         <nav className="flex flex-wrap gap-2 text-sm" aria-label="Kinds">
           <Link href={`/shop/${store.slug}?${c.slice(1)}`} className={`pill ${k ? "" : "tone-ok"}`}>

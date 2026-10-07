@@ -25,6 +25,8 @@ import { estimateStillWanted } from "@/lib/estimate-links";
 import { bagsDueStillWanted } from "@/lib/vac/bags-due";
 import { partsInStillWanted } from "@/lib/part-waits";
 import { orderNoticeStillWanted } from "@/lib/shop/online-shop";
+import { renewNoticeStillWanted } from "@/lib/software";
+import { suppliesStillWanted } from "@/lib/supplies-due";
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof db;
@@ -246,6 +248,10 @@ export async function stillWanted(row: OutMessage): Promise<string | null> {
       return partsInStillWanted(row);
     case "order_notice":
       return orderNoticeStillWanted(row);
+    case "software_renew":
+      return renewNoticeStillWanted(row);
+    case "supplies_due":
+      return suppliesStillWanted(row);
     default:
       return null;
   }

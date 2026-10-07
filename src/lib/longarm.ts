@@ -213,7 +213,14 @@ export async function setCertifiedFor(user: CurrentUser, customerId: string, on:
   await requireBaseWritable(user);
   const c = await db.customer.findFirst({ where: { id: assertId(customerId), shopId: user.shopId }, select: { id: true, name: true } });
   if (!c) throw new UserError("Customer not found.");
-  await db.customer.updateMany({ where: { id: c.id, shopId: user.shopId }, data: { longarmCertifiedAt: on ? new Date() : null } });
+  // Kept in step with the general certification (shop-features-round-2-design.md 6.4) until longarmCertifiedAt is removed.
+  await db.$transaction(async (tx) => {
+    await tx.customer.updateMany({ where: { id: c.id, shopId: user.shopId }, data: { longarmCertifiedAt: on ? new Date() : null } });
+    if (on) {
+      const have = await tx.certification.findFirst({ where: { shopId: user.shopId, customerId: c.id, equipment: "Longarm" }, select: { id: true } });
+      if (!have) await tx.certification.create({ data: { shopId: user.shopId, customerId: c.id, equipment: "Longarm", byUserId: user.id } });
+    } else await tx.certification.deleteMany({ where: { shopId: user.shopId, customerId: c.id, equipment: "Longarm" } });
+  });
   return on ? `${c.name} is certified to rent the longarm.` : `${c.name} is no longer certified to rent the longarm.`;
 }
 

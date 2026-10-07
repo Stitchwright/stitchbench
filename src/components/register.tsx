@@ -28,6 +28,10 @@ import { GIFT_MAX_CENTS, GIFT_MIN_CENTS, looksLikeGiftCard, type Issued } from "
 import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
+import { ColorFinder } from "@/components/color-finder";
+import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
+import { SoftwareLineFields } from "@/components/software-line";
+import type { SoftwareLineInput } from "@/lib/software";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
@@ -80,6 +84,8 @@ type CartLine = {
   giftCard?: { mode: "new" | "printed" | "load" | "cashout"; number?: string };
   /** The sale a scanned receipt brought this return line back from. */
   fromSale?: string;
+  /** Software (shop-features-round-2-design.md 2.5): its code, "later", the machine, a renewal, a return's reason. */
+  software?: SoftwareLineInput;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -265,6 +271,12 @@ export function Register({
       return;
     }
     setDone(null);
+    // Software is one licence a line, each with its own code.
+    if (it.kind === "SOFTWARE") {
+      setCart((c) => [...c, { key: newKey(), partId: it.id, description: it.description, partNumber: it.partNumber, unit: null, kind: it.kind, brand: it.brand ?? null, qty: sign, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, onHand: it.qtyOnHand, discountPct: 0, taxable: true, software: {} }]);
+      if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
+      return;
+    }
     setCart((c) => {
       // The same item scanned again adds one more (not for fabric: each cut is its own line; not across vacuums: a
       // supply bought for another vacuum is its own line).
@@ -714,6 +726,7 @@ export function Register({
         taxAnyway: l.taxAnyway ?? false,
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
+        software: l.software ?? null,
       })),
       orderDiscountCents,
       tenders,
@@ -809,6 +822,7 @@ export function Register({
           <button type="button" className="btn btn-sm" onClick={openBookings}>
             <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
           </button>
+          <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
           {layaway && !returnMode && (
@@ -916,6 +930,10 @@ export function Register({
         {returnMode && (
           <p className="tone-wait rounded px-3 py-2 font-semibold">Returning: scan what comes back. It comes off the sale and goes back on the shelf.</p>
         )}
+        {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
+        {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
+        {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
+        {!returnMode && <StarterBundles unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
         {results.length > 0 && (
           <div className="card">
@@ -932,14 +950,19 @@ export function Register({
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      {it.photoId && (
-                        // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
-                        <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                      {it.colorHex ? (
+                        <span aria-hidden="true" className="h-10 w-10 shrink-0 rounded border border-line" style={{ backgroundColor: it.colorHex }} />
+                      ) : (
+                        it.photoId && (
+                          // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
+                          <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                        )
                       )}
                       <span className="min-w-0">
                       <span className="mono">{it.partNumber}</span> {it.description}
                       {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                      {it.details && <span className="block text-sm">{it.details}</span>}
                       </span>
                     </span>
                     <span className="num">
@@ -1134,6 +1157,9 @@ export function Register({
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                    {l.kind === "SOFTWARE" && l.partId && (
+                      <SoftwareLineFields partId={l.partId} customerId={customer?.id ?? null} value={l.software ?? {}} returning={l.qty < 0} canOverride={canSell} onChange={(v) => setLine(l.key, { software: v })} />
+                    )}
                     {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">
                         <input type="checkbox" checked={l.pickedUp !== false} onChange={(e) => setLine(l.key, { pickedUp: e.target.checked })} /> taking the machine home

@@ -47,7 +47,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   // trade-ins of the kinds it may work on now (a vacuum while Vac Shop is on), returns always.
   const plans = await db.servicePlan.count({ where: { shopId: user.shopId } });
   const unitKinds =
-    units + plans > 0 ? (await shopKinds(user.shopId)).usable.map((k) => ({ key: k.key, label: k.label, types: k.types, brands: k.brands, modelHint: k.modelHint })) : null;
+    units + plans > 0 ? (await shopKinds(user.shopId)).sellable.map((k) => ({ key: k.key, label: k.label, types: k.types, brands: k.brands, modelHint: k.modelHint })) : null;
   // Layaway: the shop's defaults, and today in its zone (the payment plan's first day).
   const lw = await layawaySettings(user.shopId);
   const layaway = { depositPct: lw.depositPct, days: lw.days, every: lw.every, today: ymdOf(new Date(), await shopTimeZone(user.shopId)) };

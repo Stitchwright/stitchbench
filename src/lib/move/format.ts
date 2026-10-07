@@ -92,6 +92,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ClubPick", key: "id" }, // -> Club, ClubMember
   { t: "LongarmOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale)
   { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
+  { t: "MakeJob", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> Customer: print and cut jobs with the customer's file (6.5)
   { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
@@ -105,11 +106,17 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "TaxHoliday", key: "id" }, // the shop's sales tax holidays
   { t: "Lender", key: "id" }, // the lenders the shop offers financing through
   { t: "Promotion", key: "id" }, // the shop's planned sales
+  { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
+  { t: "SoftwareLicense", key: "id" }, // -> Customer, Part (shop-features-round-2-design.md 2.5; its sale, line and machine ids are plain)
+  { t: "SoftwareCode", key: "id" }, // -> Part: activation codes on hand
+  { t: "StarterBundle", key: "id" }, // the starter bundles by machine kind (6.1; its item ids are plain)
   { t: "FinancedSale", key: "id" }, // -> Lender (its sale id is plain)
   { t: "MachinePlan", key: "id" }, // -> Machine (its sale line and unit ids are plain)
   { t: "Layaway", key: "id" }, // -> Customer (its sale id is plain)
   { t: "LayawayLine", key: "id", via: { column: "layawayId", parent: "Layaway" } }, // its part and unit ids are plain
   { t: "VacCare", key: '"machineId"' }, // -> Machine (one row per machine)
+  { t: "Certification", key: "id" }, // -> Customer: certified on the shop's machines (6.4)
+  { t: "SuppliesCare", key: '"machineId"' }, // -> Machine: Maker Shop's supplies-due marks (one row per machine)
   { t: "PartnerKey", key: '"shopId"', leftOut: ["privateSealed"] }, // the sealed private key stays behind: the company makes a new key (src/lib/partner-keys.ts)
   { t: "PartnerLink", key: "id" },
   { t: "PartnerOutbox", key: "id" },

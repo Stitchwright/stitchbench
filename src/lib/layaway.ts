@@ -19,7 +19,7 @@ import { lineNet, saleTotals, TENDER_METHODS, type Tender } from "@/lib/register
 import { completeSaleAs } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { exemptCertificate } from "@/lib/tax-exempt";
-import { fmtYmdLong, sellableEquipment, unitDescription } from "@/lib/units/units";
+import { fmtYmdLong, isSellableMachine, unitDescription } from "@/lib/units/units";
 import { holdItems, releaseItems } from "@/lib/layaway-hooks";
 import { behind, cancelSplit, DEFAULT_LAYAWAY_TERMS, dueByOf, isEvery, layawayPlan, minDeposit, type LayawayEvery, type PlanPayment } from "@/lib/layaway-math";
 import { ymdOf } from "@/lib/zoned";
@@ -234,7 +234,6 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
   if (!lines.length) throw new UserError("Add the items to hold first.");
   if (lines.length > 50) throw new UserError("That's too many items for one layaway.");
   const settings = await layawaySettings(shopId);
-  const equipment = await sellableEquipment(shopId);
   const rows: Omit<Prisma.LayawayLineCreateManyInput, "layawayId">[] = [];
   const rowKinds: string[] = [];
   const unitIds = new Set<string>();
@@ -246,7 +245,7 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
     if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
     if (l.stockUnitId) {
       const u = await db.stockUnit.findFirst({ where: { id: l.stockUnitId, shopId }, include: { machine: true } });
-      if (!u || u.status !== "IN_STOCK" || !equipment.includes(u.machine.equipment)) throw new UserError(`${u ? unitDescription(u) : "That machine"} isn't in stock any more.`);
+      if (!u || u.status !== "IN_STOCK" || !(await isSellableMachine(shopId, u.machine))) throw new UserError(`${u ? unitDescription(u) : "That machine"} isn't in stock any more.`);
       if (unitIds.has(u.id)) throw new UserError(`${unitDescription(u)} is on the list twice.`);
       if (u.priceCents == null) throw new UserError(`Set a price for ${unitDescription(u)} first (Machines for sale).`);
       if (user.role === "TECH" && price !== u.priceCents) throw new UserError(`Only an owner or admin can change the price of ${unitDescription(u)}.`);

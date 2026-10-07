@@ -3,6 +3,7 @@
 // unit hooks (src/lib/units/sale-units.ts) can build items.
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 import { disclosure } from "@/lib/part-labels";
+import { detailsLine } from "@/lib/item-details";
 
 export type RegisterItem = {
   id: string;
@@ -21,6 +22,10 @@ export type RegisterItem = {
   stockUnitId?: string | null;
   /** The item's or machine's brand: a promotion may cover a brand. */
   brand?: string | null;
+  /** Item details in one line ("Isacord 0015 White · 40 wt polyester") and the swatch color (shop-features-round-2-design.md 2.1, 2.2). */
+  details?: string;
+  colorHex?: string | null;
+  colorNumber?: string | null;
 };
 
 export const viewItem = (p: {
@@ -36,6 +41,12 @@ export const viewItem = (p: {
   condition: PartCondition;
   origin: PartOrigin;
   photos?: { id: string }[];
+  itemType?: string | null;
+  colorNumber?: string | null;
+  colorName?: string | null;
+  colorHex?: string | null;
+  material?: string | null;
+  specs?: unknown;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -48,6 +59,9 @@ export const viewItem = (p: {
   disclosure: disclosure(p),
   photoId: p.photos?.[0]?.id ?? null,
   brand: p.brand,
+  details: detailsLine(p) || undefined,
+  colorHex: p.colorHex ?? null,
+  colorNumber: p.colorNumber ?? null,
 });
 
 /** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */

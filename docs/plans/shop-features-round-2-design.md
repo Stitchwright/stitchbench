@@ -996,3 +996,254 @@ is 19.5 days; a store on its own Windows PC adds 8.
     **Recommended: yes.**
 15. Print/cut job files: delete 30 days after pickup? **Recommended: yes** (customers' files are theirs, and they're
     big).
+
+## Built
+
+**`po-any-item` (1.1, 7 Oct 2026, branch `phase2-selling`).** Migration `20261020000000_po_any_item` (`PoUnit` gains
+`EACH`). Code: `src/lib/fabric-orders-math.ts` (pieces math, `amountText`, `orderAmountText`, `eachSuggestion`),
+`src/lib/fabric-orders.ts` (`addItemsToDraftFor`, `reorderEachFor`, `orderOneFor`; lines by hand take any item),
+`src/actions/fabric-orders.ts` (`addItemsToOrders`, `orderMore`); pages moved to Parts (Inventory) → **Orders to
+suppliers** (`/parts/orders`, `/parts/orders/[id]`, its print page; the old `/fabric/orders/...` links redirect), with
+**Order more** in the Stock box of every item's page. Check: `scripts/checks/po-any-item.check.ts` (7 groups);
+`fabric-orders` and `connectors` still pass.
+Decisions made while building:
+- An order line for anything not sold by the yard is in pieces (EACH) whatever the form says; fabric keeps yards and
+  bolts. `PurchaseOrderLine.receivedYards` holds pieces for an EACH line (no column renamed, so nothing to migrate).
+- "Running low" uses each item's own reorder point: at or below it (a sent order counts), the suggestion brings stock
+  back up to twice the point (at least 1). Kits, the fat quarters / half yards / remnants that fabric is cut into, a
+  partner's consigned stock and fabric by the yard (it has its own Reorder tab) are left out.
+- A tech can order but can't type a cost (refused in words; a tech's save keeps each line's cost).
+- Orders open for every company now (a repair bench orders parts too), not only shops with a counter.
+- Browser test needed: `/parts/orders` (tick, amounts, "Add ticked items to draft orders", Start an order by hand), an
+  order page with fabric and pieces lines (save, send, "When the box arrives", "Receive what came"), the item page's
+  Order more, the old `/fabric/orders/<id>` link; `tests/fabric.spec.ts` updated for "Receive what came".
+
+**`item-details` (2.1 and 6.2, 7 Oct 2026).** Migration `20261020100000_item_details` (`Part.colorNumber`, `colorName`,
+`colorHex`, `material`, `itemType`, `specs` JSON, an index on shop and type). Code: `src/lib/item-details.ts` (pure: the
+types, their fields, "What is it?" choices, forgiving input, the one-line summary), the short lists in
+`src/lib/constants.ts`, `src/components/item-details-fields.tsx` (the item form's "What is it?" list and the chosen type's
+details), `src/components/color-dot.tsx`; `src/actions/parts.ts` saves them; the item page and the Parts / Inventory list
+show the summary with its swatch, and the list's search reads color number, name and material. Check:
+`scripts/checks/item-details.check.ts` (5 groups); `move-export` still passes.
+Decisions made while building:
+- "What is it?" is one list: the plain kinds, then (for shops with a counter) "Cutters, lasers and 3D printers": filament,
+  resin, cutter blade, cutting mat, vinyl and laser material (filed as supplies) and dies (accessories). A thread saved
+  before this is still a thread (its type is read from its kind), so no data was changed by the migration.
+- Only the chosen type's fields are kept; switching an item to a type without details clears them. A form without the
+  details (an import, an older tab) leaves them as they are.
+- Each list (fibres, weights, spools, filament materials...) is a suggestion: a word of the shop's own is kept as typed,
+  and a list word typed in any case or spacing is saved as listed ("5000 m cone" -> "5,000 m cone"). Numbers get their
+  unit ("40" -> "40 wt", "1kg" -> "1 kg", "500" -> "500 ml").
+- The swatch is picked with the color picker (or "No swatch"); picking it from a photo of the spool is left for
+  `thread-photo` (9.10).
+- Browser test needed: the add form and an item's Details with each type (the details box appears and swaps; the swatch
+  picker and "No swatch"), the item page's summary line, the Parts list's summary and search ("0015", "navy", "PETG").
+
+**`color-lookup` (2.2, 7 Oct 2026).** Migration `20261020200000_color_lookup` (`Part.sameAs`, plain ids kept both
+ways). Code: `src/lib/color-match.ts` (pure: the words split and scored), `src/lib/colors.ts` (the lookup, "colors
+bought before", the shop's own matches), `src/actions/colors.ts`; the register's search puts color hits first and shows
+each hit's swatch and details, and its new **Find a color** button (`src/components/color-finder.tsx`) shows big swatches
+with stock, bin and price, one tap to add; "Colors bought before" on the customer's page
+(`src/components/customer-colors.tsx`); "Same color as" on an item's page (`src/components/same-color.tsx`). Check:
+`scripts/checks/color-lookup.check.ts` (5 groups); `base-license` passes again (see below).
+Decisions made while building:
+- Every word typed has to match something on the item's details (color number, maker, color name, material, specs);
+  a word found only in the description doesn't make a color hit. An exact color number ("15" = "0015") ranks above a
+  near one, then in stock, then the shop's own before a partner's consigned stock.
+- "Order it for her" waits for special orders (1.2, phase 1, not built on this branch): meanwhile a color with none on
+  the shelf has **Order more**, which puts it on its supplier's draft order (`po-any-item`).
+- With a customer chosen, Find a color opens on the colors she bought before (from sales that stand; voids and returns
+  left out), each with when, in the shop's time zone. The headings use her first name, or "Colors bought before".
+- The shop's matches ("same as Madeira 1147") are linked by number on the item's page, both ways, and shown under each
+  hit with their stock; the program never guesses equivalents.
+- `lapse-allow.ts`: `findColors` is a read; the layaway actions from `sales-features` that `base-license` was missing
+  (`startLayaway`, `payLayaway`, `pickUpLayaway` by hand; `openLayaways`, `planChoices` reads) are listed, so that check
+  passes again.
+- Browser test needed: the register's search ("isa 15", "navy", "PLA black 1.75") and Find a color (big swatches, Add,
+  Order more, the matches, a customer's colors), the customer page's "Colors bought before", an item's "Same color as".
+
+**`catalog-any-item` (2.3, 7 Oct 2026).** Migration `20261020300000_catalog_any_item` (`FabricSupplier.defaultKind`).
+Code: `CATALOG_FIELDS` (`src/lib/connectors/types.ts`) gains the type column and the 2.1 details (color number and name,
+fibre or material, thread weight, spool size, filament diameter and spool weight, size), grouped main / fabric /
+details; `readCatalogRows` reads them; `src/lib/connectors/catalog.ts` plans any item (`kindFromWords` in
+`src/lib/item-details.ts` reads a type column in words); the import (`src/components/connector-forms.tsx`) asks "What's
+on this list?" and folds the fabric and detail columns away; Parts → Orders to suppliers gains **Suppliers' lists** (each
+supplier's import, "Add supplier"; owners and admins), beside the Fabric page's own. Check:
+`scripts/checks/catalog-any-item.check.ts` (4 groups); `connectors` still passes.
+Decisions made while building:
+- Each row's type is its own Type column in words ("Thread", "Notions", "3D filament", "HTV"), else the list's type
+  ("What's on this list?", saved on the supplier with the columns); a word the program doesn't know is read as the
+  list's type and named among the partly read rows. A supplier that never set one stays fabric by the yard, as before.
+- An item that is there keeps its kind: a notion row against fabric by the yard, a fabric row against a notion, and a
+  partner's consigned stock are left alone and named. An item with no type takes the list's type when its kind is the
+  same (a SUPPLY on a filament list becomes filament), then its details are filled or changed; specs are merged.
+- New costs update the item's cost (Raise prices, 4.4, will read them when it is built); stock is never touched.
+- Browser test needed: Parts → Orders to suppliers → Suppliers' lists (add a supplier, open it, choose a thread list,
+  "What's on this list?", the folded columns, Preview, Bring them in), and the Fabric page's import still reading fabric.
+- Sources (coordinator, 7 Oct): the import is built around a small source interface, `CatalogSource` in
+  `src/lib/connectors/types.ts`, listed in `src/lib/connectors/sources.ts`. The spreadsheet upload is the first source;
+  a distributor's own published feed or API (Notions Marketing, United Notions, Checker, Brewer, Tacony...) is one more
+  entry whose `fetchCatalog` maps the feed to the same `CatalogRow`s, and `previewSourceFor` / `applySourceFor` put
+  them through the same matching, preview and "Bring them in". A feed key is the shop's or the partnership's, stored
+  sealed like the other secrets; no scraping, no wholesaler passwords. No feed is built (none is publicly documented
+  yet); the settings form for a feed key comes with the first one. Rows carry a barcode (UPC/EAN column: kept among the
+  item's numbers, so a scan finds it) and a picture address (reserved for feeds; nothing fetches pictures yet).
+- Machines (coordinator, 7 Oct): a list can hold machine models. Migration `20261020400000_machine_models` (`PartKind`
+  gains `MACHINE`). A machine model is an item of type "Machine model (to order)" with its kind (sewing, embroidery,
+  serger and quilting machines as "sewing", vacuums, 3D and resin printers), model and the maker's warranty terms
+  (Maker, Model, Type, Cost, MAP or list price, Warranty columns). It is ordered on a purchase order like anything else
+  (in pieces); "When the box arrives" asks for a serial number for each one, and each becomes a machine for sale
+  (`receiveUnitsFor` in `src/lib/units/`) at the line's cost and the model's price, its note naming the order and the
+  warranty. The model itself is never stock: the register, the color lookup, "Running low" and Receive stock leave it
+  out or refuse it in words. Left for later: cutters and lasers as machine kinds come with `maker-machines` (6.1);
+  warranty months aren't read from the terms (the unit gets the shop's default months, the terms in its note); MAP is
+  kept as the price, not enforced (9.3).
+
+**`fits-machines` (2.4, 7 Oct 2026).** Migration `20261020500000_fits_machines` (`Part.fitsModels`, `fitsKeys`,
+`fitGroupIds`; `FitGroup`, carried by the company file). Code: `src/lib/fits.ts`, `src/actions/fits.ts`; an item's
+**Fits these machines** (`src/components/fits-section.tsx`: brand and model picked from the shop's models or typed, fit
+groups ticked), Parts → **Fit groups** (`/parts/fit-groups`), **Fits their machines** on the customer's page
+(`src/components/customer-fits.tsx`), the register's quiet lines (`src/components/register-fits.tsx`: "3 items fit
+Jane's Brother PE800" with a customer chosen, "Goes with this Brother SE600" with a machine for sale on the sale; one
+tap opens the list, each item has Add), and the online shop's **Fits your machine** picker. Check:
+`scripts/checks/fits-machines.check.ts` (6 groups); `online-shop`, `move-export`, `base-license` still pass.
+Decisions made while building:
+- Models match on the model key alone, as everything else does (PE-800 is PE800). An item's labels and keys are kept
+  side by side, so a brand of two words ("Baby Lock Altair") keeps the key of its model; in a fit group's list a
+  two-word brand takes a comma ("Baby Lock, Altair").
+- The register's lines show only what is on the shelf; a customer's machine with nothing that fits isn't mentioned.
+  The machine's own bundle ("what comes with it") stays on the unit's line as before.
+- Removing a fit group takes it off its items (they keep their own models), after one confirming tap.
+- The free-text `fits` stays, labelled "Fits (notes)".
+- Browser test needed: an item's Fits these machines (add, take off, groups), /parts/fit-groups, a customer's page, the
+  register with a customer who owns a machine and with a machine for sale on the sale, the online shop's picker.
+
+**`software-codes` (2.5, 7 Oct 2026).** Migrations `20261020600000_software_codes` (`PartKind` gains `SOFTWARE`;
+`Part.licenseKind`, `licenseMonths`, `noReturnText`; `SoftwareLicense`, `SoftwareCode`; `Shop.softwareActivatedAtSale`)
+and `20261020610000_software_renewals` (`SoftwareLicense.renewedFromId`, `returnLineId`). Code: `src/lib/software.ts`,
+`src/actions/software.ts`; the register's software line (`src/components/software-line.tsx`: scan or type the code,
+"Add the code later", the machine from the customer's own, "Renew their subscription"; a return's reason for an owner or
+admin), `register-sale.ts` (prepare, apply, void), the receipt's licence notes (`src/components/sale-software-notes.tsx`:
+product, code in full, customer, machine, renewal date, no-returns words), Parts → **Software licences**
+(`/parts/software`: codes to fill in, renewals in the next 30 days, sold lately), the item's **Software licence** box
+(once or subscription, words, codes on hand and loading them), **Software** on the customer's and the machine's pages
+(codes masked, "Show the code"), Settings → Selling → Software (activated at sale), dashboard and register to-do lines,
+and the new message kind `software_renew` (marketing; one friendly reminder per renewal date, sent by the notices
+scheduler for shops with Marketing on, cancelled if the licence is renewed, ended or its date moves). Licences are in
+the company file and the customer and machine merges. Check: `scripts/checks/software-codes.check.ts` (7 groups);
+`customer-merge` (licences seeded), `messaging-core`, `notices`, `move-export`, `base-license`, `promotions`, `layaway`,
+`machine-sales` still pass.
+Decisions made while building:
+- One licence a line (each has its own code); scanning the same software twice makes two lines.
+- No code typed: the next code on hand (first loaded, first used); none on hand and "later" not ticked is refused in
+  words. A typed code that is one of the codes on hand comes out of the drawer.
+- Renewing makes a new licence carrying the same code from the old renewal date (or today, when that has passed); the
+  old one is RENEWED. Voiding the renewal brings the old one back; a sale whose licence was renewed or returned since
+  can't be voided until that sale is.
+- Returns find the licence on the receipt's sale, else the customer's latest active one of that item. Not activated: it
+  comes back and its drawer code goes back on hand. Activated: refused with the item's words; an owner or admin types a
+  reason on the line and it is taken back, audited as `software.return`. Voiding the return makes it active again.
+  A return scanned from a receipt shows no reason box (its lines don't say they are software): for activated software,
+  ring the return up by the item instead.
+- "Mark activated" is on each licence; un-marking and "Not renewing" (ENDED) are owner or admin.
+- Codes are printed in full on the receipt (the customer's record) and masked everywhere else; they are in the company
+  file (the shop's record) and never in anything sent to the hub or the Assistant.
+- Browser test needed: an item set to Software (licence box, codes), the register's software line (code, later, machine,
+  renew, a return with and without a reason), the receipt, /parts/software, the customer and machine pages, Settings →
+  Selling → Software, the dashboard lines; the renewal reminder through the message worker with Marketing on.
+
+**`maker-machines` (6.1, 7 Oct 2026).** Migration `20261020700000_maker_machines` (`StarterBundle`, carried by the
+company file). Code: `src/lib/equipment/maker.ts` (craft cutter, fabric die cutter, laser cutter), `sellFree` and
+`serialOptional` on equipment kinds (`src/lib/equipment/types.ts`; the 3D and resin printers are `sellFree` too),
+`ShopKinds.sellable` / `sellableKind` / `sellsFree` (`src/lib/equipment/shop.ts`), the machines-for-sale gate per kind
+(`src/lib/units/units.ts`, `sale-units.ts`, `layaway.ts`: `sellableMachines`, `isSellableMachine`, `requireForSale`),
+`src/lib/starter-bundles.ts`, `src/actions/starter-bundles.ts`, Settings → Selling → **Starter bundles**
+(`src/components/starter-bundle-settings.tsx`) and the register's **Add the starter bundle** button for a machine of
+that kind on the sale (`StarterBundles` in `src/components/register-fits.tsx`); catalog machine models read these kinds
+too. Check: `scripts/checks/maker-machines.check.ts` (4 groups); `machine-sales`, `vac-units`, `layaway`,
+`modules-tenant`, `bags-due`, `equipment`, `equipment-lines` still pass.
+Decisions made while building:
+- Selling printers, cutters, die cutters and lasers needs no module (answer 7); the new kinds are appliance kinds, so
+  repairing them is the Small Appliance Repair module's (they show on "What you repair" for a shop with it). A vacuum
+  still needs Vac Shop to be sold.
+- A fabric die cutter may be added without a serial; every other new machine still needs one (the warranty does).
+- Serials, warranties, registration reminders, owner's classes and service plans are the machines-for-sale ones,
+  unchanged; "what fits" (2.4) shows dies and accessories for a machine on the sale.
+- A starter bundle is per kind (not per model) and holds items with how many each; the register adds them as ordinary
+  lines (priced and taxed as items), one tap per machine.
+- Browser test needed: /units "Add machines for sale" with the new kinds (a die cutter without a serial), the register
+  selling a printer with no module and taking a laser in trade, Settings → Selling → Starter bundles, the register's
+  starter bundle button.
+
+**`supplies-due` (6.3, Maker Shop module, 7 Oct 2026).** Migration `20261020800000_supplies_due` (`SuppliesCare`,
+carried by the company file and the machine merge). The **Maker Shop module** itself: `maker` in `MODULE_IDS`
+(`src/lib/license.ts`), its name and blurb (`src/lib/module-info.ts`), the Companies switch, the menu item "Maker Shop"
+(shown while the module is on), Maker Shop $10 a month / $100 a year in the everything bundle at the same $30 (pricing
+docs), and its pages' frame (`src/components/maker/maker-page.tsx`: gate, header, tabs). Code: `src/lib/supplies-due.ts`
+(a rule per machine kind: filament for 3D printers, resin, mats / blades / vinyl for craft cutters, laser stock, mats
+for die cutters; the running-low date; the marks; the one-off send), `src/actions/maker-supplies.ts`, **Maker Shop**
+home (`/maker`, 3D printers first) and **Supplies due** (`/maker/supplies`), the new message kind `supplies_due`
+(marketing, sent by hand only, cancelled if she buys before it goes). Check: `scripts/checks/supplies-due.check.ts`
+(5 groups); `customer-merge`, `modules`, `license`, `base-license`, `modules-tenant`, `modules-crossover`, `notices`,
+`messaging-core`, `move-export` still pass.
+Decisions made while building:
+- Only machines sold here count (as the design says), each running-low date from her own purchases of that kind's
+  supplies since: her average gap (two weeks to a year) after the last, else six weeks after the last (or after the
+  machine's sale; 90 days for a die cutter's mats). The six weeks is fixed, not a setting.
+- Listed a week ahead; a call or message from a week before the date takes it off; "Not yet" is 30 days.
+- Vacuums keep their own bags-due list (its matching reads the finder); this one reads item types, so the two were not
+  merged into one file. Same marks, same "never automatic" rule.
+- The send is owner or admin and needs Marketing; the module ending makes the list read-only and cancels queued ones.
+- The hub's own billing (StitchHub add-on prices and keys) needs Maker Shop added there too: a key can carry `maker`
+  now, and `npm run license -- --modules maker` issues one.
+- Browser test needed: the menu item with the module on and off, /maker, /maker/supplies (Called with a note, Not yet,
+  Stop, Remind the n due now), Settings → Modules and the Companies switch showing Maker Shop.
+
+**`maker-space` (6.4, Maker Shop module, 7 Oct 2026).** Migration `20261020900000_maker_space` (`Certification`,
+carried by the company file and the customer merge; `AppointmentType.certFor`; every customer with `longarmCertifiedAt`
+copied in as certified on "Longarm"). Code: `src/lib/certifications.ts`, `src/actions/certifications.ts`; **Certified
+on** on the customer's page (`src/components/customer-certifications.tsx`: one tap to certify after the safety class,
+"Take off"), replacing the longarm's own flag there; an appointment type's "Certified customers only, on the ___"
+(`appt-type-form.tsx`); the booking check (`appointment-actions.ts`) reads the type's machine; Maker Shop →
+**Maker-space time** (`/maker/space`: your machines by the hour, "Set up a machine by the hour", the next two weeks'
+bookings, who is certified). Check: `scripts/checks/maker-space.check.ts` (5 groups); `longarm` (its wording updated),
+`appointments`, `online-booking`, `customer-merge` (certifications seeded), `move-export` still pass.
+Decisions made while building:
+- A maker-space machine is an appointment type exactly like longarm rental (hourly rate, how many at once, what it
+  uses up, bookable hours), with `certFor` naming the machine; a type with "certified only" and no machine is the
+  longarm, so the longarm's types and certifications work as before. Certifying on, or setting up a type for, anything
+  but the longarm needs Maker Shop; booking needs Scheduling (the calendar), as before.
+- `Customer.longarmCertifiedAt` stays and is kept in step with the "Longarm" certification (both buttons), and a
+  customer certified only by the old flag still books the longarm; removing the column is left for a later clean-up.
+- Material used is rung up at the register beside the booking (no separate material log).
+- Browser test needed: a customer's Certified on (certify, take off), Calendar → Types with a machine, /maker/space
+  (set up, coming up, who is certified), booking a laser hour for a certified and an uncertified customer.
+
+**`make-jobs` (6.5, Maker Shop module, 7 Oct 2026).** Migration `20261021000000_make_jobs` (`MakeJob` with the file as
+bytes, carried by the company file and the customer merge and delete; `Shop.nextMakeJobNumber`, `makeRateCents` $20,
+`makeSetupCents` $5, `makeNeverCut` "PVC, vinyl"; `EstimateLink.makeJobId`). Code: `src/lib/make-jobs-math.ts` (pure:
+words, steps, material by the gram / ml / sheet, the price, the never-cut check), `src/lib/make-jobs.ts`,
+`src/actions/make-jobs.ts`, `src/components/maker/job-form.tsx` (the price shown as it is typed), Maker Shop → **Print
+and cut jobs** (`/maker/jobs`: open, Take a job, finished lately, Job prices), the job's page (`/maker/jobs/[id]`: the
+next step as the one main button, Collected and paid, Send the quote, the file, Change the job, Turn it down), the job
+slip (`/maker/jobs/[id]/print`, with "We decide what we'll print or cut"), the file download
+(`/api/maker/jobs/[id]/file`); the estimate link (`src/lib/estimate-links.ts`) learned print and cut jobs (approving
+moves the job to Approved); voiding the collecting sale puts the job back to Ready (`register-sale.ts`). Check:
+`scripts/checks/make-jobs.check.ts` (7 groups); `estimate-links`, `customer-merge` (jobs seeded), `move-export`,
+`longarm`, `base-license` still pass.
+Decisions made while building:
+- Statuses and kinds are text (as the machines-for-sale ones are), not new enums.
+- Material is priced from the item: filament by the gram (its price over the spool's weight), resin by the ml (over the
+  bottle), laser stock and vinyl by the sheet; it is billed as a line on the sale and does not take stock off the shelf
+  (grams of a spool can't be counted in whole items). A material the customer brings is named in words, unpriced.
+- A tech takes jobs at the shop's rate and set-up fee; owners and admins may change them per job.
+- The laser's never-cut list (Job prices) refuses a job whose material names one of its words, from stock or typed.
+- The Ready message goes when Marketing is on (an order-notice style text or email); otherwise call them.
+- The customer's file is kept until 30 days after the job ends (collected, cancelled or turned down) and then deleted
+  (the job keeps its name); deleting happens when Maker Shop's job pages are opened, and a file past its days can't be
+  downloaded. A worker sweep for every company (`purgeJobFiles(null)`) is ready to be called if wanted.
+- Not built: the customer's online job request (the design's "online request" wording is on the job slip and the
+  quote's note), and a jobs list on the customer's page.
+- Browser test needed: /maker/jobs (Take a job with a file and the live price, a tech's form, the never-cut refusal),
+  a job's page through Approved, Printing, Ready, Collected (and a void), Send the quote and answering it on /e/...,
+  Turn it down, the slip, the file download.

@@ -98,6 +98,32 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
     }
   }
 
+  // Software (shop-features-round-2-design.md 2.5): codes sold "later" still to give, and subscriptions renewing soon.
+  const [toFill, renewing] = await Promise.all([
+    db.softwareLicense.count({ where: { shopId, status: "ACTIVE", code: null } }),
+    db.softwareLicense.count({ where: { shopId, status: "ACTIVE", kind: "SUBSCRIPTION", renewsOn: { lte: new Date(now.getTime() + 30 * 86_400_000) } } }),
+  ]);
+  if (toFill) {
+    lines.push({
+      key: "software-codes",
+      node: (
+        <Link href="/parts/software" className="link">
+          {toFill} software {toFill === 1 ? "code" : "codes"} still to give a customer
+        </Link>
+      ),
+    });
+  }
+  if (renewing) {
+    lines.push({
+      key: "software-renew",
+      node: (
+        <Link href="/parts/software" className="link">
+          {renewing} software {renewing === 1 ? "subscription renews" : "subscriptions renew"} in the next 30 days
+        </Link>
+      ),
+    });
+  }
+
   // Layaways behind on their payments (or past the last day).
   if (await db.layaway.count({ where: { shopId, status: "OPEN" } })) {
     const late = (await listLayaways(shopId, "OPEN")).filter((l) => l.behindCents > 0);

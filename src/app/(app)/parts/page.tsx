@@ -13,6 +13,8 @@ import { KIND_LABEL } from "@/lib/parts";
 import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
 import { FIRST_PHOTO } from "@/lib/register-item";
+import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
+import { ColorDot } from "@/components/color-dot";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -65,6 +67,10 @@ export default async function Parts({
             { fits: { contains: term, mode: "insensitive" } },
             { brand: { contains: term, mode: "insensitive" } },
             { altNumbers: { has: term } },
+            // Item details (shop-features-round-2-design.md 2.1): "0015", "navy", "PETG".
+            { colorNumber: { contains: term, mode: "insensitive" } },
+            { colorName: { contains: term, mode: "insensitive" } },
+            { material: { contains: term, mode: "insensitive" } },
           ],
         }
       : {}),
@@ -91,6 +97,14 @@ export default async function Parts({
             <Link href="/parts/most-used" className="btn">
               Most used
             </Link>
+            <Link href="/parts/orders" className="btn">
+              Orders to suppliers
+            </Link>
+            {shop.sellsRetail && (
+              <Link href="/parts/software" className="btn">
+                Software licences
+              </Link>
+            )}
             <Link href="/parts/on-order" className="btn">
               On order
             </Link>
@@ -258,9 +272,15 @@ export default async function Parts({
                           {t}
                         </span>
                       ))}
+                      {detailsLine(p) && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <ColorDot hex={p.colorHex} />
+                          {detailsLine(p)}
+                        </div>
+                      )}
                       <div className="muted text-xs">
                         {[
-                          p.kind !== "PART" ? KIND_LABEL[p.kind] : null,
+                          p.kind !== "PART" ? (typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]) : null,
                           p.brand,
                           p.altNumbers.length
                             ? `also ${p.altNumbers.join(", ")}`

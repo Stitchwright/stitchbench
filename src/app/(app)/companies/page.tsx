@@ -24,7 +24,7 @@ import { OwnerResetLink } from "./owner-reset-link";
 import { resetByEmailProblem } from "@/lib/password-reset";
 import { platformToken } from "@/lib/platform-api";
 
-const SHORT: Record<ModuleId, string> = { base: "Program", vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing", assistant: "Assistant" };
+const SHORT: Record<ModuleId, string> = { base: "Program", vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing", assistant: "Assistant", maker: "Maker" };
 
 /** One short pill for the Modules column, or null when the module is off. */
 function modulePill(s: ModuleState) {

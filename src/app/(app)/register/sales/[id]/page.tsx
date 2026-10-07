@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
 import { SaleUnitNotes } from "@/components/units/sale-unit-notes";
+import { SaleSoftwareNotes } from "@/components/sale-software-notes";
 import { voidSale } from "@/actions/register";
 import { lastFour } from "@/lib/gift-card-number";
 import { holidayNames } from "@/lib/tax-holidays";
@@ -94,6 +95,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
           ))}
         </ul>
         <SaleUnitNotes saleId={sale.id} shopId={user.shopId} />
+        <SaleSoftwareNotes saleId={sale.id} shopId={user.shopId} />
         <div className="my-2 border-t border-dashed border-line" />
         <Line k="Subtotal" v={money(sale.subtotalCents)} />
         {sale.discountCents > 0 && <Line k="Discount" v={`-${money(sale.discountCents)}`} />}

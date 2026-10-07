@@ -45,8 +45,8 @@ function refresh(paths: string[]) {
     }
   }
 }
-const refreshTarget = (a: { ticketId?: string | null; repairJobId?: string | null }) =>
-  refresh([...(a.ticketId ? [`/tickets/${a.ticketId}`] : []), ...(a.repairJobId ? [`/repairs/${a.repairJobId}`] : []), "/", "/register", "/repairs", "/tickets"]);
+const refreshTarget = (a: { ticketId?: string | null; repairJobId?: string | null; makeJobId?: string | null }) =>
+  refresh([...(a.ticketId ? [`/tickets/${a.ticketId}`] : []), ...(a.repairJobId ? [`/repairs/${a.repairJobId}`] : []), ...(a.makeJobId ? [`/maker/jobs/${a.makeJobId}`, "/maker/jobs"] : []), "/", "/register", "/repairs", "/tickets"]);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The link
@@ -96,14 +96,14 @@ export function jobEstimateLines(j: { lines: unknown; taxCents: number | null; t
  */
 export async function createEstimateLink(
   tx: Db,
-  a: { shopId: string; ticketId?: string; repairJobId?: string; customerId: string; totalCents: number; lines: Line[]; note: string | null; days: number; byUserId: string },
+  a: { shopId: string; ticketId?: string; repairJobId?: string; makeJobId?: string; customerId: string; totalCents: number; lines: Line[]; note: string | null; days: number; byUserId: string },
 ): Promise<{ id: string; maskedUrl: string; expiresAt: Date }> {
   const base = publicBaseUrl();
   if (!base) throw new UserError("This install has no public address, so there are no estimate links.");
-  if (!a.ticketId === !a.repairJobId) throw new Error("createEstimateLink: a ticket or a job, not both");
+  if ([a.ticketId, a.repairJobId, a.makeJobId].filter(Boolean).length !== 1) throw new Error("createEstimateLink: one ticket, repair job or print and cut job");
   const now = new Date();
   await tx.estimateLink.updateMany({
-    where: { shopId: a.shopId, answer: null, revokedAt: null, ...(a.ticketId ? { ticketId: a.ticketId } : { repairJobId: a.repairJobId }) },
+    where: { shopId: a.shopId, answer: null, revokedAt: null, ...(a.ticketId ? { ticketId: a.ticketId } : a.repairJobId ? { repairJobId: a.repairJobId } : { makeJobId: a.makeJobId }) },
     data: { revokedAt: now, tokenSealed: null },
   });
   const token = crypto.randomBytes(32).toString("base64url");
@@ -119,6 +119,7 @@ export async function createEstimateLink(
       maskedUrl,
       ticketId: a.ticketId ?? null,
       repairJobId: a.repairJobId ?? null,
+      makeJobId: a.makeJobId ?? null,
       customerId: a.customerId,
       totalCents: a.totalCents,
       lines: a.lines.map((l) => ({ description: cleanText(l.description, 160), amountCents: l.amountCents })),
@@ -149,6 +150,12 @@ async function targetOf(tx: Db, link: EstimateLink): Promise<{ machine: string; 
     const j = await tx.repairJob.findUnique({ where: { shopId_id: { shopId: link.shopId, id: link.repairJobId } }, include: { customer: { select: { name: true } } } });
     if (!j || j.side !== "retail") return { machine: "machine", ref: "", waiting: false, customerName: null };
     return { machine: `${j.brand} ${j.model}`, ref: `tag ${j.tag}`, waiting: j.status === "WAITING_CUSTOMER_OK" && !j.approval, customerName: j.customer?.name ?? j.customerName };
+  }
+  // A print or cut job (shop-features-round-2-design.md 6.5): waiting while it is quoted.
+  if (link.makeJobId) {
+    const m = await tx.makeJob.findFirst({ where: { id: link.makeJobId, shopId: link.shopId }, select: { title: true, number: true, status: true, name: true } });
+    if (!m) return { machine: "job", ref: "", waiting: false, customerName: null };
+    return { machine: m.title, ref: `job #${m.number}`, waiting: m.status === "QUOTED", customerName: m.name };
   }
   return { machine: "machine", ref: "", waiting: false, customerName: null };
 }
@@ -232,6 +239,16 @@ export async function answerByToken(token: string, answer: "APPROVED" | "DECLINE
         } else if (job) {
           const events = [...((job.events as JobEvent[]) ?? []), { at: now.toISOString(), note: "Answer by link arrived after it moved on" }];
           await tx.repairJob.updateMany({ where: { shopId, id: job.id }, data: { events: events as Prisma.InputJsonValue } });
+        }
+      } else if (link.makeJobId) {
+        // A print or cut job: approved moves it on; declined stays quoted with the customer's words in its note.
+        const m = await tx.makeJob.findFirst({ where: { id: link.makeJobId, shopId } });
+        if (m) {
+          const line = `${fmtDateTime(now, ctx.tz)}: the customer ${answer === "APPROVED" ? "approved" : "declined"} the quote by link${cleaned ? `: ${cleaned}` : ""}.`;
+          await tx.makeJob.updateMany({
+            where: { id: m.id, shopId },
+            data: { note: [m.note, line].filter(Boolean).join("\n").slice(-2000), ...(answer === "APPROVED" && m.status === "QUOTED" ? { status: "APPROVED", approvedAt: now } : {}) },
+          });
         }
       }
     });

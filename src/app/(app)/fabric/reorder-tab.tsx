@@ -124,7 +124,7 @@ export async function ReorderTab({ shopId }: { shopId: string }) {
                 {orders.map((o) => (
                   <tr key={o.id}>
                     <td>
-                      <Link href={`/fabric/orders/${o.id}`} className="link">
+                      <Link href={`/parts/orders/${o.id}`} className="link">
                         #{o.number}
                       </Link>
                     </td>
