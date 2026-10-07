@@ -574,6 +574,7 @@ async function main() {
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
     await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
     await db.softwareLicense.create({ data: { shopId: A, machineId: md.id, description: "Hatch", startsOn: new Date() } });
+    await db.suppliesCare.create({ data: { shopId: A, machineId: md.id, calledAt: new Date(), calledBy: "Ann" } });
     await db.machinePlan.create({ data: { shopId: A, machineId: md.id, name: "Free yearly cleaning", visits: 3, startsAt: new Date(2026, 0, 1), endsAt: new Date(2029, 0, 1) } });
     await db.vacCare.createMany({
       data: [

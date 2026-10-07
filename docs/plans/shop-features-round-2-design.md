@@ -1174,3 +1174,27 @@ Decisions made while building:
 - Browser test needed: /units "Add machines for sale" with the new kinds (a die cutter without a serial), the register
   selling a printer with no module and taking a laser in trade, Settings → Selling → Starter bundles, the register's
   starter bundle button.
+
+**`supplies-due` (6.3, Maker Shop module, 7 Oct 2026).** Migration `20261020800000_supplies_due` (`SuppliesCare`,
+carried by the company file and the machine merge). The **Maker Shop module** itself: `maker` in `MODULE_IDS`
+(`src/lib/license.ts`), its name and blurb (`src/lib/module-info.ts`), the Companies switch, the menu item "Maker Shop"
+(shown while the module is on), Maker Shop $10 a month / $100 a year in the everything bundle at the same $30 (pricing
+docs), and its pages' frame (`src/components/maker/maker-page.tsx`: gate, header, tabs). Code: `src/lib/supplies-due.ts`
+(a rule per machine kind: filament for 3D printers, resin, mats / blades / vinyl for craft cutters, laser stock, mats
+for die cutters; the running-low date; the marks; the one-off send), `src/actions/maker-supplies.ts`, **Maker Shop**
+home (`/maker`, 3D printers first) and **Supplies due** (`/maker/supplies`), the new message kind `supplies_due`
+(marketing, sent by hand only, cancelled if she buys before it goes). Check: `scripts/checks/supplies-due.check.ts`
+(5 groups); `customer-merge`, `modules`, `license`, `base-license`, `modules-tenant`, `modules-crossover`, `notices`,
+`messaging-core`, `move-export` still pass.
+Decisions made while building:
+- Only machines sold here count (as the design says), each running-low date from her own purchases of that kind's
+  supplies since: her average gap (two weeks to a year) after the last, else six weeks after the last (or after the
+  machine's sale; 90 days for a die cutter's mats). The six weeks is fixed, not a setting.
+- Listed a week ahead; a call or message from a week before the date takes it off; "Not yet" is 30 days.
+- Vacuums keep their own bags-due list (its matching reads the finder); this one reads item types, so the two were not
+  merged into one file. Same marks, same "never automatic" rule.
+- The send is owner or admin and needs Marketing; the module ending makes the list read-only and cancels queued ones.
+- The hub's own billing (StitchHub add-on prices and keys) needs Maker Shop added there too: a key can carry `maker`
+  now, and `npm run license -- --modules maker` issues one.
+- Browser test needed: the menu item with the module on and off, /maker, /maker/supplies (Called with a note, Not yet,
+  Stop, Remind the n due now), Settings → Modules and the Companies switch showing Maker Shop.

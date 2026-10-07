@@ -241,6 +241,7 @@ model Shop {
   softwareLicenses  SoftwareLicense[]
   softwareCodes     SoftwareCode[]
   starterBundles    StarterBundle[]
+  suppliesCare      SuppliesCare[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -434,12 +435,13 @@ model Machine {
   serviceNoticeFor DateTime?
   createdAt        DateTime  @default(now())
 
-  tickets    Ticket[]
-  photos     MachinePhoto[]
-  repairJobs RepairJob[]
-  stock      StockUnit?
-  vacCare    VacCare?
-  plans      MachinePlan[]
+  tickets      Ticket[]
+  photos       MachinePhoto[]
+  repairJobs   RepairJob[]
+  stock        StockUnit?
+  vacCare      VacCare?
+  suppliesCare SuppliesCare?
+  plans        MachinePlan[]
 
   @@index([shopId, serial])
   @@index([shopId, brand, modelKey])
@@ -2035,6 +2037,24 @@ model StockUnit {
 
 // "Bags due" for a customer's vacuum: when someone last got in touch, snoozes and stops. Due dates come from sales.
 // Always written after checking the machine is this shop's (the id alone is the key).
+// "Supplies due" marks for a printer or cutter a customer bought here (shop-features-round-2-design.md 6.3, Maker Shop):
+// the general twin of VacCare. calledAt: someone got in touch (by phone, or "message" for a one-off send); snoozeUntil:
+// left off the list until then; stoppedAt: no more reminders for this machine.
+model SuppliesCare {
+  machineId   String    @id
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  calledAt    DateTime?
+  calledBy    String?
+  callNote    String?
+  snoozeUntil DateTime?
+  stoppedAt   DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([shopId])
+}
+
 model VacCare {
   machineId    String    @id
   machine      Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
