@@ -68,7 +68,8 @@ const mainCache = new Map<string, { shopId: string; main: boolean }>();
 export async function isMainStoreId(client: Db, shopId: string, locationId: string | null | undefined): Promise<boolean> {
   if (!locationId) return true;
   let hit = mainCache.get(locationId);
-  if (!hit) {
+  // Not known yet, or known under another company (a store that came over when a company joined in): read it again.
+  if (!hit || hit.shopId !== shopId) {
     const row = await client.location.findUnique({ where: { id: locationId }, select: { shopId: true, main: true } });
     if (!row) return true;
     hit = { shopId: row.shopId, main: row.main };
