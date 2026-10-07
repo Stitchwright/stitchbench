@@ -152,6 +152,9 @@ model Shop {
   bagReminderDays      Int           @default(180)
   // The lifetime discount a vacuum sold here gives on its supplies, by default (1.5)
   lifetimePctDefault   Int           @default(25)
+  // The birthday offer (1.6): { kind: "pct" | "credit", value } (a percent off one sale, or store credit in cents),
+  // during the birthday month, once a year; null: none
+  birthdayOffer        Json?
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff         Boolean       @default(false)
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
@@ -244,6 +247,7 @@ model Shop {
   specialOrders     SpecialOrder[]
   wantItems         WantItem[]
   priceGroups       PriceGroup[]
+  yardBreaks        YardBreak[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
@@ -403,6 +407,11 @@ model Customer {
   priceGroupId       String?
   priceGroup         PriceGroup?       @relation(fields: [priceGroupId], references: [id], onDelete: SetNull)
   priceGroupUntil    String?
+  // Birthday (shop-features-round-2-design.md 1.6): month and day, only if she'd like to tell; the year she last used the
+  // birthday offer (once a year)
+  birthMonth         Int?
+  birthDay           Int?
+  birthdayUsedYear   Int?
 
   machines      Machine[]
   tickets       Ticket[]       @relation("TicketCustomer")
@@ -804,6 +813,9 @@ model Part {
   // An item that sells a membership (1.5): selling it puts the buyer in this price group for this many months
   membershipGroupId String?
   membershipMonths  Int?
+  // Its own per-yard break (1.6): from this many yards, this price a yard ("this wide-back: $18 a yard from 3 yards")
+  breakMinQty       Float?
+  breakPriceCents   Int?
   onlineTitle     String?
   onlineText      String?
   // Fabric smarts (fabric-smarts-design.md section 6): the collection and designer, color tags, the yards on a full
@@ -3307,6 +3319,20 @@ model PriceGroup {
   active      Boolean    @default(true)
   createdAt   DateTime   @default(now())
   customers   Customer[]
+
+  @@index([shopId])
+}
+
+// Per-yard price breaks (shop-features-round-2-design.md 1.6): "10 yards or more of one fabric: 10% off", one or more
+// steps, on some kinds (none listed: every item sold by the yard). An item may have its own (Part.breakMinQty).
+model YardBreak {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  minYards  Float
+  pctOff    Int
+  kinds     String[] @default([])
+  createdAt DateTime @default(now())
 
   @@index([shopId])
 }

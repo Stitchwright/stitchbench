@@ -1218,3 +1218,22 @@ Decisions made while building:
 - Changing a customer's group is an owner's or admin's step, audited (`customer.pricegroup`).
 - Browser test needed: `tests/price-groups.spec.ts` (Settings → Prices and members, a customer's group, the register's
   label and taking it off, a membership item sold).
+
+**`birthdays-yard-breaks` (1.6, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021040000_birthdays_yard_breaks`
+(`Customer.birthMonth`, `birthDay`, `birthdayUsedYear`; `Shop.birthdayOffer`; `YardBreak`, carried by the company file;
+`Part.breakMinQty`, `breakPriceCents`). Code: `src/lib/birthdays.ts`, `src/actions/birthdays.ts`, the rules in
+`src/lib/price-rules.ts`; Settings → Prices and members (**Birthday offer**, **Per-yard price breaks**:
+`src/components/settings/birthday-yard-settings.tsx`), a customer's **Birthday** ("only if she'd like to tell you"), an
+item's **Yard break**, **Birthdays in <month>** (`/customers/birthdays`) with a to-do line while the shop has an offer, the
+register ("Happy birthday month: 15% off today" with Use it / Take it off, or "Give her the credit"; lines labelled
+"Birthday 15%", "10+ yd price"). Check: `scripts/checks/birthdays-yard-breaks.check.ts` (5 groups); `price-groups`,
+`promotions`, `layaway` pass.
+Decisions made while building:
+- The birthday percent applies to the sale's items only when the cashier taps Use it (never by itself), as a rule of its
+  own: the bigger of it, a group, a yard break and a promotion wins on each line. It is marked used for the year when the
+  sale saves (a second register at the same moment is refused) and given back when that sale is voided. A tech can use it.
+- The credit kind puts the amount on her store credit (the shop's offer, so any staff), once a year.
+- A yard break is per line (the yards of one item on one line); the shop's steps take the best percent reached; an item's
+  own break price stands instead of the shop's steps. Fabric cut into several lines doesn't add up.
+- Points and the reward cards' birthday bonus (reward-cards-design.md) can read the same fields later.
+- Browser test needed: `tests/birthdays-yard-breaks.spec.ts`.

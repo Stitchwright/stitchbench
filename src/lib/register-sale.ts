@@ -31,6 +31,7 @@ import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
 import { holidayCovers } from "@/lib/tax-holiday-math";
 import { applyMembership, ruleCtxFor, undoMembership } from "@/lib/price-groups";
 import { bestRule, type RuleCtx } from "@/lib/price-rules";
+import { birthdayFor, unuseBirthday, useBirthday, yardBreaksFor } from "@/lib/birthdays";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -94,6 +95,8 @@ export type SaleInput = {
   chargeTax?: boolean;
   /** The sale a scanned receipt brought back as this return (saleForReturn): a return-only cart is taxed at its rate and exemption. */
   returnOfSaleId?: string | null;
+  /** The customer uses her birthday offer (a percent off this sale) today (shop-features-round-2-design.md 1.6). */
+  birthday?: boolean;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -428,11 +431,15 @@ export async function completeSaleAs(
     // bigger discount an owner typed stands. Not for a return, a layaway, the online shop or a given tax amount.
     const groupIds: (string | null)[] = lines.map(() => null);
     const priceNotes: (string | null)[] = lines.map(() => null);
-    const ruleCtx: RuleCtx = lay || original || givenTax != null || opts.paidOnline ? {} : await ruleCtxFor(shopId, customerId, ymdOf(new Date(), shop.timeZone));
+    const today = ymdOf(new Date(), shop.timeZone);
+    const noRules = !!(lay || original || givenTax != null || opts.paidOnline);
+    const bday = !noRules && input.birthday ? await birthdayFor(shopId, customerId, today) : null;
+    if (!noRules && input.birthday && bday?.kind !== "pct") throw new UserError("Her birthday offer isn't there today (not her birthday month, or used this year). Take it off the sale.");
+    const ruleCtx: RuleCtx = noRules ? {} : { ...(await ruleCtxFor(shopId, customerId, today)), yardBreaks: await yardBreaksFor(shopId), birthdayPct: bday?.kind === "pct" ? bday.value : null };
     for (const [i, l] of lines.entries()) {
       if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].noRule || lineKinds[i] === "MEMBERSHIP") continue;
       const part = l.partId ? parts.get(l.partId) : null;
-      const hit = bestRule(ruleCtx, { ...l, kind: lineKinds[i], wholesaleCents: part?.wholesaleCents ?? null, onPromo: !!promoIds[i] || !!(promos.length && bestDiscount(promos, promoLine(l, i))) });
+      const hit = bestRule(ruleCtx, { ...l, kind: lineKinds[i], wholesaleCents: part?.wholesaleCents ?? null, breakMinQty: part?.breakMinQty ?? null, breakPriceCents: part?.breakPriceCents ?? null, onPromo: !!promoIds[i] || !!(promos.length && bestDiscount(promos, promoLine(l, i))) });
       if (hit && hit.cents > l.discountCents) {
         l.discountCents = hit.cents;
         promoIds[i] = null;
@@ -643,6 +650,8 @@ export async function completeSaleAs(
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
+        // The birthday offer used on this sale: once a year.
+        if (customerId && priceNotes.some((n) => n?.startsWith("Birthday"))) await useBirthday(tx, shopId, customerId, Number(today.slice(0, 4)));
         if (so.pickups.size || opts.specialOrder) await afterSpecialOrderSale(tx, { shopId, pickups: so.pickups, hook: opts.specialOrder ?? null, saleId: sale.id });
         // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
         const label = `Sale #${number}`;
@@ -763,6 +772,11 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       }
     }
     if (layawayVoid) await voidLayawaySale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
+    // A birthday offer used on this sale: she can use it again this year.
+    if (sale.lines.some((l) => l.priceNote?.startsWith("Birthday"))) {
+      const tz = (await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { timeZone: true } })).timeZone;
+      await unuseBirthday(tx, shopId, sale.customerId, Number(ymdOf(sale.createdAt, tz).slice(0, 4)));
+    }
     // A special order picked up or cancelled on this sale is back as it was (after the lines above put the stock back).
     if (sale.lines.some((l) => l.specialOrderId)) await voidSpecialOrderSale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
   });

@@ -34,11 +34,12 @@ import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { SpecialOrderPanel, type SpecialOrderDefaults } from "@/components/special-order-panel";
 import { CustomerExtrasLines, useCustomerExtras, type ExtraLine } from "@/components/register-extras";
-import { bestRule, type RuleCtx } from "@/lib/price-rules";
+import { bestRule, type RuleCtx, type YardBreak } from "@/lib/price-rules";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
 import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
 
 const NO_PROMOS: Promo[] = [];
+const NO_BREAKS: YardBreak[] = [];
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
@@ -87,6 +88,9 @@ type CartLine = {
   /** The item's wholesale price (a Wholesale group sells at it), and the cashier took the customer's price rule off this line. */
   wholesaleCents?: number | null;
   noRule?: boolean;
+  /** The item's own per-yard break (1.6). */
+  breakMinQty?: number | null;
+  breakPriceCents?: number | null;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -120,6 +124,7 @@ export function Register({
   lenders = [],
   promotions = NO_PROMOS,
   specialOrders = null,
+  yardBreaks = NO_BREAKS,
   preload,
 }: {
   taxRatePct: number;
@@ -138,6 +143,8 @@ export function Register({
   promotions?: Promo[];
   /** Special orders (shop-features-round-2-design.md 1.2): the shop's default deposit; absent for a shop without a counter. */
   specialOrders?: SpecialOrderDefaults | null;
+  /** The shop's per-yard breaks (shop-features-round-2-design.md 1.6). */
+  yardBreaks?: YardBreak[];
   preload?: BookingDue | null;
 }) {
   const router = useRouter();
@@ -202,7 +209,13 @@ export function Register({
   // The chosen customer's extras (shop-features-round-2-design.md section 1): special orders waiting, her price group,
   // lifetime discounts; the rules price the lines as the server will (src/lib/price-rules.ts).
   const extras = useCustomerExtras(customer?.id ?? null);
-  const ruleCtx = useMemo<RuleCtx>(() => ({ group: extras?.group?.inForce ? extras.group : null, lifetime: extras?.lifetime ?? [] }), [extras]);
+  // Her birthday offer, used on this sale (a percent off): one tap on her quiet line.
+  const [birthdayFor, setBirthdayFor] = useState<string | null>(null);
+  const birthdayOn = !!customer && birthdayFor === customer.id && extras?.birthday?.kind === "pct";
+  const ruleCtx = useMemo<RuleCtx>(
+    () => ({ group: extras?.group?.inForce ? extras.group : null, lifetime: extras?.lifetime ?? [], yardBreaks, birthdayPct: birthdayOn ? (extras?.birthday?.value ?? null) : null }),
+    [extras, yardBreaks, birthdayOn],
+  );
   const lines = useMemo(
     () =>
       cart.map((l) => {
@@ -281,6 +294,8 @@ export function Register({
           consigned: it.consigned,
           disclosure: it.disclosure,
           wholesaleCents: it.wholesaleCents ?? null,
+          breakMinQty: it.breakMinQty ?? null,
+          breakPriceCents: it.breakPriceCents ?? null,
           machineId,
         },
       ];
@@ -663,6 +678,7 @@ export function Register({
     setDone(null);
     const sale = {
       customerId: customer?.id ?? null,
+      birthday: birthdayOn,
       chargeTax: Boolean(exemptCert) && chargeTax,
       returnOfSaleId: returnOf?.id ?? null,
       lines: lines.map((l) => ({
@@ -895,6 +911,9 @@ export function Register({
         {!returnMode && (
           <CustomerExtrasLines
             extras={customer ? extras : null}
+            customerId={customer?.id ?? null}
+            birthdayOn={birthdayOn}
+            onBirthday={(on) => setBirthdayFor(on && customer ? customer.id : null)}
             inCart={cart.flatMap((l) => [l.specialOrderId, l.kind === "MEMBERSHIP" && l.partId ? `member:${l.partId}` : null]).filter((x): x is string => !!x)}
             onAdd={addExtraLines}
           />

@@ -5,6 +5,8 @@
 // ("Guild 10% on her items") and "Club card ends 3 Nov: renew?" with one tap. Never a pop-up: lines under the search box.
 import { useEffect, useState } from "react";
 import { customerExtras } from "@/actions/register-extras";
+import { giveBirthdayCredit } from "@/actions/birthdays";
+import { ActionButton } from "@/components/action-form";
 import type { CustomerExtras, WaitingOrder } from "@/lib/register-extras";
 import { money } from "@/lib/format";
 import { qtyText } from "@/lib/register-math";
@@ -48,15 +50,51 @@ export function useCustomerExtras(customerId: string | null): CustomerExtras | n
 
 const fmtDay = (ymd: string) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 
-export function CustomerExtrasLines({ extras: e, inCart, onAdd }: { extras: CustomerExtras | null; inCart: string[]; onAdd: (lines: ExtraLine[]) => void }) {
+export function CustomerExtrasLines({
+  extras: e,
+  customerId,
+  inCart,
+  onAdd,
+  birthdayOn,
+  onBirthday,
+}: {
+  extras: CustomerExtras | null;
+  customerId: string | null;
+  inCart: string[];
+  onAdd: (lines: ExtraLine[]) => void;
+  /** The birthday percent is on this sale (the register prices it), and its switch. */
+  birthdayOn: boolean;
+  onBirthday: (on: boolean) => void;
+}) {
   if (!e) return null;
   const first = e.name.split(" ")[0];
   const orders = e.specialOrders.filter((o) => !inCart.includes(o.id));
   const g = e.group;
   const renew = g?.renew && !inCart.includes(`member:${g.renew.partId}`) ? g.renew : null;
-  if (!orders.length && !g && !e.lifetime.length) return null;
+  const b = e.birthday;
+  if (!orders.length && !g && !e.lifetime.length && !b) return null;
   return (
     <div className="card card-pad space-y-2 text-base" role="status">
+      {b && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span>
+            <span className="pill tone-ready mr-1">Happy birthday month</span>
+            {b.kind === "pct" ? `${b.value}% off today` : `a ${money(b.value)} store credit`}
+            {birthdayOn ? " (on this sale)" : ""}
+          </span>
+          {b.kind === "pct" ? (
+            <button type="button" className={`btn min-h-11 ${birthdayOn ? "" : "btn-primary"}`} aria-pressed={birthdayOn} onClick={() => onBirthday(!birthdayOn)}>
+              {birthdayOn ? "Take it off" : "Use it"}
+            </button>
+          ) : (
+            customerId && (
+              <ActionButton action={giveBirthdayCredit.bind(null, customerId)} className="btn btn-primary min-h-11">
+                Give her the credit
+              </ActionButton>
+            )
+          )}
+        </div>
+      )}
       {g && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>

@@ -31,6 +31,9 @@ export type RegisterItem = {
   comingSoonText?: string;
   /** The wholesale price (a Wholesale price group sells at it, 1.5). */
   wholesaleCents?: number | null;
+  /** Its own per-yard break (1.6). */
+  breakMinQty?: number | null;
+  breakPriceCents?: number | null;
 };
 
 export const viewItem = (p: {
@@ -55,6 +58,8 @@ export const viewItem = (p: {
   comingSoonOn?: string | null;
   wholesaleCents?: number | null;
   membershipGroupId?: string | null;
+  breakMinQty?: number | null;
+  breakPriceCents?: number | null;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -71,6 +76,8 @@ export const viewItem = (p: {
   colorNumber: p.colorNumber ?? null,
   comingSoonOn: p.comingSoonOn ?? null,
   wholesaleCents: p.wholesaleCents ?? null,
+  breakMinQty: p.breakMinQty ?? null,
+  breakPriceCents: p.breakPriceCents ?? null,
   // A membership item is reported (and priced) as a membership (1.5).
   kind: p.membershipGroupId ? "MEMBERSHIP" : p.kind,
   comingSoonText: p.comingSoonOn ? new Date(`${p.comingSoonOn}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }) : undefined,
