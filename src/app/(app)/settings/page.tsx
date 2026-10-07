@@ -266,6 +266,11 @@ export default async function SettingsPage() {
               </Link>
             </div>
           )}
+          <div>
+            <Link href="/settings/care-tips" className="link">
+              Care tips for the pickup sheet
+            </Link>
+          </div>
           {shop.sellsRetail && (
             <div>
               <Link href="/settings/shop" className="link">
