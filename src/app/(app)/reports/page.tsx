@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { money, ticketNo } from "@/lib/format";
+import { fmtDate, money, ticketNo } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { fmtDay, monthRange, todayIn } from "@/lib/time-zone";
 import { PageHeader, Section, Empty } from "@/components/ui";
 import { PERIODS, salesReport, type Period } from "@/lib/reports/sales";
 import { ticketsReport, topCustomers } from "@/lib/reports/tickets";
 import { liabilityReport } from "@/lib/reports/giftcards";
+import { depositsHeld, listLayaways } from "@/lib/layaway";
+import { coveredWork } from "@/lib/units/plans";
+import { financedReport } from "@/lib/financing";
+import { markFinancedPaid } from "@/actions/financing";
 import { taxReport } from "@/lib/reports/tax";
 import { EQUIPMENT_LABEL, isEquipment } from "@/lib/equipment";
 import { balanced, buildBooks, loadBooks } from "@/lib/books";
@@ -19,6 +23,8 @@ const TABS = [
   { key: "tickets", label: "Tickets" },
   { key: "customers", label: "Top customers" },
   { key: "gift-cards", label: "Gift cards" },
+  { key: "layaways", label: "Layaways and plans" },
+  { key: "financing", label: "Financing" },
   { key: "tax", label: "Sales tax" },
   { key: "books", label: "Bookkeeping" },
 ] as const;
@@ -114,6 +120,8 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
       {tab === "tickets" && <TicketsTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "customers" && <CustomersTab shopId={user.shopId} start={start} end={end} csv={csv} />}
       {tab === "gift-cards" && <GiftTab shopId={user.shopId} start={start} end={end} csv={csv} />}
+      {tab === "layaways" && <LayawayTab shopId={user.shopId} start={start} end={end} csv={csv} />}
+      {tab === "financing" && <FinancingTab shopId={user.shopId} tz={tz} start={start} end={end} />}
       {tab === "tax" && <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} />}
       {tab === "books" && books && <BooksTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} fromStr={fromStr} toStr={toStr} exportedThrough={books.exportedThrough} />}
     </div>
@@ -393,6 +401,183 @@ async function CustomersTab({ shopId, start, end, csv }: TabProps) {
   );
 }
 
+/**
+ * Layaways (tax-machine-sales-layaway-design.md section 4): the money held for customers as the books count it (every
+ * layaway line of a sale that stands) against what the open layaways have been paid, which must match; the open ones;
+ * and the repair work given free under service plans in the range (section 3).
+ */
+async function LayawayTab({ shopId, start, end }: TabProps) {
+  const [held, heldAtEnd, open, covered] = await Promise.all([depositsHeld(shopId), depositsHeld(shopId, end), listLayaways(shopId, "OPEN"), coveredWork(shopId, start, end)]);
+  const paidOpen = open.reduce((a, l) => a + l.paidCents, 0);
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="card card-pad">
+          <div className="num text-xl font-semibold">{money(held)}</div>
+          <div className="muted text-xs">Money held for customers on layaway today (owed to them, not income yet)</div>
+        </div>
+        <div className="card card-pad">
+          <div className="num text-xl font-semibold">{money(heldAtEnd)}</div>
+          <div className="muted text-xs">Held at the end of this range (the books&apos; Customer Deposits)</div>
+        </div>
+        <div className="card card-pad">
+          <div className="num text-xl font-semibold">{open.length}</div>
+          <div className="muted text-xs">Layaways being paid for</div>
+        </div>
+      </div>
+      {paidOpen !== held && (
+        <p className="card card-pad text-sm" role="alert">
+          The open layaways have been paid {money(paidOpen)}, but {money(held)} is held in the books. A pick-up or cancel may have been voided; check the layaways below.
+        </p>
+      )}
+      <Section title="Being paid for">
+        {open.length === 0 ? (
+          <Empty>None.</Empty>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <Th>Layaway</Th>
+                <Th>Customer</Th>
+                <Th right>Paid</Th>
+                <Th right>Left</Th>
+                <Th right>Behind</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {open.map((l) => (
+                <tr key={l.id}>
+                  <td>
+                    <Link href={`/layaways/${l.id}`} className="link">
+                      #{l.number}
+                    </Link>
+                  </td>
+                  <td>{l.customer?.name ?? ""}</td>
+                  <Num>{money(l.paidCents)}</Num>
+                  <Num>{money(l.leftCents)}</Num>
+                  <Num>{l.behindCents ? money(l.behindCents) : ""}</Num>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+      <Section title="Repair work covered by service plans (tickets in this range)">
+        {covered.length === 0 ? (
+          <Empty>None.</Empty>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <Th>Plan</Th>
+                <Th right>Lines</Th>
+                <Th right>Would have cost</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {covered.map((c) => (
+                <tr key={c.plan}>
+                  <td>{c.plan}</td>
+                  <Num>{c.lines}</Num>
+                  <Num>{money(c.cents)}</Num>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+    </>
+  );
+}
+
+/** Financing (tax-machine-sales-layaway-design.md section 5): financed sales by lender, and the ones a lender hasn't paid yet. */
+async function FinancingTab({ shopId, tz, start, end }: { shopId: string; tz: string; start: Date; end: Date }) {
+  const r = await financedReport(shopId, start, end);
+  const row = (f: (typeof r.unpaid)[number], paid: boolean) => (
+    <tr key={f.id}>
+      <td>
+        <Link href={`/register/sales/${f.saleId}`} className="link">
+          #{f.saleNumber}
+        </Link>
+      </td>
+      <td>{fmtDate(f.at, tz)}</td>
+      <td>{f.customer ?? ""}</td>
+      <td>
+        {f.lender}
+        {f.approval ? <span className="muted"> · {f.approval}</span> : null}
+      </td>
+      <Num>{money(f.amountCents)}</Num>
+      <td className="no-print text-right">
+        <ActionButton action={markFinancedPaid.bind(null, f.id, !paid)} className="btn btn-sm" success={paid ? "Marked not paid" : "Marked paid"}>
+          {paid ? "Not paid after all" : "Lender paid"}
+        </ActionButton>
+      </td>
+    </tr>
+  );
+  const head = (
+    <thead>
+      <tr>
+        <Th>Sale</Th>
+        <Th>Day</Th>
+        <Th>Customer</Th>
+        <Th>Lender</Th>
+        <Th right>Amount</Th>
+        <th className="no-print" />
+      </tr>
+    </thead>
+  );
+  return (
+    <>
+      <Section title="By lender">
+        {r.byLender.length === 0 ? (
+          <Empty>No financed sales. Add your lenders under Settings → Selling to take financed payments.</Empty>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <Th>Lender</Th>
+                <Th right>Sales in this range</Th>
+                <Th right>Amount</Th>
+                <Th right>Not paid yet (all time)</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.byLender.map((x) => (
+                <tr key={x.lender}>
+                  <td>{x.lender}</td>
+                  <Num>{x.count}</Num>
+                  <Num>{money(x.cents)}</Num>
+                  <Num bold={x.unpaidCents > 0}>{money(x.unpaidCents)}</Num>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+      <Section title={`Not paid by the lender yet (${r.unpaid.length})`}>
+        {r.unpaid.length === 0 ? (
+          <Empty>Every financed sale has been paid.</Empty>
+        ) : (
+          <table className="table">
+            {head}
+            <tbody>{r.unpaid.map((f) => row(f, false))}</tbody>
+          </table>
+        )}
+      </Section>
+      <Section title="Paid in this range">
+        {r.inRange.filter((f) => f.paidAt).length === 0 ? (
+          <Empty>None.</Empty>
+        ) : (
+          <table className="table">
+            {head}
+            <tbody>{r.inRange.filter((f) => f.paidAt).map((f) => row(f, true))}</tbody>
+          </table>
+        )}
+      </Section>
+    </>
+  );
+}
+
 async function GiftTab({ shopId, start, end, csv }: TabProps) {
   const r = await liabilityReport(shopId, start, end);
   return (
@@ -484,6 +669,19 @@ async function TaxTab({ shopId, tz, start, end, csv }: TabProps & { tz: string }
             {r.oddTax.map((o) => (
               <li key={o.number}>
                 Sale {o.number} on {o.day}: charged {money(o.taxCents)}, the rate gives {money(o.expectedCents)}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+      {r.holidays.length > 0 && (
+        <Section title="Sold tax free on a sales tax holiday">
+          <p className="muted mb-2 text-sm">Already in the non-taxable sales above. Your state may ask for this on the return.</p>
+          <ul className="space-y-1 text-sm">
+            {r.holidays.map((h) => (
+              <li key={h.name} className="flex justify-between">
+                <span>{h.name}</span>
+                <span className="num">{money(h.amountCents)}</span>
               </li>
             ))}
           </ul>

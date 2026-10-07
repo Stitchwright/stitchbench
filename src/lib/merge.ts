@@ -49,6 +49,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "KitSeriesMember", field: "customerId", label: ["Block of the Month sign-up", "Block of the Month sign-ups"] },
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
+  { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -60,8 +61,9 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "MachinePhoto", field: "machineId", label: ["photo", "photos"] },
   { model: "RepairJob", field: "machineId", label: ["partner repair", "partner repairs"] },
   { model: "SaleLine", field: "machineId", via: "sale", label: ["sale line (supplies bought for it)", "sale lines (supplies bought for it)"] },
-  { model: "StockUnit", field: "machineId", one: true, label: ["Vac Shop stock record", "Vac Shop stock records"] },
+  { model: "StockUnit", field: "machineId", one: true, label: ["for-sale stock record", "for-sale stock records"] },
   { model: "VacCare", field: "machineId", one: true, label: ["bag reminder setting", "bag reminder settings"] },
+  { model: "MachinePlan", field: "machineId", label: ["service plan", "service plans"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
 ];
@@ -298,6 +300,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const g of await tx.giftCard.findMany({ where: { shopId, customerId: c.id, status: "active", balanceCents: { gt: 0 } }, select: { kind: true, balanceCents: true } })) {
     out.push(`${g.kind === "credit" ? "Store credit" : "A gift card"} of ${money(g.balanceCents)} is still owed. Pay it out or let them spend it first.`);
   }
+  for (const l of await tx.layaway.findMany({ where: { shopId, customerId: c.id, status: "OPEN" }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Layaway #${l.number} is still being paid for. Finish or cancel it first.`);
+  }
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -373,6 +378,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(clubsIn, ["club membership", "club memberships"], `deleted${cards ? `; ${cards === 1 ? "their card subscription is" : "their card subscriptions are"} stopped at Stripe first (if that fails, nothing is deleted)` : ""}; the club payments already in the register's books stay`);
   add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
+  add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
@@ -458,10 +464,10 @@ export async function machineMergeCandidates(user: CurrentUser, machineId: strin
 type MachineRow = Machine & { stock: { id: string } | null; vacCare: VacCare | null; customer: { name: string } | null };
 const MACHINE_INCLUDE = { stock: { select: { id: true } }, vacCare: true, customer: { select: { name: true } } } as const;
 
-/** Why two machines can't be merged (beyond not found): different equipment, or both are Vac Shop stock. */
+/** Why two machines can't be merged (beyond not found): different equipment, or both are machines-for-sale stock. */
 function machineMergeRefusal(from: MachineRow, into: MachineRow): string | null {
   if (from.equipment !== into.equipment) return "They aren't the same kind of thing (one is a vacuum or an appliance, the other isn't). Use 'It isn't ...' on the wrong one first.";
-  if (from.stock && into.stock) return "Both are Vac Shop stock records, which are kept for good. They can't be merged.";
+  if (from.stock && into.stock) return "Both are machines-for-sale stock records, which are kept for good. They can't be merged.";
   return null;
 }
 
@@ -547,12 +553,12 @@ export async function mergeMachinesFor(user: CurrentUser, fromId: string, intoId
   return intoId;
 }
 
-/** Why this machine can't be deleted: tickets (its history and their bills), a Vac Shop stock record, an open partner repair. */
+/** Why this machine can't be deleted: tickets (its history and their bills), a machines-for-sale stock record, an open partner repair. */
 async function machineBlockers(tx: Db, shopId: string, m: { id: string; stock: { id: string } | null }): Promise<string[]> {
   const out: string[] = [];
   const tickets = await tx.ticket.count({ where: { shopId, machineId: m.id } });
   if (tickets) out.push(`It has ${say(tickets, ["ticket", "tickets"])}: its service history and their bills stay. Merge it into the right machine instead.`);
-  if (m.stock) out.push("It is a Vac Shop stock record, and those are kept for good (take it off sale instead).");
+  if (m.stock) out.push("It is a machine-for-sale stock record, and those are kept for good (take it off sale instead).");
   for (const j of await tx.repairJob.findMany({ where: { shopId, machineId: m.id, pickedUpAt: null, status: { notIn: CLOSING_STATUSES } }, select: { tag: true } })) {
     out.push(`Partner repair tag ${j.tag} isn't picked up yet.`);
   }

@@ -171,8 +171,8 @@ export const SITE_STATUS_LABEL: Record<TicketStatus, string> = {
 };
 /** Statuses that close a ticket: always allowed, even after its module ended (hand the machine back, take payment). */
 export const CLOSING_STATUSES: TicketStatus[] = ["COLLECTED", "RETURNED_UNREPAIRED", "ABANDONED"];
-export const UNIT_STATUS_LABEL: Record<string, string> = { IN_STOCK: "In stock", SOLD: "Sold", REMOVED: "Off sale" };
-export const UNIT_STATUS_TONE: Record<string, "neutral" | "ready" | "done"> = { IN_STOCK: "ready", SOLD: "done", REMOVED: "neutral" };
+export const UNIT_STATUS_LABEL: Record<string, string> = { IN_STOCK: "In stock", HELD: "On layaway", SOLD: "Sold", REMOVED: "Off sale" };
+export const UNIT_STATUS_TONE: Record<string, "neutral" | "ready" | "done" | "wait"> = { IN_STOCK: "ready", HELD: "wait", SOLD: "done", REMOVED: "neutral" };
 export const UNIT_CONDITION_LABEL: Record<string, string> = { NEW: "New", OPEN_BOX: "Open box", REFURB: "Refurbished", USED: "Used" };
 /** Cross-reference categories the bag / belt / filter finder reads (XPart.category, free text on the hub). */
 export const VAC_SUPPLY_CATEGORIES = ["Vacuum bag", "Vacuum belt", "Vacuum filter"] as const;

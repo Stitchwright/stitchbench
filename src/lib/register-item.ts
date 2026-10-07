@@ -1,6 +1,6 @@
 // What the register shows for one sellable thing (a stocked part, or a Vac Shop unit), and how a Part becomes one.
 // Pure, so both src/actions/register.ts (a "use server" file, which may export only async functions) and the Vac Shop
-// unit hooks (src/lib/vac/sale-units.ts) can build items.
+// unit hooks (src/lib/units/sale-units.ts) can build items.
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 import { disclosure } from "@/lib/part-labels";
 
@@ -17,8 +17,10 @@ export type RegisterItem = {
   disclosure: string;
   /** The item's first picture (a fabric's swatch): served by /api/parts/photo/{photoId}. */
   photoId?: string | null;
-  /** A vacuum in stock (Vac Shop): the register sells it as one unit line. */
+  /** A machine for sale: the register sells it as one unit line. */
   stockUnitId?: string | null;
+  /** The item's or machine's brand: a promotion may cover a brand. */
+  brand?: string | null;
 };
 
 export const viewItem = (p: {
@@ -45,6 +47,7 @@ export const viewItem = (p: {
   consigned: Boolean(p.consignLinkId),
   disclosure: disclosure(p),
   photoId: p.photos?.[0]?.id ?? null,
+  brand: p.brand,
 });
 
 /** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */

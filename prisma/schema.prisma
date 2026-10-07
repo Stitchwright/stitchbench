@@ -123,6 +123,21 @@ model Shop {
   stripeKeySealed      String?
   stripeWebhookSealed  String?
   nextWebOrderNumber   Int           @default(1001)
+  // Layaway (tax-machine-sales-layaway-design.md section 4): the shop's defaults (owner's answer 3): the deposit as a
+  // percent of the price, days to pay it off, payments every 2 weeks ("2w") or monthly ("month"), what cancelling keeps
+  // (a fee in cents and / or a percent of what was paid), how the rest goes back ("credit": store credit, "money": the
+  // way they paid), and the terms the customer signs (blank: the program's default wording).
+  layawayDepositPct    Int           @default(10)
+  layawayDays          Int           @default(90)
+  layawayEvery         String        @default("2w")
+  layawayFeeCents      Int           @default(0)
+  layawayFeePct        Int           @default(0)
+  layawayRefund        String        @default("credit")
+  layawayTerms         String?
+  nextLayawayNumber    Int           @default(1)
+  // "Price includes the tax" promotions allowed (tax-machine-sales-layaway-design.md section 2, owner's answer 5): off
+  // until the owner turns it on past the warning that some states forbid advertising it.
+  taxIncludedOn        Boolean       @default(false)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
   checkInKind          String        @default("sewing")
   // Vac Shop "bags due": days between bag purchases
@@ -213,6 +228,15 @@ model Shop {
   webOrders         WebOrder[]
   partPhotos        PartPhoto[]
   stockUnits        StockUnit[]
+  // Machines for sale (tax-machine-sales-layaway-design.md section 3)
+  makerWarranties   MakerWarranty[]
+  layaways          Layaway[]
+  taxHolidays       TaxHoliday[]
+  lenders           Lender[]
+  promotions        Promotion[]
+  financedSales     FinancedSale[]
+  servicePlans      ServicePlan[]
+  machinePlans      MachinePlan[]
   vacCares          VacCare[]
   manualDownloads   ManualDownload[]
   // Scheduling and messages
@@ -366,6 +390,7 @@ model Customer {
   viaTickets    Ticket[]       @relation("TicketViaAccount")
   sales         Sale[]
   giftCards     GiftCard[]
+  layaways      Layaway[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -406,6 +431,7 @@ model Machine {
   repairJobs RepairJob[]
   stock      StockUnit?
   vacCare    VacCare?
+  plans      MachinePlan[]
 
   @@index([shopId, serial])
   @@index([shopId, brand, modelKey])
@@ -653,9 +679,14 @@ model TicketLine {
   taxable        Boolean  @default(true)
   partId         String?
   part           Part?    @relation(fields: [partId], references: [id], onDelete: SetNull)
+  // Covered by the machine's service plan (MachinePlan id, plain): the line charges 0 and coveredCents keeps what it
+  // would have cost, for the report
+  coveredPlanId  String?
+  coveredCents   Int?
   createdAt      DateTime @default(now())
 
   @@index([ticketId])
+  @@index([coveredPlanId])
 }
 
 enum PaymentMethod {
@@ -827,6 +858,7 @@ enum MoveReason {
   SOLD // over the counter (register) or to a partner shop
   CONSIGNED // sent to, or taken back from, a partner shop's consignment shelf
   CUT // fabric cut into fat quarters, half yards or a remnant: one move out of the bolt, one into the item it feeds
+  HELD // set aside for a layaway (off the shelf), or back on the shelf when it is picked up or cancelled
 }
 
 model StockMove {
@@ -1304,6 +1336,16 @@ model SaleLine {
   appointmentId  String?
   // A gift card sold, loaded or paid out on this line (plain id)
   giftCardId     String?
+  // A service plan sold on this line (the MachinePlan it made, plain id)
+  machinePlanId  String?
+  // Why a line that could be taxed wasn't (or was taxed differently): null, "exempt" (the customer's certificate),
+  // "holiday:<TaxHoliday id>" (a sales tax holiday), "included" (the price includes the tax): for the receipt, a return and the tax report
+  taxNote        String?
+  // The promotion that priced this line (percent or amount off, or the price including the tax), plain id
+  promotionId    String?
+  // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
+  // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
+  layawayId      String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1313,6 +1355,7 @@ model SaleLine {
   @@index([machineId])
   @@index([enrollmentId])
   @@index([appointmentId])
+  @@index([layawayId])
 }
 
 // A partnership with another shop, from this shop's side (the id is the hub's link id).
@@ -1838,7 +1881,8 @@ model StockUnit {
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   machineId       String    @unique
   machine         Machine   @relation(fields: [machineId], references: [id], onDelete: Restrict)
-  status          String    @default("IN_STOCK") // IN_STOCK | SOLD | REMOVED
+  status          String    @default("IN_STOCK") // IN_STOCK | HELD (on a layaway) | SOLD | REMOVED
+  layawayId       String? // the layaway holding it (plain id) while HELD
   condition       String    @default("NEW") // NEW | OPEN_BOX | REFURB | USED
   costCents       Int? // what it cost the shop (a trade-in: the credit given)
   priceCents      Int? // asking price
@@ -1853,6 +1897,12 @@ model StockUnit {
   registeredAt    DateTime? // warranty registered with the maker
   registrationRef String?
   note            String?
+  // What comes with it, one item a line (accessories, software, a cabinet discount): printed on the receipt
+  bundle          String?
+  // Owner's classes ("guide classes") the buyer gets with it; used by signing up with Enrollment.creditUnitId
+  classCredits    Int       @default(0)
+  // A service plan included in the price (ServicePlan id, plain): put on the machine when it sells
+  includedPlanId  String?
   events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -2231,6 +2281,8 @@ model Enrollment {
   refundLineId  String?
   note          String?
   source        String    @default("counter") // counter | online
+  // An owner's class that came with a machine bought here (the StockUnit id, plain): the seat is free
+  creditUnitId  String?
   cancelledAt   DateTime?
   createdById   String?
   createdAt     DateTime  @default(now())
@@ -2889,4 +2941,197 @@ model GiftCardEntry {
   @@index([shopId, at])
   @@index([saleId])
   @@index([paymentId])
+}
+
+// Machines for sale (tax-machine-sales-layaway-design.md section 3): a maker's warranty terms as the shop types them
+// (no built-in claims about any maker), shown on the unit, the receipt and a ticket for a machine sold here. One row per
+// brand; brandKey is the brand in lower case.
+model MakerWarranty {
+  id               String   @id @default(cuid())
+  shopId           String
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand            String
+  brandKey         String
+  partsYears       Float?
+  laborYears       Float?
+  electronicsYears Float?
+  // The maker's warranty registration page
+  registerUrl      String?
+  note             String?
+  updatedAt        DateTime @updatedAt
+
+  @@unique([shopId, brandKey])
+}
+
+// The shop's own service plan: "Free cleaning yearly for 3 years" (3 visits in 36 months) or an extended warranty (no
+// visit limit). Sold as a register line or included with a machine for sale; each sale makes a MachinePlan.
+model ServicePlan {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // Covered visits (repair tickets) in the term; null: no limit (an extended warranty)
+  visits      Int?
+  months      Int
+  priceCents  Int      @default(0)
+  taxable     Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([shopId])
+}
+
+// A service plan on one machine: copied from the ServicePlan when sold (later changes to the plan don't touch it). A
+// ticket's line covered by it points here (TicketLine.coveredPlanId); a visit is a ticket with a covered line.
+model MachinePlan {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  machineId   String
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  planId      String? // the ServicePlan it came from (plain id)
+  name        String
+  visits      Int?
+  startsAt    DateTime
+  endsAt      DateTime
+  // The register line that sold it, or the line that sold the machine it came with (plain ids)
+  saleLineId  String?
+  stockUnitId String?
+  // Ended early: its sale was voided or the machine returned
+  voidedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([shopId, machineId])
+  @@index([saleLineId])
+}
+
+// Layaway (tax-machine-sales-layaway-design.md section 4): the items held for a customer while they pay over time. The
+// money goes through the register (SaleLine.layawayId, kind LAYAWAY: money held for the customer, not a sale yet); the
+// last visit sells the items at that day's tax and uses the payments up. A machine is HELD (StockUnit.layawayId), a
+// stock item's quantity taken off the shelf (StockMove HELD) until then.
+model Layaway {
+  id              String        @id @default(cuid())
+  shopId          String
+  shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number          Int
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status          String        @default("OPEN") // OPEN | COMPLETED | CANCELLED
+  startedAt       DateTime      @default(now())
+  // The last day to pay (YYYY-MM-DD, shop's zone) and the payment plan: [{ due: "YYYY-MM-DD", cents }] after the deposit
+  dueBy           String
+  every           String        @default("2w")
+  plan            Json          @default("[]")
+  // The deposit taken at the start (the plan splits the rest)
+  depositMinCents Int           @default(0)
+  // The terms as printed for the customer to sign (kept as they were)
+  terms           String
+  note            String?
+  // The pick-up sale, or the cancel's refund sale (plain ids)
+  saleId          String?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelFeeCents  Int?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  lines           LayawayLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([customerId])
+}
+
+model LayawayLine {
+  id             String  @id @default(cuid())
+  layawayId      String
+  layaway        Layaway @relation(fields: [layawayId], references: [id], onDelete: Cascade)
+  partId         String?
+  stockUnitId    String?
+  description    String
+  partNumber     String?
+  unit           String?
+  qty            Float
+  unitPriceCents Int
+  discountCents  Int     @default(0)
+  taxable        Boolean @default(true)
+
+  @@index([layawayId])
+}
+
+// A sales tax holiday (tax-machine-sales-layaway-design.md section 1): whole days in the shop's zone (YYYY-MM-DD), the
+// kinds of item it covers (sale line kinds: FABRIC, NOTION, UNIT...), and a per-item limit: a line whose price each,
+// after its own discount, is over it is taxed in full. The register applies it by date; preset: the state it was
+// filled in from ("MA"), for the yearly "confirm the dates" reminder.
+model TaxHoliday {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  preset       String?
+  firstDay     String
+  lastDay      String
+  kinds        String[]
+  maxUnitCents Int?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([shopId, firstDay])
+}
+
+// Financing (tax-machine-sales-layaway-design.md section 5, owner's answer 7: record only): a lender the shop offers
+// (Synchrony, Affirm...), with its "apply now" page. Taken at the register as the Financing payment method.
+model Lender {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  applyUrl  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  financed FinancedSale[]
+
+  @@index([shopId])
+}
+
+// One Financing payment on a register sale: the lender owes the shop this much until the shop marks it paid (the books
+// carry it as owed by lenders). A refund through the lender is a negative one. Voided with its sale.
+model FinancedSale {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleId      String // plain id of the Sale
+  lenderId    String
+  lender      Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  amountCents Int
+  approval    String?
+  at          DateTime  @default(now())
+  paidAt      DateTime?
+  paidById    String?
+  voidedAt    DateTime?
+
+  @@index([shopId, paidAt])
+  @@index([saleId])
+  @@index([lenderId])
+}
+
+// A promotion (tax-machine-sales-layaway-design.md section 2): whole days in the shop's zone, what it covers (scope:
+// { kinds: [...], brands: [...], partIds: [...] }, any of them), and one effect: PERCENT off (value: the percent),
+// AMOUNT off each (value: cents), or TAX_INCLUDED (the price includes the tax, backed out at the shop's rate; only
+// while Shop.taxIncludedOn). The register applies it by date as the line's own discount.
+model Promotion {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  firstDay  String
+  lastDay   String
+  scope     Json     @default("{}")
+  effect    String
+  value     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([shopId, firstDay])
 }

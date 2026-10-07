@@ -79,7 +79,10 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           <tbody>
             {t.lines.map((l) => (
               <tr key={l.id}>
-                <td>{l.description}</td>
+                <td>
+                  {l.description}
+                  {l.coveredPlanId && <span className="block text-xs">Covered by your service plan (no charge)</span>}
+                </td>
                 <td className="num text-right">{l.qty}</td>
                 <td className="num text-right">{money(l.unitPriceCents)}</td>
                 <td className="num text-right">{money(lineTotal(l))}</td>

@@ -14,7 +14,7 @@ import { addDaysYmd } from "@/lib/license";
 import { activateLicenseFor } from "@/lib/licenses";
 import { loadModules } from "@/lib/modules";
 import { listInstalls } from "@/lib/vac/installs";
-import { listUnits, unitDetail } from "@/lib/vac/units";
+import { listUnits, unitDetail } from "@/lib/units/units";
 import { grantDevLicense } from "../license/dev";
 import { assertUnchanged, expectNotFound, makeCompany, removeCompany, RUN, snapshot } from "./tenant";
 

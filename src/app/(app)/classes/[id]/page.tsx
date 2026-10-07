@@ -8,9 +8,10 @@ import { gateFor } from "@/lib/module-gate";
 import { fmtDate, money } from "@/lib/format";
 import { fmtPhone } from "@/lib/phone";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { classCreditsFor } from "@/lib/units/units";
 import { fmtRange, fmtWhen, hmOf, wall, ymdOf } from "@/lib/zoned";
 import { CLASS_REMIND_LABEL, CLASS_STATUS_LABEL, CLASS_STATUS_TONE } from "@/lib/constants";
-import { addMeetings, cancelEnrollment, cancelMeeting, deleteClass, deleteMeeting, enroll, messageClass, moveUp, saveClass, saveMeeting, setClassStatus, setEnrollmentFee } from "@/actions/classes";
+import { addMeetings, applyClassCredit, cancelEnrollment, cancelMeeting, deleteClass, deleteMeeting, enroll, messageClass, moveUp, saveClass, saveMeeting, setClassStatus, setEnrollmentFee } from "@/actions/classes";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { ClassForm, MeetingFields } from "@/components/class-form";
 import { CustomerPicker } from "@/components/customer-picker";
@@ -54,7 +55,35 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   const first = c.meetings.find((m) => !m.cancelled);
   const meetingDefaults = first ? { start: hmOf(wall(first.startsAt, tz).hour * 60 + wall(first.startsAt, tz).minute), end: hmOf(wall(first.endsAt, tz).hour * 60 + wall(first.endsAt, tz).minute) } : undefined;
 
+  // Owner's classes that came with machines the people signed up bought here (machines for sale), by customer.
+  const people = [...new Set(rows.filter((r) => r.customerId && r.status !== "CANCELLED").map((r) => r.customerId!))];
+  const credits = new Map(await Promise.all(people.map(async (id) => [id, (await classCreditsFor(shopId, id)).filter((x) => x.left > 0)] as const)));
   const payment = (r: (typeof rows)[number]) => {
+    if (r.creditUnitId && !r.paidAt) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          Owner&apos;s class (came with their machine)
+          {on && (
+            <ActionButton action={applyClassCredit.bind(null, r.id, null)} className="link text-xs">
+              Charge for it instead
+            </ActionButton>
+          )}
+        </span>
+      );
+    }
+    const free = r.customerId && !r.paidAt && r.feeCents > 0 && on ? (credits.get(r.customerId) ?? []) : [];
+    if (free.length && !r.refundedAt) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          Owes {money(r.feeCents)}
+          {free.map((x) => (
+            <ActionButton key={x.unitId} action={applyClassCredit.bind(null, r.id, x.unitId)} className="btn btn-sm btn-primary">
+              Use an owner&apos;s class ({x.left} left with the {x.machine})
+            </ActionButton>
+          ))}
+        </span>
+      );
+    }
     if (r.refundedAt) return <span className="muted">Refunded {money(r.refundedCents ?? 0)}</span>;
     if (r.paidAt) {
       const s = r.paidLineId ? saleOf.get(r.paidLineId) : null;
