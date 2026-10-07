@@ -10,6 +10,8 @@ import { promotionsOn } from "@/lib/promotions";
 import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { pullListItems } from "@/lib/quilt";
+import { FIRST_PHOTO, viewItem } from "@/lib/register-item";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
 import { PartnerTodo } from "@/components/partner-todo";
@@ -17,9 +19,9 @@ import { TodaySlot } from "@/components/slots/today";
 import { EstimatesTodoSlot } from "@/components/slots/estimates-todo";
 import { TodoLinesSlot } from "@/components/slots/todo-lines";
 
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ booking?: string }> }) {
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ booking?: string; items?: string }> }) {
   const user = await requireUser();
-  const { booking } = await searchParams;
+  const { booking, items } = await searchParams;
   const [shop, partners] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
@@ -64,6 +66,14 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
     const due = await bookingsDueFor(user.shopId, await shopTimeZone(user.shopId), null, false);
     preload = due.find((d) => d.kind === m[1] && d.id === m[2]) ?? null;
   }
+  // Opened from the quilt planner's "Add all to the sale" (shop-features-round-2-design.md 5.3): this company's items, each
+  // with its yards or count.
+  const wanted = pullListItems(typeof items === "string" ? items : null);
+  const found = wanted.length ? await db.part.findMany({ where: { shopId: user.shopId, id: { in: wanted.map((w) => w.id) }, kind: { not: "MACHINE" } }, include: FIRST_PHOTO }) : [];
+  const preloadItems = wanted.flatMap((w) => {
+    const p = found.find((x) => x.id === w.id);
+    return p ? [{ item: viewItem(p), qty: p.unit === "yd" ? w.qty : Math.max(1, Math.round(w.qty)) }] : [];
+  });
   return (
     <div className="space-y-4">
       <PageHeader
@@ -89,7 +99,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} preloadItems={preloadItems} />
     </div>
   );
 }
