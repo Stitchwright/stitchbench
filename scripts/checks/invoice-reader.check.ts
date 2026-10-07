@@ -124,8 +124,15 @@ async function main() {
 
     // ===== 4. receive these =====
     await expectError("a tech updating a cost", () => receiveSlipFor(tech, { orderId: po.id, rows: [{ group: "order", lineId: (onOrder as { lineId: string }).lineId, partId: isa.id, qty: 6, costTenThou: 46_000, updateCost: true }] }), /owner or admin/);
+    const slipRows = [
+      { group: "order" as const, lineId: (onOrder as { lineId: string }).lineId, partId: isa.id, qty: 6, costTenThou: 46_000, updateCost: true },
+      { group: "new" as const, qty: 2, itemNumber: "NEW-77", description: "Clover wonder clips 50", costTenThou: 125_000 },
+      { group: "item" as const, partId: pin.id, qty: 3, costTenThou: 31_000, updateCost: false },
+    ];
+    const slipKey = `slip-check-${Date.now()}-abcdef`;
     const words = await receiveSlipFor(a.user, {
       orderId: po.id,
+      key: slipKey,
       rows: [
         { group: "order", lineId: (onOrder as { lineId: string }).lineId, partId: isa.id, qty: 6, costTenThou: 46_000, updateCost: true },
         { group: "new", qty: 2, itemNumber: "NEW-77", description: "Clover wonder clips 50", costTenThou: 125_000 },
@@ -141,7 +148,11 @@ async function main() {
     assert.equal((await db.part.findUniqueOrThrow({ where: { id: pin.id } })).qtyOnHand, 4);
     const made = await db.part.findFirstOrThrow({ where: { shopId: a.shopId, partNumber: "NEW-77" } });
     assert.ok(made.qtyOnHand === 2 && made.costTenThou === 125_000 && made.supplier === "Notions Marketing" && made.priceCents === null);
-    ok("received: 6 on the order through its receipt (partly received), the cost to $4.60; 3 pins not on the order; the clips made with their stock and cost");
+    // Sent again with the same key (a retry after a lost answer): nothing received twice (review fix).
+    assert.match(await receiveSlipFor(a.user, { orderId: po.id, key: slipKey, rows: slipRows }), /Received already/);
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: pin.id } })).qtyOnHand, 4, "the pins once");
+    assert.equal((await db.part.findUniqueOrThrow({ where: { id: isa.id } })).qtyOnHand, 7, "the order's line once");
+    ok("received: 6 on the order through its receipt (partly received), the cost to $4.60; 3 pins not on the order; the clips made with their stock and cost; sent again, nothing twice");
 
     // ===== 5. without an order =====
     const loose = await readSlipFor(a.user, { orderId: null, photos: [photos[0]] });

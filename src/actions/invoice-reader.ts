@@ -12,8 +12,8 @@ export const readSlip = safe(async function readSlip(orderId: string | null, pho
   return shownOnce(JSON.stringify(await readSlipFor(user, { orderId, photos })));
 });
 
-export const receiveSlip = safe(async function receiveSlip(orderId: string | null, rows: ReceiveRow[]) {
-  const words = await receiveSlipFor(await requireUser(), { orderId, rows });
+export const receiveSlip = safe(async function receiveSlip(orderId: string | null, rows: ReceiveRow[], key?: string | null) {
+  const words = await receiveSlipFor(await requireUser(), { orderId, rows, key: typeof key === "string" ? key : null });
   revalidatePath("/parts", "layout");
   if (orderId) revalidatePath(`/parts/orders/${orderId}`);
   return noted(words);

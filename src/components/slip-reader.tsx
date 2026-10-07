@@ -30,6 +30,8 @@ export function SlipReader({ orderId, unavailable, canCost }: { orderId: string 
   const input = useRef<HTMLInputElement>(null);
   const [pics, setPics] = useState<{ blob: Blob; url: string }[]>([]);
   const [rows, setRows] = useState<Row[] | null>(null);
+  // This reading's key: "Receive these" sent again (a retry, a second tap) receives nothing twice.
+  const [key, setKey] = useState<string | null>(null);
   const [pending, start] = useTransition();
   if (unavailable) return <p className="muted text-base">{unavailable}</p>;
 
@@ -54,6 +56,7 @@ export function SlipReader({ orderId, unavailable, canCost }: { orderId: string 
       if (r.error) return void toast.error(r.error);
       const got = JSON.parse(r.shown ?? "{}") as { rows: ReadRow[] };
       setRows(got.rows.map((x) => ({ ...x, tick: x.group === "order", qty: String(x.slip.qty), cost: canCost && x.group !== "new" && x.costChange != null })));
+      setKey(`slip-${Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")}`);
     });
   }
 
@@ -73,7 +76,7 @@ export function SlipReader({ orderId, unavailable, canCost }: { orderId: string 
       }));
     if (!send.length) return void toast.error("Tick what came.");
     start(async () => {
-      const r = await runAction(() => receiveSlip(orderId, send));
+      const r = await runAction(() => receiveSlip(orderId, send, key));
       if (r.error) return void toast.error(r.error);
       toast.success(r.note ?? "Received.", { duration: 10_000 });
       setRows(null);
