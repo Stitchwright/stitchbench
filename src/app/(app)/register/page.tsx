@@ -11,6 +11,7 @@ import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { pullListItems } from "@/lib/quilt";
+import { entryFor } from "@/lib/assistant/ui";
 import { FIRST_PHOTO, viewItem } from "@/lib/register-item";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
@@ -66,6 +67,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
     const due = await bookingsDueFor(user.shopId, await shopTimeZone(user.shopId), null, false);
     preload = due.find((d) => d.kind === m[1] && d.id === m[2]) ?? null;
   }
+  // The trade-in helper's condition note (shop-features-round-2-design.md 5.4): with the Assistant and machines for sale.
+  const noteEntry = unitKinds ? await entryFor(user.shopId, "plate") : null;
+  const tradeNote = noteEntry?.show ? { unavailable: noteEntry.unavailable } : null;
   // Opened from the quilt planner's "Add all to the sale" (shop-features-round-2-design.md 5.3): this company's items, each
   // with its yards or count.
   const wanted = pullListItems(typeof items === "string" ? items : null);
@@ -99,7 +103,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} preloadItems={preloadItems} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} preloadItems={preloadItems} tradeNote={tradeNote} />
     </div>
   );
 }

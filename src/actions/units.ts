@@ -6,7 +6,8 @@
 // Bodies in src/lib/units/.
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { safe } from "@/lib/action";
+import { safe, shownOnce } from "@/lib/action";
+import { tradeInEstimate } from "@/lib/units/trade-in-value";
 import { db } from "@/lib/db";
 import { requireAdmin, requireUser } from "@/lib/session";
 import {
@@ -115,3 +116,9 @@ export async function planChoices(customerId: string | null): Promise<{ plans: A
   ]);
   return { plans, machines: machines.map((m) => ({ id: m.id, label: `${m.brand} ${m.model}${m.serial ? ` S/N ${m.serial}` : ""}` })) };
 }
+
+/** The trade-in helper's "What is it worth?" (shop-features-round-2-design.md 5.4): the shop's own past sales and the rule. */
+export const tradeInValue = safe(async function tradeInValue(kind: string | null, brand: string, model: string) {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await tradeInEstimate(user.shopId, { kind, brand: String(brand ?? "").slice(0, 60), model: String(model ?? "").slice(0, 60) })));
+});

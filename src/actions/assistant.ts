@@ -13,6 +13,7 @@ import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
 import { askShop } from "@/lib/assistant/ask";
 import { quiltPick } from "@/lib/assistant/quilt";
+import { tradeInNote } from "@/lib/assistant/trade-in";
 import { UserError } from "@/lib/user-error";
 import { draftArrivals, draftClassBlurb, draftProductText, draftSocialPost } from "@/lib/assistant/marketing";
 
@@ -169,4 +170,13 @@ export const suggestCoordinates = safe(async (focusId: string | null, photoData:
   if (photoData && !/^[A-Za-z0-9+/=]{100,}$/.test(data)) throw new UserError("Take the photo again: it didn't come through.");
   const photo = photoData ? ({ mediaType: mediaType === "image/png" || mediaType === "image/webp" ? mediaType : "image/jpeg", data } as const) : null;
   return shownOnce(JSON.stringify(await quiltPick(user, { focusId, photo, roles })));
+});
+
+/** "Draft a condition note" on the trade-in step: the condition photos (side by side in one picture) through the hub. */
+export const draftTradeInNote = safe(async (data: string, mediaType: string, photos: number, kind: string | null, brand: string, model: string) => {
+  const user = await requireUser();
+  const clean = String(data ?? "").replace(/^data:[^,]*,/, "");
+  if (!/^[A-Za-z0-9+/=]{100,}$/.test(clean)) throw new UserError("Take the photos again: they didn't come through.");
+  const photo = { mediaType: mediaType === "image/png" || mediaType === "image/webp" ? mediaType : "image/jpeg", data: clean } as const;
+  return shownOnce(JSON.stringify({ note: await tradeInNote(user, { photo, photos, kind, brand: String(brand ?? "").slice(0, 60), model: String(model ?? "").slice(0, 60) }) }));
 });
