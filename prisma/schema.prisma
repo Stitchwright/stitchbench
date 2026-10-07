@@ -334,6 +334,8 @@ model User {
   active         Boolean  @default(true)
   // Bumped when the password changes or access is removed: sessions signed in before that stop working
   sessionVersion Int      @default(0)
+  // Sales commission (shop-features-round-2-design.md 9.7): { pct, on: "machines" | "all" }; {} for none
+  commission     Json     @default("{}")
   createdAt      DateTime @default(now())
 
   notes         ModelNote[]
@@ -790,6 +792,8 @@ model Part {
   // The maker's minimum advertised price (shop-features-round-2-design.md 9.3): below it, the online shop shows this price
   // and "Add to cart to see our price", and the cart shows the real one
   mapCents        Int?
+  // Also listed on eBay, Etsy or Marketplace (9.7): [{ where, url }]; selling the last one here asks to take those down
+  listedOn        Json          @default("[]")
   supplier        String?
   notes           String?
   createdAt       DateTime      @default(now())
@@ -1498,6 +1502,8 @@ model SaleLine {
   // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
   // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
   layawayId      String?
+  // Who sold it (User id, plain; shop-features-round-2-design.md 9.7): picked at the register, the person signed in by default
+  soldById       String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -2044,6 +2050,8 @@ model StockUnit {
   consignorId     String?
   consignPct      Float?
   consignUntil    String?
+  // Also listed on eBay, Etsy or Marketplace (9.7): [{ where, url }]; selling it here asks to take those down first
+  listedOn        Json      @default("[]")
   warrantyMonths  Int?
   warrantyBy      String? // who stands behind it: the maker's name, or the shop
   soldLineId      String? // SaleLine that sold it (kept after a return, until it sells again)

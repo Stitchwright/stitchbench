@@ -9,6 +9,7 @@ import { listLenders } from "@/lib/financing";
 import { promotionsOn } from "@/lib/promotions";
 import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
+import { sellers } from "@/lib/commissions";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
@@ -57,6 +58,8 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const lenders = (await listLenders(user.shopId, true)).map((l) => ({ id: l.id, name: l.name }));
   // Promotions in force today (Settings → Selling): the register shows them on the lines they cover.
   const promotions = await promotionsOn(user.shopId, layaway.today);
+  // Who sold it (commissions, shop-features-round-2-design.md 9.7): the picker shows when the company has two or more people.
+  const people = await sellers(user.shopId);
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
   const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
@@ -89,7 +92,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} preload={preload} sellers={people} me={user.id} />
     </div>
   );
 }

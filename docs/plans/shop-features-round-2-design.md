@@ -1336,3 +1336,24 @@ Decisions made while building:
   machine back: sell it again as the shop's own, or settle with her by hand). Voiding the sale is refused while she is
   paid; "Undo" her payment first (check or cash; store credit is taken back by adjusting her card).
 - A consigned machine carries no cost (the shop paid nothing for it).
+
+**`commissions-listed` (9.7, 7 Oct 2026).** Migration `20261024400000_commissions_listed` (`SaleLine.soldById`,
+`User.commission`, `StockUnit.listedOn`, `Part.listedOn`). Code: `src/lib/listed-math.ts` (pure), `src/lib/commissions.ts`
+(listing, the register's `checkDelisted` / `clearUnitListings` / `sellerFor`, the rules and `commissionReport`),
+`src/actions/commissions.ts`; `completeSaleAs` takes `soldById` and each line's `delisted`; the register's **Sold by**
+picker (shown when the company has two or more people, starting on the person signed in) and the line's tick "Take it
+down on eBay first: done" (Complete sale waits for it); **Also listed on** on a machine's and an item's page
+(`src/components/listed-elsewhere.tsx`: eBay, Etsy, Facebook Marketplace, Craigslist, their own website or a place
+typed, each with its link); Paperwork → **Commissions** (owners and admins: each person's month, machines and
+everything, the commission by their rule, the month before; each person's rule). Check:
+`scripts/checks/commissions-listed.check.ts` (5 groups); `promotions`, `layaway`, `gift-cards`, `software-codes`,
+`machine-sales`, `make-jobs`, `online-shop`, `store-credit`, `tax-holidays` still pass. Spec:
+`tests/commissions-listed.spec.ts`.
+Decisions made while building:
+- The seller is one per sale (every line carries it); the online shop's sales have none. A layaway's pick-up sale
+  counts for the person ringing it up.
+- Commission is on each line's price less its own discount, before tax; returns take off, voids drop out; gift cards,
+  layaway payments and partner repair bills don't count, nor trade-in credit.
+- A machine asks for the tick whenever it is listed; an item only when the sale takes its last one (the listing can
+  stay up while there are more). A machine's listings are cleared when it sells (voiding the sale doesn't put them back).
+- Listings are recorded by anyone; the rules by owners and admins.

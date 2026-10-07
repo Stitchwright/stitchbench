@@ -3,6 +3,7 @@ import "server-only";
 // src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, machines for sale and
 // trade-ins, service plans (tax-machine-sales-layaway-design.md section 3), and (scheduling-messaging-design.md 12.3)
 // class seats and appointments paid or refunded here.
+import { checkDelisted, clearUnitListings, sellerFor } from "@/lib/commissions";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -64,6 +65,8 @@ export type SaleLineInput = {
   layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
   /** A software item (shop-features-round-2-design.md 2.5): its code, "later", the machine it is for, the licence it renews, a return's reason. */
   software?: SoftwareLineInput | null;
+  /** Listed elsewhere (shop-features-round-2-design.md 9.7): the cashier ticked "taken down on eBay" for this line. */
+  delisted?: boolean;
 };
 
 export type SaleInput = {
@@ -80,6 +83,8 @@ export type SaleInput = {
   chargeTax?: boolean;
   /** The sale a scanned receipt brought back as this return (saleForReturn): a return-only cart is taxed at its rate and exemption. */
   returnOfSaleId?: string | null;
+  /** Who sold it (shop-features-round-2-design.md 9.7): one of the company's people; the person ringing it up when blank. */
+  soldById?: string | null;
 };
 
 // $100,000 in cents: far above any real line, payment or sale, and well inside what the books' whole numbers hold.
@@ -143,6 +148,9 @@ export async function completeSaleAs(
       // Paid, unless the bill went up after it was paid here: then the rest is paid the same way.
       if (j.paidAt && repairDue(j) <= 0) throw new UserError(`Repair tag ${j.tag} is already paid.`);
     }
+    // Listed elsewhere (9.7): a machine, or the last of an item, also listed on eBay is ticked "taken down" first. Who sold it.
+    const delistUnits = lay || opts.paidOnline ? [] : await checkDelisted(shopId, input.lines, parts);
+    const soldById = opts.paidOnline ? null : await sellerFor(user, input.soldById);
     // Class seats and appointments: this shop's, each once per sale.
     const bookings = await loadBookings(shopId, input.lines);
     // A supply bought for a customer's vacuum names one of this shop's vacuums.
@@ -500,7 +508,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null, soldById } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
@@ -601,6 +609,7 @@ export async function completeSaleAs(
           }
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
+        await clearUnitListings(tx, shopId, delistUnits);
         // What each lender now owes the shop (Financing payments).
         await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
         if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });

@@ -4,6 +4,7 @@
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 import { disclosure } from "@/lib/part-labels";
 import { detailsLine } from "@/lib/item-details";
+import { readListed } from "@/lib/listed-math";
 
 export type RegisterItem = {
   id: string;
@@ -26,6 +27,8 @@ export type RegisterItem = {
   details?: string;
   colorHex?: string | null;
   colorNumber?: string | null;
+  /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7): the places, to take down before selling it. */
+  listedOn?: string[];
 };
 
 export const viewItem = (p: {
@@ -47,6 +50,7 @@ export const viewItem = (p: {
   colorHex?: string | null;
   material?: string | null;
   specs?: unknown;
+  listedOn?: unknown;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -62,6 +66,7 @@ export const viewItem = (p: {
   details: detailsLine(p) || undefined,
   colorHex: p.colorHex ?? null,
   colorNumber: p.colorNumber ?? null,
+  listedOn: readListed(p.listedOn).map((x) => x.where),
 });
 
 /** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */
