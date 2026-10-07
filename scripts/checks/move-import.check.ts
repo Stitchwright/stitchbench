@@ -258,7 +258,7 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   });
   const cls = await db.shopClass.create({ data: { shopId, title: "Quilting 101", seats: 8 } });
   await db.classMeeting.create({ data: { shopId, classId: cls.id, startsAt: new Date(now + 2 * day), endsAt: new Date(now + 2 * day + 7_200_000) } });
-  await db.enrollment.create({ data: { shopId, classId: cls.id, name: "Mona Mover", feeCents: 5000, customerId: cust.id } });
+  const enrollment = await db.enrollment.create({ data: { shopId, classId: cls.id, name: "Mona Mover", feeCents: 5000, customerId: cust.id } });
   const type = await db.appointmentType.create({ data: { shopId, name: "Machine pickup" } });
   await db.appointment.create({
     data: {
@@ -312,6 +312,15 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.certification.create({ data: { shopId, customerId: cust.id, equipment: "Laser cutter" } });
   await db.suppliesCare.create({ data: { shopId, machineId: machine.id, callNote: "Filament low" } });
   await db.makeJob.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover", title: "Name tag", fileName: "tag.svg", fileMime: "image/svg+xml", fileData: crypto.randomBytes(800), machineMinutes: 12, quoteCents: 1500 } });
+  // Phase 3 (shop-features-round-2-design.md 4.3 to 4.6): a price raise, a live sale's claim, an event's payment and door
+  // prize, a shop hop with a passport stamped here.
+  await db.priceChange.create({ data: { shopId, userId: a.user.id, rule: { by: "supplier", pct: 5 }, items: [{ partId: part.id, oldCents: 4300, newCents: 4500 }] } });
+  const live = await db.liveSale.create({ data: { shopId, name: "Friday live", picks: [part.id] } });
+  await db.liveClaim.create({ data: { shopId, liveSaleId: live.id, customerId: cust.id, name: "Mona Mover", partId: part.id, description: "Hook", qty: 1, priceCents: 4500 } });
+  await db.eventPayment.create({ data: { shopId, enrollmentId: enrollment.id, kind: "DEPOSIT", amountCents: 2000, saleId: "sale_check_plain_id", paidAt: new Date(now) } });
+  await db.eventDraw.create({ data: { shopId, classId: cls.id, enrollmentId: enrollment.id, name: "Mona Mover", prize: "Fat quarter bundle" } });
+  const hop = await db.shopHop.create({ data: { shopId, hubHopId: `hop-${RUN}`, name: "Spring hop", startsOn: "2027-04-01", endsOn: "2027-04-10", shopsCount: 6 } });
+  await db.hopStampLocal.create({ data: { shopId, hopId: hop.id, passportRef: "HOP-ABCD-EFGH", byUserId: a.user.id, stampNo: 1, stampsOf: 6 } });
   await db.shop.update({
     where: { id: shopId },
     data: {
