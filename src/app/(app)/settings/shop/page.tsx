@@ -67,6 +67,14 @@ export default async function ShopSettingsPage() {
           <pre className="mt-1 overflow-x-auto rounded border border-line p-2 text-xs">{`<iframe src="${url}" title="Shop ${shop.name}" style="width:100%;height:1000px;border:0"></iframe>`}</pre>
         </Section>
       )}
+      {s.on && (
+        <Section title="Google and Facebook">
+          <p className="text-base">Show what you have on the shelf on Google, and your items on Facebook and Instagram.</p>
+          <Link href="/settings/shop/feeds" className="btn mt-3 min-h-11 text-base">
+            Show your stock on Google and Facebook
+          </Link>
+        </Section>
+      )}
       <ActionForm action={saveShopSettings} success="Saved" className="space-y-6">
         <fieldset disabled={!admin} className="space-y-6">
           <Section title="The page">

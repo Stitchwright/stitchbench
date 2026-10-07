@@ -177,6 +177,10 @@ model Shop {
   assistantMonth       String?
   assistantCalls       Int           @default(0)
   assistantLimit       Int           @default(300)
+  // Product feeds for Google and Meta (shop-features-round-2-design.md 4.1, 4.2): the secret in the feed links (null: feeds
+  // off) and the store code from the Google Business Profile, for the local inventory feed.
+  feedToken            String?       @unique
+  feedStoreCode        String?
   createdAt            DateTime      @default(now())
 
   users             User[]
@@ -811,6 +815,9 @@ model Part {
   fitsModels      String[]      @default([])
   fitsKeys        String[]      @default([])
   fitGroupIds     String[]      @default([])
+  // The barcode number (UPC / EAN, a GTIN) for Google and Meta product feeds (shop-features-round-2-design.md 4.1): typed or
+  // scanned on the item page; empty: the feed uses a valid GTIN among the item's numbers. Digits only, check digit checked.
+  gtin            String?
 
   moves     StockMove[]
   markdowns FabricMarkdown[]

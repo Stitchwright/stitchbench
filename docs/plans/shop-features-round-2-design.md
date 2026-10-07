@@ -1141,3 +1141,28 @@ Decisions made while building:
   online shop itself doesn't have to be switched on.
 - Browser test needed: `tests/pay-links.spec.ts` (the page before and after the Stripe key, the customer page's link,
   sending with two taps, Copy the link, the customer paying on the Stripe mock, the link shown paid).
+
+**`product-feeds` (4.1 and 4.2, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023000000_product_feeds`
+(`Part.gtin`, `Shop.feedToken` unique, `Shop.feedStoreCode`). Code: `src/lib/shop/feeds-math.ts` (pure: the GTIN check
+digit and forgiving input, which items go in and why not, Google's product feed as RSS 2.0 with the g: namespace,
+Google's local inventory feed as tab-separated `store_code, id, quantity, price, availability, pickup_method,
+pickup_sla`, Meta's catalog CSV), `src/lib/shop/feeds.ts`, `src/actions/feeds.ts`, the public route
+`/shop/{slug}/feeds/{token}/google.xml | local.tsv | meta.csv` (rate limited per address and per shop, 404 for anything
+wrong), Settings → Online shop → **Google and Facebook** (`/settings/shop/feeds`: the guided steps for Merchant Center and
+Commerce Manager, the three links with Copy, the counts, "Listed online but not in the feeds" with each reason; More
+choices: Make new links, Switch the feeds off), the item form's **Barcode (UPC or EAN, for Google and Facebook)**. Check:
+`scripts/checks/product-feeds.check.ts` (5 groups). Spec: `tests/product-feeds.spec.ts`.
+Decisions made while building:
+- An item goes in when it is **listed in the online shop** with a price and a barcode: Google's listing and Meta's item
+  both link to the item's page in the shop's own online shop, and the photo is served only for listed items. The feeds
+  work only while the online shop is open (so they pause with it when the program is read-only). Meta also needs a
+  photo. Machine models to order and a partner's consigned stock never go in.
+- The barcode is the item's own `gtin`, else the first valid GTIN among its part number and other numbers (a supplier
+  list's UPC column lands there, 2.3), so most shops need no retyping. A barcode typed with spaces or dashes is kept as
+  digits; a wrong check digit is refused in words.
+- Fabric by the yard: the price is a yard's, the title says "(price per yard)" and Google gets `unit_pricing_measure 1yd`;
+  the shelf count is whole yards.
+- The store code is the shop's Business Profile store code (typed once; the shop's address is used until then).
+- Not built: leaving out items priced under the maker's minimum advertised price (9.3 `map-prices` has no MAP field yet;
+  add the rule to `leftOutReason` when it lands). The Merchant Center steps are words, not screenshots.
+- Browser test needed: `tests/product-feeds.spec.ts`.
