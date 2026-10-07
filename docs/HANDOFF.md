@@ -927,6 +927,24 @@ Meanwhile Claude ran a focused local review of the riskiest code (billing, money
   weeks of supply, A/B/C, GMROI, roll-ups), Slow fabric (FIFO age, mark down vs fat quarters with the numbers), the
   markdown ladder with records and same-day undo, 18 shop settings. Next: F3 reorder and purchase orders, F4 kits.
 
+## 2aj. 6-7 Oct 2026: everything merged into the launch branches (pushed; main not yet merged)
+
+Owner decision (6 Oct): this week's feature branches ship with the launch release. `scheduling-features` (8d933f8)
+now holds `fabric-smarts` (F1-F7: bolt ends, insight, reorder and POs, kits, connectors, clubs with payments in the
+books, longarm), `manual-repo` (program packages 4-5), `assistant` (drafts, likely causes, plate reading, ask the
+manuals, parts helpers) and `later-round-1` (gift cards, store credit, audit log, tax-exempt customers, reports, books
+export, off-site backup). `hub-accounts` (00d6abf) holds `manual-repo` (storage, review queue, takedowns, OCR),
+`assistant` (proxy, allowance, admin page, Stripe prices) and `later-round-1` (backups); hub migrations renumbered
+024-028. Also fixed tonight: hub keys name `shop_ref` (every hub-signed key would have been refused); sign-in in a
+built app (login helpers at module level); sign-out keeps this browser known; machine merge moves AssistantCall;
+the move import may clear the audit log; a non-UTF-8 byte that broke the build. All 62 checks and every hub test pass
+(each hub test on its own scratch DB: never point one at the program's DB); the full Playwright suite passes except
+`calendar` and `scheduling-messaging` after about 8 pm Eastern and `base-license` when the UTC date is ahead
+(test-clock artifacts: rerun in daytime). No Playwright specs yet for fabric, assistant or gift cards (checks only).
+Switched off until the owner turns them on: the manual repository (`REPO_UPLOADS`), the Assistant (module + hub
+`ANTHROPIC_API_KEY`, `STRIPE_PRICE_ASSISTANT_*`), off-site backup (per shop; hub `BACKUP_S3_*`). Next: the owner
+merges main (commands in chat), then hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
