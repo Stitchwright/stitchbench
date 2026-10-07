@@ -157,7 +157,8 @@ h3 {
     background: var(--surface);
     color: var(--ink);
   }
-  .btn:hover {
+  /* Not on a disabled button: it keeps its grey look under the mouse. */
+  .btn:hover:not(:disabled) {
     background: var(--surface-2);
   }
   /* Disabled stays readable (4.5:1): a plain grey button with a dashed edge, not a faded one. */
@@ -180,7 +181,7 @@ h3 {
     border-color: var(--navy);
     color: var(--navy-ink);
   }
-  .btn-primary:hover {
+  .btn-primary:hover:not(:disabled) {
     background: color-mix(in srgb, var(--navy) 88%, black);
   }
   .btn-danger {
@@ -275,18 +276,24 @@ h3 {
   }
 }
 
-/* A finger, not a mouse (a tablet, a touch screen at the counter): every button 44px tall (Apple's minimum). */
-@media (pointer: coarse) {
-  .btn,
-  .btn-sm,
-  .input,
-  .select {
-    min-height: 2.75rem;
-  }
-  button.link,
-  .link-target,
-  .table td > a:only-child {
-    min-height: 2.75rem;
+/* A finger, not a mouse (a tablet, a touch screen at the counter): every button 44px tall (Apple's minimum). In the
+   components layer, so a utility class still wins; the register's big payment buttons stay big. */
+@layer components {
+  @media (pointer: coarse) {
+    .btn,
+    .btn-sm,
+    .input,
+    .select {
+      min-height: 2.75rem;
+    }
+    .btn-lg {
+      min-height: 3.5rem;
+    }
+    button.link,
+    .link-target,
+    .table td > a:only-child {
+      min-height: 2.75rem;
+    }
   }
 }
 
