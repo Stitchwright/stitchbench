@@ -161,6 +161,8 @@ export type SaleReturnLine = {
 export type SaleForReturn = {
   id: string;
   number: number;
+  /** The rate the sale charged (0 when it was tax exempt): a return of it gives the tax back at this rate. */
+  taxRatePct: number;
   customer: CustomerHit | null;
   lines: SaleReturnLine[];
   /** Payment lines for a repair bill, left out: reverse those with the repair shop instead (same as voiding a sale). */
@@ -209,7 +211,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     const c = cards.find((x) => x.id === t.cardId);
     return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
   });
-  return { id: sale.id, number: sale.number, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines, skippedCardLines, cardsPaid };
+  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines, skippedCardLines, cardsPaid };
 }
 
 /** `taxExemptId`: the certificate number when the customer is tax exempt now (null: not; absent: not looked up yet). */
