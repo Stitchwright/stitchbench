@@ -13,6 +13,7 @@ import { requireBaseWritable } from "@/lib/base-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { completeSaleAs } from "@/lib/register-sale";
 import { TENDER_METHODS, saleTotals, type TenderMethod } from "@/lib/register-math";
+import { exemptCertificate } from "@/lib/tax-exempt";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
 import { DESIGN_LABEL, MAX_INCHES, MAX_LONGARM_CENTS, MOVES, OPEN_LONGARM, STATUS_LABEL, orderCents, rateTenthFrom } from "@/lib/longarm-math";
@@ -181,7 +182,9 @@ export async function collectFor(user: CurrentUser, id: string, fd: FormData | n
       ...(o.battingCents > 0 ? [{ description: `Batting${o.batting ? `: ${o.batting}` : ""}`.slice(0, 200), qty: 1, unitPriceCents: o.battingCents, taxable: o.taxable }] : []),
       ...(o.extraCents > 0 ? [{ description: (o.extraNote ? `Quilting extras: ${o.extraNote}` : "Quilting extras").slice(0, 200), qty: 1, unitPriceCents: o.extraCents, taxable: o.taxable }] : []),
     ];
-    const total = saleTotals(lines, 0, shop.taxRatePct, []).total;
+    // The same rule the sale itself applies (register-sale.ts): a tax-exempt customer pays no tax, so the tender matches.
+    const exempt = o.customerId ? exemptCertificate(await db.customer.findFirst({ where: { id: o.customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } })) : null;
+    const total = saleTotals(lines, 0, exempt ? 0 : shop.taxRatePct, []).total;
     const sale = await completeSaleAs(user, {
       customerId: o.customerId,
       lines,

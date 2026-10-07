@@ -927,7 +927,7 @@ Meanwhile Claude ran a focused local review of the riskiest code (billing, money
   weeks of supply, A/B/C, GMROI, roll-ups), Slow fabric (FIFO age, mark down vs fat quarters with the numbers), the
   markdown ladder with records and same-day undo, 18 shop settings. Next: F3 reorder and purchase orders, F4 kits.
 
-## 2aj. 6-7 Oct 2026: everything merged into the launch branches (pushed; main not yet merged)
+## 2aj. 6-7 Oct 2026: everything merged into the launch branches, then into main (7 Oct: StitchBench main 50ca9af, StitchHub main 60283c6; not deployed)
 
 Owner decision (6 Oct): this week's feature branches ship with the launch release. `scheduling-features` (8d933f8)
 now holds `fabric-smarts` (F1-F7: bolt ends, insight, reorder and POs, kits, connectors, clubs with payments in the
@@ -942,8 +942,36 @@ the move import may clear the audit log; a non-UTF-8 byte that broke the build. 
 `calendar` and `scheduling-messaging` after about 8 pm Eastern and `base-license` when the UTC date is ahead
 (test-clock artifacts: rerun in daytime). No Playwright specs yet for fabric, assistant or gift cards (checks only).
 Switched off until the owner turns them on: the manual repository (`REPO_UPLOADS`), the Assistant (module + hub
-`ANTHROPIC_API_KEY`, `STRIPE_PRICE_ASSISTANT_*`), off-site backup (per shop; hub `BACKUP_S3_*`). Next: the owner
-merges main (commands in chat), then hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
+`ANTHROPIC_API_KEY`, `STRIPE_PRICE_ASSISTANT_*`), off-site backup (per shop; hub `BACKUP_S3_*`). The owner
+merged both mains on 7 Oct; the hub Assistant takes a photo for `read_label` and `tag_fabric` too (b8770ec). Still to
+rerun in daytime: `calendar`, `scheduling-messaging`, `account` (the 7 Oct morning run stopped for low memory). Next: hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
+
+## 2ak. 7 Oct 2026: review of the merged release, fixes (pushed to the branches, NOT yet on main)
+
+Four read-only reviews of main (program d2ce61f..50ca9af, hub 724ce37..60283c6). No cross-shop leak found. Fixed on
+`scheduling-features` (5aa4855 through 9d599ea, 13 commits): club checkout paid after cancelling/twice stopped at
+Stripe; techs can't set kit/club prices or take back a club payment; longarm collect honours tax exemption; receipt
+returns leave gift card lines out and give tax back as sold; gift card liability counts moved/void cards; voids never
+refund onto a void card; books journal owner-given store credit and credit payouts; fabric double receive and cut
+rounding; sign-in limits per login (another login with the same email can't reset them); no folder backup target on
+hosted, bucket address resolved public-only; partner messages only from the other side; "Delete my copy" owner/admin
+only; offer retries re-check; move routes trust X-Forwarded-* only with TRUST_PROXY. Fixed on `hub-accounts`
+(through 2484cc2, migration 029_review_fixes): free plate reads limited (read class + photo, claimed shopRef,
+ASSISTANT_FREE_READS_PER_INSTALL, ASSISTANT_FREE_DAILY); PDF check bounded and in a worker (REPO_CHECK_MS,
+REPO_CHECK_HEAP_MB; the OCR render is still on the main thread: do before REPO_UPLOADS=on); signup never sets an
+existing account's password; Assistant keys bound to their install; Assistant/top-up refunds and disputes handled;
+takedown form notices one strike per notice, more than 5 manuals wait for the owner; backup PUTs signed for size,
+unconfirmed swept, BACKUP_INSTALL_QUOTA_GB; plan-switch refunds don't cancel; sign-in lock per typed address. Hub
+tests all pass on scratch DBs. Program, after the restart (7 Oct morning): tsc clean, unit tests, all 66 check scripts
+(three updated for the fixes), and the whole Playwright suite pass on a test build: 39 specs on :3300 with the test hub,
+the nine mail/text/Stripe specs on :3501 with the mocks, estimate-links' no-PUBLIC_URL run, and assistant with the
+Anthropic stand-in (`scripts/local-test/.run/*.sh|ps1` were the runners, not committed). Found and fixed on the way: the
+build script lacked STITCH_TEST_BUILD=1; fabric.spec's back-dated sales took receipt numbers past the shop's counter (the
+next real sale collided: register, gift-cards, clubs and modules specs failed until fixed in 5d21ade). Flaky, passes on
+rerun: estimate-links' text reply (worker timing); inventory's community most-used after a second run within the hour
+(the hub's usage-report limit). campaigns' text test skips before noon Eastern. Next: the owner merges both branches to
+main again.
+Open choice: a cart mixing scanned returns with new items still taxes all at today's rate (one rate per sale).
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
@@ -1136,13 +1164,13 @@ accounts and billing: design first).
      whenever the program draws a factory-setting figure on a joined install (since the hub client's first version).
      That predates and conflicts with item 9 ("chosen per item"), and figure crops from OEM manuals are a lawyer
      question. Options: keep (the draft discloses it), an install setting off by default, or stop sharing figures.
-   - **Hub billing**: subscribing during the 30-day trial charges the same day (pass the trial end to Checkout so the
+   - **Done** (hub billing.mjs: trial end passed to Checkout, won chargebacks restored). Was: **Hub billing**: subscribing during the 30-day trial charges the same day (pass the trial end to Checkout so the
      first charge falls when the trial ends); a refund inside the trial makes the shop read-only at once (should go
      back to its trial); a won chargeback isn't undone (handle `charge.dispute.closed` with status won).
-   - **Customers can't be deleted or merged** (L126 decided, not built): needed to honour a customer's deletion request.
+   - **Done** (`src/actions/merge.ts`, the "Merge or delete" card). Was: **Customers can't be deleted or merged** (L126 decided, not built): needed to honour a customer's deletion request.
    - **No LICENSE file** in this repository, so self-hosting shops have no stated licence for the code (the hub is
      AGPL). Owner and lawyer decision.
-   - The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
+   - **Done** (no longer in the README). Was: The hub README still mentions "a one-time contribution toward server costs" (the hub is free since 26 Sep).
    - Before the pages go live: the hub's `/terms` and `/privacy` routes, Checkout recording the accepted version, and
      `TERMS_VERSION` in `src/lib/hub-account.ts` (still "2026-10-02-draft"): billing package 5.
 
@@ -1198,6 +1226,10 @@ accounts and billing: design first).
    the lapse rules). Hub: `waiverRule` in `src/billing.mjs`, admin page lists partner, its standing, last repair and grace end; tests in
    `test/billing.mjs` sections 10 and 10b; program check `scripts/checks/partnership-rule.check.ts`. Weak spot: partner messages aren't signed
    (L134), so a quilt shop could fake `job.new`; review partnered shops' support hours and add-on uptake after six months.
+
+24. **Tax holidays, shop-pays-the-tax sales, machine sales with warranty for every shop, layaway, financing** (owner
+   request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
+   ten owner questions in its section 7: **all answered as recommended (7 Oct); building on branch `sales-features`**.
 
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
    or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per

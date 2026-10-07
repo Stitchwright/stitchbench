@@ -260,7 +260,8 @@ export async function saveKitFor(user: CurrentUser, kitId: string | null, fd: Fo
       if (pattern) parts.push({ qty: 1, costCents: pattern.costCents, costTenThou: pattern.costTenThou, priceCents: pattern.priceCents });
       const cost = partsCost(parts) + (pattern?.costCents != null ? 0 : patternCost);
       const suggestion = suggestKitPrice({ costCents: cost, retailCents: partsRetail(parts), marginPct: settings.fabKitMarginPct, bundlePct: settings.fabBundleDiscountPct });
-      const price = typedPrice ?? suggestion.priceCents;
+      // A tech can't set prices (as in updatePart): their save keeps the kit's price, or takes the suggestion for a new kit.
+      const price = user.role === "TECH" ? (existing?.priceCents ?? suggestion.priceCents) : (typedPrice ?? suggestion.priceCents);
       const data = { name, note, patternPartId: pattern?.id ?? null, patternNote, patternCostCents: patternCost, priceCents: price };
       const kit = existing ? await tx.kit.update({ where: { id: existing.id }, data }) : await tx.kit.create({ data: { shopId: user.shopId, ...data } });
       await tx.kitLine.deleteMany({ where: { kitId: kit.id, shopId: user.shopId } });

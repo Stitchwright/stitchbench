@@ -81,6 +81,9 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
     include: { lines: { include: { part: { select: { kind: true } } } } },
     orderBy: { createdAt: "asc" },
   });
+  // A gift card line on a store credit card (a credit balance paid out) moves the credit liability, not the gift card one.
+  const cardIds = [...new Set(sales.flatMap((s) => s.lines.map((l) => l.giftCardId).filter((id): id is string => !!id)))];
+  const creditCards = new Set(cardIds.length ? (await db.giftCard.findMany({ where: { shopId, id: { in: cardIds }, kind: "credit" }, select: { id: true } })).map((c) => c.id) : []);
   for (const s of sales) {
     const lines = saleLines(s);
     const events: { at: Date; sign: 1 | -1 }[] = [];
@@ -92,7 +95,7 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
       if (s.changeCents) post(one, acct("undeposited"), -sign * s.changeCents);
       for (const x of lines) {
         const a = x.amount;
-        if (x.kind === "GIFT_CARD") post(one, acct("giftLiability"), -sign * a);
+        if (x.kind === "GIFT_CARD") post(one, acct(x.line.giftCardId && creditCards.has(x.line.giftCardId) ? "creditLiability" : "giftLiability"), -sign * a);
         else if (x.kind === "TRADE_IN") post(one, acct("tradeIns"), -sign * a);
         else if (x.kind === "REPAIR") post(one, acct("dueToPartners"), -sign * a);
         else if (!cfg.netDiscounts && x.discount > 0 && x.line.qty * x.line.unitPriceCents > 0) {
@@ -133,8 +136,12 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
     post(led, acct("repairClearing"), -p.amountCents);
   }
 
-  // ----- a card's balance fixed by hand or an existing card added: the offset is its own account -----
-  const entries = await db.giftCardEntry.findMany({ where: { shopId, at: { gte: start, lt: end }, reason: { in: ["ADJUSTED", "OPENING"] } }, select: { cardId: true, at: true, amountCents: true } });
+  // ----- a card's balance fixed by hand, an existing card added, or store credit given outside a sale (the owner's
+  // goodwill credit, LOADED with no sale): the offset is its own account -----
+  const entries = await db.giftCardEntry.findMany({
+    where: { shopId, at: { gte: start, lt: end }, OR: [{ reason: { in: ["ADJUSTED", "OPENING"] } }, { reason: "LOADED", saleId: null, paymentId: null }] },
+    select: { cardId: true, at: true, amountCents: true },
+  });
   if (entries.length) {
     const kinds = new Map((await db.giftCard.findMany({ where: { shopId, id: { in: [...new Set(entries.map((e) => e.cardId))] } }, select: { id: true, kind: true } })).map((c) => [c.id, c.kind]));
     for (const e of entries) {

@@ -874,6 +874,8 @@ export async function verifyIncoming(shopId: string, m: HubMessage): Promise<Sig
   const link = await db.partnerLink.findUnique({ where: { shopId_id: { shopId, id: String(m.linkId) } } });
   if (!link) return null; // applyMessage ignores a message for a partnership that isn't here
   const where = { shopId_id: { shopId, id: link.id } };
+  // Only the other side writes to this shop: one of this shop's own messages sent back must not pin its key as the partner's.
+  if (m.fromSide !== (link.side === "repair" ? "retail" : "repair")) return bad("it says it comes from this shop's own side of the partnership");
   const env = sigShape(m.sig);
   if (!env) {
     if (m.sig != null) return bad("its signature is malformed");
@@ -885,6 +887,7 @@ export async function verifyIncoming(shopId: string, m: HubMessage): Promise<Sig
   if (!verifyMessageSig(env, { linkId: String(m.linkId), fromSide: m.fromSide, type: m.type, id: m.id, data: m.data })) {
     return bad("its signature doesn't check out (the message was changed on the way, or isn't from the partner)");
   }
+  if (env.pub === (await db.partnerKey.findUnique({ where: { shopId }, select: { publicKey: true } }))?.publicKey) return bad("it is signed with this shop's own key, not the partner's");
   if (link.partnerKey) {
     if (link.partnerKey !== env.pub) return bad("it is signed with a key other than the one this partnership was made with. If the partner reinstalled, make a new partner code");
   } else {

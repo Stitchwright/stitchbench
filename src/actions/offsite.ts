@@ -71,6 +71,8 @@ export const saveOffsiteTarget = safe.whileLapsed("saveOffsiteTarget")(async fun
   const user = await requireAdmin();
   const target = str(formData.get("target")) ?? "hub";
   if (target !== "hub" && target !== "folder" && target !== "bucket") throw new UserError("Pick StitchHub, a folder or your own bucket.");
+  // A folder is on the computer the program runs on: on the hosted server that is the server's own disk, not the shop's.
+  if (target === "folder" && !isDesktop()) throw new UserError("A folder is for the Windows program. Pick StitchHub or your own bucket.");
   if (target === "bucket" && !(await db.offsiteSettings.findUnique({ where: { shopId: user.shopId }, select: { bucket: true } }))?.bucket) throw new UserError("Fill in your bucket's details first (Your own bucket, below).");
   const folderPath = (str(formData.get("folderPath")) ?? "").slice(0, 300);
   if (target === "folder" && !folderPath) throw new UserError("Type the folder the backups go to.");

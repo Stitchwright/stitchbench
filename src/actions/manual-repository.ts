@@ -13,7 +13,7 @@ import { lapseGuard } from "@/lib/lapse-guard";
 import { libraryDir } from "@/lib/library-dir";
 import { NO_LIBRARY } from "@/lib/manual-downloads";
 import { deleteWithdrawnCopyAt, hostedOfferFail, hostedOfferFinish, hostedOfferStart, offerLibraryFile, repositoryUrl, type OfferResult } from "@/lib/manual-repository";
-import { requireUser } from "@/lib/session";
+import { isInstallAdmin, requireAdmin, requireUser } from "@/lib/session";
 
 function refresh() {
   revalidatePath("/", "layout");
@@ -48,7 +48,9 @@ export const setTechsOfferManuals = safe(async function setTechsOfferManuals(on:
  * program never deletes a shop's file by itself; a person does, here, for one marked file. The sidecar goes with it.
  */
 export const deleteWithdrawnCopy = safe(async function deleteWithdrawnCopy(docPath: string) {
-  await requireUser();
+  // The library is the install's, not one company's: its owner or admin, or with several companies its administrator.
+  const user = await requireAdmin();
+  if (!(await isInstallAdmin(user))) throw new UserError("Several companies share this StitchBench, so only its administrator can delete a manual from the library.");
   const root = libraryDir();
   if (!root) throw new UserError(NO_LIBRARY);
   await deleteWithdrawnCopyAt(root, docPath);

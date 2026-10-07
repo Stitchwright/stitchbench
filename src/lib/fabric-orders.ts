@@ -554,7 +554,12 @@ export async function receiveOrderFor(user: CurrentUser, orderId: string, fd: Fo
           data: { qtyOnHand: { increment: got }, ...(part.costCents == null && l.costCents != null ? { costCents: l.costCents, costTenThou: null } : {}) },
         });
         await tx.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: got, reason: "RECEIVED", userId: user.id, note: `Order #${po.number} from ${po.supplierName}` } });
-        await tx.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedYards: { increment: got } } });
+        // The status hold above doesn't stop the same form sent twice (a partly received order stays partly received):
+        // the line moves only from the yards the form saw (`seen.<lineId>`), else from what was read here.
+        const seenRaw = str(fd.get(`seen.${l.id}`));
+        const seen = seenRaw && Number.isFinite(Number(seenRaw)) ? Number(seenRaw) : l.receivedYards;
+        const moved = await tx.purchaseOrderLine.updateMany({ where: { id: l.id, shopId: user.shopId, receivedYards: seen }, data: { receivedYards: { increment: got } } });
+        if (moved.count !== 1) throw new UserError(`${l.itemNumber}: yards came in on this line since the page was opened. Reload and check before receiving again.`);
         total += got;
         count += 1;
       }

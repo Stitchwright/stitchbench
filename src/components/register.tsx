@@ -90,6 +90,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [returnMode, setReturnMode] = useState(false);
+  // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the same).
+  const [returnOf, setReturnOf] = useState<{ id: string; taxRatePct: number } | null>(null);
   const [results, setResults] = useState<RegisterItem[]>([]);
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   // A tax-exempt customer's sale charges no tax unless the cashier ticks "Charge tax anyway".
@@ -141,7 +143,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
-  const t = saleTotals(lines, orderDiscountCents, ratePct, tenders);
+  const receiptRate = returnOf && lines.length > 0 && lines.every((l) => l.qty < 0) ? returnOf.taxRatePct : null;
+  const t = saleTotals(lines, orderDiscountCents, receiptRate ?? ratePct, tenders);
   const refund = t.total < 0;
   // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
   const problem = tenderProblem(t, tenders);
@@ -317,7 +320,13 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   // discounted) exactly as they were sold, ready to adjust or remove before completing the refund.
   function loadReturnSale(sale: SaleForReturn) {
     if (!sale.lines.length) {
-      toast.warning(sale.skippedRepairLines ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.` : `Sale #${sale.number} has nothing to return.`);
+      toast.warning(
+        sale.skippedRepairLines
+          ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.`
+          : sale.skippedCardLines
+            ? `Sale #${sale.number} only sold or paid out a gift card. Void the sale to take a card sale back.`
+            : `Sale #${sale.number} has nothing to return.`,
+      );
       return;
     }
     setDone(null);
@@ -338,6 +347,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       })),
     ]);
     setReturnMode(true);
+    setReturnOf({ id: sale.id, taxRatePct: sale.taxRatePct });
     if (sale.customer) setCustomer(sale.customer);
     // Paid with a gift card or store credit: the way back is onto that card (press Gift card or Store credit).
     const back = sale.cardsPaid[0];
@@ -346,7 +356,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       toast.message(`Sale #${sale.number} was paid with ${back.kind === "credit" ? "store credit" : "a gift card"} (${money(back.amountCents)}). Press ${back.kind === "credit" ? "Store credit" : "Gift card"} to refund it onto the same card.`);
     }
     toast.success(
-      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}`,
+      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}${sale.skippedCardLines ? " A gift card on it was left out: void the sale or pay the card out to take that back." : ""}`,
     );
   }
 
@@ -530,6 +540,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     const sale = {
       customerId: customer?.id ?? null,
       chargeTax: Boolean(exemptCert) && chargeTax,
+      returnOfSaleId: returnOf?.id ?? null,
       lines: lines.map((l) => ({
         giftCard: l.giftCard ?? null,
         partId: l.partId ?? null,
@@ -569,6 +580,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       setCustomer(null);
       setChargeTax(false);
       setReturnMode(false);
+      setReturnOf(null);
       setJobs(null);
       setBookings(null);
       code.current?.focus();
@@ -1107,7 +1119,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             </span>
           </div>
           {t.orderDiscount > 0 && <Row k="" v={`-${money(t.orderDiscount)}`} />}
-          <Row k={exemptOn ? `Tax exempt (certificate ${exemptCert})` : `Tax (${taxRatePct}%)`} v={money(t.tax)} />
+          <Row k={receiptRate != null ? `Tax as sold (${receiptRate}%)` : exemptOn ? `Tax exempt (certificate ${exemptCert})` : `Tax (${taxRatePct}%)`} v={money(t.tax)} />
           <div className="flex justify-between border-t border-line pt-1 text-lg font-bold">
             <span>{t.total < 0 ? "Refund" : "Total"}</span>
             <span className="num" data-testid="sale-total">
