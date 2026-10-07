@@ -189,16 +189,16 @@ Would trip her up:
 
 | Rank | Fix | Effort | Principle | Screens |
 |---|---|---|---|---|
-| 1 | Base font 16px, labels 14px sentence case, hints 14px (G1) | small | 1 | all |
-| 2 | Buttons 44px, small buttons 36/44px on touch, bigger checkboxes (G2) | small | 2 | 04, 19, 21 |
-| 3 | Contrast: input borders, placeholders, amber pill, disabled buttons (G3) | small | 1 | 04, 13 |
-| 4 | Toasts top-centre, 8 s, errors stay; keep the result on the page (G4) | small | 8 | 07, 22 |
-| 5 | Change due large and kept on screen after a sale, with a Print receipt button | small | 8, 4 | 07 |
-| 6 | Wording glossary pass (tender, Disc %, Misc item, Return mode, Pre-approved...) (G5) | small | 3 | 04, 11 |
-| 7 | Customer search: right empty message, "Add new" offer, typo and phone-digits matching; Add button at top | small (wording) / medium (fuzzy) | 6, 10, 11 | 16, 17 |
-| 8 | Class sign-up at register: no contradictory "Pick the customer first"; real labels | small | 11, 9 | 10 |
-| 9 | Payment box: big Cash/Card/Check buttons; press method first, then amount handed over; change shows | medium | 2, 4, 6 | 04, 06 |
-| 10 | Register fits a 1024 tablet: fold the menu on the register, no sideways scroll | medium | 2, 9 | 09 |
+| 1 | **Done 7 Oct 2026.** Base font 16px, labels 14px sentence case, hints 14px (G1) | small | 1 | all |
+| 2 | **Done 7 Oct 2026.** Buttons 44px, small buttons 36/44px on touch, bigger checkboxes (G2) | small | 2 | 04, 19, 21 |
+| 3 | **Done 7 Oct 2026.** Contrast: input borders, placeholders, amber pill, disabled buttons (G3) | small | 1 | 04, 13 |
+| 4 | **Done 7 Oct 2026.** Toasts top-centre, 8 s, errors stay; keep the result on the page (G4) | small | 8 | 07, 22 |
+| 5 | **Done 7 Oct 2026.** Change due large and kept on screen after a sale, with a Print receipt button | small | 8, 4 | 07 |
+| 6 | **Done 7 Oct 2026.** Wording glossary pass (tender, Disc %, Misc item, Return mode, Pre-approved...) (G5) | small | 3 | 04, 11 |
+| 7 | **Done 7 Oct 2026.** Customer search: right empty message, "Add new" offer, typo and phone-digits matching; Add button at top | small (wording) / medium (fuzzy) | 6, 10, 11 | 16, 17 |
+| 8 | **Done 7 Oct 2026.** Class sign-up at register: no contradictory "Pick the customer first"; real labels | small | 11, 9 | 10 |
+| 9 | **Done 7 Oct 2026.** Payment box: big Cash/Card/Check buttons; press method first, then amount handed over; change shows | medium | 2, 4, 6 | 04, 06 |
+| 10 | **Done 7 Oct 2026.** Register fits a 1024 tablet: fold the menu on the register, no sideways scroll | medium | 2, 9 | 09 |
 | 11 | Add-item form: essentials first, "More details" folded, fabric fields only for fabric; labelled Receive stock | medium | 5 | 18, 19 |
 | 12 | One customer picker pattern at check-in, register and class sign-up; inline errors (G8) | medium | 9, 11 | 11, 12, 10 |
 | 13 | Undo for status change, fat-quarter cut, removed line; longer two-tap (G7) | medium | 7 | 13, 22 |
@@ -208,6 +208,31 @@ Would trip her up:
 Order to do them: 1 to 4 are one change to `globals.css` and the Toaster and lift every screen at once; check the
 register and ticket pages afterwards for wrapping at 1024px. 5 to 8 are small edits in `register.tsx`,
 `customers/page.tsx` and the wording. 9 to 15 each want a short design note and a look on a real tablet first.
+
+### What 1 to 10 became (7 Oct 2026, branch `scheduling-features`)
+- 1-3: `globals.css`. Body 16px; `.btn`, `.table`, `.input`, nav links 16px; `.label` and table headers 14px in
+  sentence case; `text-xs` is 14px everywhere (nothing below 14px on the pages measured). `.btn` 44px tall, `.btn-sm`
+  36px (44px under `pointer: coarse`), `.btn-lg` 56px; checkboxes 24px; link-styled buttons and lone links in table
+  cells 24px (44px on touch); links in sentences get 2px above and below. New `--field-line` (#8a8578, 3.7:1 on
+  white; dark #6b7a90) for field and button borders, `--placeholder` (#6b6f78, 5.0:1; dark #8c96a3), `--wait`
+  #7a5400 (6.0:1 on its pill), `--ok` #276e45 (5.3:1); disabled buttons are grey with a dashed edge, not faded.
+- 4: `src/components/app-toaster.tsx`: top centre, 8 s, close button, 16px; `toast.error` defaults to staying until
+  closed.
+- 5, 9, 10 (`register.tsx`): a "Sale #N done. Change due $X" panel with Print receipt and New sale at the top of the
+  right column, kept until the next item; Cash / Card / Check as 56px buttons; pressing one with no amount takes what
+  is due and the amount box then edits that payment ("Cash handed over"), so either order works and the change shows
+  as soon as cash covers the total. The menu folds under a Menu button below 1100px wide (all pages, the `side:`
+  breakpoint), and the sale table fits 1024px (% off, line total and remove visible).
+- 6: register words, "Find the customer" / "Or a new customer's name", "OK to spend up to ($) without calling",
+  "Shop or dealer", route code dropped, "Other part numbers", "Add-ons", "StitchHub" and "Update from StitchHub".
+  Not changed: "Collected by customer" and "Abandoned" (ticket statuses mirror the paper Machine Log, AGENTS.md; the
+  owner decides), and Inventory / Parts naming (needs a choice per kind of shop).
+- 7: customers page and both customer searches: "No customer matches 'dorthy'", near spellings
+  (`src/lib/near-spelling.ts`, plain ILIKE on two-letter word starts, no extension), "Add 'dorthy' as a new customer"
+  (fills the add form), an "Add customer" button at the top. Phone digits already matched.
+- 8: class sign-up at the register: one "Who is signing up?" form with labelled Name and Phone, no error beside it.
+- Screenshots: `ease-of-use-shots/before-*-1024.png` and `after-*-1024.png` (register, cash pressed then typed, after
+  the sale, customer search).
 
 ## Screenshots
 `ease-of-use-shots/`: 01 dashboard (busy shop), 02 first-run dashboard, 03 menu on an upright iPad, 04 register
