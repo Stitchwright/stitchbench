@@ -15,6 +15,8 @@ import { dateIn, fmtDay, monthRange, todayIn } from "@/lib/time-zone";
 import { REPORT_DEFS, type AskParams, type ReportId } from "./registry-defs";
 
 export { REPORT_DEFS, type AskParams, type ReportId } from "./registry-defs";
+import { activeStores, atStore, type Store, type StoreWhere } from "@/lib/stores";
+import { withStoreQty } from "@/lib/stock";
 
 export type ReportResult = {
   id: ReportId;
@@ -44,12 +46,13 @@ function rangeWords(from: string, to: string): string {
 
 const reportsHref = (tab: string, p: AskParams) => `/reports?tab=${tab}&from=${p.from}&to=${p.to}`;
 
-type Ctx = { shopId: string; tz: string; start: Date; end: Date; p: AskParams };
+// store: a store the question named (more than one store, 7.5), else every store together; sw its where-fragment.
+type Ctx = { shopId: string; tz: string; start: Date; end: Date; p: AskParams; store: Store | null; sw: StoreWhere };
 
-async function bestSellers({ shopId, start, end, p }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+async function bestSellers({ shopId, start, end, p, sw }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
   const lines = await db.saleLine.findMany({
     where: {
-      sale: { shopId, status: "COMPLETED", createdAt: { gte: start, lt: end } },
+      sale: { shopId, ...sw, status: "COMPLETED", createdAt: { gte: start, lt: end } },
       partId: { not: null },
       part: { shopId, ...(p.kind ? { kind: p.kind as never } : {}), ...(p.collection ? { collection: { contains: p.collection, mode: "insensitive" as const } } : {}) },
     },
@@ -71,8 +74,8 @@ async function bestSellers({ shopId, start, end, p }: Ctx): Promise<Omit<ReportR
   };
 }
 
-async function slowItems({ shopId, start, p, tz }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
-  const parts = await db.part.findMany({
+async function slowItems({ shopId, start, p, tz, store }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+  const all = await db.part.findMany({
     where: {
       shopId,
       qtyOnHand: { gt: 0 },
@@ -83,10 +86,13 @@ async function slowItems({ shopId, start, p, tz }: Ctx): Promise<Omit<ReportResu
     select: { id: true, partNumber: true, description: true, qtyOnHand: true, unit: true, costCents: true, priceCents: true, createdAt: true },
     take: 5000,
   });
+  // One store (7.5): what is on its shelf, and its own sales.
+  const parts = store ? (await withStoreQty(shopId, all, store)).filter((x) => x.qtyOnHand > 0) : all;
   if (!parts.length) return { columns: [], rows: [], facts: [] };
+  const atSql = !store ? Prisma.empty : store.main ? Prisma.sql` AND (s."locationId" = ${store.id} OR s."locationId" IS NULL)` : Prisma.sql` AND s."locationId" = ${store.id}`;
   const last = await db.$queryRaw<{ partId: string; at: Date }[]>(Prisma.sql`
     SELECT sl."partId", max(s."createdAt") AS at FROM "SaleLine" sl JOIN "Sale" s ON s."id" = sl."saleId"
-    WHERE s."shopId" = ${shopId} AND s."status" = 'COMPLETED' AND sl."qty" > 0 AND sl."partId" = ANY(${parts.map((x) => x.id)}::text[])
+    WHERE s."shopId" = ${shopId} AND s."status" = 'COMPLETED' AND sl."qty" > 0 AND sl."partId" = ANY(${parts.map((x) => x.id)}::text[])${atSql}
     GROUP BY sl."partId"`);
   const lastAt = new Map(last.map((r) => [r.partId, r.at]));
   const slow = parts
@@ -104,8 +110,8 @@ async function slowItems({ shopId, start, p, tz }: Ctx): Promise<Omit<ReportResu
   };
 }
 
-async function salesByKind({ shopId, tz, start, end }: Ctx, margins: boolean): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
-  const r = await salesReport(shopId, tz, start, end, "month");
+async function salesByKind({ shopId, tz, start, end, store }: Ctx, margins: boolean): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+  const r = await salesReport(shopId, tz, start, end, "month", store);
   const cats = r.counterCategories.filter((c) => c.sale && (!margins || c.cost != null));
   if (margins) {
     return {
@@ -141,8 +147,8 @@ async function waitedForParts({ shopId, start, end, p }: Ctx): Promise<Omit<Repo
   };
 }
 
-async function ticketsByStatus({ shopId }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
-  const groups = await db.ticket.groupBy({ by: ["status"], where: { shopId, status: { in: OPEN_STATUSES } }, _count: { _all: true }, _min: { intakeAt: true } });
+async function ticketsByStatus({ shopId, sw }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+  const groups = await db.ticket.groupBy({ by: ["status"], where: { shopId, ...sw, status: { in: OPEN_STATUSES } }, _count: { _all: true }, _min: { intakeAt: true } });
   const now = Date.now();
   const sorted = OPEN_STATUSES.map((s) => groups.find((g) => g.status === s)).filter((g): g is NonNullable<typeof g> => !!g);
   return {
@@ -152,8 +158,8 @@ async function ticketsByStatus({ shopId }: Ctx): Promise<Omit<ReportResult, "id"
   };
 }
 
-async function classFill({ shopId, start, end, p }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
-  const classes = await db.shopClass.findMany({ where: { shopId, status: { not: "CANCELLED" }, firstAt: { gte: start, lt: end } }, select: { id: true, title: true, seats: true }, orderBy: { firstAt: "asc" }, take: 500 });
+async function classFill({ shopId, start, end, p, sw }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+  const classes = await db.shopClass.findMany({ where: { shopId, ...sw, status: { not: "CANCELLED" }, firstAt: { gte: start, lt: end } }, select: { id: true, title: true, seats: true }, orderBy: { firstAt: "asc" }, take: 500 });
   const counts = await seatCounts(db, classes.map((c) => c.id));
   const rows = classes
     .map((c) => {
@@ -177,8 +183,8 @@ async function giftCards({ shopId, start, end }: Ctx): Promise<Omit<ReportResult
   return { columns: [{ label: "" }, { label: "At the start", num: true }, { label: "At the end", num: true }, { label: "Cards with money on", num: true }], rows, facts };
 }
 
-async function discounts({ shopId, start, end, p }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
-  const sales = await db.sale.findMany({ where: { shopId, status: "COMPLETED", createdAt: { gte: start, lt: end } }, select: { discountCents: true, lines: { select: { discountCents: true, promotionId: true, qty: true } } } });
+async function discounts({ shopId, start, end, p, sw }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+  const sales = await db.sale.findMany({ where: { shopId, ...sw, status: "COMPLETED", createdAt: { gte: start, lt: end } }, select: { discountCents: true, lines: { select: { discountCents: true, promotionId: true, qty: true } } } });
   const promoIds = new Set<string>();
   const by = new Map<string, { cents: number; lines: number }>();
   const add = (k: string, c: number) => {
@@ -205,8 +211,8 @@ async function discounts({ shopId, start, end, p }: Ctx): Promise<Omit<ReportRes
   };
 }
 
-async function machinesForSale({ shopId, p }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
-  const units = await db.stockUnit.findMany({ where: { shopId, status: "IN_STOCK" }, select: { createdAt: true, condition: true, priceCents: true, machine: { select: { brand: true, model: true } } }, orderBy: { createdAt: "asc" }, take: p.top });
+async function machinesForSale({ shopId, p, sw }: Ctx): Promise<Omit<ReportResult, "id" | "label" | "title" | "href">> {
+  const units = await db.stockUnit.findMany({ where: { shopId, ...sw, status: "IN_STOCK" }, select: { createdAt: true, condition: true, priceCents: true, machine: { select: { brand: true, model: true } } }, orderBy: { createdAt: "asc" }, take: p.top });
   const now = Date.now();
   return {
     columns: [{ label: "Machine" }, { label: "Condition" }, { label: "Price", num: true }, { label: "Days for sale", num: true }],
@@ -219,7 +225,8 @@ async function machinesForSale({ shopId, p }: Ctx): Promise<Omit<ReportResult, "
 export async function runReport(shopId: string, id: ReportId, p: AskParams): Promise<ReportResult> {
   const tz = (await db.shop.findUnique({ where: { id: shopId }, select: { timeZone: true } }))?.timeZone ?? "America/New_York";
   const { start, end } = monthRange(p.from, p.to, tz);
-  const ctx: Ctx = { shopId, tz, start, end, p };
+  const store = p.store ? ((await activeStores(shopId)).find((s) => s.name === p.store) ?? null) : null;
+  const ctx: Ctx = { shopId, tz, start, end, p, store, sw: atStore(store) };
   const def = REPORT_DEFS.find((d) => d.id === id)!;
   const part =
     id === "best_sellers"
@@ -241,7 +248,7 @@ export async function runReport(shopId: string, id: ReportId, p: AskParams): Pro
                     : id === "discounts"
                       ? await discounts(ctx)
                       : await machinesForSale(ctx);
-  const bits = [(def.params as readonly string[]).includes("dates") ? (id === "slow_items" ? `not sold since ${fmtDay(p.from)}` : rangeWords(p.from, p.to)) : "now", p.kind ? KIND_WORD[p.kind] ?? p.kind.toLowerCase() : null, p.collection ? `"${p.collection}"` : null].filter(Boolean);
+  const bits = [(def.params as readonly string[]).includes("dates") ? (id === "slow_items" ? `not sold since ${fmtDay(p.from)}` : rangeWords(p.from, p.to)) : "now", p.kind ? KIND_WORD[p.kind] ?? p.kind.toLowerCase() : null, p.collection ? `"${p.collection}"` : null, store ? `at ${store.name}` : null].filter(Boolean);
   const href =
     id === "best_sellers" || id === "sales_by_kind" || id === "margins" || id === "discounts"
       ? p.kind === "FABRIC" && id === "best_sellers"
@@ -264,10 +271,12 @@ export async function runReport(shopId: string, id: ReportId, p: AskParams): Pro
 }
 
 /** Today in the shop's zone and its collection names: what the model chooses settings from. */
-export async function askContext(shopId: string): Promise<{ today: string; collections: string[] }> {
-  const [shop, cols] = await Promise.all([
+export async function askContext(shopId: string): Promise<{ today: string; collections: string[]; stores: string[] }> {
+  const [shop, cols, open] = await Promise.all([
     db.shop.findUnique({ where: { id: shopId }, select: { timeZone: true } }),
     db.part.groupBy({ by: ["collection"], where: { shopId, collection: { not: null } }, _count: { collection: true }, orderBy: { _count: { collection: "desc" } }, take: 60 }),
+    activeStores(shopId),
   ]);
-  return { today: todayIn(shop?.timeZone ?? "America/New_York"), collections: cols.map((c) => c.collection).filter((c): c is string => !!c) };
+  // The stores a question may name (only with more than one).
+  return { today: todayIn(shop?.timeZone ?? "America/New_York"), collections: cols.map((c) => c.collection).filter((c): c is string => !!c), stores: open.length > 1 ? open.map((s) => s.name) : [] };
 }

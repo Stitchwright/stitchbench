@@ -10,6 +10,7 @@ import { saleLines } from "@/lib/reports/sales";
 import { NOT_SALE_KINDS } from "@/lib/sale-kind";
 import { lineTotal } from "@/lib/ticket-math";
 import { dateIn } from "@/lib/time-zone";
+import { atStore } from "@/lib/stores";
 
 export type TaxRateRow = {
   /** The rate charged, in percent (0 for an exempt sale or an untaxed ticket). */
@@ -45,7 +46,9 @@ export function stateOf(address: string | null): string {
   return m ? m[1] : "Unknown";
 }
 
-export async function taxReport(shopId: string, tz: string, start: Date, end: Date): Promise<TaxReport> {
+export async function taxReport(shopId: string, tz: string, start: Date, end: Date, store: { id: string; main: boolean } | null = null): Promise<TaxReport> {
+  // One store's return (shop-features-round-2-design.md 7.4: each state's), or every store's together (null).
+  const sw = atStore(store);
   const rates = new Map<number, TaxRateRow>();
   const rate = (r: number) => {
     let x = rates.get(r);
@@ -57,11 +60,11 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
   const inRange = (d: Date | null) => d != null && d >= start && d < end;
 
   // Sales the tax of which Stripe worked out are reported apart.
-  const stripeOrders = await db.webOrder.findMany({ where: { shopId, taxVia: "stripe", saleId: { not: null } }, select: { number: true, saleId: true, address: true, fulfil: true, status: true, tracking: true } });
+  const stripeOrders = await db.webOrder.findMany({ where: { shopId, ...sw, taxVia: "stripe", saleId: { not: null } }, select: { number: true, saleId: true, address: true, fulfil: true, status: true, tracking: true } });
   const stripeBySale = new Map(stripeOrders.map((o) => [o.saleId!, o]));
 
   const sales = await db.sale.findMany({
-    where: { shopId, OR: [{ createdAt: { gte: start, lt: end } }, { status: "VOIDED", voidedAt: { gte: start, lt: end } }] },
+    where: { shopId, ...sw, OR: [{ createdAt: { gte: start, lt: end } }, { status: "VOIDED", voidedAt: { gte: start, lt: end } }] },
     include: { lines: { include: { part: { select: { kind: true } } } }, customer: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
@@ -106,7 +109,7 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
 
   // Repairs: the tax is due when the machine goes home.
   const tickets = await db.ticket.findMany({
-    where: { shopId, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
+    where: { shopId, ...sw, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
     include: { lines: true, customer: { select: { name: true } } },
   });
   for (const t of tickets) {

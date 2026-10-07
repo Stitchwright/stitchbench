@@ -23,6 +23,8 @@ import { MapPriceSection } from "@/components/map-price";
 import { ConsignSection } from "@/components/paperwork/consign-parts";
 import { ListedSection } from "@/components/listed-elsewhere";
 import { db } from "@/lib/db";
+import { activeStores } from "@/lib/stores";
+import { sendUnit } from "@/actions/transfers";
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -30,7 +32,10 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
   const u = await unitDetail(user.shopId, id);
   if (!u) notFound();
   // Round 2, phase 6 (shop-features-round-2-design.md section 9): the maker's minimum advertised price.
-  const extra = await db.stockUnit.findFirstOrThrow({ where: { id: u.id, shopId: user.shopId }, select: { mapCents: true, consignorId: true, consignPct: true, consignUntil: true, listedOn: true } });
+  const extra = await db.stockUnit.findFirstOrThrow({ where: { id: u.id, shopId: user.shopId }, select: { mapCents: true, consignorId: true, consignPct: true, consignUntil: true, listedOn: true, locationId: true } });
+  // More than one store (7.2): where it is, and sending it to another store.
+  const stores = await activeStores(user.shopId);
+  const at = stores.length > 1 ? ((extra.locationId ? stores.find((s) => s.id === extra.locationId) : null) ?? stores.find((s) => s.main) ?? null) : null;
   const [tz, kind, plans, terms, workable] = await Promise.all([
     shopTimeZone(user.shopId),
     kindOf(user.shopId, { equipment: u.equipment, kind: u.kind }),
@@ -56,9 +61,29 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
             <span>{UNIT_CONDITION_LABEL[u.condition] ?? u.condition}</span>
             <span>{kind.label}</span>
             {u.serial && <span className="mono">S/N {u.serial}</span>}
+            {at && <span className="pill tone-neutral">At {at.name}</span>}
           </span>
         }
       />
+      {at && u.status === "IN_STOCK" && (
+        <ActionForm action={sendUnit.bind(null, u.id)} success="Sent" className="card card-pad flex flex-wrap items-end gap-2">
+          <div className="field">
+            <label htmlFor="send-unit-to" className="label">
+              Send it to another store
+            </label>
+            <select id="send-unit-to" name="toId" className="select w-56">
+              {stores
+                .filter((s) => s.id !== at.id)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <Submit className="btn">Send</Submit>
+        </ActionForm>
+      )}
       {!workable && <p className="card card-pad text-sm">{kind.label}s can&apos;t be sold or changed while their module is off. Returns and warranty registration still work.</p>}
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">

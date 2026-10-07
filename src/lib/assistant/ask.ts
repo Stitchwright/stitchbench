@@ -29,11 +29,11 @@ export async function askShop(user: Pick<CurrentUser, "id" | "shopId" | "role">,
   const q = String(question ?? "").trim().replace(/\s+/g, " ");
   if (q.length < 3) throw new UserError("Type a question first, like \"Which fabric sold best this month?\"");
   if (q.length > 300) throw new UserError("Keep the question to a sentence or two (300 characters).");
-  const [{ today, collections }, everyone] = await Promise.all([askContext(user.shopId), db.customer.findMany({ where: { shopId: user.shopId }, select: { name: true }, take: 5000 })]);
+  const [{ today, collections, stores }, everyone] = await Promise.all([askContext(user.shopId), db.customer.findMany({ where: { shopId: user.shopId }, select: { name: true }, take: 5000 })]);
   const redaction = { names: namesToBlank({ allCustomers: everyone.map((c) => c.name) }) };
 
-  const first = await runAssistant({ shopId: user.shopId, userId: user.id, built: buildAskChoose(q, today, collections, redaction) });
-  const choice = parseAskChoice(first.text, today, collections);
+  const first = await runAssistant({ shopId: user.shopId, userId: user.id, built: buildAskChoose(q, today, collections, redaction, stores) });
+  const choice = parseAskChoice(first.text, today, collections, stores);
   if (!choice || choice.report === "none") {
     return { answer: CANT_ANSWER, report: null, cant: REPORT_DEFS.map((d) => ({ label: d.label, example: d.example })), callIds: [first.row.id] };
   }

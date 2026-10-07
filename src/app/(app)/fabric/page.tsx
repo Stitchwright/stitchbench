@@ -20,6 +20,9 @@ import { insightCards } from "@/lib/assistant/insight-words";
 import { ReorderTab } from "./reorder-tab";
 import { KitsTab } from "./kits-tab";
 import { ClubsTab } from "./clubs-tab";
+import { hereForPage, moveSuggestionsFor, type MoveSuggestion } from "@/lib/store-orders";
+import { sendItem } from "@/actions/transfers";
+import { ActionForm, Submit } from "@/components/action-form";
 
 type Tab = "bolt" | "sells" | "slow" | "reorder" | "kits" | "clubs";
 
@@ -86,7 +89,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
       </nav>
       {tab === "bolt" && bolt && <BoltEnds shopId={user.shopId} rows={bolt.rows} limit={bolt.limit} />}
       {tab === "sells" && insight && <WhatSells insight={insight} tagEntry={await entryFor(user.shopId, "fabric")} />}
-      {tab === "slow" && insight && <SlowFabric insight={insight} entry={await entryFor(user.shopId, "fabric")} />}
+      {tab === "slow" && insight && <SlowFabric insight={insight} entry={await entryFor(user.shopId, "fabric")} moves={new Map((await moveSuggestionsFor(user.shopId, await hereForPage(user), { fabricOnly: true, take: 200 })).map((m) => [m.partId, m]))} />}
       {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
       {tab === "kits" && <KitsTab shopId={user.shopId} />}
       {tab === "clubs" && <ClubsTab shopId={user.shopId} canStart={user.role !== "TECH"} />}
@@ -298,7 +301,7 @@ function Gmroi({ title, rows, windowDays, good, review }: { title: string; rows:
 
 const STAGE = { watch: "Watch", markdown: "First markdown", clearance: "Clearance" } as const;
 
-function SlowFabric({ insight, entry }: { insight: Insight; entry: Entry }) {
+function SlowFabric({ insight, entry, moves }: { insight: Insight; entry: Entry; moves: Map<string, MoveSuggestion> }) {
   const { slow, settings: s } = insight;
   if (slow.length === 0) {
     return (
@@ -320,7 +323,7 @@ function SlowFabric({ insight, entry }: { insight: Insight; entry: Entry }) {
       <div className="card">
         <ul className="divide-y divide-line" aria-label="Slow fabric">
           {slow.slice(0, MAX_ROWS).map((r) => (
-            <SlowItem key={r.item.id} r={r} />
+            <SlowItem key={r.item.id} r={r} move={moves.get(r.item.id) ?? null} />
           ))}
         </ul>
       </div>
@@ -328,7 +331,7 @@ function SlowFabric({ insight, entry }: { insight: Insight; entry: Entry }) {
   );
 }
 
-function SlowItem({ r }: { r: SlowRow }) {
+function SlowItem({ r, move }: { r: SlowRow; move: MoveSuggestion | null }) {
   const { item: i, ladder: l, convert: c } = r;
   const a = i.aged!;
   const tone = r.stage === "clearance" ? "tone-bad" : r.stage === "markdown" ? "tone-wait" : "tone-neutral";
@@ -379,6 +382,17 @@ function SlowItem({ r }: { r: SlowRow }) {
           <FabricMarkdown id={i.id} source="slow" offer={l.offer} undo={l.undo} stopped={l.stopped} highlight={c?.better === "markdown"} />
           {c?.better === "markdown" && <FabricCuts id={i.id} yards={i.qty} hasPrice={i.priceCents != null} fqOnly />}
         </div>
+        {/* More than one store (7.3): it sells at another store. A suggestion only: Send it there fills in a transfer. */}
+        {move && (
+          <ActionForm action={sendItem.bind(null, i.id)} success="Sent" id={`sells-faster-${i.id}`} className="flex flex-wrap items-center gap-2 rounded border border-line p-2 text-sm">
+            <span className="font-semibold">{move.words}.</span>
+            <input type="hidden" name="toId" value={move.to.id} />
+            <label className="flex items-center gap-1">
+              Send <input name="qty" className="input num w-20" inputMode="decimal" defaultValue={move.qtyHere} aria-label={`Yards of ${i.partNumber} to send`} /> yd
+            </label>
+            <Submit className="btn btn-sm">Send it there</Submit>
+          </ActionForm>
+        )}
       </div>
     </li>
   );
