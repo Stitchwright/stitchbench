@@ -2,6 +2,7 @@
 // "usable" rule (module on, kind active) are in ./shop.ts (server).
 import type { ModuleId } from "@/lib/module-info";
 import { APPLIANCE_KINDS } from "./appliances";
+import { MAKER_KINDS } from "./maker";
 import { cleanFieldDefs } from "./form";
 import { SEWING_KIND } from "./sewing";
 import type { Equipment, EquipmentKind } from "./types";
@@ -12,8 +13,10 @@ export const EQUIPMENT_LABEL: Record<Equipment, string> = { SEWING: "sewing mach
 
 export const isEquipment = (s: unknown): s is Equipment => s === "SEWING" || s === "VACUUM" || s === "APPLIANCE";
 
-export const BUILT_IN_KINDS: EquipmentKind[] = [SEWING_KIND, VACUUM_KIND, ...APPLIANCE_KINDS];
+export const BUILT_IN_KINDS: EquipmentKind[] = [SEWING_KIND, VACUUM_KIND, ...APPLIANCE_KINDS, ...MAKER_KINDS];
 export const BUILT_IN_KEYS = BUILT_IN_KINDS.map((k) => k.key);
+/** The kinds sold as machines for sale with no module (shop-features-round-2-design.md 6.1). */
+export const SELL_FREE_KEYS = BUILT_IN_KINDS.filter((k) => k.sellFree).map((k) => k.key);
 
 export function builtInKind(key: string | null | undefined): EquipmentKind | undefined {
   return BUILT_IN_KINDS.find((k) => k.key === key);

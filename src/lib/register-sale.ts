@@ -29,6 +29,7 @@ import { prepareFinanced, recordFinanced, voidFinanced } from "@/lib/financing";
 import { promotionsOn } from "@/lib/promotions";
 import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
 import { holidayCovers } from "@/lib/tax-holiday-math";
+import { applySoftwareLine, prepareSoftwareLine, voidSoftwareOfSale, type PreparedSoftware, type SoftwareLineInput } from "@/lib/software";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -62,6 +63,8 @@ export type SaleLineInput = {
   taxAnyway?: boolean;
   /** Layaway money (src/lib/layaway.ts only, with opts.layaway): a payment or the payments used up / given back, or its cancel fee. */
   layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
+  /** A software item (shop-features-round-2-design.md 2.5): its code, "later", the machine it is for, the licence it renews, a return's reason. */
+  software?: SoftwareLineInput | null;
 };
 
 export type SaleInput = {
@@ -173,6 +176,14 @@ export async function completeSaleAs(
       if (!l.servicePlan) continue;
       if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId, l.giftCard].some(Boolean)) throw new UserError("A line can only be one thing.");
       planLines.set(i, await preparePlanLine({ shopId, role: user.role, customerId: input.customerId ?? null, unitIdsOnSale }, l.servicePlan, Number(l.qty), Number(l.unitPriceCents)));
+    }
+
+    // Software licences (2.5), checked by the server (by line index): one a line, the code or the drawer, a renewal, a return.
+    const softLines = new Map<number, PreparedSoftware>();
+    for (const [i, l] of input.lines.entries()) {
+      const part = l.partId ? parts.get(l.partId) : null;
+      if (part?.kind !== "SOFTWARE") continue;
+      softLines.set(i, await prepareSoftwareLine({ shopId, role: priceRole, customerId: input.customerId ?? null, returnOfSaleId: typeof input.returnOfSaleId === "string" ? input.returnOfSaleId : null }, part, Number(l.qty), l.software));
     }
 
     // Gift card lines (sold, loaded, paid out), checked and priced by the server (by line index).
@@ -295,6 +306,8 @@ export async function completeSaleAs(
         }
       }
       if (part) {
+        // A machine model is ordered, not sold: what arrives is a machine for sale (shop-features-round-2-design.md 2.3).
+        if (part.kind === "MACHINE") throw new UserError(`${part.partNumber} is a machine model to order. Sell the machine itself under Machine for sale.`);
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
         if (part.unit === "yd" && !inEighths(qty) && !remnants.has(part.id)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
         if (priceRole === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
@@ -508,6 +521,8 @@ export async function completeSaleAs(
           const plan = planLines.get(i);
           if (plan) await applyPlanLine(tx, { shopId, at, timeZone: shop.timeZone, line, prepared: plan });
           if (l.enrollmentId || l.appointmentId) await settleBooking(tx, shopId, l, line.id, at);
+          const soft = softLines.get(i);
+          if (soft) await applySoftwareLine(tx, { shopId, at, timeZone: shop.timeZone, saleId: sale.id, saleLineId: line.id, saleNumber: number, customerId, activatedAtSale: shop.softwareActivatedAtSale, actor }, soft);
           if (l.partId) {
             await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
             await tx.stockMove.create({
@@ -664,6 +679,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await reverseSale(tx, actorOf(user), sale.id, sale.number);
     // Financing on it is voided too (refused once the lender has paid).
     await voidFinanced(tx, { shopId, saleId: sale.id, at });
+    // Software licences it sold go away (refused once renewed or returned); one it took back is active again.
+    await voidSoftwareOfSale(tx, shopId, sale.id, sale.lines.map((l) => l.id));
     // Machines sold go back in stock (their plans end); trade-ins taken come back out.
     await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at, saleAt: sale.createdAt });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.
@@ -673,6 +690,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     const layawayVoid = sale.lines.some((l) => l.layawayId);
     // A quilt collected on this sale is back on the shelf (ready, not collected).
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
+    // A print or cut job collected on it likewise (shop-features-round-2-design.md 6.5), its file kept again.
+    await tx.makeJob.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, closedAt: null, saleId: null, fileDeleteAfter: null } });
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);

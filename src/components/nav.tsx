@@ -34,6 +34,7 @@ import {
   Scissors,
   Ruler,
   Tag,
+  Printer,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
@@ -52,6 +53,8 @@ const items: Item[] = [
   // Machines for sale (tax-machine-sales-layaway-design.md section 3): every shop with a counter.
   { href: "/units", label: "Machines for sale", icon: Tag, retail: true },
   { href: "/vac", label: "Vac Shop", icon: Fan, module: "vac" },
+  // Maker Shop (shop-features-round-2-design.md section 6): supplies due, maker-space time, print and cut jobs.
+  { href: "/maker", label: "Maker Shop", icon: Printer, module: "maker" },
   { href: "/customers", label: "Customers", icon: Users },
   // Scheduling: the calendar (its Staff tab is the staff schedule) for every company; classes need a counter.
   { href: "/calendar", label: "Calendar", icon: CalendarDays, module: "scheduling" },

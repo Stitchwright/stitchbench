@@ -96,6 +96,11 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
     // Ready-for-pickup and parts-in notices and estimate links are in the base since 7 Oct 2026 (pricing-review-2026-10.md).
     blurb: "Email and text marketing: campaigns, service reminders, review requests, not-picked-up notices, class and appointment reminders, and customer import.",
   },
+  maker: {
+    label: "Maker Shop",
+    href: "/maker",
+    blurb: "For shops that sell 3D printers, cutters and lasers: running-low reminders for printer and cutter owners, maker-space time on your own printer or laser, and print and cut jobs from quote to pickup.",
+  },
   assistant: {
     label: "Assistant",
     href: "/settings/assistant",

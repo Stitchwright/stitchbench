@@ -11,12 +11,12 @@ import { str } from "@/lib/format";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { ORDER_FIELDS, ORDER_SELECT, type OrderSettings } from "@/lib/fabric-orders-math";
-import { addLineFor, addToDraftFor, cancelOrderFor, closeOrderFor, createOrderFor, receiveOrderFor, saveConnectorFor, saveOrderFor, saveSupplierFor, sendOrderFor } from "@/lib/fabric-orders";
+import { addItemsToDraftFor, addLineFor, addToDraftFor, cancelOrderFor, closeOrderFor, createOrderFor, ensureSupplierFor, orderOneFor, receiveOrderFor, saveConnectorFor, saveOrderFor, saveSupplierFor, sendOrderFor } from "@/lib/fabric-orders";
 
 const refresh = (id?: string) => {
   revalidatePath("/fabric");
-  revalidatePath("/parts");
-  if (id) revalidatePath(`/fabric/orders/${id}`);
+  revalidatePath("/parts", "layout");
+  if (id) revalidatePath(`/parts/orders/${id}`);
 };
 
 /** Reorder tab: the ticked rows (pick.<id> with bolts.<id>) onto draft orders, one per supplier. */
@@ -35,11 +35,47 @@ export const addReorderToDrafts = safe(async function addReorderToDrafts(formDat
   return noted(text);
 });
 
+/** Orders page (shop-features-round-2-design.md 1.1): the ticked items (pick.<id> with qty.<id> pieces) onto draft orders, one per supplier. */
+export const addItemsToOrders = safe(async function addItemsToOrders(formData: FormData) {
+  const user = await requireUser();
+  const picks: { partId: string; qty: number }[] = [];
+  for (const [k, v] of formData.entries()) {
+    if (!k.startsWith("pick.") || !v) continue;
+    const partId = k.slice(5);
+    const qty = Number(str(formData.get(`qty.${partId}`)) ?? "");
+    if (!Number.isFinite(qty) || qty <= 0) throw new UserError("Enter how many for each ticked item.");
+    picks.push({ partId, qty });
+  }
+  const text = await addItemsToDraftFor(user, picks);
+  refresh();
+  return noted(text);
+});
+
+/** An item's own page: "Order more" puts it on its supplier's draft order. */
+export const orderMore = safe(async function orderMore(partId: string, formData: FormData) {
+  const user = await requireUser();
+  const qty = Number(str(formData.get("qty")) ?? "");
+  if (!Number.isFinite(qty) || qty <= 0) throw new UserError("Enter how many to order.");
+  const text = await orderOneFor(user, partId, qty);
+  refresh();
+  revalidatePath(`/parts/${partId}`);
+  return noted(text);
+});
+
 export const startOrder = safe(async function startOrder(formData: FormData) {
   const user = await requireUser();
   const id = await createOrderFor(user, str(formData.get("supplier")) ?? "");
   refresh();
-  redirect(`/fabric/orders/${id}`);
+  redirect(`/parts/orders/${id}`);
+});
+
+/** Orders page: a supplier by name, ready for its list to be brought in (nothing else about an existing one changes). */
+export const addSupplier = safe(async function addSupplier(formData: FormData) {
+  const user = await requireAdmin();
+  const name = str(formData.get("name")) ?? "";
+  await ensureSupplierFor(user, name);
+  refresh();
+  return noted(`${name.trim()} is ready: open it below to bring in its list.`);
 });
 
 export const saveSupplier = safe(async function saveSupplier(formData: FormData) {
@@ -98,7 +134,7 @@ export const cancelOrder = safe(async function cancelOrder(orderId: string) {
   return noted(text);
 });
 
-/** Suggestions for the "add a line" box: the shop's own fabric by number or words (25 at most). */
+/** Suggestions for the "add a line" box: the shop's own items (any kind since package po-any-item) by number or words (25 at most). */
 export async function findFabricItems(q: string): Promise<string[]> {
   const user = await requireUser();
   const t = String(q ?? "").trim().slice(0, 60);
@@ -107,8 +143,6 @@ export async function findFabricItems(q: string): Promise<string[]> {
   const parts = await db.part.findMany({
     where: {
       shopId: user.shopId,
-      kind: "FABRIC",
-      unit: "yd",
       consignLinkId: null,
       OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
     },

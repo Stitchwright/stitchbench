@@ -46,6 +46,13 @@ export type EquipmentKind = {
   panels: { tension: boolean; timing: boolean }; // sewing only
   links: (brand: string, model: string) => QuickLink[];
   builtIn: boolean;
+  /**
+   * Sold as a machine for sale with no module (shop-features-round-2-design.md 6.1): 3D and resin printers, craft and
+   * die cutters, lasers. Repairing them stays the Small Appliance Repair module's. Sewing machines always sell free.
+   */
+  sellFree?: boolean;
+  /** A machine for sale of this kind may come without a serial number (fabric die cutters). */
+  serialOptional?: boolean;
 };
 
 /** "a vacuum" / "an appliance": the article from the first letter. */

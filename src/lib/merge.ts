@@ -50,6 +50,9 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
   { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
+  { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
+  { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
+  { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -63,9 +66,11 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "SaleLine", field: "machineId", via: "sale", label: ["sale line (supplies bought for it)", "sale lines (supplies bought for it)"] },
   { model: "StockUnit", field: "machineId", one: true, label: ["for-sale stock record", "for-sale stock records"] },
   { model: "VacCare", field: "machineId", one: true, label: ["bag reminder setting", "bag reminder settings"] },
+  { model: "SuppliesCare", field: "machineId", one: true, label: ["supplies reminder setting", "supplies reminder settings"] },
   { model: "MachinePlan", field: "machineId", label: ["service plan", "service plans"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
+  { model: "SoftwareLicense", field: "machineId", label: ["software licence", "software licences"] },
 ];
 
 /** What a deleted customer's kept rows say instead of their name. */
@@ -253,6 +258,10 @@ export async function mergeCustomersFor(user: CurrentUser, fromId: string, intoI
     const theirSeries = new Set((await tx.kitSeriesMember.findMany({ where: { shopId, customerId: into.id }, select: { seriesId: true } })).map((x) => x.seriesId));
     const seriesClash = (await tx.kitSeriesMember.findMany({ where: { shopId, customerId: from.id }, select: { id: true, seriesId: true } })).filter((x) => theirSeries.has(x.seriesId));
     if (seriesClash.length) await tx.kitSeriesMember.deleteMany({ where: { shopId, id: { in: seriesClash.map((x) => x.id) } } });
+    // Certified on the same machine on both: the kept record's certification stands (one a machine).
+    const theirCerts = new Set((await tx.certification.findMany({ where: { shopId, customerId: into.id }, select: { equipment: true } })).map((x) => x.equipment.toLowerCase()));
+    const certClash = (await tx.certification.findMany({ where: { shopId, customerId: from.id }, select: { id: true, equipment: true } })).filter((x) => theirCerts.has(x.equipment.toLowerCase()));
+    if (certClash.length) await tx.certification.deleteMany({ where: { shopId, id: { in: certClash.map((x) => x.id) } } });
     for (const r of CUSTOMER_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await replaceInLists(tx, shopId, from.id, into.id);
     await tx.customer.update({ where: { id: into.id }, data: customerFill(from, into, date).data });
@@ -312,6 +321,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   }
   for (const q of await tx.longarmOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["RECEIVED", "ON_FRAME", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Quilting work order #${q.number} isn't collected yet. Finish or cancel it first.`);
+  }
+  for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
   }
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
@@ -379,6 +391,9 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
+  add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
+  add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
@@ -417,6 +432,7 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.enrollment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, attendee: null, note: null } });
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
+    await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });
@@ -546,6 +562,8 @@ export async function mergeMachinesFor(user: CurrentUser, fromId: string, intoId
       await tx.vacCare.update({ where: { machineId: into.id }, data: vacCombine(from.vacCare, into.vacCare) });
       await tx.vacCare.delete({ where: { machineId: from.id } });
     }
+    // Maker Shop's supplies-due marks: the kept machine's stay when both have them (one row per machine).
+    if ((await tx.suppliesCare.count({ where: { machineId: { in: [from.id, into.id] } } })) === 2) await tx.suppliesCare.delete({ where: { machineId: from.id } });
     for (const r of MACHINE_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await tx.machine.update({ where: { id: into.id }, data: machineFill(from, into, date).data });
     await tx.machine.delete({ where: { id: from.id } });
@@ -579,6 +597,7 @@ export async function machineDeletePlan(user: CurrentUser, machineId: string): P
   };
   add(n["MachinePhoto.machineId"], ["photo", "photos"], "deleted");
   add(n["VacCare.machineId"], ["bag reminder setting", "bag reminder settings"], "deleted");
+  add(n["SuppliesCare.machineId"], ["supplies reminder setting", "supplies reminder settings"], "deleted");
   add(n["SaleLine.machineId"], ["sale line", "sale lines"], "kept in the books, no longer naming it");
   add(n["RepairJob.machineId"], ["partner repair", "partner repairs"], "kept, without the link (they keep the brand, model and serial)");
   const queued = await db.outMessage.count({ where: { shopId, refType: "machine", refId: m.id, status: "QUEUED" } });

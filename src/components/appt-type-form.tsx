@@ -10,6 +10,8 @@ export type ApptTypeDraft = {
   feeCents: number;
   hourlyCents?: number | null;
   needsCert?: boolean;
+  /** Certified on which machine (6.4); empty with needsCert: the longarm. */
+  certFor?: string | null;
   taxable: boolean;
   capacity: number;
   resource: string | null;
@@ -81,7 +83,13 @@ export function ApptTypeForm({ action, draft }: { action: (fd: FormData) => Prom
           <input type="checkbox" name="taxable" className="check" defaultChecked={draft?.taxable ?? false} /> Taxable
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" name="needsCert" className="check" defaultChecked={draft?.needsCert ?? false} /> Certified customers only (not bookable online)
+          <input type="checkbox" name="needsCert" className="check" defaultChecked={draft?.needsCert ?? false} /> Certified customers only (not bookable online), on the
+          <input name="certFor" list="cert-machines" className="input w-36" defaultValue={draft?.certFor ?? (draft?.needsCert ? "Longarm" : "")} placeholder="Longarm" aria-label="Certified on which machine" />
+          <datalist id="cert-machines">
+            {["Longarm", "Laser", "3D printer", "Resin printer", "Craft cutter"].map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
         </label>
         <label className="flex items-center gap-2">
           <input type="hidden" name="active" value="off" />
