@@ -1231,6 +1231,12 @@ accounts and billing: design first).
    request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
    ten owner questions in its section 7: **all answered as recommended (7 Oct); building on branch `sales-features`**.
 
+27. **Machine sales and phase 2 ship with the hub-night release** (owner, 7 Oct 2026, reversing "after the test
+   month"): `sales-features` (machines for sale, layaway, tax holidays, financing, promotions) and `phase2-selling`
+   (any-item POs, thread/supply details, colour lookup, distributor import incl. machines, fits-machines, software codes,
+   maker machines, Maker Shop module) merge into the release after: the release merged into them, full checks, a max
+   review of the new code with fixes, new Playwright specs for the new screens, and the whole regression. Order in chat.
+
 25. **Everything in the shop research** (owner, 7 Oct 2026: "I want it all"): every recommendation in
    `docs/research/shop-retail-features-and-ai.md` except the two it says not to build, plus selling thread, accessories
    and software. Design: `docs/plans/shop-features-round-2-design.md` (done; every question answered as recommended, 7 Oct), built
