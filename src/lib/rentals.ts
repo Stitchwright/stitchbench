@@ -15,7 +15,7 @@ import { money, str } from "@/lib/format";
 import { lineNet, TENDER_METHODS, type Tender } from "@/lib/register-math";
 import { completeSaleAs } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
-import { addDays, addMonths, ymdOf } from "@/lib/zoned";
+import { addDays, monthsOn, ymdOf } from "@/lib/zoned";
 import { pushEvent, unitDescription } from "@/lib/units/units";
 import { makePayLinkFor } from "@/lib/pay-links";
 import { currentStoreId } from "@/lib/stores";
@@ -28,7 +28,7 @@ const isPer = (s: unknown): s is RatePer => (RATE_PERS as readonly string[]).inc
 export function periodsAfter(ymd: string, per: RatePer, n: number): string {
   if (per === "day") return addDays(ymd, n);
   if (per === "week") return addDays(ymd, 7 * n);
-  return addMonths(ymd, n) ?? addDays(ymd, 30 * n);
+  return monthsOn(ymd, n);
 }
 
 function tenderOf(t: Tender | null | undefined, amountCents: number): Tender[] {
@@ -150,7 +150,7 @@ export async function rentOutFor(user: CurrentUser, input: RentInput): Promise<{
   const loan = await db.$transaction(async (tx) => {
     if (await tx.unitLoan.count({ where: { shopId, unitId: unit.id, backAt: null } })) throw new UserError(`${unitDescription(unit)} is out already.`);
     const made = await tx.unitLoan.create({
-      data: { shopId, locationId: here, unitId: unit.id, kind: "RENTAL", customerId: customer.id, rateCents: rate, ratePer: input.ratePer, ownPct, ownUntil: ownPct && ownMonths ? addMonths(today, ownMonths) : null, dueOn: periodsAfter(today, input.ratePer as RatePer, periods), conditionOut: "Good", createdById: user.id },
+      data: { shopId, locationId: here, unitId: unit.id, kind: "RENTAL", customerId: customer.id, rateCents: rate, ratePer: input.ratePer, ownPct, ownUntil: ownPct && ownMonths ? monthsOn(today, ownMonths) : null, dueOn: periodsAfter(today, input.ratePer as RatePer, periods), conditionOut: "Good", createdById: user.id },
     });
     await tx.stockUnit.update({ where: { id: unit.id }, data: { events: pushEvent(unit.events, { at: new Date().toISOString(), note: `Rented out at ${money(rate)} a ${input.ratePer} (${user.name})` }) } });
     return made;

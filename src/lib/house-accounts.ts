@@ -104,6 +104,11 @@ export async function accountFromTicketPayment(tx: Tx, a: { shopId: string; cust
   const acct = await tx.houseAccount.findFirst({ where: { shopId: a.shopId, customerId: a.customerId } });
   if (!acct) return;
   if (a.amountCents > 0 && acct.status !== "OPEN") throw new UserError("Her account is closed to new charges.");
+  // Within her limit, as at the register (read in this transaction).
+  if (a.amountCents > 0 && acct.limitCents > 0) {
+    const owed = balanceOf(await entriesOf(tx, acct.id));
+    if (owed + a.amountCents > acct.limitCents) throw new UserError(`That's over her ${money(acct.limitCents)} limit: she owes ${money(owed)} already.`);
+  }
   await tx.accountEntry.create({ data: { shopId: a.shopId, accountId: acct.id, kind: "CHARGE", amountCents: a.amountCents, ticketId: a.ticketId, paymentId: a.paymentId, note: `Ticket #${String(a.ticketNumber).padStart(4, "0")}`, byUserId: a.userId } });
 }
 

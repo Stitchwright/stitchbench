@@ -28,7 +28,9 @@ export function roundUp(cents: number, round: Rounding): number {
 
 /** The new price for a raise of `pct` percent, rounded; never below the old price. */
 export function raised(oldCents: number, pct: number, round: Rounding): number {
-  return Math.max(oldCents, roundUp(oldCents * (1 + pct / 100), round));
+  // In whole numbers (thousandths of a percent): $10.00 + 10% is exactly 1100 cents, not 1100.0000000000002 rounded up a step.
+  const per = Math.round((100 + pct) * 1000);
+  return Math.max(oldCents, roundUp(Math.ceil((Math.round(oldCents) * per) / 100_000), round));
 }
 
 /** The margin as a percent of the price ((price - cost) / price), or null without both. */
@@ -55,7 +57,8 @@ export const floorFor = (f: Floors, kind: string): number | null => f[kind] ?? f
 
 /** The price that brings an item up to its floor, rounded the shop's way; never below its price now. */
 export function floorPrice(priceCents: number, costCents: number, floor: number, round: Rounding): number {
-  return Math.max(priceCents, roundUp(costCents / (1 - floor / 100), round));
+  // Whole numbers: a cost of $3.00 at a 25% floor is exactly $4.00.
+  return Math.max(priceCents, roundUp(Math.ceil((Math.round(costCents) * 100) / (100 - Math.round(floor))), round));
 }
 
 /** True when the item has a price and a cost and its margin is under its floor. */
