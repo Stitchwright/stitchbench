@@ -184,6 +184,8 @@ export async function moveStock(partId: string, formData: FormData): Promise<Act
     // A partner's consigned stock is placed, counted and taken back by the partner; receiving the shop's own units into
     // it would pay the partner for them when they sell.
     if (p.consignLinkId) throw new UserError(`${p.partNumber} is a partner's consigned stock: its stock comes and goes through the partnership. Add your own stock as a separate item.`);
+    // A machine model's stock is its machines for sale (shop-features-round-2-design.md 2.3), received with serial numbers.
+    if (p.kind === "MACHINE") throw new UserError(`${p.partNumber} is a machine model: add the machines that came under Machines for sale, or receive its order with their serial numbers.`);
     const mode = str(formData.get("mode"));
     const raw = Number(str(formData.get("qty")) ?? "NaN");
     if (!Number.isFinite(raw)) throw new UserError("Enter a quantity.");

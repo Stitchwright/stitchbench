@@ -294,3 +294,12 @@ export const VINYL_TYPES = ["Permanent", "Removable", "Heat transfer (iron-on)",
 export const VINYL_SIZES = ["12 x 12 in sheet", "12 in x 3 ft roll", "12 in x 5 ft roll", "12 in x 12 ft roll"] as const;
 export const LASER_MATERIALS = ["Birch plywood", "Basswood", "MDF", "Acrylic", "Cork", "Leather", "Cardstock", "Felt", "Fabric"] as const;
 export const LASER_THICKNESSES = ["1.5 mm", "3 mm", "4 mm", "6 mm"] as const;
+
+// Machine models a shop orders from a distributor's list (shop-features-round-2-design.md 2.3): what kind of machine
+// each is, by the machines-for-sale kind it becomes when it arrives (src/lib/units/). Labels are what the shop picks.
+export const MACHINE_MODEL_KINDS = [
+  { key: "sewing", label: "Sewing, embroidery, serger or quilting machine" },
+  { key: "vacuum", label: "Vacuum" },
+  { key: "3d-printer", label: "3D printer" },
+  { key: "resin-printer", label: "Resin printer" },
+] as const;

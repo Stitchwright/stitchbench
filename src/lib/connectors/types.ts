@@ -17,6 +17,7 @@ export const CATALOG_FIELDS = [
   { key: "colorNumber", group: "details", label: "Color number (the maker's)", hints: ["color number", "color #", "color no", "colour number", "shade", "shade number", "color code"] },
   { key: "colorName", group: "details", label: "Color name", hints: ["color name", "colour name", "shade name"] },
   { key: "description", group: "main", label: "Description", hints: ["description", "item description", "product name", "name", "title", "color", "colorway"] },
+  { key: "upc", group: "main", label: "Barcode (UPC or EAN)", hints: ["upc", "ean", "gtin", "barcode", "upc code"] },
   { key: "kind", group: "main", label: "Type (thread, notion, fabric...)", hints: ["type", "category", "product type", "department", "class"] },
   { key: "costPerYard", group: "main", label: "Your cost (a yard, or each)", hints: ["cost", "wholesale", "wholesale price", "wholesale cost", "net price", "net", "your price", "price per yard", "cost per yard", "cost/yd", "cost each"] },
   { key: "pricePerYard", group: "main", label: "Retail price (a yard, or each)", hints: ["retail", "retail price", "msrp", "srp", "list price", "suggested retail"] },
@@ -30,6 +31,8 @@ export const CATALOG_FIELDS = [
   { key: "diameter", group: "details", label: "Filament diameter", hints: ["diameter", "filament diameter"] },
   { key: "spool", group: "details", label: "Spool weight (filament)", hints: ["spool weight", "net weight", "grams"] },
   { key: "size", group: "details", label: "Size (sheet, roll, mat)", hints: ["size", "dimensions", "sheet size", "roll size"] },
+  { key: "model", group: "details", label: "Machine model", hints: ["model", "model number", "model #", "model no"] },
+  { key: "warranty", group: "details", label: "Maker's warranty (machines)", hints: ["warranty", "warranty terms", "limited warranty"] },
 ] as const;
 export type CatalogField = (typeof CATALOG_FIELDS)[number]["key"];
 
@@ -48,6 +51,10 @@ export type CatalogRow = {
   designer?: string;
   brand?: string;
   boltYards?: number;
+  /** The barcode (UPC, EAN): kept among the item's other numbers, so a scan finds it. */
+  upc?: string;
+  /** A picture's address from a feed (reserved for API sources: nothing fetches it yet). */
+  imageUrl?: string;
   /** Item details (2.1): the type column in words, the color number and name, the material, and the specs as typed. */
   kind?: string;
   colorNumber?: string;
@@ -58,9 +65,29 @@ export type CatalogRow = {
   diameter?: string;
   spool?: string;
   size?: string;
+  /** A machine model (2.3): its model name and the maker's warranty terms. */
+  model?: string;
+  warranty?: string;
 };
 
 export type CatalogRead = { rows: CatalogRow[]; problems: string[]; missing: CatalogField[] };
+
+/**
+ * Where a supplier's catalog comes from (shop-features-round-2-design.md 2.3). "file": the shop uploads a spreadsheet and
+ * matches its columns (the first source, readCatalogRows). "feed": a distributor's own published catalog feed or API
+ * (Notions Marketing, United Notions, Checker...), added in src/lib/connectors/sources.ts once one is documented: it
+ * fetches the catalog and maps it to the same CatalogRows (item number, description, cost, price, brand, details, UPC,
+ * picture address), and the rows then go through the same matching, preview and "Bring them in" as a spreadsheet. A
+ * feed uses the distributor's own API with a key the shop or the partnership provides, stored sealed like the other
+ * secrets; never scraping, never a wholesaler's password.
+ */
+export interface CatalogSource {
+  id: string;
+  label: string;
+  kind: "file" | "feed";
+  /** Feed sources: the whole catalog as rows (problems listed, as a spreadsheet's are). */
+  fetchCatalog?(ctx: ConnectorContext): Promise<CatalogRead>;
+}
 
 /** What goes in a column of the order spreadsheet. */
 export const ORDER_FIELDS = [

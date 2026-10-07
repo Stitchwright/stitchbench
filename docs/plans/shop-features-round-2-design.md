@@ -1080,3 +1080,21 @@ Decisions made while building:
 - New costs update the item's cost (Raise prices, 4.4, will read them when it is built); stock is never touched.
 - Browser test needed: Parts → Orders to suppliers → Suppliers' lists (add a supplier, open it, choose a thread list,
   "What's on this list?", the folded columns, Preview, Bring them in), and the Fabric page's import still reading fabric.
+- Sources (coordinator, 7 Oct): the import is built around a small source interface, `CatalogSource` in
+  `src/lib/connectors/types.ts`, listed in `src/lib/connectors/sources.ts`. The spreadsheet upload is the first source;
+  a distributor's own published feed or API (Notions Marketing, United Notions, Checker, Brewer, Tacony...) is one more
+  entry whose `fetchCatalog` maps the feed to the same `CatalogRow`s, and `previewSourceFor` / `applySourceFor` put
+  them through the same matching, preview and "Bring them in". A feed key is the shop's or the partnership's, stored
+  sealed like the other secrets; no scraping, no wholesaler passwords. No feed is built (none is publicly documented
+  yet); the settings form for a feed key comes with the first one. Rows carry a barcode (UPC/EAN column: kept among the
+  item's numbers, so a scan finds it) and a picture address (reserved for feeds; nothing fetches pictures yet).
+- Machines (coordinator, 7 Oct): a list can hold machine models. Migration `20261020400000_machine_models` (`PartKind`
+  gains `MACHINE`). A machine model is an item of type "Machine model (to order)" with its kind (sewing, embroidery,
+  serger and quilting machines as "sewing", vacuums, 3D and resin printers), model and the maker's warranty terms
+  (Maker, Model, Type, Cost, MAP or list price, Warranty columns). It is ordered on a purchase order like anything else
+  (in pieces); "When the box arrives" asks for a serial number for each one, and each becomes a machine for sale
+  (`receiveUnitsFor` in `src/lib/units/`) at the line's cost and the model's price, its note naming the order and the
+  warranty. The model itself is never stock: the register, the color lookup, "Running low" and Receive stock leave it
+  out or refuse it in words. Left for later: cutters and lasers as machine kinds come with `maker-machines` (6.1);
+  warranty months aren't read from the terms (the unit gets the shop's default months, the terms in its note); MAP is
+  kept as the price, not enforced (9.3).

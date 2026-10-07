@@ -5,6 +5,7 @@
 import { UserError } from "@/lib/user-error";
 import {
   BLADE_TYPES,
+  MACHINE_MODEL_KINDS,
   FILAMENT_DIAMETERS,
   FILAMENT_FINISHES,
   FILAMENT_MATERIALS,
@@ -22,19 +23,20 @@ import {
   VINYL_TYPES,
 } from "@/lib/constants";
 
-export const ITEM_TYPE_IDS = ["thread", "filament", "resin", "blade", "mat", "vinyl", "laser-material", "die"] as const;
+export const ITEM_TYPE_IDS = ["thread", "filament", "resin", "blade", "mat", "vinyl", "laser-material", "die", "machine"] as const;
 export type ItemType = (typeof ITEM_TYPE_IDS)[number];
 export const isItemType = (v: unknown): v is ItemType => typeof v === "string" && (ITEM_TYPE_IDS as readonly string[]).includes(v);
 
 /** The columns (color number, name, swatch, material) and the specs keys (kept in Part.specs). */
-export const SPEC_KEYS = ["weight", "putUp", "diameter", "spool", "finish", "volume", "size", "thickness", "shape"] as const;
+// machineKind, model and warranty: a machine model to order (2.3), which becomes a machine for sale when it arrives.
+export const SPEC_KEYS = ["weight", "putUp", "diameter", "spool", "finish", "volume", "size", "thickness", "shape", "machineKind", "model", "warranty"] as const;
 export type SpecKey = (typeof SPEC_KEYS)[number];
 export type DetailKey = "colorNumber" | "colorName" | "colorHex" | "material" | SpecKey;
 export type Specs = Partial<Record<SpecKey, string>>;
 
 export type FieldDef = { key: DetailKey; label: string; list?: readonly string[]; placeholder?: string };
 
-type KindName = "THREAD" | "SUPPLY" | "ACCESSORY";
+type KindName = "THREAD" | "SUPPLY" | "ACCESSORY" | "MACHINE";
 
 const COLOR: FieldDef[] = [
   { key: "colorName", label: "Color name", placeholder: "Navy" },
@@ -103,6 +105,16 @@ export const ITEM_TYPES: Record<ItemType, { label: string; kind: KindName; craft
       ...COLOR,
     ],
   },
+  machine: {
+    label: "Machine model (to order)",
+    kind: "MACHINE",
+    craft: false,
+    fields: [
+      { key: "machineKind", label: "What kind of machine", list: MACHINE_MODEL_KINDS.map((k) => k.label), placeholder: MACHINE_MODEL_KINDS[0].label },
+      { key: "model", label: "Model", placeholder: "PE800" },
+      { key: "warranty", label: "Maker's warranty", placeholder: "25 years limited" },
+    ],
+  },
   die: {
     label: "Die (fabric cutter)",
     kind: "ACCESSORY",
@@ -124,10 +136,11 @@ export const KIND_CHOICES: KindChoice[] = [
   { value: "FABRIC", label: "Fabric" },
   { value: "THREAD", label: "Thread" },
   { value: "PATTERN", label: "Pattern / book" },
+  { value: "MACHINE", label: "Machine model to order (it becomes a machine for sale when it arrives)" },
   ...ITEM_TYPE_IDS.filter((t) => ITEM_TYPES[t].craft).map((t) => ({ value: `${ITEM_TYPES[t].kind}:${t}`, label: ITEM_TYPES[t].label, craft: true })),
 ];
 
-export const PLAIN_KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"] as const;
+export const PLAIN_KINDS = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN", "MACHINE"] as const;
 export type PlainKind = (typeof PLAIN_KINDS)[number];
 
 /** "SUPPLY:filament" -> { kind SUPPLY, itemType filament }; "THREAD" -> thread; a plain kind -> no type. Unknown: an error in words. */
@@ -136,7 +149,7 @@ export function parseKindChoice(v: string | null | undefined): { kind: PlainKind
   const [k, t] = raw.split(":");
   if (!(PLAIN_KINDS as readonly string[]).includes(k)) throw new UserError("Pick what kind of item it is.");
   const kind = k as PlainKind;
-  if (t == null) return { kind, itemType: kind === "THREAD" ? "thread" : null };
+  if (t == null) return { kind, itemType: kind === "THREAD" ? "thread" : kind === "MACHINE" ? "machine" : null };
   if (!isItemType(t) || ITEM_TYPES[t].kind !== kind) throw new UserError("Pick what kind of item it is.");
   return { kind, itemType: t };
 }
@@ -144,14 +157,32 @@ export function parseKindChoice(v: string | null | undefined): { kind: PlainKind
 /** The value the "What is it?" list shows for a saved item. */
 export function kindChoiceOf(p: { kind: string; itemType?: string | null }): string {
   const t = typeOf(p);
-  if (t && t !== "thread" && ITEM_TYPES[t].kind === p.kind) return `${p.kind}:${t}`;
+  if (t && t !== "thread" && t !== "machine" && ITEM_TYPES[t].kind === p.kind) return `${p.kind}:${t}`;
   return p.kind;
 }
 
 /** What the item is: its saved type, or thread for a THREAD item saved before types existed. */
 export function typeOf(p: { kind: string; itemType?: string | null }): ItemType | null {
   if (isItemType(p.itemType)) return p.itemType;
-  return p.kind === "THREAD" ? "thread" : null;
+  return p.kind === "THREAD" ? "thread" : p.kind === "MACHINE" ? "machine" : null;
+}
+
+/** A machine model's machines-for-sale kind key ("sewing", "vacuum"...) from its saved label or key; sewing when unknown. */
+export function machineKindKey(v: string | null | undefined): string {
+  const t = (v ?? "").trim().toLowerCase();
+  const hit = MACHINE_MODEL_KINDS.find((k) => k.key === t || k.label.toLowerCase() === t);
+  if (hit) return hit.key;
+  return machineKindFromWords(t) ?? "sewing";
+}
+
+/** "Embroidery machine", "upright vacuum", "3D printer" -> its machines-for-sale kind key, or null. */
+export function machineKindFromWords(text: string | null | undefined): string | null {
+  const w = (text ?? "").toLowerCase();
+  if (/resin/.test(w) && /print/.test(w)) return "resin-printer";
+  if (/3d|printer/.test(w)) return "3d-printer";
+  if (/vac/.test(w)) return "vacuum";
+  if (/sew|embroider|serger|overlock|quilt|longarm|machine/.test(w)) return "sewing";
+  return null;
 }
 
 /** The specs JSON as saved, cleaned to the known keys and short strings (a hand-edited row can't break a page). */
@@ -264,6 +295,8 @@ export function detailsLine(p: Shown): string {
       return [[mat, s.thickness].filter(Boolean).join(" "), s.size, p.colorName].filter(Boolean).join(" · ");
     case "die":
       return [s.shape, s.size].filter(Boolean).join(" · ");
+    case "machine":
+      return [MACHINE_MODEL_KINDS.find((k) => k.key === machineKindKey(s.machineKind))?.label, s.model, s.warranty ? `warranty ${s.warranty}` : null].filter(Boolean).join(" · ");
     default:
       return [mat, color, s.volume, s.size].filter(Boolean).join(" · ");
   }
@@ -281,6 +314,7 @@ export function kindChoiceValue(v: string | null | undefined): string | null {
 }
 
 const KIND_WORDS: [RegExp, string][] = [
+  [/sewing machine|embroidery machine|serger|overlock|quilting machine|longarm|vacuum|3d printer|resin printer|embroidery unit/, "MACHINE"],
   [/filament|\bpla\b|petg|\babs\b|\btpu\b/, "SUPPLY:filament"],
   [/resin/, "SUPPLY:resin"],
   [/vinyl|\bhtv\b|iron.?on/, "SUPPLY:vinyl"],

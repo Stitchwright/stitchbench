@@ -86,7 +86,7 @@ export function readCatalogRows(table: string[][], map: ColumnMap): CatalogRead 
     const row: CatalogRow = { line, itemNumber };
     const description = cell(r, "description");
     if (description) row.description = description.slice(0, 200);
-    for (const f of ["collection", "designer", "brand", "kind", "colorNumber", "colorName", "material", "weight", "putUp", "diameter", "spool", "size"] as const) {
+    for (const f of ["collection", "designer", "brand", "upc", "kind", "colorNumber", "colorName", "material", "weight", "putUp", "diameter", "spool", "size", "model", "warranty"] as const) {
       const v = cell(r, f);
       if (v) row[f] = v.slice(0, f === "colorNumber" ? 30 : 80);
     }

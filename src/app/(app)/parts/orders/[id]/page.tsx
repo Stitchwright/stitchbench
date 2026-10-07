@@ -153,7 +153,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           <ReceiveForm
             orderId={o.id}
             partly={o.status === "PARTLY_RECEIVED"}
-            lines={o.lines.map((l) => ({ id: l.id, itemNumber: l.itemNumber, description: l.description, each: l.unit === "EACH", outstanding: outstandingYards(l), received: l.receivedYards, text: `${amountText(l)} ordered, ${measureText(l, l.receivedYards)} came so far` }))}
+            lines={o.lines.map((l) => ({ id: l.id, itemNumber: l.itemNumber, description: l.description, each: l.unit === "EACH", machine: l.machine, outstanding: outstandingYards(l), received: l.receivedYards, text: `${amountText(l)} ordered, ${measureText(l, l.receivedYards)} came so far` }))}
           />
           {o.status === "SENT" && <CancelOrderButton orderId={o.id} />}
         </div>

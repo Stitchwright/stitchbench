@@ -12,6 +12,8 @@ import { MAX_STOCK, centsField, numberKey } from "@/lib/parts";
 import { inEighths, yards } from "@/lib/register-math";
 import { dateIn, todayIn } from "@/lib/time-zone";
 import { insightFor, type InsightItem } from "@/lib/fabric-insight";
+import { machineKindKey, specsOf } from "@/lib/item-details";
+import { receiveUnitsFor } from "@/lib/units/units";
 import { daysAgo, slowStage } from "@/lib/fabric-insight-math";
 import {
   OPEN_STATUSES,
@@ -271,7 +273,7 @@ export type EachRow = {
 export async function reorderEachFor(shopId: string, take = 300): Promise<EachRow[]> {
   const [low, linked] = await Promise.all([
     db.part.findMany({
-      where: { shopId, consignLinkId: null, reorderAt: { gt: 0 }, OR: [{ unit: null }, { unit: { not: "yd" } }], kitStock: { none: {} }, qtyOnHand: { lte: db.part.fields.reorderAt } },
+      where: { shopId, consignLinkId: null, reorderAt: { gt: 0 }, kind: { not: "MACHINE" }, OR: [{ unit: null }, { unit: { not: "yd" } }], kitStock: { none: {} }, qtyOnHand: { lte: db.part.fields.reorderAt } },
       select: { id: true, partNumber: true, description: true, brand: true, kind: true, location: true, supplier: true, qtyOnHand: true, reorderAt: true, costCents: true },
       orderBy: { partNumber: "asc" },
       take: take * 2,
@@ -417,7 +419,7 @@ export async function createOrderFor(user: CurrentUser, supplierName: string): P
   });
 }
 
-export type OrderLineView = { id: string; partId: string | null; itemNumber: string; description: string; unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number; photoId: string | null };
+export type OrderLineView = { id: string; partId: string | null; itemNumber: string; description: string; unit: PoUnitName; qty: number; boltYards: number; costCents: number | null; receivedYards: number; photoId: string | null; machine?: boolean };
 export type OrderView = {
   id: string;
   number: number;
@@ -445,11 +447,11 @@ export type OrderView = {
 export async function orderFor(shopId: string, id: string): Promise<OrderView | null> {
   if (!/^[a-z0-9]{10,40}$/i.test(id)) return null;
   const [po, shop] = await Promise.all([
-    db.purchaseOrder.findFirst({ where: { id, shopId }, include: { supplier: true, lines: { orderBy: { id: "asc" }, include: { part: { select: { photos: { orderBy: { sortOrder: "asc" }, take: 1, select: { id: true } } } } } } } }),
+    db.purchaseOrder.findFirst({ where: { id, shopId }, include: { supplier: true, lines: { orderBy: { id: "asc" }, include: { part: { select: { kind: true, photos: { orderBy: { sortOrder: "asc" }, take: 1, select: { id: true } } } } } } } }),
     db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true, timeZone: true, fabLeadDays: true } }),
   ]);
   if (!po) return null;
-  const lines: OrderLineView[] = po.lines.map((l) => ({ id: l.id, partId: l.partId, itemNumber: l.itemNumber, description: l.description, unit: l.unit, qty: l.qty, boltYards: l.boltYards, costCents: l.costCents, receivedYards: l.receivedYards, photoId: l.part?.photos[0]?.id ?? null }));
+  const lines: OrderLineView[] = po.lines.map((l) => ({ id: l.id, partId: l.partId, itemNumber: l.itemNumber, description: l.description, unit: l.unit, qty: l.qty, boltYards: l.boltYards, costCents: l.costCents, receivedYards: l.receivedYards, photoId: l.part?.photos[0]?.id ?? null, machine: l.part?.kind === "MACHINE" }));
   return {
     id: po.id,
     number: po.number,
@@ -634,6 +636,69 @@ export async function closeOrderFor(user: CurrentUser, orderId: string): Promise
 export async function receiveOrderFor(user: CurrentUser, orderId: string, fd: FormData): Promise<string> {
   assertId(orderId);
   const shop = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true } });
+  // Machine models (shop-features-round-2-design.md 2.3) arrive as machines for sale: one unit a serial number, made
+  // first (the machines-for-sale code checks each serial); if the receipt then fails, they are taken off again.
+  const made = await machinesFromOrder(user, orderId, fd);
+  try {
+    const text = await receiveLines(user, orderId, fd, shop.timeZone, new Set(made.lines));
+    return made.units.length ? `${text} ${made.units.length} ${made.units.length === 1 ? "machine is" : "machines are"} now in Machines for sale.` : text;
+  } catch (e) {
+    if (made.units.length) {
+      const units = await db.stockUnit.findMany({ where: { shopId: user.shopId, id: { in: made.units } }, select: { machineId: true } });
+      await db.stockUnit.deleteMany({ where: { shopId: user.shopId, id: { in: made.units } } });
+      await db.machine.deleteMany({ where: { shopId: user.shopId, id: { in: units.map((u) => u.machineId) }, customerId: null } });
+    }
+    throw e;
+  }
+}
+
+/** The serial numbers typed for a machine line ("serials.<lineId>", one a line or separated by commas). */
+const serialsOf = (fd: FormData, lineId: string) => [...new Set(String(fd.get(`serials.${lineId}`) ?? "").split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean))];
+
+/** For each machine model line with some arriving: its serials checked against the count, then the units made. */
+async function machinesFromOrder(user: CurrentUser, orderId: string, fd: FormData): Promise<{ units: string[]; lines: string[] }> {
+  const po = await db.purchaseOrder.findFirst({ where: { id: orderId, shopId: user.shopId }, include: { lines: { include: { part: true } } } });
+  if (!po || (po.status !== "SENT" && po.status !== "PARTLY_RECEIVED")) return { units: [], lines: [] };
+  const units: string[] = [];
+  const lines: string[] = [];
+  const todo = po.lines.filter((l) => l.part && l.part.shopId === user.shopId && l.part.kind === "MACHINE");
+  for (const l of todo) {
+    const got = Number(str(fd.get(`yards.${l.id}`)) ?? "0");
+    if (!Number.isInteger(got) || got <= 0) continue;
+    const serials = serialsOf(fd, l.id);
+    if (serials.length !== got) throw new UserError(`${l.itemNumber}: ${got} came, so enter ${got} serial ${got === 1 ? "number" : "numbers"} (${serials.length} entered). They're on each box's label.`);
+    const part = l.part!;
+    const s = specsOf(part.specs);
+    if (!part.brand?.trim()) throw new UserError(`${l.itemNumber}: give it its maker (brand) on its page first: a machine for sale needs one.`);
+    const f = new FormData();
+    f.set("kind", machineKindKey(s.machineKind));
+    f.set("brand", part.brand.trim());
+    f.set("model", s.model ?? part.partNumber);
+    f.set("condition", "NEW");
+    f.set("serials", serials.join("\n"));
+    const cost = l.costCents ?? part.costCents;
+    if (cost != null) f.set("costCents", (cost / 100).toFixed(2));
+    if (part.priceCents != null) f.set("priceCents", (part.priceCents / 100).toFixed(2));
+    f.set("note", `Order #${po.number} from ${po.supplierName}${s.warranty ? `. Maker's warranty: ${s.warranty}` : ""}`.slice(0, 500));
+    try {
+      units.push(...(await receiveUnitsFor(user, f)));
+    } catch (e) {
+      // Units already made for an earlier line come off again before saying why.
+      if (units.length) {
+        const made = await db.stockUnit.findMany({ where: { shopId: user.shopId, id: { in: units } }, select: { machineId: true } });
+        await db.stockUnit.deleteMany({ where: { shopId: user.shopId, id: { in: units } } });
+        await db.machine.deleteMany({ where: { shopId: user.shopId, id: { in: made.map((u) => u.machineId) }, customerId: null } });
+      }
+      throw e;
+    }
+    lines.push(l.id);
+  }
+  return { units, lines };
+}
+
+/** The receipt itself: what came on each line; a machine model line (`machineLines`) moves the order but not the item's own stock. */
+async function receiveLines(user: CurrentUser, orderId: string, fd: FormData, timeZone: string, machineLines: Set<string>): Promise<string> {
+  const shop = { timeZone };
   return db.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({ where: { id: orderId, shopId: user.shopId }, include: { lines: true, supplier: true } });
     if (!po) throw new UserError("Order not found.");
@@ -662,11 +727,14 @@ export async function receiveOrderFor(user: CurrentUser, orderId: string, fd: Fo
         if (!l.partId) throw new UserError(`${l.itemNumber} is no longer in inventory, so it can't be received.`);
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId: user.shopId } });
         if (!part) throw new UserError(`${l.itemNumber} is no longer in inventory, so it can't be received.`);
-        await tx.part.update({
-          where: { id: part.id },
-          data: { qtyOnHand: { increment: got }, ...(part.costCents == null && l.costCents != null ? { costCents: l.costCents, costTenThou: null } : {}) },
-        });
-        await tx.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: got, reason: "RECEIVED", userId: user.id, note: `Order #${po.number} from ${po.supplierName}` } });
+        if (part.kind === "MACHINE" && !machineLines.has(l.id)) throw new UserError(`${l.itemNumber}: enter the serial numbers of the machines that came.`);
+        if (part.kind !== "MACHINE") {
+          await tx.part.update({
+            where: { id: part.id },
+            data: { qtyOnHand: { increment: got }, ...(part.costCents == null && l.costCents != null ? { costCents: l.costCents, costTenThou: null } : {}) },
+          });
+          await tx.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: got, reason: "RECEIVED", userId: user.id, note: `Order #${po.number} from ${po.supplierName}` } });
+        }
         // The status hold above doesn't stop the same form sent twice (a partly received order stays partly received):
         // the line moves only from the yards the form saw (`seen.<lineId>`), else from what was read here.
         const seenRaw = str(fd.get(`seen.${l.id}`));

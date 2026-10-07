@@ -13,12 +13,13 @@ import { money } from "@/lib/format";
 import { MAX_CENTS, numberKey, partKeys, partNumberClash } from "@/lib/parts";
 import type { CurrentUser } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
-import { detailsFrom, kindChoiceValue, kindFromWords, parseKindChoice, specsOf, typeOf, type Details, type ItemType, type PlainKind, type Specs } from "@/lib/item-details";
+import { detailsFrom, kindChoiceValue, kindFromWords, machineKindFromWords, machineKindKey, parseKindChoice, specsOf, typeOf, type Details, type ItemType, type PlainKind, type Specs } from "@/lib/item-details";
 import { Prisma as P } from "@/generated/prisma/client";
 import { catalogConnectorFor } from "./registry";
 import { cleanMap, headerRowIndex, suggestMap } from "./layout";
 import { readTable } from "./sheet";
-import type { CatalogRow, ColumnMap } from "./types";
+import type { CatalogRead, CatalogRow, ColumnMap } from "./types";
+import { catalogSourceFor } from "./sources";
 
 export const MAX_CATALOG_ROWS = 20_000;
 const BLOCK = 500;
@@ -103,6 +104,8 @@ async function plan(tx: Prisma.TransactionClient, shopId: string, supplierName: 
     const choice: Choice = typed ? parseKindChoice(typed) : fallback;
     // A list has no swatch column, so nothing here can be refused.
     const details: Details = detailsFrom(choice.itemType, rowDetail(r));
+    // A machine model: which machines-for-sale kind it becomes, from the type column's words (sewing when they don't say).
+    if (choice.kind === "MACHINE") details.specs.machineKind = machineKindFromWords(r.kind) ?? machineKindKey(details.specs.machineKind);
     const cands = [...new Map((byKey.get(k) ?? []).map((p) => [p.id, p])).values()];
     const exact = cands.find((p) => p.partNumber.toLowerCase() === r.itemNumber.toLowerCase()) ?? cands.find((p) => numberKey(p.partNumber) === k) ?? (cands.length === 1 ? cands[0] : undefined);
     if (cands.length > 1 && !exact) {
@@ -160,6 +163,13 @@ async function plan(tx: Prisma.TransactionClient, shopId: string, supplierName: 
       data.brand = r.brand;
       what.push(`maker to ${r.brand}`);
     }
+    // A barcode the item doesn't know yet goes among its other numbers (a scan then finds it).
+    if (r.upc && !partKeys(exact.partNumber, exact.altNumbers).some((k) => partKeys(r.upc!, []).includes(k))) {
+      const alt = [...exact.altNumbers, r.upc];
+      data.altNumbers = alt;
+      data.numberKeys = partKeys(exact.partNumber, alt);
+      what.push(`barcode ${r.upc} added`);
+    }
     // Item details (2.1): an item of no type yet takes the list's type when its kind is the same (a SUPPLY on a filament
     // list becomes filament); then the details the row gives fill or change its own.
     let type = typeOf(exact);
@@ -199,22 +209,38 @@ async function plan(tx: Prisma.TransactionClient, shopId: string, supplierName: 
 /** The list's default type: what the form sent (checked), else the supplier's saved one, else fabric by the yard. */
 const defaultKindOf = (sent: string | null | undefined, saved: string | null) => kindChoiceValue(sent) ?? kindChoiceValue(saved) ?? "FABRIC";
 
-async function readRows(user: CurrentUser, supplierId: string, name: string, bytes: Uint8Array, rawMap: unknown) {
+/** The company's own supplier, by id. */
+async function ownSupplier(user: CurrentUser, supplierId: string) {
   assertId(supplierId);
   const s = await db.fabricSupplier.findFirst({ where: { id: supplierId, shopId: user.shopId } });
   if (!s) throw new UserError("Supplier not found.");
+  return s;
+}
+
+type Supplier = Awaited<ReturnType<typeof ownSupplier>>;
+
+/** What a source read, checked the same way whatever the source: something to import, and not too much at once. */
+function checkRead(read: CatalogRead, map?: ColumnMap) {
+  if (map && read.missing.length) throw new UserError(`The sheet has no column headed ${read.missing.map((f) => `"${map[f]}"`).join(", ")}. Pick the columns again.`);
+  if (!read.rows.length) throw new UserError(read.problems[0] ?? "No rows to import.");
+  if (read.rows.length > MAX_CATALOG_ROWS) throw new UserError(`${MAX_CATALOG_ROWS.toLocaleString("en-US")} rows at a time, please.`);
+}
+
+/** The spreadsheet source (the first CatalogSource): the uploaded file read through the column map. */
+async function readRows(user: CurrentUser, supplierId: string, name: string, bytes: Uint8Array, rawMap: unknown) {
+  const s = await ownSupplier(user, supplierId);
   const map = cleanMap(rawMap);
   if (!map.itemNumber) throw new UserError("Pick the column that holds the maker's item number.");
   const read = catalogConnectorFor(s.connector).readCatalog!(readTable(name, bytes), map);
-  if (read.missing.length) throw new UserError(`The sheet has no column headed ${read.missing.map((f) => `"${map[f]}"`).join(", ")}. Pick the columns again.`);
-  if (!read.rows.length) throw new UserError(read.problems[0] ?? "No rows to import.");
-  if (read.rows.length > MAX_CATALOG_ROWS) throw new UserError(`${MAX_CATALOG_ROWS.toLocaleString("en-US")} rows at a time, please.`);
+  checkRead(read, map);
   return { s, map, read };
 }
 
-/** The dry run: counts and examples of what applying would do. Nothing is written. */
-export async function previewCatalogFor(user: CurrentUser, supplierId: string, name: string, bytes: Uint8Array, rawMap: unknown, defaultKind?: string | null): Promise<CatalogPreview> {
-  const { s, read } = await readRows(user, supplierId, name, bytes, rawMap);
+/**
+ * The dry run of rows from any source (shop-features-round-2-design.md 2.3: a spreadsheet now, a distributor's own feed
+ * or API later, through CatalogSource in ./types): counts and examples of what applying would do. Nothing is written.
+ */
+export async function previewRowsFor(user: CurrentUser, s: Supplier, read: CatalogRead, defaultKind?: string | null): Promise<CatalogPreview> {
   const p = await plan(db, user.shopId, s.name, read.rows, defaultKindOf(defaultKind, s.defaultKind));
   const problems = [...read.problems, ...p.skipped];
   return {
@@ -229,10 +255,45 @@ export async function previewCatalogFor(user: CurrentUser, supplierId: string, n
   };
 }
 
-/** Applies it: new items are made (no stock), changed ones updated, the map and the list's type saved on the supplier. All or nothing. */
+/** The dry run of an uploaded spreadsheet. Nothing is written. */
+export async function previewCatalogFor(user: CurrentUser, supplierId: string, name: string, bytes: Uint8Array, rawMap: unknown, defaultKind?: string | null): Promise<CatalogPreview> {
+  const { s, read } = await readRows(user, supplierId, name, bytes, rawMap);
+  return previewRowsFor(user, s, read, defaultKind);
+}
+
+/** The dry run of a feed source (a distributor's published feed or API); none is registered yet. */
+export async function previewSourceFor(user: CurrentUser, supplierId: string, sourceId: string, defaultKind?: string | null): Promise<CatalogPreview> {
+  const s = await ownSupplier(user, supplierId);
+  const read = await fetchFromSource(user, s, sourceId);
+  return previewRowsFor(user, s, read, defaultKind);
+}
+
+/** Brings in what a feed source fetched, with the same matching and review as a spreadsheet. */
+export async function applySourceFor(user: CurrentUser, supplierId: string, sourceId: string, defaultKind?: string | null): Promise<string> {
+  const s = await ownSupplier(user, supplierId);
+  const read = await fetchFromSource(user, s, sourceId);
+  return applyRowsFor(user, s, read, { defaultKind, saveMap: null, saveKind: true });
+}
+
+async function fetchFromSource(user: CurrentUser, s: Supplier, sourceId: string): Promise<CatalogRead> {
+  const source = catalogSourceFor(sourceId);
+  if (!source || source.kind !== "feed" || !source.fetchCatalog) throw new UserError("That catalog source isn't available.");
+  const read = await source.fetchCatalog({ shopId: user.shopId, supplier: { id: s.id, name: s.name, orderEmail: s.orderEmail, accountNumber: s.accountNumber, catalogMap: null, orderLayout: null } });
+  checkRead(read);
+  return read;
+}
+
+/** Applies an uploaded spreadsheet: the map and the list's type saved on the supplier when asked. */
 export async function applyCatalogFor(user: CurrentUser, supplierId: string, name: string, bytes: Uint8Array, rawMap: unknown, saveMap: boolean, defaultKind?: string | null): Promise<string> {
   const { s, map, read } = await readRows(user, supplierId, name, bytes, rawMap);
-  const kindOfList = defaultKindOf(defaultKind, s.defaultKind);
+  return applyRowsFor(user, s, read, { defaultKind, saveMap: saveMap ? map : null, saveKind: saveMap });
+}
+
+/** Applies rows from any source: new items are made (no stock), changed ones updated. All or nothing. */
+async function applyRowsFor(user: CurrentUser, s: Supplier, read: CatalogRead, o: { defaultKind?: string | null; saveMap: ColumnMap | null; saveKind: boolean }): Promise<string> {
+  const kindOfList = defaultKindOf(o.defaultKind, s.defaultKind);
+  const saveMap = o.saveMap != null;
+  const map = o.saveMap;
   try {
     return await db.$transaction(
       async (tx) => {
@@ -247,8 +308,9 @@ export async function applyCatalogFor(user: CurrentUser, supplierId: string, nam
               return {
                 shopId: user.shopId,
                 partNumber: r.itemNumber,
-                numberKeys: partKeys(r.itemNumber, []),
-                description: (r.description ?? (fabric ? `${r.collection ?? s.name} ${r.itemNumber}` : named || `${s.name} ${r.itemNumber}`)).slice(0, 200),
+                numberKeys: partKeys(r.itemNumber, r.upc ? [r.upc] : []),
+                altNumbers: r.upc ? [r.upc] : [],
+                description: (r.description ?? (fabric ? `${r.collection ?? s.name} ${r.itemNumber}` : choice.kind === "MACHINE" ? [r.brand, r.model ?? r.itemNumber].filter(Boolean).join(" ") : named || `${s.name} ${r.itemNumber}`)).slice(0, 200),
                 kind: choice.kind,
                 unit: fabric ? "yd" : null,
                 brand: r.brand ?? null,
@@ -272,7 +334,7 @@ export async function applyCatalogFor(user: CurrentUser, supplierId: string, nam
         }
         for (const u of p.updates) await tx.part.update({ where: { id: u.id }, data: u.data });
         const note = `${p.creates.length} new, ${p.updates.length} updated, ${p.unchanged} unchanged`;
-        await tx.fabricSupplier.update({ where: { id: s.id }, data: { catalogAt: new Date(), catalogNote: note, ...(saveMap ? { catalogMap: map, defaultKind: kindOfList } : {}) } });
+        await tx.fabricSupplier.update({ where: { id: s.id }, data: { catalogAt: new Date(), catalogNote: note, ...(map ? { catalogMap: map } : {}), ...(o.saveKind ? { defaultKind: kindOfList } : {}) } });
         const partly = p.skipped.length + read.problems.length;
         return `Imported ${s.name}'s catalog: ${note}${partly ? `; ${partly} rows were skipped or partly read` : ""}.${saveMap ? " The column mapping is saved for next time." : ""}`;
       },
