@@ -124,8 +124,8 @@ async function passwordMatches(logins: Login[], password: string): Promise<Match
 
 /**
  * The password check with its limits. The logins the password fits: none (null), one, or several (the page then asks
- * which company: src/app/login/page.tsx). Limits are kept per email as before, however many logins it has; one try is one
- * try, not one per login compared.
+ * which company: src/app/login/page.tsx). Limits are kept per login (per email when none has it); one try counts once
+ * against each login it was compared with.
  */
 export async function signInStep(credentials: unknown, request: Request | Headers | undefined): Promise<Matched[] | null> {
   const found = await checkPassword(credentials, request);
@@ -149,8 +149,11 @@ async function logFailure(credentials: unknown): Promise<void> {
     failLogged.delete(key);
     failLogged.set(key, now);
     if (failLogged.size > 10_000) failLogged.delete(failLogged.keys().next().value as string);
-    for (const u of await db.user.findMany({ where: { email: key, active: true }, select: { id: true, shopId: true, name: true, role: true, email: true } })) {
-      await audit(db, { shopId: u.shopId, id: u.id, name: u.name, role: u.role }, { action: "signin.fail", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})` });
+    // An email in several companies: the try can't be told apart (any of them, or a guesser's own login), so none of
+    // them gets the sender's address in its log.
+    const users = await db.user.findMany({ where: { email: key, active: true }, select: { id: true, shopId: true, name: true, role: true, email: true } });
+    for (const u of users) {
+      await audit(db, { shopId: u.shopId, id: u.id, name: u.name, role: u.role }, { action: "signin.fail", subjectType: "User", subjectId: u.id, subjectLabel: `${u.name} (${u.email})`, noIp: users.length > 1 });
     }
   } catch (e) {
     console.error("audit sign-in failure:", e instanceof Error ? e.message : e);
@@ -173,46 +176,58 @@ async function checkPassword(credentials: unknown, request: Request | Headers | 
   const ip = clientAddress(request);
   if (ip && count(`i:${ip}`) >= PER_ADDRESS) return null;
 
-  const logins = await loginsFor(email);
-  const run = async (): Promise<Matched[] | null> => {
-    const found = await passwordMatches(logins, password);
+  let logins = await loginsFor(email);
+  const run = async (of: Login[]): Promise<Matched[] | null> => {
+    const found = await passwordMatches(of, password);
     return found.length ? found : null;
   };
 
-  // A browser one of these logins signed in on before: its own count, not the account's queue.
+  // A browser one of these logins signed in on before: its own count, not the account's queue. An entry covers only the
+  // login it names (an email can have a login in another company, perhaps one a guesser made), so only those logins are
+  // compared here; the password not fitting them, the try goes on to the others under their own limits.
   const cookie = knownDeviceCookie(request);
   const now = Date.now();
-  let device: string | null = null;
-  if (cookie) for (const l of logins) device ??= knownDeviceFor(cookie, l.id, now, l.sv);
-  if (device && count(`d:${device}`) < PER_DEVICE) {
-    const keys = ip ? [`d:${device}`, `i:${ip}`] : [`d:${device}`];
+  const known: { l: Login; key: string }[] = [];
+  if (cookie)
+    for (const l of logins) {
+      const d = knownDeviceFor(cookie, l.id, now, l.sv);
+      if (d && count(`d:${d}`) < PER_DEVICE) known.push({ l, key: `d:${d}` });
+    }
+  const rest = logins.filter((l) => !known.some((k) => k.l.id === l.id));
+  if (known.length) {
+    // The address counted once a try: here only when no other login is left to try.
+    const keys = known.map((k) => k.key).concat(ip && !rest.length ? [`i:${ip}`] : []);
     for (const k of keys) begin(k);
     try {
-      const found = await run();
-      if (!found) {
-        for (const k of keys) fail(k);
-        return null;
+      const found = await run(known.map((k) => k.l));
+      if (found) {
+        // The account's own count stays: whoever is guessing at it elsewhere gets no fresh start from the owner's sign-in.
+        for (const k of known) if (found.some((f) => f.id === k.l.id)) state.failures.delete(k.key);
+        return found;
       }
-      // The account's own count stays: whoever is guessing at it elsewhere gets no fresh start from the owner's sign-in.
-      state.failures.delete(`d:${device}`);
-      return found;
+      for (const k of keys) fail(k);
     } finally {
       for (const k of keys) end(k);
     }
+    if (!rest.length) return null;
+    logins = rest;
   }
 
-  // Counted, and this try marked as under way, before anything is awaited: no other try can slip in between.
-  const n = count(`e:${email}`);
-  const keys = ip ? [`e:${email}`, `i:${ip}`] : [`e:${email}`];
+  // Counted per login (an email unknown here: per email, so it is held back just the same), never cleared by another
+  // login's sign-in: a guesser's own login with the same email can't hand them a fresh start at someone else's. Counted,
+  // and this try marked as under way, before anything is awaited: no other try can slip in between.
+  const own = logins.length ? logins.map((l) => `u:${l.id}`) : [`e:${email}`];
+  const n = Math.max(...own.map(count));
+  const keys = ip ? [...own, `i:${ip}`] : own;
   for (const k of keys) begin(k);
   try {
     return await paced(email, n, async () => {
-      const found = await run();
+      const found = await run(logins);
       if (!found) {
         for (const k of keys) fail(k);
         return null;
       }
-      state.failures.delete(`e:${email}`);
+      for (const f of found) state.failures.delete(`u:${f.id}`);
       return found;
     });
   } finally {
