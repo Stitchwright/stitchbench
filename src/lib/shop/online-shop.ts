@@ -23,6 +23,7 @@ import { moduleOn } from "@/lib/module-gate";
 import { customerForOnline, SLUG_RE, slugOf, type OnlineCustomer } from "@/lib/online-booking";
 import { KIND_LABEL, numberKey } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
+import { belowMap } from "@/lib/map-math";
 import { inEighths, qtyText, saleTotals } from "@/lib/register-math";
 import { holidaysOn } from "@/lib/tax-holidays";
 import { holidayCovers } from "@/lib/tax-holiday-math";
@@ -322,12 +323,21 @@ export type CatalogItem = {
   partNumber: string;
   brand: string | null;
   kind: string;
+  /** The price shown: the maker's minimum advertised price when the real one is lower (seeInCart, 9.3). */
   priceCents: number;
+  /** The real price is below the minimum advertised price: shown only in the cart. */
+  seeInCart: boolean;
   unit: string | null;
   inStock: boolean;
   photoId: string | null;
   tags: string[];
 };
+
+/** The price a listing may show (shop-features-round-2-design.md 9.3): never below the maker's minimum advertised price. */
+function shownPrice(p: { priceCents: number | null; mapCents: number | null }) {
+  const seeInCart = belowMap(p.priceCents, p.mapCents);
+  return { priceCents: seeInCart ? p.mapCents! : p.priceCents!, seeInCart };
+}
 
 const LISTED = (shopId: string): Prisma.PartWhereInput => ({ shopId, online: true, priceCents: { not: null }, consignLinkId: null });
 const titleOf = (p: { onlineTitle: string | null; description: string }) => p.onlineTitle?.trim() || p.description;
@@ -374,6 +384,7 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
       brand: true,
       kind: true,
       priceCents: true,
+      mapCents: true,
       unit: true,
       qtyOnHand: true,
       condition: true,
@@ -388,7 +399,7 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
       partNumber: p.partNumber,
       brand: p.brand,
       kind: p.kind,
-      priceCents: p.priceCents!,
+      ...shownPrice(p),
       unit: p.unit,
       inStock: p.qtyOnHand > 0,
       photoId: p.photos[0]?.id ?? null,
@@ -432,7 +443,7 @@ export async function catalogItem(shopId: string, partId: string): Promise<ItemV
     partNumber: p.partNumber,
     brand: p.brand,
     kind: p.kind,
-    priceCents: p.priceCents!,
+    ...shownPrice(p),
     unit: p.unit,
     inStock: p.qtyOnHand > 0,
     photoId: p.photos[0]?.id ?? null,

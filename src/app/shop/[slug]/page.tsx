@@ -106,7 +106,7 @@ export default async function ShopHome({ params, searchParams }: { params: Promi
                   {it.tags.length ? ` · ${it.tags.join(", ")}` : ""}
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <Price cents={it.priceCents} unit={it.unit} />
+                  <Price cents={it.priceCents} unit={it.unit} seeInCart={it.seeInCart} />
                   <span className={`text-xs ${it.inStock ? "text-ok" : "muted"}`}>{it.inStock ? "In stock" : "Out of stock"}</span>
                 </div>
               </Link>

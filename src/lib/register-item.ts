@@ -4,6 +4,7 @@
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
 import { disclosure } from "@/lib/part-labels";
 import { detailsLine } from "@/lib/item-details";
+import { readListed } from "@/lib/listed-math";
 
 export type RegisterItem = {
   id: string;
@@ -34,6 +35,8 @@ export type RegisterItem = {
   /** Its own per-yard break (1.6). */
   breakMinQty?: number | null;
   breakPriceCents?: number | null;
+  /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7): the places, to take down before selling it. */
+  listedOn?: string[];
 };
 
 export const viewItem = (p: {
@@ -60,6 +63,7 @@ export const viewItem = (p: {
   membershipGroupId?: string | null;
   breakMinQty?: number | null;
   breakPriceCents?: number | null;
+  listedOn?: unknown;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -81,6 +85,7 @@ export const viewItem = (p: {
   // A membership item is reported (and priced) as a membership (1.5).
   kind: p.membershipGroupId ? "MEMBERSHIP" : p.kind,
   comingSoonText: p.comingSoonOn ? new Date(`${p.comingSoonOn}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }) : undefined,
+  listedOn: readListed(p.listedOn).map((x) => x.where),
 });
 
 /** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */

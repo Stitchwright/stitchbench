@@ -31,6 +31,7 @@ import { CustomerColors } from "@/components/customer-colors";
 import { CustomerFitsSection } from "@/components/customer-fits";
 import { CustomerSoftware } from "@/components/customer-software";
 import { CustomerCertifications } from "@/components/customer-certifications";
+import { CustomerPaperwork } from "@/components/paperwork/customer-paperwork";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -155,6 +156,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerFitsSection shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && <CustomerSoftware shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
         {c.kind === "RETAIL" && <CustomerCertifications shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} tz={tz} />}
+        <CustomerPaperwork shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} retail={c.kind === "RETAIL"} />
         {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}
         {orders.length > 0 && (
           <Section title="Online orders">

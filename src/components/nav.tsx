@@ -36,6 +36,7 @@ import {
   Ruler,
   Tag,
   Printer,
+  FileCheck,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
@@ -79,6 +80,7 @@ const items: Item[] = [
   // Shop hops (shop-features-round-2-design.md 4.6): only once the shop turns them on.
   { href: "/hops", label: "Shop hop", icon: Stamp, retail: true, hop: true },
   { href: "/special-orders", label: "Special orders", icon: ClipboardList, retail: true },
+  { href: "/paperwork", label: "Paperwork", icon: FileCheck },
   { href: "/reports", label: "Reports", icon: BarChart3, admin: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

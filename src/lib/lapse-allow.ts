@@ -97,6 +97,8 @@ export const BY_HAND = [
   "importItems",
   "sendCampaignTest",
   "sendBagReminders",
+  // The card reader at the register (shop-features-round-2-design.md 4.8): sending an amount to the reader is new money
+  "startReaderPayment",
   // The manual repository on a hosted install (the browser reads, hashes and sends the file): an offer or a download is new work
   "startHostedOffer",
   "finishHostedOffer",
@@ -151,6 +153,12 @@ export const HAND_ALLOWED = [
   "softwareChoices",
   // The register's starter bundles for a machine being sold (6.1): a lookup
   "starterBundlesNow",
+  // The register's gift lists (shop-features-round-2-design.md 9.9): a lookup
+  "findGiftLists",
+  // The card reader (4.8): how a payment on the reader stands, stopping it, and test mode's simulated tap
+  "readerPaymentStatus",
+  "cancelReaderPayment",
+  "simulateReaderTap",
   "readCatalogSheet",
   "previewCatalog",
   "openClassSeats",

@@ -96,6 +96,29 @@ model Shop {
   makeRateCents            Int           @default(2000)
   makeSetupCents           Int           @default(500)
   makeNeverCut             String        @default("PVC, vinyl")
+  // Warranty claims to makers (shop-features-round-2-design.md 9.1): the next claim's number
+  nextClaimNumber          Int           @default(1)
+  // Co-op advertising and rebate claims (9.2): the next one's number
+  nextCoopNumber           Int           @default(1)
+  // Customers' machines on consignment (9.6): the shop's commission when none is typed, a percent of what it sells for
+  consignDefaultPct        Float         @default(25)
+  // Quilt appraisals (9.8): the next certificate's number, the usual fee, and the appraiser's name and credential
+  nextAppraisalNumber      Int           @default(1)
+  appraisalFeeCents        Int           @default(7500)
+  appraiserName            String?
+  appraiserCredential      String?
+  // House charge accounts (9.4): off until the owner turns them on
+  houseAccountsOn          Boolean       @default(false)
+  // The card reader at the counter (4.8): Stripe Terminal on the shop's own Stripe account (its key is stripeKeySealed),
+  // off until turned on; the Terminal location the readers are registered to
+  cardReaderOn             Boolean       @default(false)
+  terminalLocationId       String?
+  // Shipping labels through Shippo (9.5): off until turned on; the shop's own Shippo API key (sealed), where parcels ship
+  // from { name, street1, city, state, zip, phone } and the usual box { lengthIn, widthIn, heightIn, weightOz }
+  shippoOn                 Boolean       @default(false)
+  shippoKeySealed          String?
+  shipFrom                 Json          @default("{}")
+  shipParcel               Json          @default("{}")
   nextTagNumber            Int           @default(101)
   nextOrderNumber          Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -300,6 +323,18 @@ model Shop {
   patternNeeds      PatternNeed[]
   careTips          CareTip[]
   customerQuestions CustomerQuestion[]
+  warrantyClaims    WarrantyClaim[]
+  coopClaims        CoopClaim[]
+  coopProofs        CoopProof[]
+  consignPayouts    ConsignPayout[]
+  appraisals        Appraisal[]
+  appraisalPhotos   AppraisalPhoto[]
+  giftRegistries    GiftRegistry[]
+  registryItems     RegistryItem[]
+  houseAccounts     HouseAccount[]
+  accountEntries    AccountEntry[]
+  cardReaders       CardReader[]
+  cardPayments      CardPayment[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -381,6 +416,8 @@ model User {
   active         Boolean  @default(true)
   // Bumped when the password changes or access is removed: sessions signed in before that stop working
   sessionVersion Int      @default(0)
+  // Sales commission (shop-features-round-2-design.md 9.7): { pct, on: "machines" | "all" }; {} for none
+  commission     Json     @default("{}")
   createdAt      DateTime @default(now())
 
   notes         ModelNote[]
@@ -778,10 +815,14 @@ model TicketLine {
   // would have cost, for the report
   coveredPlanId  String?
   coveredCents   Int?
+  // Claimed from the machine's maker under its warranty (WarrantyClaim id, plain; shop-features-round-2-design.md 9.1):
+  // the line charges 0 and coveredCents keeps what it would have cost, as for a plan
+  claimId        String?
   createdAt      DateTime @default(now())
 
   @@index([ticketId])
   @@index([coveredPlanId])
+  @@index([claimId])
 }
 
 enum PaymentMethod {
@@ -848,6 +889,11 @@ model Part {
   // this rounded to cents and is what margins and exports read. Empty on older parts: costCents is then exact.
   costTenThou       Int?
   priceCents        Int?
+  // The maker's minimum advertised price (shop-features-round-2-design.md 9.3): below it, the online shop shows this price
+  // and "Add to cart to see our price", and the cart shows the real one
+  mapCents          Int?
+  // Also listed on eBay, Etsy or Marketplace (9.7): [{ where, url }]; selling the last one here asks to take those down
+  listedOn          Json          @default("[]")
   supplier          String?
   notes             String?
   createdAt         DateTime      @default(now())
@@ -1579,6 +1625,10 @@ model SaleLine {
   specialOrderId String?
   // A loaner's or rental's money (plain id, 1.7, 1.8): its deposit (DEPOSIT), a kept deposit (LOAN_FEE), rent (RENT)
   unitLoanId     String?
+  // Who sold it (User id, plain; shop-features-round-2-design.md 9.7): picked at the register, the person signed in by default
+  soldById       String?
+  // Bought from a customer's gift list (RegistryItem id, plain; shop-features-round-2-design.md 9.9): ticks it off
+  registryItemId String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1589,6 +1639,7 @@ model SaleLine {
   @@index([enrollmentId])
   @@index([appointmentId])
   @@index([layawayId])
+  @@index([registryItemId])
 }
 
 // A partnership with another shop, from this shop's side (the id is the hub's link id).
@@ -2052,6 +2103,12 @@ model WebOrder {
   linkSealed      String? // the order page's link (it carries the token), sealed, for the mail
   saleId          String?
   tracking        String?
+  // A label bought through Shippo (shop-features-round-2-design.md 9.5): where to print it, the carrier and service,
+  // what it cost the shop, and Shippo's transaction id
+  labelUrl        String?
+  labelCarrier    String?
+  labelCents      Int?
+  shippoTxId      String?
   note            String?
   staffNote       String?
   createdAt       DateTime  @default(now())
@@ -2126,6 +2183,14 @@ model StockUnit {
   condition       String    @default("NEW") // NEW | OPEN_BOX | REFURB | USED
   costCents       Int? // what it cost the shop (a trade-in: the credit given)
   priceCents      Int? // asking price
+  mapCents        Int? // the maker's minimum advertised price (9.3): an asking price below it is never advertised
+  // A customer's used machine on consignment (shop-features-round-2-design.md 9.6): whose it is (Customer id, plain), the
+  // shop's commission (a percent of what it sells for) and the day to give it back or mark it down (YYYY-MM-DD)
+  consignorId     String?
+  consignPct      Float?
+  consignUntil    String?
+  // Also listed on eBay, Etsy or Marketplace (9.7): [{ where, url }]; selling it here asks to take those down first
+  listedOn        Json      @default("[]")
   warrantyMonths  Int?
   warrantyBy      String? // who stands behind it: the maker's name, or the shop
   soldLineId      String? // SaleLine that sold it (kept after a return, until it sells again)
@@ -3855,4 +3920,268 @@ model TradeUpOffer {
 
   @@unique([shopId, ticketId])
   @@index([usedLineId])
+}
+
+// A warranty claim to a machine's maker (shop-features-round-2-design.md 9.1, package warranty-claims): the ticket's
+// lines marked "Claim it from the maker" (TicketLine.claimId) charge the customer nothing and go on it. Logged and
+// reconciled here; the makers' own portals are never connected. status: OPEN (being put together) | FILED (sent) |
+// PAID | SHORT (paid less than expected) | REFUSED. partsCents and laborCents add up the claimed lines; expectedCents is
+// what the maker should pay (fixed once filed; owed by the maker in the books from filedAt); receivedCents came in on
+// receivedAt (also the day a refused or short claim is closed). ticketId and machineId are plain ids.
+model WarrantyClaim {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  ticketId      String?
+  machineId     String?
+  maker         String
+  claimNumber   String?
+  status        String    @default("OPEN")
+  filedAt       DateTime?
+  partsCents    Int       @default(0)
+  laborCents    Int       @default(0)
+  expectedCents Int       @default(0)
+  receivedCents Int       @default(0)
+  receivedAt    DateTime?
+  note          String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, ticketId])
+}
+
+// A co-op advertising or rebate claim to a maker (shop-features-round-2-design.md 9.2, package coop-claims): what the
+// shop spent (an ad placed, or machines sold under a rebate program), what it can claim back, the program's deadline
+// (a dashboard line 14 days before, while not sent), sent, and what came in. kind: COOP | REBATE; status: OPEN (not
+// sent) | FILED | PAID | SHORT | DENIED. placedOn and deadline are the shop's days (YYYY-MM-DD). The proof (a photo of
+// the ad, the invoice) is CoopProof.
+model CoopClaim {
+  id            String      @id @default(cuid())
+  shopId        String
+  shop          Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  maker         String
+  kind          String      @default("COOP")
+  program       String?
+  adWhere       String?
+  placedOn      String?
+  spentCents    Int         @default(0)
+  claimCents    Int         @default(0)
+  deadline      String?
+  status        String      @default("OPEN")
+  filedAt       DateTime?
+  receivedCents Int         @default(0)
+  receivedAt    DateTime?
+  note          String?
+  createdById   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  proofs        CoopProof[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status, deadline])
+}
+
+// A photo or PDF proving a co-op claim (the ad as it ran, the invoice for it), 5 MB at most.
+model CoopProof {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  claimId   String
+  claim     CoopClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  data      Bytes
+  createdAt DateTime  @default(now())
+
+  @@index([claimId])
+}
+
+// What the shop owes a consignor for her machine sold on consignment (shop-features-round-2-design.md 9.6, package
+// consign-machines): written when the machine sells (amountCents: what it sold for before tax, less the shop's
+// commission), paid by check, cash or store credit (paidAt, method, note: the check number), voided with the sale or a
+// return before it was paid. unitId, customerId, saleLineId and giftCardId are plain ids. In the books it is owed to
+// consignors (a liability) from the sale until it is paid.
+model ConsignPayout {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  unitId      String
+  customerId  String
+  saleLineId  String
+  soldCents   Int
+  pct         Float
+  amountCents Int
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+  method      String? // CHECK | CASH | CREDIT
+  note        String?
+  giftCardId  String?
+  paidById    String?
+  voidedAt    DateTime?
+
+  @@index([shopId, customerId])
+  @@index([shopId, paidAt])
+  @@index([saleLineId])
+}
+
+// A quilt appraisal (shop-features-round-2-design.md 9.8, package appraisals): the customer, the quilt (details:
+// { title, widthIn, lengthIn, maker, made, techniques, materials, condition, description }), the value and its purpose
+// (insurance replacement | fair market | donation), the appraiser and her credential as on the certificate, the fee
+// rung up at the register (saleId, plain), and issuedAt once the certificate is final (it can't be changed after; a
+// new appraisal replaces it). customerId is plain.
+model Appraisal {
+  id          String           @id @default(cuid())
+  shopId      String
+  shop        Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number      Int
+  customerId  String?
+  name        String
+  details     Json             @default("{}")
+  valueCents  Int              @default(0)
+  purpose     String           @default("insurance")
+  appraiser   String?
+  credential  String?
+  feeCents    Int              @default(0)
+  saleId      String?
+  issuedAt    DateTime?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  photos      AppraisalPhoto[]
+
+  @@unique([shopId, number])
+  @@index([shopId, customerId])
+}
+
+// A photo of the appraised quilt (the first prints on the certificate), 5 MB at most.
+model AppraisalPhoto {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  appraisalId String
+  appraisal   Appraisal @relation(fields: [appraisalId], references: [id], onDelete: Cascade)
+  mime        String
+  data        Bytes
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([appraisalId])
+}
+
+// A customer's wish list or gift registry (shop-features-round-2-design.md 9.9, package gift-registry): what she would
+// like, shared by a link she sends to family (token, on the shop's public page). Bought at the counter it is ticked off
+// (SaleLine.registryItemId) without telling her. customerId is plain. closedAt: no longer shared.
+model GiftRegistry {
+  id         String         @id @default(cuid())
+  shopId     String
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String?
+  name       String
+  title      String
+  eventDate  String?
+  token      String         @unique
+  closedAt   DateTime?
+  createdAt  DateTime       @default(now())
+  items      RegistryItem[]
+
+  @@index([shopId, customerId])
+}
+
+// One thing on a gift list: an item from stock (partId, plain) or words, and how many she would like.
+model RegistryItem {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  registryId  String
+  registry    GiftRegistry @relation(fields: [registryId], references: [id], onDelete: Cascade)
+  partId      String?
+  description String
+  qtyWanted   Int          @default(1)
+  note        String?
+  createdAt   DateTime     @default(now())
+
+  @@index([registryId])
+}
+
+// A customer's house charge account (shop-features-round-2-design.md 9.4, package house-accounts): she buys "on account"
+// at the register (tender ACCOUNT) or on a ticket (payment INVOICE), up to her limit (0: no limit), and pays within the
+// terms (days) from a monthly statement. status: OPEN | CLOSED (no new charges). Only while Shop.houseAccountsOn.
+model HouseAccount {
+  id         String         @id @default(cuid())
+  shopId     String
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String
+  limitCents Int            @default(0)
+  termsDays  Int            @default(30)
+  status     String         @default("OPEN")
+  note       String?
+  createdAt  DateTime       @default(now())
+  entries    AccountEntry[]
+
+  @@unique([shopId, customerId])
+}
+
+// One charge or payment on a house account: kind CHARGE (a sale or a ticket put on account; negative for a refund to the
+// account) | PAYMENT (money she paid against it: method CASH | CHECK | CARD | OTHER, note the check number) | ADJUST.
+// saleId, ticketId and paymentId (a ticket's Payment) are plain. voidedAt: the sale was voided (or the payment undone).
+model AccountEntry {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     HouseAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind        String
+  amountCents Int
+  method      String?
+  note        String?
+  saleId      String?
+  ticketId    String?
+  paymentId   String?
+  byUserId    String?
+  at          DateTime     @default(now())
+  voidedAt    DateTime?
+
+  @@index([accountId, at])
+  @@index([shopId, at])
+  @@index([saleId])
+}
+
+// A Stripe Terminal card reader paired to the shop (shop-features-round-2-design.md 4.8, package card-reader): Stripe's
+// reader id (tmr_...), the shop's name for it, and its kind (a simulated reader in test mode).
+model CardReader {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  readerId   String
+  label      String
+  deviceType String?
+  createdAt  DateTime @default(now())
+
+  @@unique([shopId, readerId])
+}
+
+// A card payment taken on the reader (4.8): the PaymentIntent (pi_...), how much, where it stands (PENDING | SUCCEEDED |
+// FAILED | CANCELLED), the card's last four, the sale it paid (saleId, plain; null while on no sale yet), and what has
+// been refunded to the card since.
+model CardPayment {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  intentId      String   @unique
+  readerId      String?
+  amountCents   Int
+  status        String   @default("PENDING")
+  last4         String?
+  brand         String?
+  saleId        String?
+  refundedCents Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shopId, saleId])
+  @@index([shopId, status])
 }

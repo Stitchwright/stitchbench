@@ -29,6 +29,9 @@ import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-cam
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
+import { RegisterGiftLists, type GiftListPick } from "@/components/register-gift-lists";
+import { RegisterCardReader, type ReaderSetup } from "@/components/register-card-reader";
+import { ThreadPhotoMatch } from "@/components/thread-photo-match";
 import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
 import { SoftwareLineFields } from "@/components/software-line";
 import type { SoftwareLineInput } from "@/lib/software";
@@ -101,6 +104,12 @@ type CartLine = {
   breakPriceCents?: number | null;
   /** A machine bought with a repair's trade-up credit (1.9): the ticket. */
   tradeUpTicketId?: string;
+  /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7), and whether the cashier ticked it taken down. */
+  listedOn?: string[];
+  delisted?: boolean;
+  /** From a customer's gift list (9.9): the list item it ticks off, and the list's name for the line. */
+  registryItemId?: string;
+  listName?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -114,6 +123,8 @@ function leftOut(s: SaleForReturn): string {
   return booking + unit + layaway;
 }
 
+/** A machine, or the last of an item, also listed elsewhere: ticked "taken down" before the sale (9.7). */
+const mustDelist = (l: CartLine) => !!l.listedOn?.length && l.qty > 0 && (!!l.stockUnitId || (l.onHand ?? 0) - l.qty < 1);
 const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
 // Names a sale for the server, so one sent twice is made once. getRandomValues works on the shop's plain-http network.
@@ -151,6 +162,11 @@ export function Register({
   preload,
   preloadItems,
   tradeNote,
+  sellers = [],
+  me = "",
+  houseAccounts = false,
+  cardReader = null,
+  threadPhoto = null,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -177,9 +193,20 @@ export function Register({
   preloadItems?: { item: RegisterItem; qty: number }[];
   /** The Assistant's trade-in condition note (shop-features-round-2-design.md 5.4), when it can be used here. */
   tradeNote?: { unavailable?: string } | null;
+  /** Who can be picked as the seller (commissions, 9.7), and the person signed in (the default). */
+  sellers?: { id: string; name: string }[];
+  me?: string;
+  /** House accounts are on (9.4): "On account" is offered once a customer is picked (the server checks her account). */
+  houseAccounts?: boolean;
+  /** The shop's card readers (4.8), when the card reader is on: Card reader sends the amount to one. */
+  cardReader?: ReaderSetup | null;
+  /** The Assistant's thread match from a photo (9.10): shown with the Fabric and thread helpers on; unavailable says why it can't run now. */
+  threadPhoto?: { unavailable?: string } | null;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [soldBy, setSoldBy] = useState(me);
+
   const [returnMode, setReturnMode] = useState(false);
   // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the
   // same), while every return line on it came from that receipt (receiptOf below).
@@ -318,7 +345,7 @@ export function Register({
         return;
       }
       setDone(null);
-      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT", brand: it.brand ?? null }]);
+      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT", brand: it.brand ?? null, listedOn: it.listedOn }]);
       return;
     }
     setDone(null);
@@ -331,7 +358,7 @@ export function Register({
     setCart((c) => {
       // The same item scanned again adds one more (not for fabric: each cut is its own line; not across vacuums: a
       // supply bought for another vacuum is its own line).
-      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId);
+      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId && !l.registryItemId);
       if (i >= 0) return c.map((l, j) => (j === i ? { ...l, qty: l.qty + sign } : l));
       return [
         ...c,
@@ -356,6 +383,7 @@ export function Register({
           breakMinQty: it.breakMinQty ?? null,
           breakPriceCents: it.breakPriceCents ?? null,
           machineId,
+          listedOn: it.listedOn,
         },
       ];
     });
@@ -366,6 +394,16 @@ export function Register({
   function addExtraLines(more: ExtraLine[]) {
     setDone(null);
     setCart((c) => [...c, ...more.map((x) => ({ key: newKey(), discountPct: 0, priced: true, ...x }))]);
+  }
+
+  /** A gift bought from a customer's list (9.9): its own line, naming the list item. */
+  function addGiftListLine(p: GiftListPick) {
+    if (cart.some((l) => l.registryItemId === p.registryItemId)) {
+      toast.warning("That one is already on this sale. Change its quantity on the line.");
+      return;
+    }
+    setDone(null);
+    setCart((c) => [...c, { key: newKey(), partId: p.partId, registryItemId: p.registryItemId, listName: p.listName, description: p.description, partNumber: p.partNumber ?? undefined, unit: null, qty: 1, unitPriceCents: p.priceCents ?? 0, priced: p.priceCents != null, onHand: p.inStock, discountPct: 0, taxable: true }]);
   }
 
   /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
@@ -777,7 +815,16 @@ export function Register({
     code.current?.focus();
   }
 
-  async function finish() {
+  /** The card reader approved a payment (4.8): on the sale, which finishes itself once nothing is left to pay. */
+  function readerApproved(p: { amountCents: number; stripeIntent: string; last4: string | null }) {
+    const next: Tender[] = [...tenders, { method: "CARD", amountCents: p.amountCents, stripeIntent: p.stripeIntent, ...(p.last4 ? { last4: p.last4 } : {}) }];
+    setTenders(next);
+    setTenderAmt("");
+    setEditing(null);
+    if (!tenderProblem(saleTotals(priced, orderDiscountCents, receiptRate ?? ratePct, next), next) && !busy) finish(next);
+  }
+
+  async function finish(withTenders?: Tender[]) {
     setBusy(true);
     setDone(null);
     const sale = {
@@ -807,9 +854,12 @@ export function Register({
         depositUsed: l.depositUsed ?? false,
         noRule: l.noRule ?? false,
         tradeUpTicketId: l.tradeUpTicketId ?? null,
+        delisted: l.delisted ?? false,
+        registryItemId: l.registryItemId ?? null,
       })),
+      soldById: soldBy || null,
       orderDiscountCents,
-      tenders,
+      tenders: withTenders ?? tenders,
     };
     const sent = JSON.stringify(sale);
     if (pending.current?.sent !== sent) pending.current = { key: saleKey(), sent };
@@ -903,6 +953,8 @@ export function Register({
             <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
+          <RegisterGiftLists returnMode={returnMode} onAdd={addGiftListLine} />
+          {threadPhoto && <ThreadPhotoMatch unavailable={threadPhoto.unavailable} returnMode={returnMode} onAdd={(it) => addItem(it)} />}
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
           {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} tradeNote={tradeNote} tradeInLessPct={tradeInLessPct} />}
           {specialOrders && !returnMode && (
@@ -1278,6 +1330,12 @@ export function Register({
                       </button>
                     )}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                    {l.listName && <span className="pill tone-ready ml-1">gift: {l.listName}</span>}
+                    {mustDelist(l) && (
+                      <label className="ml-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold">
+                        <input type="checkbox" className="check" checked={l.delisted === true} onChange={(e) => setLine(l.key, { delisted: e.target.checked })} /> Take it down on {l.listedOn!.join(", ")} first: done
+                      </label>
+                    )}
                     {l.kind === "SOFTWARE" && l.partId && (
                       <SoftwareLineFields partId={l.partId} customerId={customer?.id ?? null} value={l.software ?? {}} returning={l.qty < 0} canOverride={canSell} onChange={(v) => setLine(l.key, { software: v })} />
                     )}
@@ -1521,6 +1579,23 @@ export function Register({
           </div>
         </div>
 
+        {sellers.length > 1 && (
+          <div className="card card-pad">
+            <div className="field">
+              <label htmlFor="register-sold-by" className="label">
+                Sold by
+              </label>
+              <select id="register-sold-by" className="select" value={soldBy} onChange={(e) => setSoldBy(e.target.value)}>
+                {sellers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="card card-pad space-y-1">
           <Row k="Subtotal" v={money(t.subtotal)} />
           <div className="flex items-center justify-between gap-2">
@@ -1565,6 +1640,19 @@ export function Register({
                 {TENDER_LABEL[m]}
               </button>
             ))}
+            {cardReader && !refund && (
+              <RegisterCardReader
+                setup={cardReader}
+                amountCents={(editing ? null : toCents(tenderAmt)) ?? t.due}
+                disabled={!lines.length}
+                onApproved={readerApproved}
+              />
+            )}
+            {houseAccounts && customer && (
+              <button type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender("ACCOUNT")}>
+                {TENDER_LABEL.ACCOUNT}
+              </button>
+            )}
             {lenders.length > 0 && (
               <button type="button" className={`btn btn-sm ${fin ? "btn-primary" : ""}`} disabled={!lines.length} aria-expanded={!!fin} onClick={() => setFin(fin ? null : { lenderId: lenders.length === 1 ? lenders[0].id : "", approval: "" })}>
                 {TENDER_LABEL.FINANCED}
@@ -1650,7 +1738,7 @@ export function Register({
               {problem}
             </p>
           )}
-          <button type="button" className="btn btn-primary btn-lg w-full" disabled={busy || !lines.length || Boolean(problem)} onClick={finish}>
+          <button type="button" className="btn btn-primary btn-lg w-full" disabled={busy || !lines.length || Boolean(problem) || lines.some((l) => mustDelist(l) && !l.delisted)} onClick={() => finish()}>
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}
           </button>
           <div className="space-y-2 border-t border-line pt-3">

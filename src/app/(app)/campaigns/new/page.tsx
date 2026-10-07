@@ -10,6 +10,7 @@ import { ModuleOff } from "@/components/module-off";
 import { PageHeader, Section } from "@/components/ui";
 import { entryFor } from "@/lib/assistant/ui";
 import { DraftFill, PostDraft } from "@/components/assistant/marketing-drafts";
+import { MapWarnings } from "@/components/map-price";
 
 export default async function NewCampaignPage() {
   const user = await requireAdmin();
@@ -27,6 +28,7 @@ export default async function NewCampaignPage() {
     <div className="space-y-4">
       <PageHeader title="New campaign" back={{ href: "/campaigns", label: "Campaigns" }} />
       <MessagesTabs active="campaigns" />
+      <MapWarnings shopId={shopId} />
       {mk.show && (
         <Section title="Let the Assistant start it">
           <div className="space-y-3">

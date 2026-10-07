@@ -19,6 +19,8 @@ import type { RegisterItem } from "@/lib/register-item";
 import { lineNet } from "@/lib/register-math";
 import type { TradeInInput } from "@/lib/units/types";
 import { grantPlan } from "@/lib/units/plans";
+import { readListed } from "@/lib/listed-math";
+import { payoutOnReturn, payoutOnSale, payoutOnVoidReturn, payoutOnVoidSale } from "@/lib/consign-machines";
 import { DEFAULT_WARRANTY_MONTHS, isCondition, pushEvent, sellableMachines, unitDescription, unitDisclosure, warrantyByDefault, warrantyEnd, type UnitEvent } from "@/lib/units/units";
 
 export type UnitLineIn = { stockUnitId: string | null; tradeIn: TradeInInput | null; qty: number; unitPriceCents: number; taxable: boolean };
@@ -122,6 +124,8 @@ export async function applyUnitLine(
       },
     });
     if (!sold.count) throw new UserError(`${desc} was just sold. Take it off this sale.`);
+    // A customer's machine on consignment: what she is owed (shop-features-round-2-design.md 9.6).
+    await payoutOnSale(tx, { shopId, unit, saleLineId: line.id, soldCents: lineNet(line) - a.discountShareCents, at });
     await tx.machine.updateMany({ where: { id: unit.machineId, shopId }, data: { customerId: a.customerId } });
     // The service plan that comes with it starts today (ended again if the sale is voided or the machine returned).
     const plan = unit.includedPlanId ? await tx.servicePlan.findFirst({ where: { id: unit.includedPlanId, shopId } }) : null;
@@ -133,6 +137,7 @@ export async function applyUnitLine(
     data: { status: "IN_STOCK", returnLineId: line.id, events: pushEvent(unit.events, { at: when, note: `Returned on sale #${a.saleNumber}`, line: line.id }) },
   });
   if (!back.count) throw new UserError(`${desc} was just returned.`);
+  await payoutOnReturn(tx, { shopId, soldLineId: unit.soldLineId, at });
   await tx.machine.updateMany({ where: { id: unit.machineId, shopId }, data: { customerId: null } });
   // Its service plans end with it (work already covered stays covered); voiding this return starts them again.
   await tx.machinePlan.updateMany({ where: { shopId, machineId: unit.machineId, stockUnitId: unit.id, voidedAt: null }, data: { voidedAt: at } });
@@ -231,6 +236,7 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
         data: { status: "IN_STOCK", soldAt: null, soldLineId: null, soldNetCents: null, warrantyUntil: null, trialUntil: null, registeredAt: null, registrationRef: null, events: pushEvent(unit.events, { at: when, note: `Sale #${a.saleNumber} void: back in stock` }) },
       });
       if (!r.count) throw new UserError(`${unitDescription(unit)} was returned since this sale; void that return first.`);
+      await payoutOnVoidSale(tx, { shopId, saleLineId: l.id, at });
       await tx.machine.updateMany({ where: { id: unit.machineId, shopId }, data: { customerId: null } });
       await tx.machinePlan.updateMany({ where: { shopId, saleLineId: l.id, voidedAt: null }, data: { voidedAt: at } });
     } else if (l.stockUnitId && l.qty < 0) {
@@ -241,6 +247,7 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
         data: { status: "SOLD", returnLineId: null, events: pushEvent(unit.events, { at: when, note: `Return on sale #${a.saleNumber} void: sold again` }) },
       });
       if (!r.count) throw new UserError(`${unitDescription(unit)} was sold again since; void that sale first.`);
+      await payoutOnVoidReturn(tx, { shopId, soldLineId: unit.soldLineId, returnedAt: a.saleAt });
       // The plans the return ended start again.
       if (a.saleAt) await tx.machinePlan.updateMany({ where: { shopId, machineId: unit.machineId, stockUnitId: unit.id, voidedAt: a.saleAt }, data: { voidedAt: null } });
       const original = unit.soldLineId ? await tx.saleLine.findFirst({ where: { id: unit.soldLineId, sale: { shopId } }, select: { sale: { select: { customerId: true } } } }) : null;
@@ -304,6 +311,7 @@ export async function registerUnitHits(a: { shopId: string; q: string; mode: "co
     kind: "UNIT",
     consigned: false,
     disclosure: unitDisclosure(u.condition),
+    listedOn: readListed(u.listedOn).map((x) => x.where),
     stockUnitId: u.id,
     brand: u.machine.brand,
   }));

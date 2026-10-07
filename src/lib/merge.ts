@@ -58,6 +58,11 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "WantItem", field: "customerId", label: ["want list line", "want list lines"] },
   { model: "UnitLoan", field: "customerId", label: ["loaner, demo or rental", "loaners, demos and rentals"] },
   { model: "TradeUpOffer", field: "customerId", label: ["repair credit used", "repair credits used"] },
+  { model: "HouseAccount", field: "customerId", label: ["house account", "house accounts"] },
+  { model: "GiftRegistry", field: "customerId", label: ["gift list", "gift lists"] },
+  { model: "Appraisal", field: "customerId", label: ["quilt appraisal", "quilt appraisals"] },
+  { model: "StockUnit", field: "consignorId", label: ["machine on consignment", "machines on consignment"] },
+  { model: "ConsignPayout", field: "customerId", label: ["consignment payout", "consignment payouts"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -76,6 +81,7 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
   { model: "SoftwareLicense", field: "machineId", label: ["software licence", "software licences"] },
+  { model: "WarrantyClaim", field: "machineId", label: ["warranty claim", "warranty claims"] },
 ];
 
 /** What a deleted customer's kept rows say instead of their name. */
@@ -267,6 +273,12 @@ export async function mergeCustomersFor(user: CurrentUser, fromId: string, intoI
     const theirCerts = new Set((await tx.certification.findMany({ where: { shopId, customerId: into.id }, select: { equipment: true } })).map((x) => x.equipment.toLowerCase()));
     const certClash = (await tx.certification.findMany({ where: { shopId, customerId: from.id }, select: { id: true, equipment: true } })).filter((x) => theirCerts.has(x.equipment.toLowerCase()));
     if (certClash.length) await tx.certification.deleteMany({ where: { shopId, id: { in: certClash.map((x) => x.id) } } });
+    // A house account on both (9.4): the duplicate's charges and payments join the kept one's account.
+    const [fromAcct, intoAcct] = await Promise.all([tx.houseAccount.findFirst({ where: { shopId, customerId: from.id } }), tx.houseAccount.findFirst({ where: { shopId, customerId: into.id } })]);
+    if (fromAcct && intoAcct) {
+      await tx.accountEntry.updateMany({ where: { shopId, accountId: fromAcct.id }, data: { accountId: intoAcct.id } });
+      await tx.houseAccount.delete({ where: { id: fromAcct.id } });
+    }
     for (const r of CUSTOMER_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await replaceInLists(tx, shopId, from.id, into.id);
     await tx.customer.update({ where: { id: into.id }, data: customerFill(from, into, date).data });
@@ -337,6 +349,16 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   // A live-sale claim still held for them or waiting in their pay link (LiveClaim.customerId is a plain id).
   const claims = await tx.liveClaim.count({ where: { shopId, customerId: c.id, status: { in: ["HELD", "SENT"] } } });
   if (claims) out.push(`${say(claims, ["live-sale claim is", "live-sale claims are"])} still held or waiting to be paid. Let them go or wait for the payment first.`);
+  const acct = await tx.houseAccount.findFirst({ where: { shopId, customerId: c.id }, select: { id: true } });
+  if (acct) {
+    const es = await tx.accountEntry.findMany({ where: { accountId: acct.id, voidedAt: null }, select: { kind: true, amountCents: true } });
+    const owes = es.reduce((x, e) => x + (e.kind === "PAYMENT" ? -e.amountCents : e.amountCents), 0);
+    if (owes !== 0) out.push(`Their house account ${owes > 0 ? `owes ${money(owes)}` : `holds a credit of ${money(-owes)}`}. Settle it first.`);
+  }
+  const owedHer = await tx.consignPayout.count({ where: { shopId, customerId: c.id, paidAt: null, voidedAt: null } });
+  if (owedHer) out.push(`The shop still owes them for ${owedHer === 1 ? "a consigned machine" : `${owedHer} consigned machines`}. Pay them first (Paperwork, Consigned machines).`);
+  const consigned = await tx.stockUnit.count({ where: { shopId, consignorId: c.id, status: { in: ["IN_STOCK", "HELD"] } } });
+  if (consigned) out.push(`${consigned === 1 ? "Their machine is" : `${consigned} of their machines are`} for sale on consignment. Sell or give ${consigned === 1 ? "it" : "them"} back first.`);
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
     select: { shopClass: { select: { title: true } } },
@@ -405,6 +427,11 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["HouseAccount.customerId"], ["house account", "house accounts"], "kept in the books (nothing owed on it), without the customer");
+  add(n["GiftRegistry.customerId"], ["gift list", "gift lists"], "deleted (its link stops working)");
+  add(n["Appraisal.customerId"], ["quilt appraisal", "quilt appraisals"], `kept in the books as "${DELETED_NAME}" (their photos deleted)`);
+  add(n["StockUnit.consignorId"], ["machine once on consignment", "machines once on consignment"], "kept, without the customer");
+  add(n["ConsignPayout.customerId"], ["consignment payout", "consignment payouts"], "kept in the books, without the customer");
   add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
   add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
   add(n["WantItem.customerId"], ["want list line", "want list lines"], "deleted");
@@ -450,6 +477,18 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
     await tx.liveClaim.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null } });
+    // A settled house account (9.4) stays for the books, without her (its id stands in, so the one-per-customer key holds).
+    for (const a of await tx.houseAccount.findMany({ where: { shopId, customerId: c.id }, select: { id: true } })) {
+      await tx.houseAccount.update({ where: { id: a.id }, data: { customerId: `deleted:${a.id}`, status: "CLOSED" } });
+    }
+    // Gift lists (9.9): hers, so they go (lines already bought keep their sales).
+    await tx.giftRegistry.deleteMany({ where: { shopId, customerId: c.id } });
+    // Quilt appraisals (9.8): kept as the fee's record, without her name or the quilt's photos.
+    await tx.appraisalPhoto.deleteMany({ where: { shopId, appraisal: { customerId: c.id } } });
+    await tx.appraisal.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME } });
+    // Consignment (9.6): her machines and payouts stay in the books without her (the payout's id is a plain one, blanked).
+    await tx.stockUnit.updateMany({ where: { shopId, consignorId: c.id }, data: { consignorId: null } });
+    await tx.consignPayout.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: "" } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });

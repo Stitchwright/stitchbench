@@ -33,6 +33,7 @@ export const AUDIT_ACTIONS = {
   "giftcard.cashout": { category: "money", label: "Gift card balance paid out in cash" },
   "ticket.tax": { category: "money", label: "Tax switched off or on for a ticket" },
   "ticket.covered": { category: "money", label: "Ticket line covered by a service plan, or charged again" },
+  "ticket.claimed": { category: "money", label: "Ticket line claimed from the maker under warranty, or charged again" },
   "customer.taxexempt": { category: "money", label: "Customer's tax-exempt certificate changed" },
   "order.cancel": { category: "money", label: "Online order cancelled" },
   "paylink.make": { category: "money", label: "Pay link sent to a customer" },
