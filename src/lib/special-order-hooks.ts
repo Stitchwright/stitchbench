@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { lineNet } from "@/lib/register-math";
 import type { CurrentUser } from "@/lib/session";
+import { moveStock } from "@/lib/stock";
 
 type Tx = Prisma.TransactionClient;
 
@@ -40,6 +41,9 @@ type LineIn = {
 
 export type SpecialOrderHook = { mode: "cancel"; id: string; prevStatus: string } | null;
 
+/** A special order picked up on a sale: held at its store (locationId; null = the main store), where the sale takes it. */
+export type Pickup = { number: number; heldQty: number; partId: string | null; locationId: string | null };
+
 /**
  * Before the sale is checked: each pick-up line takes the order's item, quantity and price (a tech rings it up as the
  * order says) and its deposits come off on a DEPOSIT line. Returns the lines to sell, the pick-ups by order id, and the
@@ -50,8 +54,8 @@ export async function prepareSpecialOrderLines<L extends LineIn>(
   shopId: string,
   customerId: string | null,
   lines: L[],
-): Promise<{ lines: L[]; pickups: Map<string, { number: number; heldQty: number; partId: string | null }>; priced: Set<number> }> {
-  const pickups = new Map<string, { number: number; heldQty: number; partId: string | null }>();
+): Promise<{ lines: L[]; pickups: Map<string, Pickup>; priced: Set<number> }> {
+  const pickups = new Map<string, Pickup>();
   const priced = new Set<number>();
   const ids = [...new Set(lines.map((l) => l.specialOrderId).filter((x): x is string => !!x))];
   if (!ids.length) return { lines, pickups, priced };
@@ -80,7 +84,7 @@ export async function prepareSpecialOrderLines<L extends LineIn>(
     if (o.status !== "HERE") throw new UserError(`Special order ${o.number} isn't here yet. Mark it here on its page first.`);
     if (pickups.has(o.id)) throw new UserError(`Special order ${o.number} is on this sale twice.`);
     if (o.customerId && customerId && o.customerId !== customerId) throw new UserError(`Special order ${o.number} is another customer's.`);
-    pickups.set(o.id, { number: o.number, heldQty: o.heldQty, partId: o.partId });
+    pickups.set(o.id, { number: o.number, heldQty: o.heldQty, partId: o.partId, locationId: o.locationId });
     priced.add(out.length);
     out.push({ ...l, partId: o.partId, description: o.description, qty: o.qty, unitPriceCents: o.priceCents, discountCents: Math.max(0, Math.round(Number(l.discountCents ?? 0))), taxable: true });
     const p = paid.get(o.id) ?? 0;
@@ -95,11 +99,11 @@ export async function prepareSpecialOrderLines<L extends LineIn>(
 }
 
 /** Inside the sale's transaction, before its lines: the held quantity back on the shelf and each order done (or cancelled). */
-export async function beforeSpecialOrderLines(tx: Tx, a: { shopId: string; pickups: Map<string, { number: number; heldQty: number; partId: string | null }>; hook: SpecialOrderHook; user: Pick<CurrentUser, "id">; at: Date }): Promise<void> {
+export async function beforeSpecialOrderLines(tx: Tx, a: { shopId: string; pickups: Map<string, Pickup>; hook: SpecialOrderHook; user: Pick<CurrentUser, "id">; at: Date }): Promise<void> {
   for (const [id, p] of a.pickups) {
     const done = await tx.specialOrder.updateMany({ where: { id, shopId: a.shopId, status: "HERE" }, data: { status: "DONE", prevStatus: "HERE", heldQty: 0 } });
     if (!done.count) throw new UserError(`Special order ${p.number} just changed. Take it off this sale and add it again.`);
-    await releaseHeld(tx, a.shopId, { partId: p.partId, heldQty: p.heldQty, number: p.number }, a.user.id, a.at, "picked up");
+    await releaseHeld(tx, a.shopId, { partId: p.partId, heldQty: p.heldQty, number: p.number, locationId: p.locationId }, a.user.id, a.at, "picked up");
   }
   if (a.hook?.mode === "cancel") {
     const o = await tx.specialOrder.findFirst({ where: { id: a.hook.id, shopId: a.shopId } });
@@ -116,19 +120,17 @@ export async function afterSpecialOrderSale(tx: Tx, a: { shopId: string; pickups
   if (ids.length) await tx.specialOrder.updateMany({ where: { shopId: a.shopId, id: { in: ids } }, data: { saleId: a.saleId } });
 }
 
-/** Holds the quantity off the shelf for her (a HELD stock move). */
-export async function holdFor(tx: Tx, shopId: string, o: { id: string; number: number; partId: string | null; qty: number }, userId: string | null, at: Date): Promise<void> {
+/** Holds the quantity off the shelf for her (a HELD stock move), at the order's store. */
+export async function holdFor(tx: Tx, shopId: string, o: { id: string; number: number; partId: string | null; qty: number; locationId?: string | null }, userId: string | null, at: Date): Promise<void> {
   if (!o.partId) return;
-  await tx.part.updateMany({ where: { id: o.partId, shopId }, data: { qtyOnHand: { decrement: o.qty } } });
-  await tx.stockMove.create({ data: { shopId, partId: o.partId, qty: -o.qty, reason: "HELD", userId, note: `Special order ${o.number}`, createdAt: at } });
+  await moveStock(tx, { shopId, partId: o.partId, locationId: o.locationId ?? null, qty: -o.qty, reason: "HELD", userId, note: `Special order ${o.number}`, createdAt: at });
   await tx.specialOrder.updateMany({ where: { id: o.id, shopId }, data: { heldQty: o.qty } });
 }
 
-/** Puts a held quantity back on the shelf. */
-export async function releaseHeld(tx: Tx, shopId: string, o: { partId: string | null; heldQty: number; number: number }, userId: string | null, at: Date, why: string): Promise<void> {
+/** Puts a held quantity back on the shelf of the order's store. */
+export async function releaseHeld(tx: Tx, shopId: string, o: { partId: string | null; heldQty: number; number: number; locationId?: string | null }, userId: string | null, at: Date, why: string): Promise<void> {
   if (!o.partId || !(o.heldQty > 0)) return;
-  await tx.part.updateMany({ where: { id: o.partId, shopId }, data: { qtyOnHand: { increment: o.heldQty } } });
-  await tx.stockMove.create({ data: { shopId, partId: o.partId, qty: o.heldQty, reason: "HELD", userId, note: `Special order ${o.number}: ${why}`, createdAt: at } });
+  await moveStock(tx, { shopId, partId: o.partId, locationId: o.locationId ?? null, qty: o.heldQty, reason: "HELD", userId, note: `Special order ${o.number}: ${why}`, createdAt: at });
 }
 
 /**

@@ -63,6 +63,8 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "Appraisal", field: "customerId", label: ["quilt appraisal", "quilt appraisals"] },
   { model: "StockUnit", field: "consignorId", label: ["machine on consignment", "machines on consignment"] },
   { model: "ConsignPayout", field: "customerId", label: ["consignment payout", "consignment payouts"] },
+  // Stock brought from another store for her (shop-features-round-2-design.md 7.3).
+  { model: "StockTransfer", field: "forCustomerId", label: ["item brought from another store", "items brought from another store"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -488,6 +490,8 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.appraisal.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME } });
     // Consignment (9.6): her machines and payouts stay in the books without her (the payout's id is a plain one, blanked).
     await tx.stockUnit.updateMany({ where: { shopId, consignorId: c.id }, data: { consignorId: null } });
+    // A transfer brought over for her stays as the stores' record, without her (7.3).
+    await tx.stockTransfer.updateMany({ where: { shopId, forCustomerId: c.id }, data: { forCustomerId: null } });
     await tx.consignPayout.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: "" } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });

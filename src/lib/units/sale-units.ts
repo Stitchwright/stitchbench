@@ -92,7 +92,7 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
 /** Inside the sale's transaction, right after that line was written. discountShareCents: its share of the whole-sale discount. */
 export async function applyUnitLine(
   tx: Tx,
-  a: { shopId: string; saleNumber: number; customerId: string | null; at: Date; timeZone: string; line: SaleLine; tradeIn: TradeInInput | null; discountShareCents: number },
+  a: { shopId: string; saleNumber: number; customerId: string | null; at: Date; timeZone: string; line: SaleLine; tradeIn: TradeInInput | null; discountShareCents: number; locationId?: string | null },
 ): Promise<void> {
   const { shopId, line, at } = a;
   if (a.tradeIn) return tradeIn(tx, a, a.tradeIn);
@@ -134,7 +134,8 @@ export async function applyUnitLine(
   }
   const back = await tx.stockUnit.updateMany({
     where: { shopId, id: unit.id, status: "SOLD", soldLineId: unit.soldLineId },
-    data: { status: "IN_STOCK", returnLineId: line.id, events: pushEvent(unit.events, { at: when, note: `Returned on sale #${a.saleNumber}`, line: line.id }) },
+    // Back in stock at the store it was returned to (7.2).
+    data: { status: "IN_STOCK", returnLineId: line.id, ...(a.locationId !== undefined ? { locationId: a.locationId } : {}), events: pushEvent(unit.events, { at: when, note: `Returned on sale #${a.saleNumber}`, line: line.id }) },
   });
   if (!back.count) throw new UserError(`${desc} was just returned.`);
   await payoutOnReturn(tx, { shopId, soldLineId: unit.soldLineId, at });
@@ -144,7 +145,7 @@ export async function applyUnitLine(
 }
 
 /** A trade-in: the machine (found by serial and model, or made), its unit back IN_STOCK at the credit, no price yet. */
-async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date; line: SaleLine }, t: TradeInInput): Promise<void> {
+async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date; line: SaleLine; locationId?: string | null }, t: TradeInInput): Promise<void> {
   const { shopId, line, at } = a;
   const kind = await sellableKind(shopId, t.kind || "vacuum");
   if (!kind) throw new UserError("Pick what kind of machine the trade-in is.");
@@ -201,6 +202,8 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
         costCents: credit,
         priceCents: null,
         tradeInLineId: line.id,
+        // In stock at the store that took it in (7.2).
+        locationId: a.locationId ?? null,
         ...(conditionNote ? { note: conditionNote } : {}),
         events: pushEvent(unit.events, { at: when, note, line: line.id, prev }),
       },
@@ -209,7 +212,7 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
     unitId = unit.id;
   } else {
     const made = await tx.stockUnit.create({
-      data: { shopId, machineId: machine.id, status: "IN_STOCK", condition: t.condition, costCents: credit, tradeInLineId: line.id, note: conditionNote, events: [{ at: when, note, line: line.id }] },
+      data: { shopId, locationId: a.locationId ?? null, machineId: machine.id, status: "IN_STOCK", condition: t.condition, costCents: credit, tradeInLineId: line.id, note: conditionNote, events: [{ at: when, note, line: line.id }] },
       select: { id: true },
     });
     unitId = made.id;

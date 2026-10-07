@@ -38,6 +38,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { cleanLayout, cleanMap, orderRows, parseLayoutText } from "@/lib/connectors/layout";
 import { connectorFor, isConnectorId } from "@/lib/connectors/registry";
 import type { ColumnMap, ConnectorContext, OrderLayout, OrderVia } from "@/lib/connectors/types";
+import { currentStoreId } from "@/lib/stores";
+import { moveStock } from "@/lib/stock";
 
 export const MAX_ORDER_LINES = 300;
 const MAX_QTY_LINE = 100_000;
@@ -709,6 +711,7 @@ async function machinesFromOrder(user: CurrentUser, orderId: string, fd: FormDat
 /** The receipt itself: what came on each line; a machine model line (`machineLines`) moves the order but not the item's own stock. */
 async function receiveLines(user: CurrentUser, orderId: string, fd: FormData, timeZone: string, machineLines: Set<string>): Promise<string> {
   const shop = { timeZone };
+  const here = await currentStoreId(user);
   return db.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({ where: { id: orderId, shopId: user.shopId }, include: { lines: true, supplier: true } });
     if (!po) throw new UserError("Order not found.");
@@ -739,11 +742,17 @@ async function receiveLines(user: CurrentUser, orderId: string, fd: FormData, ti
         if (!part) throw new UserError(`${l.itemNumber} is no longer in inventory, so it can't be received.`);
         if (part.kind === "MACHINE" && !machineLines.has(l.id)) throw new UserError(`${l.itemNumber}: enter the serial numbers of the machines that came.`);
         if (part.kind !== "MACHINE") {
-          await tx.part.update({
-            where: { id: part.id },
-            data: { qtyOnHand: { increment: got }, ...(part.costCents == null && l.costCents != null ? { costCents: l.costCents, costTenThou: null } : {}) },
+          // Onto the shelf of the store receiving the box (7.3): another store's share is sent on with "Send its share".
+          await moveStock(tx, {
+            shopId: user.shopId,
+            partId: part.id,
+            locationId: here,
+            qty: got,
+            reason: "RECEIVED",
+            userId: user.id,
+            note: `Order #${po.number} from ${po.supplierName}`,
+            partData: part.costCents == null && l.costCents != null ? { costCents: l.costCents, costTenThou: null } : {},
           });
-          await tx.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: got, reason: "RECEIVED", userId: user.id, note: `Order #${po.number} from ${po.supplierName}` } });
         }
         // The status hold above doesn't stop the same form sent twice (a partly received order stays partly received):
         // the line moves only from the yards the form saw (`seen.<lineId>`), else from what was read here.

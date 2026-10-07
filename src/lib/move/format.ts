@@ -179,6 +179,15 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "PatternNeed", key: "id" }, // a pattern's yardage per size and role (its pattern item by plain id)
   { t: "CareTip", key: "id" }, // the shop's own care tips for the pickup sheet
   { t: "CustomerQuestion", key: "id" }, // customers' questions from the public page that went to a person
+  // More than one store (shop-features-round-2-design.md section 7): the stores, each item's stock at a store other than
+  // the main one, transfers between stores, notes between stores and who read them, and approvals asked of the owner.
+  { t: "Location", key: "id" },
+  { t: "StockLevel", key: "id" }, // -> Part, Location
+  { t: "StockTransfer", key: "id" },
+  { t: "StockTransferLine", key: "id", via: { column: "transferId", parent: "StockTransfer" } }, // -> StockTransfer, Part
+  { t: "StoreNote", key: "id" },
+  { t: "StoreNoteRead", key: `"noteId" || '|' || "userId"`, via: { column: "noteId", parent: "StoreNote" } }, // -> StoreNote, User
+  { t: "Approval", key: "id" },
 ];
 
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */

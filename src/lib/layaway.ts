@@ -21,6 +21,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { fmtYmdLong, isSellableMachine, unitDescription } from "@/lib/units/units";
 import { holdItems, releaseItems } from "@/lib/layaway-hooks";
+import { currentStore, storeDetails, storeOfRow } from "@/lib/stores";
 import { behind, cancelSplit, DEFAULT_LAYAWAY_TERMS, dueByOf, isEvery, layawayPlan, minDeposit, type LayawayEvery, type PlanPayment } from "@/lib/layaway-math";
 import { ymdOf } from "@/lib/zoned";
 import { holidaysOn } from "@/lib/tax-holidays";
@@ -123,7 +124,8 @@ async function paidFor(shopId: string, ids: string[]): Promise<Map<string, numbe
 
 /** The tax the items would carry today: the customer's exemption counts, as it would at the register. */
 async function taxToday(shopId: string, l: LayawayRow): Promise<{ price: number; tax: number }> {
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true, timeZone: true } });
+  // The layaway's store's rate (7.1; the main store's is the company's own).
+  const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true, timeZone: true } }), await storeOfRow(shopId, l.locationId));
   const exempt = exemptCertificate(l.customer);
   // A tax holiday today, or on the day the layaway began, takes the tax off what it covers (as the pick-up sale will).
   const holidays = exempt ? [] : await holidaysOn(shopId, [ymdOf(new Date(), shop.timeZone), ymdOf(l.startedAt, shop.timeZone)]);
@@ -270,7 +272,9 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
   const days = Number.isInteger(Number(input.days)) && Number(input.days) >= 7 && Number(input.days) <= 730 ? Number(input.days) : settings.days;
   const dueBy = dueByOf(today, days);
   const exempt = exemptCertificate(customer);
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } });
+  // Made at this store (7.1): its tax rate, and its shelf holds the items.
+  const here = await currentStore(user);
+  const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } }), here);
   // The total the plan splits: today's tax, less what a tax holiday today takes off.
   const holidays = exempt ? [] : await holidaysOn(shopId, [today]);
   const t = saleTotals(
@@ -292,7 +296,7 @@ export async function startLayawayAs(user: CurrentUser, input: StartInput): Prom
   const layaway = await db.$transaction(async (tx) => {
     const sh = await tx.shop.update({ where: { id: shopId }, data: { nextLayawayNumber: { increment: 1 } }, select: { nextLayawayNumber: true } });
     const made = await tx.layaway.create({
-      data: { shopId, number: sh.nextLayawayNumber - 1, customerId: customer.id, dueBy, every, plan: plan as unknown as Prisma.InputJsonValue, depositMinCents: deposit, terms: settings.terms, note: input.note?.slice(0, 500) || null, createdById: user.id, lines: { create: rows } },
+      data: { shopId, number: sh.nextLayawayNumber - 1, customerId: customer.id, dueBy, every, plan: plan as unknown as Prisma.InputJsonValue, depositMinCents: deposit, terms: settings.terms, note: input.note?.slice(0, 500) || null, createdById: user.id, locationId: here?.id ?? null, lines: { create: rows } },
       include: { lines: true },
     });
     await holdItems(tx, shopId, made, user, new Date());
@@ -360,7 +364,8 @@ export async function pickUpLayawayAs(user: CurrentUser, a: { layawayId: string;
   const l = await openLayaway(user.shopId, a.layawayId);
   const q = await pickUpQuote(user.shopId, l.id);
   if (q.dueCents < 0) throw new UserError(`More was paid than it comes to today ($${(-q.dueCents / 100).toFixed(2)} over). An owner can cancel it and ring the items up again.`);
-  const sale = await completeSaleAs(user, { customerId: l.customerId, lines: pickUpLines(l, q.paidCents), tenders: tenderOf(a.tender, q.dueCents), clientKey: a.clientKey ?? null }, { layaway: { id: l.id, mode: "pickup" } });
+  const sale = await completeSaleAs(user, { customerId: l.customerId, lines: pickUpLines(l, q.paidCents), tenders: tenderOf(a.tender, q.dueCents), clientKey: a.clientKey ?? null }, { layaway: { id: l.id, mode: "pickup" }, locationId: l.locationId });
+  // (Picked up at the layaway's own store: its items are on that shelf and the quote used that store's tax rate.)
   return { saleId: sale.saleId, number: sale.number, changeCents: sale.changeCents };
 }
 

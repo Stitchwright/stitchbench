@@ -30,6 +30,7 @@ import { actorOf, audit } from "@/lib/audit";
 import { addItemsToDraftFor } from "@/lib/fabric-orders";
 import { makePayLinkFor } from "@/lib/pay-links";
 import { holdFor, paidTowardOrders, releaseHeld } from "@/lib/special-order-hooks";
+import { currentStore, onlineStore, storeDetails } from "@/lib/stores";
 
 const MAX_MONEY = 10_000_000;
 export const OPEN_STATUSES = ["WAITING", "ORDERED", "HERE"];
@@ -281,7 +282,9 @@ export async function takeSpecialOrderAs(user: CurrentUser, input: TakeInput): P
     if (part.priceCents == null || price !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
   }
   const settings = await specialOrderSettings(shopId);
-  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } });
+  // Taken at this store (7.1): its tax rate, and the item is held on its shelf when it comes in.
+  const here = await currentStore(user);
+  const shop = storeDetails(await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { taxRatePct: true } }), here);
   const owed = saleTotals([{ qty, unitPriceCents: price, taxable: true }], 0, exemptCertificate(customer) ? 0 : shop.taxRatePct).total;
   const deposit = input.depositCents == null ? defaultDeposit(settings, owed) : Math.round(Number(input.depositCents));
   if (!Number.isFinite(deposit) || deposit < 0) throw new UserError("Check the deposit.");
@@ -297,6 +300,7 @@ export async function takeSpecialOrderAs(user: CurrentUser, input: TakeInput): P
         number: sh.nextSpecialOrderNumber - 1,
         customerId: customer.id,
         kind: part?.comingSoonOn ? "PREORDER" : "ORDER",
+        locationId: here?.id ?? null,
         partId: part?.id ?? null,
         description,
         qty,
@@ -601,6 +605,8 @@ export async function startPreorder(a: { slug: string; partId: string; qty?: num
       number: sh.nextSpecialOrderNumber - 1,
       customerId: customer.id,
       kind: "PREORDER",
+      // Held at the store the online shop sells from (Settings -> Stores).
+      locationId: (await onlineStore(store.id))?.id ?? null,
       partId: part.id,
       description: part.onlineTitle?.trim() || part.description,
       qty,

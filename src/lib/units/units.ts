@@ -23,6 +23,7 @@ import { lineNet } from "@/lib/register-math";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { ticketTotals } from "@/lib/ticket-math";
 import { addDays, dayStart, parseYmd, ymdOf, ymdParts } from "@/lib/zoned";
+import { currentStoreId } from "@/lib/stores";
 
 export const UNIT_CONDITIONS = ["NEW", "OPEN_BOX", "REFURB", "USED"] as const;
 export type UnitCondition = (typeof UNIT_CONDITIONS)[number];
@@ -297,6 +298,7 @@ export async function receiveUnitsFor(user: CurrentUser, fd: FormData): Promise<
   const at = new Date();
   const list: (string | null)[] = serials.length ? serials : [null];
   const ids: string[] = [];
+  const here = await currentStoreId(user);
   await db.$transaction(async (tx) => {
     for (const serial of list) {
       let machineId: string | null = null;
@@ -315,7 +317,8 @@ export async function receiveUnitsFor(user: CurrentUser, fd: FormData): Promise<
         machineId = m.id;
       }
       const u = await tx.stockUnit.create({
-        data: { shopId, machineId, status: "IN_STOCK", condition, costCents, priceCents, warrantyMonths, warrantyBy, note, bundle, classCredits, includedPlanId, events: [{ at: at.toISOString(), note: `Received by ${user.name}` }] },
+        // In stock at the store receiving it (7.2).
+        data: { shopId, locationId: here, machineId, status: "IN_STOCK", condition, costCents, priceCents, warrantyMonths, warrantyBy, note, bundle, classCredits, includedPlanId, events: [{ at: at.toISOString(), note: `Received by ${user.name}` }] },
         select: { id: true },
       });
       ids.push(u.id);
@@ -418,7 +421,7 @@ export async function unitFromAbandonedFor(user: CurrentUser, machineId: string)
   const at = new Date().toISOString();
   const u = await db.$transaction(async (tx) => {
     const made = await tx.stockUnit.create({
-      data: { shopId, machineId: m.id, status: "IN_STOCK", condition: "USED", costCents: owed, warrantyMonths: DEFAULT_WARRANTY_MONTHS.USED, warrantyBy: shop.name, events: [{ at, note: `From abandoned ticket #${t.number} (${user.name})` }] },
+      data: { shopId, locationId: t.locationId, machineId: m.id, status: "IN_STOCK", condition: "USED", costCents: owed, warrantyMonths: DEFAULT_WARRANTY_MONTHS.USED, warrantyBy: shop.name, events: [{ at, note: `From abandoned ticket #${t.number} (${user.name})` }] },
       select: { id: true },
     });
     await tx.machine.updateMany({ where: { id: m.id, shopId }, data: { customerId: null } });

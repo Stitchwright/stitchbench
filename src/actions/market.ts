@@ -14,6 +14,8 @@ import { numberKey, orderStockNote, partKeys, partNumberClash, stockFor, takeSho
 import { CONDITIONS as PART_CONDITIONS, ORIGINS as PART_ORIGINS } from "@/lib/part-labels";
 import { assertId } from "@/lib/input";
 import type { PartCondition, PartOrigin } from "@/generated/prisma/enums";
+import { currentStoreId } from "@/lib/stores";
+import { moveStock, placeNewStock } from "@/lib/stock";
 
 const CONDITIONS: string[] = PART_CONDITIONS;
 const ORIGINS: string[] = PART_ORIGINS;
@@ -167,11 +169,10 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
   // "<number> (own)", "<number> (used)", then any number it's sold under.
   const stock = o.item.partNumber ? await stockFor(db, shopId, o.item.partNumber, condition) : null;
   const part = stock?.existing ?? (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
+  // Received at the store this person is working at (7.2).
+  const loc = await currentStoreId({ id: userId, shopId });
   if (part) {
-    await db.$transaction([
-      db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: o.qty }, ...(unitCost ? { costCents: unitCost, costTenThou: null } : {}) } }),
-      db.stockMove.create({ data: { shopId, partId: part.id, qty: o.qty, reason: "RECEIVED", userId, note } }),
-    ]);
+    await db.$transaction((tx) => moveStock(tx, { shopId, partId: part.id, locationId: loc, qty: o.qty, reason: "RECEIVED", userId, note, partData: unitCost ? { costCents: unitCost, costTenThou: null } : {} }));
   } else {
     const item = {
       shopId,
@@ -182,20 +183,22 @@ async function receiveIntoStock(o: HubOrder, userId: string, shopId: string) {
       qtyOnHand: o.qty,
       costCents: unitCost,
       supplier: o.sellerShop,
-      moves: { create: { shopId, qty: o.qty, reason: "RECEIVED" as const, userId, note } },
+      moves: { create: { shopId, locationId: loc, qty: o.qty, reason: "RECEIVED" as const, userId, note } },
     };
     if (stock) {
       // The number may be a partner's consigned item here, or this shop's own stock in another condition: this
       // stock gets its own entry.
       // Someone adding the same number (in any case) at the same moment hits the case-insensitive index: say so.
-      await db.part.create({ data: { ...item, partNumber: stock.partNumber, altNumbers: stock.altNumbers, numberKeys: partKeys(stock.partNumber, stock.altNumbers) } }).catch(async (e) => {
+      const made = await db.part.create({ data: { ...item, partNumber: stock.partNumber, altNumbers: stock.altNumbers, numberKeys: partKeys(stock.partNumber, stock.altNumbers) } }).catch(async (e) => {
         throw await partNumberClash(e, shopId, stock.partNumber);
       });
+      await placeNewStock(db, shopId, made.id, loc, o.qty);
     } else {
       // The listing has no maker's number: the item gets a shop number.
       await db.$transaction(async (tx) => {
         const partNumber = await takeShopNumber(tx, shopId);
-        await tx.part.create({ data: { ...item, partNumber, ownNumber: true, numberKeys: partKeys(partNumber, []) } });
+        const made = await tx.part.create({ data: { ...item, partNumber, ownNumber: true, numberKeys: partKeys(partNumber, []) } });
+        await placeNewStock(tx, shopId, made.id, loc, o.qty);
       });
     }
   }
@@ -211,10 +214,9 @@ async function takeFromStock(o: HubOrder, userId: string, shopId: string) {
     (o.item.partNumber ? (await stockFor(db, shopId, o.item.partNumber, condition)).existing : null) ??
     (key && key.length >= 3 ? await db.part.findFirst({ where: { shopId, consignLinkId: null, condition, numberKeys: { has: key } } }) : null);
   if (!part) return false;
-  await db.$transaction([
-    db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: o.qty } } }),
-    db.stockMove.create({ data: { shopId, partId: part.id, qty: -o.qty, reason: "ADJUSTED", userId, note: orderStockNote(o) } }),
-  ]);
+  // Off the shelf of the store this person is working at (7.2).
+  const loc = await currentStoreId({ id: userId, shopId });
+  await db.$transaction((tx) => moveStock(tx, { shopId, partId: part.id, locationId: loc, qty: -o.qty, reason: "ADJUSTED", userId, note: orderStockNote(o) }));
   return true;
 }
 

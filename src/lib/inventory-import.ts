@@ -9,6 +9,7 @@ import { EXCEL_NUMBER } from "@/lib/input";
 import { MAX_CENTS, MAX_STOCK, isPartNumberClash, numberKey, partKeys } from "@/lib/parts";
 import { CONDITIONS, ORIGINS, numberNames, twinNumber } from "@/lib/part-labels";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
+import { currentStoreId, isMainStoreId } from "@/lib/stores";
 
 const KINDS: PartKind[] = ["PART", "ACCESSORY", "SUPPLY", "NOTION", "FABRIC", "THREAD", "PATTERN"];
 const BLOCK = 500; // rows per insert, so no statement carries more values than the database takes
@@ -70,6 +71,9 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
   let updated = 0;
   let skipped = 0;
   const unmatched: string[] = [];
+  // The stock comes in at the store this person is working at (7.2; the main store's needs no level of its own).
+  const loc = await currentStoreId({ id: userId, shopId });
+  const atOther = !(await isMainStoreId(db, shopId, loc));
   await db.$transaction(
     async (tx) => {
       // One import at a time per company: a second one (a double click, a script) is turned away, not queued up
@@ -103,7 +107,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
       items.forEach(index);
 
       const fresh: Item[] = [];
-      const moves: { shopId: string; partId: string; qty: number; reason: "RECEIVED"; userId: string; note: string }[] = [];
+      const moves: { shopId: string; locationId?: string | null; partId: string; qty: number; reason: "RECEIVED"; userId: string; note: string }[] = [];
       for (const r of rows) {
         if (!r || typeof r !== "object") {
           skipped++;
@@ -250,7 +254,7 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
           })),
         }).catch(addedMeanwhile);
       }
-      for (let i = 0; i < moves.length; i += BLOCK) await tx.stockMove.createMany({ data: moves.slice(i, i + BLOCK) });
+      for (let i = 0; i < moves.length; i += BLOCK) await tx.stockMove.createMany({ data: moves.slice(i, i + BLOCK).map((m) => ({ ...m, locationId: loc })) });
       // Items that were here already: all their new details in one statement, all their added stock in another.
       const details = items.filter((it) => it.changed);
       if (details.length) {
@@ -268,6 +272,17 @@ export async function runImport(shopId: string, userId: string, rows: ImportRow[
           UPDATE "Part" p SET "qtyOnHand" = p."qtyOnHand" + v.qty
           FROM jsonb_to_recordset(${list}::jsonb) AS v(id text, qty double precision)
           WHERE p.id = v.id AND p."shopId" = ${shopId}`;
+      }
+      // Another store than the main one: the stock that came in (new items' and existing ones') is its own level too
+      // (Part.qtyOnHand stays the total).
+      const placed = [...items, ...fresh].filter((it) => it.more > 0);
+      if (atOther && loc && placed.length) {
+        const levels = JSON.stringify(placed.map((it) => ({ id: it.id, qty: it.more })));
+        await tx.$executeRaw`
+          INSERT INTO "StockLevel" ("id", "shopId", "partId", "locationId", "qtyOnHand", "reorderAt", "updatedAt")
+          SELECT 'lvl' || md5(random()::text || v.id), ${shopId}, v.id, ${loc}, v.qty, 0, now()
+          FROM jsonb_to_recordset(${levels}::jsonb) AS v(id text, qty double precision)
+          ON CONFLICT ("partId", "locationId") DO UPDATE SET "qtyOnHand" = "StockLevel"."qtyOnHand" + EXCLUDED."qtyOnHand", "updatedAt" = now()`;
       }
     },
     { timeout: 60_000, maxWait: 15_000 },
