@@ -330,6 +330,21 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.wantItem.create({ data: { shopId, customerId: cust.id, words: "Tula Pink" } });
   await db.unitLoan.create({ data: { shopId, unitId: "unit_check_plain_id", customerId: cust.id, ticketId: ticket.id, dueOn: "2026-11-01", depositCents: 5000 } });
   await db.tradeUpOffer.create({ data: { shopId, customerId: cust.id, ticketId: ticket.id, amountCents: 4500, until: "2026-11-30", usedLineId: "line_check_plain_id" } });
+  // Phase 6 (shop-features-round-2-design.md 9.x and 4.8): a warranty claim, a co-op claim with its proof, a consigned
+  // machine's payout, an appraisal with a photo, a gift list with an item, a house account with a charge, a card reader
+  // and a payment on it.
+  await db.warrantyClaim.create({ data: { shopId, number: 1, maker: "Bernina" } });
+  const coop = await db.coopClaim.create({ data: { shopId, number: 1, maker: "Bernina" } });
+  await db.coopProof.create({ data: { shopId, claimId: coop.id, name: "ad.jpg", mime: "image/jpeg", data: crypto.randomBytes(300) } });
+  await db.consignPayout.create({ data: { shopId, unitId: "unit_check_plain_id", customerId: cust.id, saleLineId: "line_check_plain_id", soldCents: 50000, pct: 25, amountCents: 37500 } });
+  const appraisal = await db.appraisal.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover" } });
+  await db.appraisalPhoto.create({ data: { shopId, appraisalId: appraisal.id, mime: "image/jpeg", data: crypto.randomBytes(400) } });
+  const registry = await db.giftRegistry.create({ data: { shopId, customerId: cust.id, name: "Mona Mover", title: "Mona's list", token: `move${crypto.randomBytes(8).toString("hex")}` } });
+  await db.registryItem.create({ data: { shopId, registryId: registry.id, partId: part.id, description: "Hook" } });
+  const houseAcct = await db.houseAccount.create({ data: { shopId, customerId: cust.id } });
+  await db.accountEntry.create({ data: { shopId, accountId: houseAcct.id, kind: "CHARGE", amountCents: 4500, saleId: sale.id, note: "Sale #7001" } });
+  await db.cardReader.create({ data: { shopId, readerId: "tmr_check", label: "Counter" } });
+  await db.cardPayment.create({ data: { shopId, intentId: `pi_check_${crypto.randomBytes(6).toString("hex")}`, amountCents: 4500, saleId: sale.id } });
   await db.shop.update({
     where: { id: shopId },
     data: {
