@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { CLOSING_STATUSES } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
-import { gateFor } from "@/lib/module-gate";
+import { noticesOn } from "@/lib/module-gate";
 import { REOPEN_WINDOW_MS, waitsForTicket } from "@/lib/part-waits";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { addWait, cancelWait, receiveWaits, reopenWait } from "@/actions/part-waits";
@@ -17,7 +17,7 @@ export async function TicketWaitsSlot({ ticketId, user, canWork }: { ticketId: s
   const shopId = user.shopId;
   const t = await db.ticket.findFirst({ where: { id: ticketId, shopId }, select: { status: true, customer: { select: { name: true, phone: true } } } });
   if (!t) return null;
-  const [waits, tz, marketing] = await Promise.all([waitsForTicket(shopId, ticketId), shopTimeZone(shopId), gateFor(shopId, "marketing")]);
+  const [waits, tz, tell] = await Promise.all([waitsForTicket(shopId, ticketId), shopTimeZone(shopId), noticesOn(shopId)]);
   const closed = CLOSING_STATUSES.includes(t.status);
   const open = waits.filter((w) => !w.receivedAt && !w.cancelledAt);
   const done = waits.filter((w) => w.receivedAt || w.cancelledAt).slice(0, 5);
@@ -80,9 +80,9 @@ export async function TicketWaitsSlot({ ticketId, user, canWork }: { ticketId: s
             ))}
           </ul>
         )}
-        {open.length > 0 && marketing !== "on" && (
+        {open.length > 0 && !tell && (
           <p className="muted text-xs">
-            Marketing is off, so nothing is sent when a part comes in: call {t.customer?.name ?? "the customer"}
+            Email and texts aren&apos;t set up, so nothing is sent when a part comes in: call {t.customer?.name ?? "the customer"}
             {t.customer?.phone ? ` at ${t.customer.phone}` : ""}.
           </p>
         )}

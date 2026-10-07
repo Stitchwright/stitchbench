@@ -3,11 +3,9 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
-import { gateFor } from "@/lib/module-gate";
 import { hmOf } from "@/lib/zoned";
 import { consentCode, consentWording, DEFAULT_SMS_CONSENT_TEXT, messagingView } from "@/lib/messaging/settings";
 import { KV, PageHeader, Section } from "@/components/ui";
-import { ModuleOff } from "@/components/module-off";
 import { MessagingTabs } from "@/components/messaging-tabs";
 import { RulesForm } from "@/components/messaging-settings-forms";
 
@@ -23,9 +21,8 @@ function hm12(minutes: number) {
 export default async function MessageRulesPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
-  const gate = await gateFor(user.shopId, "marketing");
-  if (gate === "hidden") return <ModuleOff shopId={user.shopId} module="marketing" admin={admin} />;
-  const canEdit = admin && gate === "on";
+  // In the base since 7 Oct 2026: quiet hours and the consent wording govern the ready and estimate texts too.
+  const canEdit = admin;
   const [ms, shop] = await Promise.all([messagingView(user.shopId), db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, address: true, timeZone: true } })]);
   const wording = consentWording(ms, shop.name);
   const code = consentCode(wording);
@@ -36,7 +33,6 @@ export default async function MessageRulesPage() {
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Email and text messages" back={{ href: "/settings", label: "Settings" }} sub="The rules every message follows: the law's parts, quiet hours and daily limits." />
       <MessagingTabs active="rules" />
-      {gate === "readonly" && <ModuleOff shopId={user.shopId} module="marketing" what="Your message rules" admin={admin} />}
 
       <Section title="Rules">
         {canEdit ? (

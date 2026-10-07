@@ -4,16 +4,14 @@ import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { str } from "@/lib/format";
-import { moduleOn } from "@/lib/module-gate";
 import { recordConsent } from "@/lib/messaging/consent";
 import { messagingView } from "@/lib/messaging/settings";
 import { isNotifyBy } from "@/components/notify-by-field";
 
 type Db = Prisma.TransactionClient | typeof db;
 
-/** Whether check-in must ask how to tell the customer: Marketing on and a channel ready. */
+/** Whether check-in must ask how to tell the customer: a channel is ready (the ready notice is in the base since 7 Oct 2026). */
 export async function needNotifyBy(shopId: string): Promise<boolean> {
-  if (!(await moduleOn(shopId, "marketing"))) return false;
   const ms = await messagingView(shopId);
   return ms.emailReady || ms.smsReady;
 }

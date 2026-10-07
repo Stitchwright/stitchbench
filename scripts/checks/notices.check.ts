@@ -146,7 +146,7 @@ async function run(shopId: string, now: Date): Promise<void> {
 
 // ---------------------------------------------------------------------------------------------------------------
 
-async function ready(m: Shop, n: Shop) {
+async function ready(m: Shop, n: Shop, base: Shop) {
   const T0 = at("2026-10-14", "10:42");
   const mary = await customer(m.shopId, { notifyBy: "both" });
   const t1 = await ticket(m.shopId, { customerId: mary, status: "ON_BENCH" });
@@ -213,19 +213,28 @@ async function ready(m: Shop, n: Shop) {
   assert.equal(await db.outMessage.count({ where: { shopId: m.shopId, ticketId: t4 } }), 0);
   await setMs(m.shopId, { readyNotice: true });
 
-  // The company without Marketing: nothing and no toast line.
-  const cn = await customer(n.shopId, { notifyBy: "both" });
-  const tn = await ticket(n.shopId, { customerId: cn });
-  await messagingFor(n.shopId, { email: true, sms: { from: n.from } });
-  const rn = await change(n.shopId, tn, "READY_FOR_PICKUP", T0);
-  assert.equal(rn.note, null);
-  assert.equal(await db.outMessage.count({ where: { shopId: n.shopId, ticketId: tn } }), 0, "the company without Marketing queues nothing");
-  // ... but leaving the shelf still cancels (here: nothing queued to cancel; the call must not fail).
-  await change(n.shopId, tn, "ON_BENCH", T0);
-  ok("ready: one row per channel with sendAfter +delay and the toast line; back to the bench cancels; ready again a week later -> new rows; a double call -> one row; trade / partner / SITE / switch off / no Marketing -> nothing");
+  // A company without Marketing: the ready notice is in the base (pricing-review-2026-10.md, 7 Oct 2026), so it goes
+  // once email or texts are switched on, exactly as with Marketing.
+  const cb = await customer(base.shopId, { notifyBy: "both" });
+  const tb = await ticket(base.shopId, { customerId: cb });
+  const rb = await change(base.shopId, tb, "READY_FOR_PICKUP", T0);
+  assert.match(rb.note ?? "", /^Ready\. A text and an email go to Mary Smith at 10:44 am\./, `toast without Marketing: ${rb.note}`);
+  assert.deepEqual((await rowsOf(base.shopId, { ticketId: tb, kind: "ready", status: "QUEUED" })).map((r) => r.channel).sort(), ["email", "sms"], "the base company queues the ready notice");
+  await change(base.shopId, tb, "ON_BENCH", T0);
+  assert.ok((await rowsOf(base.shopId, { ticketId: tb, kind: "ready" })).every((r) => r.status === "CANCELLED"), "leaving the shelf cancels it without Marketing too");
+  // ... and with neither email nor texts switched on: nothing and no toast line.
+  await setMs(base.shopId, { emailOn: false, smsOn: false });
+  const tb2 = await ticket(base.shopId, { customerId: cb });
+  const rb2 = await change(base.shopId, tb2, "READY_FOR_PICKUP", T0);
+  assert.equal(rb2.note, null);
+  assert.equal(await db.outMessage.count({ where: { shopId: base.shopId, ticketId: tb2 } }), 0, "nothing set up -> nothing queued");
+  await change(base.shopId, tb2, "ON_BENCH", T0);
+  await setMs(base.shopId, { emailOn: true, smsOn: true });
+  void n;
+  ok("ready: one row per channel with sendAfter +delay and the toast line; back to the bench cancels; ready again a week later -> new rows; a double call -> one row; trade / partner / SITE / switch off -> nothing; without Marketing it still goes (base), and nothing while email and texts are off");
 }
 
-async function retail(m: Shop, n: Shop, linkId: string, nLinkId: string) {
+async function retail(m: Shop, b: Shop, linkId: string, bLinkId: string) {
   const T = at("2026-10-14", "11:00");
   const ctx = await hookContext(m.shopId, "Check");
   const c1 = await customer(m.shopId, { name: "Rita Retail", notifyBy: "email" });
@@ -272,15 +281,24 @@ async function retail(m: Shop, n: Shop, linkId: string, nLinkId: string) {
   assert.equal((await rowsOf(m.shopId, { repairJobId: three[0], kind: "ready" }))[0].status, "CANCELLED");
   assert.equal((await rowsOf(m.shopId, { repairJobId: three[1], kind: "ready" }))[0].status, "QUEUED", "other jobs' rows are left alone");
 
-  // Messages off: only backAt is recorded.
-  const cn = await customer(n.shopId, { notifyBy: "email" });
-  const jn = await job(n.shopId, nLinkId, { customerId: cn });
-  const noteOff = await recordBack(n.user, [jn], { single: true, now: T });
+  // Without Marketing (the base): "It's back" tells the customer the same way.
+  const cb = await customer(b.shopId, { notifyBy: "email" });
+  const jb = await job(b.shopId, bLinkId, { customerId: cb });
+  const noteBase = await recordBack(b.user, [jb], { single: true, now: T });
+  clearKick();
+  assert.match(noteBase.note, /^Recorded\. Emails go to 1 customer now\.$/, noteBase.note);
+  assert.equal((await rowsOf(b.shopId, { repairJobId: jb, kind: "ready" })).length, 1, "the base company queues the ready notice");
+
+  // Email and texts off: only backAt is recorded.
+  await setMs(b.shopId, { emailOn: false, smsOn: false });
+  const jn = await job(b.shopId, bLinkId, { customerId: cb });
+  const noteOff = await recordBack(b.user, [jn], { single: true, now: T });
   assert.equal(noteOff.note, "Recorded. Messages are off: call the customer.");
   assert.equal(noteOff.callThem, true, "Messages off: the toast is a warning, not an error and not a quiet Recorded");
-  assert.equal(await db.outMessage.count({ where: { shopId: n.shopId } }), 0, "no message without Marketing");
-  assert.ok((await db.repairJob.findUniqueOrThrow({ where: { shopId_id: { shopId: n.shopId, id: jn } } })).backAt, "backAt is recorded without Marketing");
-  ok("retail: ready state sends nothing; \"It's back\" -> one row, a second call -> \"Already recorded.\"; 3 jobs -> 3 rows; leaving the counter cancels; Messages off only records backAt");
+  assert.equal(await db.outMessage.count({ where: { shopId: b.shopId, repairJobId: jn } }), 0, "no message while nothing is switched on");
+  assert.ok((await db.repairJob.findUniqueOrThrow({ where: { shopId_id: { shopId: b.shopId, id: jn } } })).backAt, "backAt is recorded");
+  await setMs(b.shopId, { emailOn: true, smsOn: true });
+  ok("retail: ready state sends nothing; \"It's back\" -> one row, a second call -> \"Already recorded.\"; 3 jobs -> 3 rows; leaving the counter cancels; without Marketing it still tells them; Messages off only records backAt");
 }
 
 async function reminders(m: Shop, n: Shop) {
@@ -791,7 +809,7 @@ async function gates(n: Shop, m: Shop) {
   assert.equal(await moduleOn(n.shopId, "marketing"), false);
   await assert.rejects(requireOn(n.user, "marketing"), (e: unknown) => isUserError(e));
   await requireOn(m.user, "marketing");
-  ok("sendNoticeNow's gate: a company without Marketing is refused, one with it passes (the other actions have no gate)");
+  ok("sendNoticeNow's gate for the uncollected-machine notice: a company without Marketing is refused, one with it passes (the ready notice and the other actions have no module gate)");
 }
 
 async function main() {
@@ -804,12 +822,13 @@ async function main() {
     const m = await shopWith();
     const n = await shopWith({ marketing: false });
     const other = await shopWith();
+    const base = await shopWith({ marketing: false }); // email and texts set up, no Marketing: the base notices
     const repair = await checkShop({});
     const linkM = await linkPair(repair.shopId, m.shopId);
-    const linkN = await linkPair(repair.shopId, n.shopId);
     const linkO = await linkPair(repair.shopId, other.shopId);
-    await ready(m, n);
-    await retail(m, n, linkM, linkN);
+    const linkB = await linkPair(repair.shopId, base.shopId);
+    await ready(m, n, base);
+    await retail(m, base, linkM, linkB);
     await reminders(m, n);
     await uncollected(m, n, linkM);
     await stillWantedAbandon(m, linkM);

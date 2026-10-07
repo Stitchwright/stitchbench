@@ -1,6 +1,7 @@
 // Messages about a ticket and the uncollected-machine schedule (scheduling-messaging-design.md sections 7.3 and 9.5).
-// Server component. The same block serves a partner job (job-notices.tsx). The dates always show, Marketing or not;
-// everything that sends needs Marketing, and the by-hand record never does. Message bodies are plain text.
+// Server component. The same block serves a partner job (job-notices.tsx). The dates always show, Marketing or not; the
+// ready notice is in the base (7 Oct 2026: it needs email or texts switched on), the uncollected-machine notices need
+// Marketing, and the by-hand record never needs either. Message bodies are plain text.
 import Link from "next/link";
 import type { OutMessage } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
@@ -77,6 +78,7 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
     db.outMessage.findMany({ where: { shopId, ...(isJob ? { repairJobId: id } : { ticketId: id }) }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
   const on = gate === "on";
+  const tell = on || ms.emailOn || ms.smsOn; // the ready notice may go (HookCtx.notices)
   const admin = user.role !== "TECH";
   const awaitingBack = isJob && !!job && !job.backAt && !job.pickedUpAt && READY_JOB_STATUSES.includes(job.status);
   if (!target && !messages.length && !awaitingBack) return null;
@@ -94,7 +96,7 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
   // Skipped at queue time the row holds the reason's key; skipped by the worker at send time, its label.
   const why = newestReady?.status === "SKIPPED" ? newestReady.error : null;
   const notReachable = why === "not_asked" || why === "no_address" || why === SKIP_REASON_LABEL.not_asked || why === SKIP_REASON_LABEL.no_address;
-  const needsAnswer = !!target && !!customerId && on && notReachable;
+  const needsAnswer = !!target && !!customerId && tell && notReachable;
 
   return (
     <Section title="Messages">
@@ -102,7 +104,7 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
         {awaitingBack && (
           <div className="flex flex-wrap items-center gap-3">
             <ActionButton action={markBackAtCounter.bind(null, id)} className="btn btn-primary btn-sm" success="Recorded">
-              {on ? "It's back at the counter: tell the customer" : "It's back at the counter"}
+              {tell && ms.readyNotice ? "It's back at the counter: tell the customer" : "It's back at the counter"}
             </ActionButton>
             <span className="muted">The repair shop marked it ready. Press this when it is here.</span>
           </div>
@@ -236,9 +238,9 @@ export async function NoticesBlock({ user, ref_ }: { user: CurrentUser; ref_: Re
               </ActionForm>
             </details>
 
-            {on && (
+            {tell && (
               <div className="flex flex-wrap gap-2">
-                {admin && (
+                {admin && on && (
                   <ActionButton action={sendNoticeNow.bind(null, targetArg, "abandon")} className="btn btn-sm" confirm="Tap again: send it now" success="Queued: it goes out in a minute">
                     Send the current notice now
                   </ActionButton>
@@ -372,11 +374,11 @@ function StageText({ v, tz, names, marketing, auto }: { v: StageView; tz: string
       return <span>Not sent (a later notice was due)</span>;
     case "coming":
       // Not due yet: the date, and a word on who sends it when the day comes.
-      if (!marketing) return <span>Due {date} (by hand: Messages is off)</span>;
+      if (!marketing) return <span>Due {date} (by hand: Marketing is off)</span>;
       if (!auto) return <span>Due {date} (by hand: automatic notices are off)</span>;
       return <span>Due {date}</span>;
     default:
-      if (!marketing) return <span>Due {date}: send it by hand (Messages is off)</span>;
+      if (!marketing) return <span>Due {date}: send it by hand (Marketing is off)</span>;
       if (!auto) return <span>Due {date}: send it by hand (automatic notices are off)</span>;
       return <span>Due {date}</span>;
   }

@@ -3,7 +3,9 @@ import "server-only";
 // pages, actions and workers call these, never src/lib/modules.ts directly, so a change there is fixed in one file.
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
-import { hasModule, navGates, requireModule, shopsWithModule } from "@/lib/modules";
+import { hasModule, loadModulesMany, navGates, requireModule, shopsWithModule } from "@/lib/modules";
+import { baseWritable } from "@/lib/module-info";
+import { messagingView } from "@/lib/messaging/settings";
 
 export type ModuleKey = "scheduling" | "marketing" | "assistant";
 export type Gate = "on" | "readonly" | "hidden";
@@ -58,6 +60,29 @@ export async function gateFor(shopId: string, key: ModuleKey): Promise<Gate> {
 export async function gates(shopId: string): Promise<Record<ModuleKey, Gate>> {
   const [scheduling, marketing, assistant] = await Promise.all([gateFor(shopId, "scheduling"), gateFor(shopId, "marketing"), gateFor(shopId, "assistant")]);
   return { scheduling, marketing, assistant };
+}
+
+/**
+ * Whether the base notices (ready for pickup, parts in, the estimate) go out: in the base since 7 Oct 2026
+ * (pricing-review-2026-10.md), so Marketing on, or email or texts switched on (HookCtx.notices is the same rule).
+ */
+export async function noticesOn(shopId: string): Promise<boolean> {
+  if (await moduleOn(shopId, "marketing")) return true;
+  const ms = await messagingView(shopId);
+  return ms.emailOn || ms.smsOn;
+}
+
+/**
+ * Of the given shops, those whose program works now (not read-only, not moving to another install): the worker sends
+ * their base notices without Marketing, under the same standing rule as shopsWith().
+ */
+export async function shopsWithWorkingBase(shopIds: string[]): Promise<string[]> {
+  if (!shopIds.length) return [];
+  const mods = await loadModulesMany(shopIds);
+  return shopIds.filter((id) => {
+    const m = mods.get(id);
+    return !!m && !m.moving && baseWritable(m.states.base.status);
+  });
 }
 
 /** Throws the modules package's UserError unless new work is allowed. */

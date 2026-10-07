@@ -29,6 +29,7 @@ let shopId: string;
 let admin: Page;
 let classId: string;
 let heldTicketId: string;
+let heldRowId: string;
 const made: string[] = [];
 
 /** A ticket for a new customer with an email, in the given status. Returns its id. */
@@ -181,16 +182,32 @@ test("a ready ticket emails the customer; an estimate is approved by link", asyn
 
 test("both modules switched off: locks, read-only pages, a held message, the roster and CSV still work, the unsubscribe link works", async ({ browser }) => {
   const page = await login(browser, owner);
-  // A ready notice queued right before the switch: it is held, not lost.
+  // A ready notice queued right before the switch: it is in the base (pricing-review-2026-10.md, 7 Oct 2026), so it
+  // still goes out with Marketing off.
   const heldEmail = `held-${RUN.toLowerCase()}@customer.test`;
   heldTicketId = await newTicket(page, `Hal Held ${RUN}`, heldEmail, "Ready - customer called");
   // The notice is due after READY_NOTICE_DELAY_SECONDS (1 s here) and the worker ticks every few seconds, so on a slow PC
   // it could go out before the two switches were done. Put it a few minutes ahead while they are made, then make it due
-  // again: it must stay queued once due, with Marketing off.
+  // again: it must go once due, with Marketing off.
   await sql(`UPDATE "OutMessage" SET "sendAfter" = now() + interval '10 minutes' WHERE "ticketId" = $1 AND status = 'QUEUED'`, [heldTicketId]);
   await setModule(admin, company, "Scheduling", false);
   await setModule(admin, company, "Marketing", false);
   await sql(`UPDATE "OutMessage" SET "sendAfter" = now() WHERE "ticketId" = $1 AND status = 'QUEUED'`, [heldTicketId]);
+  // A class notice (Marketing's to send) queued for the same customer: it is held, not lost.
+  const hal = await sql<{ id: string }>(`SELECT id FROM "Customer" WHERE "shopId" = $1 AND name = $2`, [shopId, `Hal Held ${RUN}`]);
+  const heldRow = await insert<{ id: string }>("OutMessage", {
+    shopId,
+    channel: "email",
+    purpose: "notice",
+    kind: "class_notice",
+    customerId: hal[0].id,
+    address: heldEmail,
+    subject: `Class moved ${RUN}`,
+    body: "Your class moved to Thursday.",
+    status: "QUEUED",
+    sendAfter: new Date().toISOString(),
+  });
+  heldRowId = heldRow.id;
 
   await page.goto("/classes");
   const nav = page.getByRole("navigation", { name: "Main" });
@@ -200,11 +217,13 @@ test("both modules switched off: locks, read-only pages, a held message, the ros
   await page.goto(`/classes/${classId}`);
   await expect(page.getByRole("button", { name: "Sign up", exact: true })).toHaveCount(0);
 
-  // Held: still queued, and not in the sink 15 s later (the worker runs every 5 s on the test server).
+  // The ready notice goes without Marketing; the class notice is held: still queued, and not in the sink 15 s later
+  // (the worker runs every 5 s on the test server).
+  await eventually(async () => (await sinkMessages()).find((m) => m.to.includes(heldEmail) && /is ready/.test(m.raw)));
   await page.waitForTimeout(15_000);
-  const held = await sql<{ status: string }>(`SELECT status FROM "OutMessage" WHERE "ticketId" = $1`, [heldTicketId]);
+  const held = await sql<{ status: string }>(`SELECT status FROM "OutMessage" WHERE id = $1`, [heldRowId]);
   expect(held[0]?.status).toBe("QUEUED");
-  expect((await sinkMessages()).some((m) => m.to.includes(heldEmail))).toBe(false);
+  expect((await sinkMessages()).some((m) => m.to.includes(heldEmail) && m.raw.includes(`Class moved ${RUN}`))).toBe(false);
   await page.goto("/messages");
   await expect(page.getByText(/Waiting|held/i).first()).toBeVisible();
 
@@ -233,9 +252,9 @@ test("switched back on, the held message goes out", async ({ browser }) => {
   const page = await login(browser, owner);
   await sendNow(page);
   const heldEmail = `held-${RUN.toLowerCase()}@customer.test`;
-  const mail = await eventually(async () => (await sinkMessages()).find((m) => m.to.includes(heldEmail)));
-  expect(mail.raw).toMatch(/is ready/);
-  const row = await sql<{ status: string }>(`SELECT status FROM "OutMessage" WHERE "ticketId" = $1`, [heldTicketId]);
+  const mail = await eventually(async () => (await sinkMessages()).find((m) => m.to.includes(heldEmail) && m.raw.includes(`Class moved ${RUN}`)));
+  expect(mail.raw).toMatch(/Your class moved to Thursday/);
+  const row = await sql<{ status: string }>(`SELECT status FROM "OutMessage" WHERE id = $1`, [heldRowId]);
   expect(row[0].status).toBe("SENT");
   await page.context().close();
 });

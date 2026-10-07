@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { fmtDate, ticketNo } from "@/lib/format";
-import { gateFor } from "@/lib/module-gate";
+import { noticesOn } from "@/lib/module-gate";
 import { groupBySupplier, openWaits } from "@/lib/part-waits";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { ymdOf } from "@/lib/zoned";
@@ -16,14 +16,14 @@ export default async function PartsOnOrder({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const partId = typeof sp.part === "string" ? sp.part : null;
   const shopId = user.shopId;
-  const [rows, tz, marketing] = await Promise.all([openWaits(shopId, { partId }), shopTimeZone(shopId), gateFor(shopId, "marketing")]);
+  const [rows, tz, tell] = await Promise.all([openWaits(shopId, { partId }), shopTimeZone(shopId), noticesOn(shopId)]);
   const today = ymdOf(new Date(), tz);
   const groups = groupBySupplier(rows);
   return (
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Parts on order"
-        sub={`${rows.length} part${rows.length === 1 ? "" : "s"} customers are waiting for${partId ? " (one part)" : ""}. Mark them received when the order is checked in${marketing === "on" ? ": the customer hears the part is in." : "."}`}
+        sub={`${rows.length} part${rows.length === 1 ? "" : "s"} customers are waiting for${partId ? " (one part)" : ""}. Mark them received when the order is checked in${tell ? ": the customer hears the part is in." : "."}`}
         back={{ href: "/parts", label: "Parts" }}
       />
       {partId && (
