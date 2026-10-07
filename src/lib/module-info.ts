@@ -95,6 +95,11 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
     href: "/messages",
     blurb: "Email and texts: reminders, ready-for-pickup notices, estimate links, service reminders, review requests and campaigns.",
   },
+  maker: {
+    label: "Maker Shop",
+    href: "/maker",
+    blurb: "For shops that sell 3D printers, cutters and lasers: running-low reminders for printer and cutter owners, maker-space time on your own printer or laser, and print and cut jobs from quote to pickup.",
+  },
   assistant: {
     label: "Assistant",
     href: "/settings/assistant",

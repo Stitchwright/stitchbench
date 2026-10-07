@@ -64,6 +64,7 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "SaleLine", field: "machineId", via: "sale", label: ["sale line (supplies bought for it)", "sale lines (supplies bought for it)"] },
   { model: "StockUnit", field: "machineId", one: true, label: ["for-sale stock record", "for-sale stock records"] },
   { model: "VacCare", field: "machineId", one: true, label: ["bag reminder setting", "bag reminder settings"] },
+  { model: "SuppliesCare", field: "machineId", one: true, label: ["supplies reminder setting", "supplies reminder settings"] },
   { model: "MachinePlan", field: "machineId", label: ["service plan", "service plans"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
@@ -549,6 +550,8 @@ export async function mergeMachinesFor(user: CurrentUser, fromId: string, intoId
       await tx.vacCare.update({ where: { machineId: into.id }, data: vacCombine(from.vacCare, into.vacCare) });
       await tx.vacCare.delete({ where: { machineId: from.id } });
     }
+    // Maker Shop's supplies-due marks: the kept machine's stay when both have them (one row per machine).
+    if ((await tx.suppliesCare.count({ where: { machineId: { in: [from.id, into.id] } } })) === 2) await tx.suppliesCare.delete({ where: { machineId: from.id } });
     for (const r of MACHINE_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await tx.machine.update({ where: { id: into.id }, data: machineFill(from, into, date).data });
     await tx.machine.delete({ where: { id: from.id } });
@@ -582,6 +585,7 @@ export async function machineDeletePlan(user: CurrentUser, machineId: string): P
   };
   add(n["MachinePhoto.machineId"], ["photo", "photos"], "deleted");
   add(n["VacCare.machineId"], ["bag reminder setting", "bag reminder settings"], "deleted");
+  add(n["SuppliesCare.machineId"], ["supplies reminder setting", "supplies reminder settings"], "deleted");
   add(n["SaleLine.machineId"], ["sale line", "sale lines"], "kept in the books, no longer naming it");
   add(n["RepairJob.machineId"], ["partner repair", "partner repairs"], "kept, without the link (they keep the brand, model and serial)");
   const queued = await db.outMessage.count({ where: { shopId, refType: "machine", refId: m.id, status: "QUEUED" } });

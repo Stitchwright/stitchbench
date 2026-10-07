@@ -101,7 +101,8 @@ paid by the student.
 - **Base:** $25 a month or $250 a year per shop. The same for StitchBench, StitchShop and hosted.
 - **Partnered retail shops:** a retail shop partnered with a repair shop in good standing pays nothing for the base.
 - **Trial:** 30 days, no card needed.
-- **Add-ons:** Scheduling $15, Marketing $10, Vac Shop $10, Small Appliance Repair $5, or all four for $30. Yearly is
+- **Add-ons:** Scheduling $15, Marketing $10, Vac Shop $10, Small Appliance Repair $5, Maker Shop $10 (owner, 7 Oct
+  2026: shop-features-round-2-design.md section 6), or all of them for $30 (the everything bundle). Yearly is
   ten times monthly.
 - **The Assistant:** $15 with 300 calls, when it ships.
 - **Free:** the hub and the manual library.
@@ -280,8 +281,9 @@ that is still the lowest found.
 | Scheduling | $15 | $150 | Unchanged |
 | Marketing | $10 | $100 | Unchanged; the shop pays its own texts and mail (Twilio about 1.3c a text) |
 | Vac Shop | $10 | $100 | Unchanged |
+| Maker Shop | $10 | $100 | New (7 Oct 2026): supplies due, maker-space time, print and cut jobs; in the everything bundle |
 | Small Appliance Repair | $5 | $50 | Unchanged |
-| All four add-ons | $30 | $300 | Unchanged |
+| All the add-ons (the everything bundle) | $30 | $300 | Maker Shop added at the same price |
 | The Assistant (when it ships) | $15, with 300 calls | $150 | Top-up: 300 more calls for $10 |
 | Dedicated hosted instance | At cost (about $10) | | On top of the subscription; best paid by the shop to Railway directly |
 | Setup and import help | $99 once | | Optional; free for founding shops |
