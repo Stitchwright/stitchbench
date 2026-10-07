@@ -47,7 +47,8 @@ export function RentOutForm({ units }: { units: { id: string; description: strin
   const [method, setMethod] = useState<TenderMethod>("CARD");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ saleId: string; number: number } | null>(null);
-  const [k] = useState(key);
+  // The sale's key, the same on a retry; a new one after each rent-out (a second rental is its own sale).
+  const [k, setK] = useState(key);
   if (!units.length) return <p className="muted text-base">No rentals in the shop. Set a machine for sale as a rental on its page.</p>;
   const cents = toCents(rate) ?? 0;
   return (
@@ -63,6 +64,7 @@ export function RentOutForm({ units }: { units: { id: string; description: strin
           else {
             toast.success("Rented out; the first rent is rung up.");
             setDone(r);
+            setK(key());
             router.refresh();
           }
         } finally {
