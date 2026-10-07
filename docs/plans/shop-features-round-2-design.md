@@ -1216,3 +1216,39 @@ Decisions made while building:
 - Paid claims are found when the page opens (the web order is paid), not by a hook in the payment path.
 - Reading Facebook comments into the list stays 9.12 (gated).
 - Browser test needed: `tests/live-sales.spec.ts`.
+
+**`events` (4.5, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023300000_events` (`ShopClass.kind`,
+`earlyCents`, `earlyUntil`, `depositCents`, `depositRefundable`, `balanceDays`, `choices`, `doorCents`;
+`Enrollment.choices`, `checkedInAt`; `EventPayment`, `EventDraw`, both carried by the company file). Code:
+`src/lib/events-math.ts` (pure: choices with prices typed "Single +120, Double", picks, the early-bird price, the balance
+day, deposit then balance, the receipt's words), `src/lib/events.ts`, `src/lib/events-wanted.ts` (the worker's check),
+`src/actions/events.ts`; `enrollIn` prices an event sign-up (early-bird or door price plus her choices); the class form's
+**What is it?** (Class, Retreat, Trunk show, sew-in or event) with the extras under More choices; Classes → **New
+retreat or event**; on the event's page the sign-up form asks her choices and shows the price, the roster says owes or
+paid in full, and **Who's coming** (`src/components/event-panel.tsx`) takes the deposit or balance at the counter (card,
+cash, check, other), sends a pay link, **Ask for the balances**; **At the door** (`/classes/[id]/door`: the drawing with
+the name big, "She's not here: draw again", check-in, **Sell a ticket**), **Room and meal lists** to print
+(`/classes/[id]/lists`); the hourly balance reminders (`runEventReminders` in `src/instrumentation.ts`, wording
+`event_balance`). Check: `scripts/checks/events.check.ts` (6 groups); `classes`, `register-bookings`, `online-booking`,
+`move-export`, `audit-log`, `base-license`, `messaging-core` still pass. Spec: `tests/events.spec.ts`.
+Decisions made while building:
+- An event's price for a person is fixed at sign-up: the early-bird price through its last day (the shop's zone), else
+  the price, plus what her room and meals add; a ticket at the door is the door price. "Price for this person" still
+  works before anything is paid.
+- Money in parts: a payment taken at the counter is a register sale with one line ("Deposit (non-refundable): Fall
+  Retreat for Jane", taxed as the event is), so it is income when paid, as class fees are; a pay link is a staff pay
+  link (1.3), found paid when the page opens. Payments are `EventPayment` rows. The register's one-tap class seat still
+  takes a whole fee in one go; once part is paid it refuses ("take the rest on the event's page") and the seat leaves
+  the register's "owes" list (`register-sale.ts`, two small edits).
+- A tech takes the deposit or the balance as worked out; only an owner or admin types another amount. Never more than
+  is owed. "Take off" a payment (owner or admin, after refunding it at the register) is the only undo; the refund itself
+  goes through the existing register return.
+- Balance reminders go 14 days before the due day and on it (due = first day - the balance days), only to someone who
+  has paid something and still owes, Marketing on, once each; the worker drops one paid in full or cancelled.
+- The drawing picks among those checked in (everyone signed up when nobody is), never someone who has already won a
+  prize and was there, nor anyone drawn for that prize before.
+- The sign-up online (`/book`) gets the early-bird price and the first room and meal choice; choosing online and paying
+  a deposit online are left for later. "Hold event payments as deposits" (Customer deposits until the first day) is not
+  built: it needs the special orders' DEPOSIT lines (1.2, phase 1); the payments count as income when paid.
+- Selling a door ticket happens on the event's door page, not in the register's search.
+- Browser test needed: `tests/events.spec.ts`.

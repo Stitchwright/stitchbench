@@ -1,7 +1,8 @@
 import "server-only";
 // The work behind src/actions/classes.ts (scheduling-messaging-design.md 12.1), callable with a user so the check
 // script can drive it. Every function needs Scheduling (requireOn); the admin-only ones say so.
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
+import { choicesFromText, isEventKind } from "@/lib/events-math";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { assertId } from "@/lib/input";
@@ -128,6 +129,48 @@ function classFields(fd: FormData) {
     // without the field at all means on.
     waitlist: checkbox(fd, "waitlist"),
     remind,
+    ...eventFields(fd),
+  };
+}
+
+/**
+ * An event's fields (shop-features-round-2-design.md 4.5), when the form has them: the kind, the early-bird price and
+ * its last day, the deposit (refundable or not) and the days before the first day the balance is due, the rooms and
+ * meals with their prices, the dietary question, the door price. A form without "kind" leaves them as they are.
+ */
+function eventFields(fd: FormData) {
+  if (!fd.has("kind")) return {};
+  const kind = str(fd.get("kind")) ?? "CLASS";
+  if (!isEventKind(kind)) throw new UserError("Pick what it is: a class, a retreat or an event.");
+  if (kind === "CLASS") return { kind, earlyCents: null, earlyUntil: null, depositCents: null, doorCents: null, choices: Prisma.DbNull };
+  const money = (k: string, what: string) => {
+    const raw = str(fd.get(k));
+    if (!raw) return null;
+    const c = toCents(raw);
+    if (c == null || c < 0 || c > 10_000_000) throw new UserError(`Check the ${what}.`);
+    return c;
+  };
+  const earlyCents = money("earlyFee", "early-bird price");
+  const earlyUntil = str(fd.get("earlyUntil"));
+  if (earlyCents != null && !/^\d{4}-\d{2}-\d{2}$/.test(earlyUntil ?? "")) throw new UserError("Pick the last day of the early-bird price.");
+  const depositCents = money("deposit", "deposit");
+  const days = Number(str(fd.get("balanceDays")) ?? "60");
+  if (!Number.isInteger(days) || days < 0 || days > 365) throw new UserError("The balance is due 0 to 365 days before the first day.");
+  let choices;
+  try {
+    choices = choicesFromText({ rooms: str(fd.get("rooms")), meals: str(fd.get("meals")), dietary: fd.get("askDietary") === "on" });
+  } catch (e) {
+    throw new UserError(e instanceof Error ? e.message : "Check the choices.");
+  }
+  return {
+    kind,
+    earlyCents,
+    earlyUntil: earlyCents != null ? earlyUntil : null,
+    depositCents: depositCents || null,
+    depositRefundable: fd.get("depositRefundable") === "on",
+    balanceDays: days,
+    doorCents: money("doorFee", "door price"),
+    choices: choices.list.length || choices.dietary ? (choices as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
   };
 }
 
@@ -275,7 +318,7 @@ export async function enrollAs(user: CurrentUser, classId: string, fd: FormData)
   const ms = await messagingView(shopId);
   const customerId = await db.$transaction(async (tx) => {
     const customer = await customerFromForm(tx, shopId, fd, user.id, "counter", "", { notifyRequired: tell });
-    const e = await enrollIn(tx, { shopId, classId: c.id, customer, attendee, byUserId: user.id, skipWaitlist });
+    const e = await enrollIn(tx, { shopId, classId: c.id, customer, attendee, byUserId: user.id, skipWaitlist, choices: { room: str(fd.get("choice_room")), meals: str(fd.get("choice_meals")), dietary: str(fd.get("dietary")) } });
     if (tell && e.status === "ENROLLED") {
       const vars = await signupVars(shopId, c, e, tz);
       const content = (ch: "email" | "sms") => renderKind(ms, "class_signup", ch, vars);

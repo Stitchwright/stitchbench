@@ -43,9 +43,14 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
               Print this month
             </Link>
             {admin && shop.sellsRetail && (
-              <Link href="/classes/new" className="btn btn-primary">
-                New class
-              </Link>
+              <>
+                <Link href="/classes/new" className="btn btn-primary">
+                  New class
+                </Link>
+                <Link href="/classes/new?kind=RETREAT" className="btn">
+                  New retreat or event
+                </Link>
+              </>
             )}
           </div>
         }
