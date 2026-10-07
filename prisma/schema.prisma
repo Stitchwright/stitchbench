@@ -184,6 +184,9 @@ model Shop {
   // Margin floor (shop-features-round-2-design.md 4.4): "tell me when an item's margin falls under N%", as {"all": 40} with
   // optional per-kind figures ({"FABRIC": 45}); null: off. src/lib/repricing-math.ts.
   marginFloor          Json?
+  // Shop hops (shop-features-round-2-design.md 4.6): off until the shop turns it on (Settings, Selling); then the Shop hop
+  // page shows in the menu.
+  hopOn                Boolean       @default(false)
   createdAt            DateTime      @default(now())
 
   users             User[]
@@ -268,6 +271,8 @@ model Shop {
   liveClaims        LiveClaim[]
   eventPayments     EventPayment[]
   eventDraws        EventDraw[]
+  shopHops          ShopHop[]
+  hopStamps         HopStampLocal[]
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
@@ -3327,4 +3332,52 @@ model EventDraw {
   present      Boolean   @default(true)
 
   @@index([classId, drawnAt])
+}
+
+// A shop hop this shop takes part in (shop-features-round-2-design.md 4.6), as the hub last told it: the hub's id, the
+// name and dates (YYYY-MM-DD), the prize rule ("all", or "any:6"), how many shops, and this shop's part: ORGANIZER or
+// MEMBER, status JOINED | LEFT. The hub holds the hop, its shops, passports and stamps.
+model ShopHop {
+  id         String          @id @default(cuid())
+  shopId     String
+  shop       Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hubHopId   String
+  name       String
+  startsOn   String?
+  endsOn     String?
+  rule       String          @default("all")
+  shopsCount Int             @default(1)
+  role       String          @default("MEMBER")
+  status     String          @default("JOINED")
+  slug       String?
+  updatedAt  DateTime        @updatedAt
+  createdAt  DateTime        @default(now())
+  stamps     HopStampLocal[]
+
+  @@unique([shopId, hubHopId])
+}
+
+// A passport stamped at this shop (4.6): the shop's own record, sent to the hub signed (sentAt when the hub took it).
+// One per passport per hop. What the hub answered: the stamp's number of how many, and the shopper's details only if she
+// chose to share them with this shop.
+model HopStampLocal {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hopId        String
+  hop          ShopHop   @relation(fields: [hopId], references: [id], onDelete: Cascade)
+  passportRef  String
+  at           DateTime  @default(now())
+  byUserId     String?
+  sentAt       DateTime?
+  stampNo      Int?
+  stampsOf     Int?
+  complete     Boolean   @default(false)
+  shopperName  String?
+  shopperEmail String?
+  shopperPhone String?
+  error        String?
+
+  @@unique([hopId, passportRef])
+  @@index([shopId, at])
 }

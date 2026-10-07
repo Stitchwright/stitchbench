@@ -102,6 +102,8 @@ export const BY_HAND = [
   "finishHostedOffer",
   "failHostedOffer",
   "repositoryDownloadInfo",
+  // Shop hops (shop-features-round-2-design.md 4.6): a passport stamp is new work, refused while lapsed
+  "stampPassport",
   // Layaway money at the register (tax-machine-sales-layaway-design.md 4): a start refuses while lapsed, a payment and
   // a pick-up go through completeSaleAs, which refuses a sale and lets a return through
   "startLayaway",
