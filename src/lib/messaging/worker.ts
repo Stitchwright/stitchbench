@@ -22,6 +22,7 @@ import { openSmtp, verifySmtp, type SmtpSession } from "./smtp";
 import { textToHtml } from "./templates";
 import { checkTwilio, findSent, sendText } from "./twilio";
 import { BASE_KINDS, EXPLICIT_KINDS, type Channel, type MessageKind, type SkipReason } from "./types";
+import { dailySummaries } from "@/lib/owner-today";
 
 export type MessageRunResult = { sent: number; failed: number; waiting: number } | { busy: true } | { off: true };
 
@@ -70,6 +71,8 @@ async function run(o: { now?: Date; shopIds?: string[]; forceSchedulers?: boolea
   await recover(now, o.shopIds);
   await tidy(now, o.shopIds);
   await readReplies(now, o.shopIds);
+  // The owner's daily summary at each store's closing time (more than one store, shop-features-round-2-design.md 7.5).
+  await dailySummaries(now, o.shopIds).catch(log("daily summaries"));
   // 4. Shops with Marketing on send everything; the others send only the base kinds (ready, parts in, estimates and
   // what texting needs), and their other rows stay QUEUED (held). Campaigns and schedulers need Marketing.
   const live = await shopsWith("marketing", o.shopIds);
