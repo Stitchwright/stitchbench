@@ -182,7 +182,7 @@ test("a repair ticket for the machine: a line marked Covered by the plan", async
 test("return the machine at the register: back in stock, the plan ended", async () => {
   const unit = (await one<{ id: string }>(`SELECT u.id FROM "StockUnit" u JOIN "Machine" m ON m.id = u."machineId" WHERE u."shopId" = $1 AND m.serial = $2`, [shopId, serial]))!;
   await page.goto("/register");
-  await page.getByRole("button", { name: /^Return mode/ }).click();
+  await page.getByRole("button", { name: /Return an item/ }).click();
   await page.getByRole("button", { name: "Return a machine", exact: true }).click();
   const ret = page.locator('[aria-label="Return a machine"]');
   await ret.locator("#vu-q").fill(serial);
