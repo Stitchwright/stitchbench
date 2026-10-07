@@ -71,6 +71,7 @@ export const AUDIT_ACTIONS = {
   "store.add": { category: "settings", label: "Store added" },
   "store.change": { category: "settings", label: "Store details changed, closed or opened again" },
   "store.join": { category: "data", label: "A separate company joined in as a store" },
+  "store.join_code": { category: "data", label: "A join code was made to join this company into another" },
   // People
   "user.add": { category: "people", label: "Login added" },
   "user.role": { category: "people", label: "Role changed" },

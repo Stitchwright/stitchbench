@@ -3,14 +3,14 @@
 // More than one store (shop-features-round-2-design.md section 7): Settings -> Stores, the store this device is at, the
 // manager's approval code, and approvals for a refund or discount over a store's limit (7.5).
 import { revalidatePath } from "next/cache";
-import { noted, safe, UserError } from "@/lib/action";
+import { noted, safe, shownOnce, UserError } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { addStoreFor, pickStoreFor, saveDailySummaryFor, saveStoreFor, setHomeStoreFor, setOnlineStoreFor, setStoreOpenFor } from "@/lib/stores-admin";
 import { approvalState, approveWithCodeFor, askOwnerFor, decideApprovalFor, setApproveCodeFor } from "@/lib/approvals";
 import { currentStore } from "@/lib/stores";
 import { claimShopNow } from "@/lib/hub";
-import { joinCompanyFor } from "@/lib/join-companies";
+import { joinCompanyFor, makeJoinCodeFor } from "@/lib/join-companies";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -103,10 +103,16 @@ export const decideApproval = safe(async function decideApproval(id: string, yes
   refresh();
 });
 
-/** "Join another company into this one" (7.6): the owner of both types its name to confirm. */
-export const joinCompany = safe(async function joinCompany(fromId: string, formData: FormData) {
+/** "Join this company into another of yours" (7.6): a one-time join code, shown once, to type into the other company. */
+export const makeJoinCode = safe(async function makeJoinCode() {
+  const r = await makeJoinCodeFor(await requireUser());
+  return shownOnce(r.code);
+});
+
+/** "Join another company into this one" (7.6): the owner types the join code she made in the other company and its name. */
+export const joinCompany = safe(async function joinCompany(formData: FormData) {
   const user = await requireUser();
-  const r = await joinCompanyFor(user, String(fromId), String(formData.get("confirm") ?? ""), str(formData.get("storeName")));
+  const r = await joinCompanyFor(user, String(formData.get("code") ?? ""), String(formData.get("confirm") ?? ""), str(formData.get("storeName")));
   await tellHub(user.shopId);
   refresh();
   const bits = [`Joined in as the ${r.storeName} store.`];
