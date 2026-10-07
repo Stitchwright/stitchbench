@@ -91,15 +91,18 @@ export function NewClubForm({ series }: { series: SeriesOption[] }) {
   );
 }
 
-export function ClubSettingsForm({ clubId, closed, init, series }: { clubId: string; closed: boolean; init: { name: string; kind: Kind; price: string; fulfil: "PICKUP" | "SHIP"; billDay: string; seriesId: string; note: string }; series: SeriesOption[] }) {
+/** `canEdit`: an owner or admin (a tech can close or open the club, not change its name or price). */
+export function ClubSettingsForm({ clubId, closed, init, series, canEdit }: { clubId: string; closed: boolean; init: { name: string; kind: Kind; price: string; fulfil: "PICKUP" | "SHIP"; billDay: string; seriesId: string; note: string }; series: SeriesOption[]; canEdit: boolean }) {
   return (
     <div className="space-y-3">
-      <ActionForm action={saveClub.bind(null, clubId)} success="Saved" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <ClubFields idp="cs" init={init} series={series} />
-        <div className="sm:col-span-2 lg:col-span-3">
-          <Submit>Save</Submit>
-        </div>
-      </ActionForm>
+      {canEdit && (
+        <ActionForm action={saveClub.bind(null, clubId)} success="Saved" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <ClubFields idp="cs" init={init} series={series} />
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Submit>Save</Submit>
+          </div>
+        </ActionForm>
+      )}
       <ActionButton action={closeClub.bind(null, clubId, !closed)} className="btn btn-sm" confirm={closed ? undefined : "Tap again to close the club to new members"}>
         {closed ? "Open the club again" : "Close the club to new members"}
       </ActionButton>
@@ -238,10 +241,11 @@ export function MonthForm({ clubId, month, what, kitId, kits }: { clubId: string
   );
 }
 
-export function PickControls({ clubId, month, r }: { clubId: string; month: string; r: { memberId: string; fulfil: "PICKUP" | "SHIP"; billing: "STRIPE" | "PAY_AT_PICKUP"; paid: boolean; doneAt: string | null } }) {
-  // Pay at pickup: marked paid with how it was paid (it goes into the register's sales), or taken back (the sale is voided).
+export function PickControls({ clubId, month, r, canTakeBack }: { clubId: string; month: string; r: { memberId: string; fulfil: "PICKUP" | "SHIP"; billing: "STRIPE" | "PAY_AT_PICKUP"; paid: boolean; doneAt: string | null }; canTakeBack: boolean }) {
+  // Pay at pickup: marked paid with how it was paid (it goes into the register's sales), or taken back (the sale is
+  // voided: an owner or admin only).
   const takeBack =
-    r.billing === "PAY_AT_PICKUP" && r.paid ? (
+    canTakeBack && r.billing === "PAY_AT_PICKUP" && r.paid ? (
       <ActionButton action={takeBackMemberPaid.bind(null, clubId, r.memberId, month)} className="btn btn-sm">
         Take back paid
       </ActionButton>

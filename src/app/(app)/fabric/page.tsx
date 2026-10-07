@@ -84,7 +84,7 @@ export default async function FabricPage({ searchParams }: { searchParams: Promi
       {tab === "slow" && insight && <SlowFabric insight={insight} />}
       {tab === "reorder" && <ReorderTab shopId={user.shopId} />}
       {tab === "kits" && <KitsTab shopId={user.shopId} />}
-      {tab === "clubs" && <ClubsTab shopId={user.shopId} />}
+      {tab === "clubs" && <ClubsTab shopId={user.shopId} canStart={user.role !== "TECH"} />}
     </div>
   );
 }
