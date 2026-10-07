@@ -162,6 +162,28 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
     post(led, acct("lenderReceivable"), -f.amountCents);
   }
 
+  // ----- warranty claims (shop-features-round-2-design.md 9.1): owed by the maker from the day it is sent; what came in
+  // off it on the day recorded, and a short or refused claim's rest written off the income that day -----
+  const claims = await db.warrantyClaim.findMany({
+    where: { shopId, OR: [{ filedAt: { gte: start, lt: end } }, { receivedAt: { gte: start, lt: end }, status: { in: ["PAID", "SHORT", "REFUSED"] } }] },
+    select: { status: true, filedAt: true, expectedCents: true, receivedCents: true, receivedAt: true },
+  });
+  for (const c of claims) {
+    if (c.filedAt && inRange(c.filedAt)) {
+      const led = dayLedger(c.filedAt);
+      post(led, acct("makerReceivable"), c.expectedCents);
+      post(led, acct("warrantyIncome"), -c.expectedCents);
+    }
+    if (c.receivedAt && inRange(c.receivedAt) && ["PAID", "SHORT", "REFUSED"].includes(c.status)) {
+      const led = dayLedger(c.receivedAt);
+      post(led, acct("undeposited"), c.receivedCents);
+      post(led, acct("makerReceivable"), -c.receivedCents);
+      // Paid short or refused: the rest won't come (paid over: the extra is income too).
+      post(led, acct("warrantyIncome"), c.expectedCents - c.receivedCents);
+      post(led, acct("makerReceivable"), -(c.expectedCents - c.receivedCents));
+    }
+  }
+
   const out: DayEntry[] = [...days.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([day, m]) => {

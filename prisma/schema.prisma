@@ -96,6 +96,8 @@ model Shop {
   makeRateCents           Int           @default(2000)
   makeSetupCents          Int           @default(500)
   makeNeverCut            String        @default("PVC, vinyl")
+  // Warranty claims to makers (shop-features-round-2-design.md 9.1): the next claim's number
+  nextClaimNumber         Int           @default(1)
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -250,6 +252,7 @@ model Shop {
   suppliesCare      SuppliesCare[]
   certifications    Certification[]
   makeJobs          MakeJob[]
+  warrantyClaims    WarrantyClaim[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -703,10 +706,14 @@ model TicketLine {
   // would have cost, for the report
   coveredPlanId  String?
   coveredCents   Int?
+  // Claimed from the machine's maker under its warranty (WarrantyClaim id, plain; shop-features-round-2-design.md 9.1):
+  // the line charges 0 and coveredCents keeps what it would have cost, as for a plan
+  claimId        String?
   createdAt      DateTime @default(now())
 
   @@index([ticketId])
   @@index([coveredPlanId])
+  @@index([claimId])
 }
 
 enum PaymentMethod {
@@ -3362,4 +3369,36 @@ model Promotion {
   createdAt DateTime @default(now())
 
   @@index([shopId, firstDay])
+}
+
+// A warranty claim to a machine's maker (shop-features-round-2-design.md 9.1, package warranty-claims): the ticket's
+// lines marked "Claim it from the maker" (TicketLine.claimId) charge the customer nothing and go on it. Logged and
+// reconciled here; the makers' own portals are never connected. status: OPEN (being put together) | FILED (sent) |
+// PAID | SHORT (paid less than expected) | REFUSED. partsCents and laborCents add up the claimed lines; expectedCents is
+// what the maker should pay (fixed once filed; owed by the maker in the books from filedAt); receivedCents came in on
+// receivedAt (also the day a refused or short claim is closed). ticketId and machineId are plain ids.
+model WarrantyClaim {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  ticketId      String?
+  machineId     String?
+  maker         String
+  claimNumber   String?
+  status        String    @default("OPEN")
+  filedAt       DateTime?
+  partsCents    Int       @default(0)
+  laborCents    Int       @default(0)
+  expectedCents Int       @default(0)
+  receivedCents Int       @default(0)
+  receivedAt    DateTime?
+  note          String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, ticketId])
 }
