@@ -15,6 +15,15 @@ import { CONDITIONS, ORIGINS } from "@/lib/part-labels";
 import type { InPrint, PartCondition, PartOrigin } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 import { detailsFrom, parseKindChoice, type ItemType } from "@/lib/item-details";
+import { gtinInput } from "@/lib/shop/feeds-math";
+
+/** The item form's barcode (UPC or EAN): digits with a right check digit, or empty; undefined when the form has no such field. */
+function gtinField(formData: FormData): string | null | undefined {
+  if (!formData.has("gtin")) return undefined;
+  const g = gtinInput(str(formData.get("gtin")));
+  if (g.error) throw new UserError(g.error);
+  return g.gtin;
+}
 
 /** Whole numbers for most things; fabric by the yard to the eighth (`byYard`). Never below 0 or above what a partner accepts. */
 function qtyValue(v: FormDataEntryValue | null, byYard = true) {
@@ -90,6 +99,8 @@ function partData(formData: FormData) {
     supplier: str(formData.get("supplier")),
     notes: str(formData.get("notes")),
     ...itemDetailsData(formData, itemType),
+    // The barcode for the Google and Facebook feeds (4.1); a form without the field leaves it as it is.
+    gtin: gtinField(formData),
   };
 }
 

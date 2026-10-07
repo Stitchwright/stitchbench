@@ -10,6 +10,9 @@ import { PO_STATUS_LABEL, amountText, costPer, lineCostTotal, measureText, outst
 import { fmtDate } from "@/lib/format";
 import { connectorFor } from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/ui";
+import { BackorderControl } from "@/components/backorder-control";
+import { clearBackorder, markBackorder } from "@/actions/repricing";
+import { fmtYmdLong } from "@/lib/units/units";
 import { AddLineForm, CancelOrderButton, OrderEditForm, ReceiveForm, SendButton } from "@/components/fabric-orders-forms";
 
 const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
@@ -94,6 +97,15 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                         <span className="mono">{l.itemNumber}</span>
                       )}
                       <div className="muted text-sm">{l.description}</div>
+                      {receiving && outstandingYards(l) > 1e-9 && (
+                        <BackorderControl
+                          mark={markBackorder.bind(null, l.id, o.id)}
+                          clear={clearBackorder.bind(null, l.id, o.id)}
+                          backordered={!!l.backorderedOn}
+                          expectedOn={l.expectedOn ?? null}
+                          words={`Back ordered${l.expectedOn ? `, expected ${fmtYmdLong(l.expectedOn)}` : ""}`}
+                        />
+                      )}
                     </td>
                     <td className="num text-right">{amountText(l)}</td>
                     <td className="num text-right">{measureText(l, l.receivedYards)}</td>

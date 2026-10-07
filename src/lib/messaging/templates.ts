@@ -21,6 +21,9 @@ export const FIELDS: Record<string, string[]> = {
   order_ready: [...COMMON_FIELDS, "order", "items", "pickup_line", "order_link"],
   order_shipped: [...COMMON_FIELDS, "order", "items", "tracking_line", "order_link"],
   order_cancelled: [...COMMON_FIELDS, "order", "refund_line", "order_link"],
+  pay_link: [...COMMON_FIELDS, "items", "total", "order_link", "until", "note_line"],
+  order_delay: [...COMMON_FIELDS, "what", "until"],
+  event_balance: [...COMMON_FIELDS, "what", "total", "until"],
   consent_confirm: ["shop_name", "shop_phone"],
   help_reply: ["shop_name", "shop_phone"],
   campaign: [...COMMON_FIELDS, "machine", "upcoming_classes"],
@@ -30,7 +33,7 @@ export const FIELDS: Record<string, string[]> = {
 /** Values that may carry links or come from the shop's own settings: not cleaned. Everything else is cleanText()'d. */
 export const TRUSTED_FIELDS = ["shop_name", "shop_phone", "estimate_link", "review_link", "upcoming_classes", "total", "storage_fee", "order_link", "items"];
 
-const FULL_KEYS = ["ready", "reminder", "class_signup", "booking", "estimate", "estimate_nolink", "abandon", "abandon_final", "service_due", "review", "bags_due", "parts_in", "order_paid", "order_ready", "order_shipped", "order_cancelled"];
+const FULL_KEYS = ["ready", "reminder", "class_signup", "booking", "estimate", "estimate_nolink", "abandon", "abandon_final", "service_due", "review", "bags_due", "parts_in", "order_paid", "order_ready", "order_shipped", "order_cancelled", "pay_link", "order_delay", "event_balance"];
 export const TEMPLATE_KEYS: string[] = [...FULL_KEYS.flatMap((k) => [`${k}.sms`, `${k}.email`, `${k}.subject`]), "consent_confirm.sms", "help_reply.sms"];
 
 export const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -82,6 +85,15 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
   "order_shipped.email": "Hi {first_name},\n\nYour order {order} is on its way:\n\n{items}\n\n{tracking_line}\n\nDetails: {order_link}\n\nQuestions? Call us at {shop_phone}.",
   "order_cancelled.sms": "Hi {first_name}, your order {order} was cancelled.{refund_line} Questions? Call {shop_phone}.",
   "order_cancelled.subject": "Your order {order} was cancelled",
+  "pay_link.sms": "Hi {first_name}, here is your link to pay {total}: {order_link} (until {until}).{note_line} Questions? Call {shop_phone}.",
+  "pay_link.subject": "Your link to pay {total}",
+  "order_delay.sms": "Hi {first_name}, the {what} you're waiting for is delayed: the supplier now expects it about {until}. We'll let you know when it's here. Questions? Call {shop_phone}.",
+  "order_delay.subject": "Your {what} is delayed",
+  "event_balance.sms": "Hi {first_name}, a reminder: the balance of {total} for {what} is due by {until}. Pay at the shop or call {shop_phone}.",
+  "event_balance.subject": "{what}: your balance of {total} is due by {until}",
+  "event_balance.email": "Hi {first_name},\n\nA reminder: the balance of {total} for {what} is due by {until}.\n\nYou can pay at the shop, or call us at {shop_phone} and we'll send you a link to pay by card.",
+  "order_delay.email": "Hi {first_name},\n\nThe {what} you're waiting for is delayed: the supplier now expects it about {until}.\n\nWe'll let you know as soon as it's here. Questions? Call us at {shop_phone}.",
+  "pay_link.email": "Hi {first_name},\n\nHere is your link to pay {total} by card:\n\n{items}\n\n{order_link}\n\nThe link works until {until}.{note_line}\n\nQuestions? Call us at {shop_phone}.",
   "order_cancelled.email": "Hi {first_name},\n\nYour order {order} was cancelled.{refund_line}\n\nDetails: {order_link}\n\nQuestions? Call us at {shop_phone}.",
   "parts_in.email": "Hi {first_name},\n\nThe part we ordered for your {machine} ({ref}) came in: {parts}.{eta_line}\n\nWe'll let you know when it's ready to pick up.",
   "consent_confirm.sms": "You're signed up for texts from {shop_name}. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.",
@@ -124,6 +136,7 @@ export const SAMPLE_VARS: Record<string, string> = {
   refund_line: " $27.90 goes back to your card in a few days.",
   short_line: " One item was out of stock; $11.90 goes back to your card in a few days.",
   order_link: "https://example.com/shop/o/sample",
+  until: "Oct 21",
 };
 
 /** The saved wording for a key, or the default. */

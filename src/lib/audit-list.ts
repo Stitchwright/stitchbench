@@ -35,11 +35,16 @@ export const AUDIT_ACTIONS = {
   "ticket.covered": { category: "money", label: "Ticket line covered by a service plan, or charged again" },
   "customer.taxexempt": { category: "money", label: "Customer's tax-exempt certificate changed" },
   "order.cancel": { category: "money", label: "Online order cancelled" },
+  "paylink.make": { category: "money", label: "Pay link sent to a customer" },
+  "paylink.cancel": { category: "money", label: "Pay link taken back" },
   "estimate.answer": { category: "money", label: "Estimate answered by staff (phone or text)" },
   "credit.issue": { category: "money", label: "Store credit given" },
   // Prices
   "part.price": { category: "prices", label: "Item price or cost changed" },
   "service.price": { category: "prices", label: "Service price changed" },
+  "prices.raise": { category: "prices", label: "Prices raised for a group of items" },
+  "prices.undo": { category: "prices", label: "A price raise undone" },
+  "prices.floor": { category: "prices", label: "Margin floor changed" },
   "shop.rates": { category: "prices", label: "Labor rate, tax rate, markup or storage fee changed" },
   // Stock
   "stock.count": { category: "stock", label: "Stock recounted or adjusted" },
@@ -54,6 +59,7 @@ export const AUDIT_ACTIONS = {
   "hub.leave": { category: "settings", label: "Left StitchHub" },
   "hub.usage": { category: "settings", label: "Sharing of parts used switched on or off" },
   "shop.details": { category: "settings", label: "Shop details changed" },
+  "feeds.settings": { category: "settings", label: "Google and Facebook feeds switched on or off" },
   // People
   "user.add": { category: "people", label: "Login added" },
   "user.role": { category: "people", label: "Role changed" },

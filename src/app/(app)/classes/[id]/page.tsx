@@ -19,6 +19,11 @@ import { PostDraft } from "@/components/assistant/marketing-drafts";
 import { CustomerPicker } from "@/components/customer-picker";
 import { ModuleOff } from "@/components/module-off";
 import { KV, PageHeader, Section } from "@/components/ui";
+import { EventPanel, EventSignupFields } from "@/components/event-panel";
+import { eventView } from "@/lib/events";
+import { priceToday } from "@/lib/events-math";
+import { payLinkProblem } from "@/lib/pay-links";
+import { fmtYmdLong } from "@/lib/units/units";
 
 function Tell({ on, label = "Tell them" }: { on: boolean; label?: string }) {
   if (!on) return null;
@@ -29,6 +34,14 @@ function Tell({ on, label = "Tell them" }: { on: boolean; label?: string }) {
   );
 }
 
+/** "$350 until Nov 1 (early-bird), then $395. A $150 deposit now, non-refundable." */
+function eventPriceWords(c: { feeCents: number; earlyCents: number | null; earlyUntil: string | null; depositCents: number | null; depositRefundable: boolean }, today: string): string {
+  const p = priceToday(c, today);
+  const price = p.early && c.earlyUntil ? `Early-bird price ${money(p.cents)} until ${fmtYmdLong(c.earlyUntil)}, then ${money(c.feeCents)}.` : `Price ${money(p.cents)}.`;
+  const dep = c.depositCents ? ` A ${money(c.depositCents)} deposit${c.depositRefundable ? "" : " (non-refundable)"} now, the rest before the event.` : "";
+  return price + dep;
+}
+
 export default async function ClassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
@@ -37,6 +50,9 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   if (gate === "hidden") return <ModuleOff shopId={shopId} module="scheduling" admin={user.role !== "TECH"} />;
   const c = await db.shopClass.findFirst({ where: { id, shopId }, include: { meetings: { orderBy: { startsAt: "asc" } } } });
   if (!c) notFound();
+  // Retreats, trunk shows and other events (shop-features-round-2-design.md 4.5): money in parts, choices, the door.
+  const ev = c.kind !== "CLASS" ? await eventView(shopId, c.id) : null;
+  const linkProblem = ev ? await payLinkProblem(shopId) : null;
   const on = gate === "on";
   const admin = user.role !== "TECH" && on;
   // Marketing drafts (shop-features-round-2-design.md 5.2): "Draft it" for About the class, and a social post.
@@ -63,6 +79,8 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   const people = [...new Set(rows.filter((r) => r.customerId && r.status !== "CANCELLED").map((r) => r.customerId!))];
   const credits = new Map(await Promise.all(people.map(async (id) => [id, (await classCreditsFor(shopId, id)).filter((x) => x.left > 0)] as const)));
   const payment = (r: (typeof rows)[number]) => {
+    const evp = ev?.people.find((x) => x.id === r.id);
+    if (evp) return <span>{evp.owingCents ? `Owes ${money(evp.owingCents)} of ${money(evp.priceCents)}` : "Paid in full"}</span>;
     if (r.creditUnitId && !r.paidAt) {
       return (
         <span className="inline-flex flex-wrap items-center gap-2">
@@ -174,6 +192,7 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
               </label>
               <input id="attendee" name="attendee" className="input" maxLength={80} placeholder="A child, a friend" />
             </div>
+            {ev && <EventSignupFields v={ev} priceWords={eventPriceWords(c, ymdOf(now, tz))} />}
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span>{c.feeCents ? `Fee ${money(c.feeCents)}, paid at the counter.` : "No fee."}</span>
               {seatsLeft <= 0 && c.waitlist && <span className="pill tone-wait">Full: they go on the waiting list</span>}
@@ -247,6 +266,8 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
       </Section>
+
+      {ev && <EventPanel v={ev} on={on} admin={admin} canLink={!linkProblem} />}
 
       {(waiting.length > 0 || c.waitlist) && (
         <Section title={`Waiting list (${waiting.length})`}>

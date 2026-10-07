@@ -65,6 +65,16 @@ export type SaleLineInput = {
   layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
   /** A software item (shop-features-round-2-design.md 2.5): its code, "later", the machine it is for, the licence it renews, a return's reason. */
   software?: SoftwareLineInput | null;
+  /**
+   * Special orders (shop-features-round-2-design.md 1.2), from the program only (opts.internal), never the browser: a
+   * deposit or balance paid toward one (DEPOSIT, money held for the customer), the deposits used up at pick-up or given
+   * back (DEPOSIT, qty -1), or a kept non-refundable deposit (DEPOSIT_KEPT, income).
+   */
+  specialOrderId?: string | null;
+  depositKind?: "DEPOSIT" | "DEPOSIT_KEPT" | null;
+  /** Rentals (1.8), from the program only: rent paid on a machine out on rental (RENT, income). */
+  unitLoanId?: string | null;
+  rentKind?: "RENT" | null;
 };
 
 export type SaleInput = {
@@ -111,13 +121,15 @@ function saleByKey(shopId: string, clientKey: string | null) {
 export async function completeSaleAs(
   user: CurrentUser,
   input: SaleInput,
-  opts: { paidOnline?: boolean; layaway?: LayawayHook } = {},
+  opts: { paidOnline?: boolean; layaway?: LayawayHook; internal?: boolean } = {},
 ): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
     // Layaway money and its held items come only from src/lib/layaway.ts; the items' prices were settled when it began.
     const lay = opts.layaway ?? null;
     if (!lay && input.lines.some((l) => l.layawayKind)) throw new UserError("A line can only be one thing.");
+    // Deposits and rent are written by the program (special orders, pay links, rentals), never sent from a browser.
+    if (!opts.internal && input.lines.some((l) => l.depositKind || l.rentKind)) throw new UserError("A line can only be one thing.");
     const priceRole: CurrentUser["role"] = lay ? "OWNER" : user.role;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
@@ -752,14 +764,14 @@ async function unpayClubSale(tx: Tx, shopId: string, saleId: string, at: Date) {
 // ---------------------------------------------------------------------------------------------------------------------
 // Class seats and appointments at the register (design 12.3)
 
-type Bookings = { enrollments: Map<string, Prisma.EnrollmentGetPayload<{ include: { shopClass: true } }>>; appointments: Map<string, Prisma.AppointmentGetPayload<object>> };
+type Bookings = { enrollments: Map<string, Prisma.EnrollmentGetPayload<{ include: { shopClass: true; eventPayments: true } }>>; appointments: Map<string, Prisma.AppointmentGetPayload<object>> };
 
 /** The bookings a sale names, this shop's only, each once. */
 async function loadBookings(shopId: string, lines: SaleLineInput[]): Promise<Bookings> {
   const eIds = lines.map((l) => l.enrollmentId).filter((x): x is string => !!x);
   const aIds = lines.map((l) => l.appointmentId).filter((x): x is string => !!x);
   const [enrollments, appointments] = await Promise.all([
-    eIds.length ? db.enrollment.findMany({ where: { shopId, id: { in: [...new Set(eIds)] } }, include: { shopClass: true } }) : [],
+    eIds.length ? db.enrollment.findMany({ where: { shopId, id: { in: [...new Set(eIds)] } }, include: { shopClass: true, eventPayments: true } }) : [],
     aIds.length ? db.appointment.findMany({ where: { shopId, id: { in: [...new Set(aIds)] } } }) : [],
   ]);
   const out: Bookings = { enrollments: new Map(enrollments.map((e) => [e.id, e])), appointments: new Map(appointments.map((a) => [a.id, a])) };
@@ -803,6 +815,8 @@ function bookingLine(role: CurrentUser["role"], l: SaleLineInput, b: Bookings, t
     if (e) {
       if (e.status !== "ENROLLED") throw new UserError(`${e.attendee ?? e.name} is on the waiting list or cancelled. Sign them up first.`);
       if (e.shopClass.status === "CANCELLED") throw new UserError(`${e.shopClass.title} was cancelled. Nothing to pay.`);
+      // An event paid in parts (shop-features-round-2-design.md 4.5): the rest is taken on the event's page.
+      if (e.eventPayments.some((p) => p.paidAt && !p.cancelledAt)) throw new UserError(`Part of ${description} is paid: take the rest on the event's page.`);
     } else if (a!.status === "CANCELLED" || a!.blocked) throw new UserError("That appointment was cancelled.");
     if (paidAt) throw new UserError(`${description} is already paid.`);
     if (feeCents <= 0) throw new UserError(`Nothing to pay for ${description}.`);
@@ -885,7 +899,7 @@ export async function bookingsDueFor(shopId: string, tz: string, customerId: str
   const cust = customerId ? { customerId } : {};
   const [enrollments, appointments] = await Promise.all([
     db.enrollment.findMany({
-      where: { shopId, ...cust, ...paid, ...(refunds ? {} : { status: "ENROLLED", shopClass: { status: { not: "CANCELLED" } } }) },
+      where: { shopId, ...cust, ...paid, ...(refunds ? {} : { status: "ENROLLED", shopClass: { status: { not: "CANCELLED" } }, eventPayments: { none: { paidAt: { not: null }, cancelledAt: null } } }) },
       include: { shopClass: true, customer: { select: { name: true } } },
       take: 100,
     }),

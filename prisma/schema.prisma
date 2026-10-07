@@ -193,6 +193,16 @@ model Shop {
   assistantMonth          String?
   assistantCalls          Int           @default(0)
   assistantLimit          Int           @default(300)
+  // Product feeds for Google and Meta (shop-features-round-2-design.md 4.1, 4.2): the secret in the feed links (null: feeds
+  // off) and the store code from the Google Business Profile, for the local inventory feed.
+  feedToken               String?       @unique
+  feedStoreCode           String?
+  // Margin floor (shop-features-round-2-design.md 4.4): "tell me when an item's margin falls under N%", as {"all": 40} with
+  // optional per-kind figures ({"FABRIC": 45}); null: off. src/lib/repricing-math.ts.
+  marginFloor             Json?
+  // Shop hops (shop-features-round-2-design.md 4.6): off until the shop turns it on (Settings, Selling); then the Shop hop
+  // page shows in the menu.
+  hopOn                   Boolean       @default(false)
   createdAt               DateTime      @default(now())
 
   users             User[]
@@ -282,6 +292,13 @@ model Shop {
   appointments      Appointment[]
   shifts            Shift[]
   companyMoves      CompanyMove[]
+  priceChanges      PriceChange[]
+  liveSales         LiveSale[]
+  liveClaims        LiveClaim[]
+  eventPayments     EventPayment[]
+  eventDraws        EventDraw[]
+  shopHops          ShopHop[]
+  hopStamps         HopStampLocal[]
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
@@ -853,6 +870,10 @@ model Part {
 
   softwareLicenses SoftwareLicense[]
   softwareCodes    SoftwareCode[]
+
+  // The barcode number (UPC / EAN, a GTIN) for Google and Meta product feeds (shop-features-round-2-design.md 4.1): typed or
+  // scanned on the item page; empty: the feed uses a valid GTIN among the item's numbers. Digits only, check digit checked.
+  gtin String?
 
   moves     StockMove[]
   markdowns FabricMarkdown[]
@@ -1976,6 +1997,13 @@ model WebOrder {
   readyAt         DateTime?
   doneAt          DateTime?
   cancelledAt     DateTime?
+  // Pay links sent by staff (shop-features-round-2-design.md 1.3): "customer" (built in the online shop) or "staff" (the
+  // lines filled in by the shop and the link texted or emailed); the special orders it pays toward (plain ids), who
+  // made it, and the day the link stops working (a staff link waits for the customer; Stripe's page is opened on demand).
+  source          String    @default("customer")
+  specialOrderIds String[]  @default([])
+  createdById     String?
+  expiresAt       DateTime?
 
   @@unique([shopId, number])
   @@index([shopId, status, createdAt])
@@ -2451,28 +2479,41 @@ model JobLease {
 
 // A class, workshop or club: one or more meetings, a seat limit, a fee rung up at the register.
 model ShopClass {
-  id          String         @id @default(cuid())
-  shopId      String
-  shop        Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  teacher     String?
-  location    String?
-  supplies    String? // supply list: on the roster, the sign-up message and the reminder
-  feeCents    Int            @default(0)
-  taxable     Boolean        @default(false)
-  seats       Int
-  waitlist    Boolean        @default(true)
-  remind      String         @default("every") // day-before reminders: every | first (meeting only) | never
-  status      String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
-  online      Boolean        @default(false) // customers may sign up themselves on /book/{slug}
-  firstAt     DateTime? // first and last meeting, kept in step by the actions (for lists)
-  lastAt      DateTime?
-  createdById String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  meetings    ClassMeeting[]
-  enrollments Enrollment[]
+  id                String         @id @default(cuid())
+  shopId            String
+  shop              Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  teacher           String?
+  location          String?
+  supplies          String? // supply list: on the roster, the sign-up message and the reminder
+  feeCents          Int            @default(0)
+  taxable           Boolean        @default(false)
+  seats             Int
+  waitlist          Boolean        @default(true)
+  remind            String         @default("every") // day-before reminders: every | first (meeting only) | never
+  status            String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
+  online            Boolean        @default(false) // customers may sign up themselves on /book/{slug}
+  firstAt           DateTime? // first and last meeting, kept in step by the actions (for lists)
+  lastAt            DateTime?
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  // Events (shop-features-round-2-design.md 4.5): CLASS | EVENT (a trunk show, sew-in) | RETREAT; the early-bird price
+  // until a day (YYYY-MM-DD, the shop's zone), a deposit each (refundable or not) with the balance due this many days
+  // before the first day, the choices with their prices ([{ key, label, options: [{ label, cents }] }], plus a
+  // "dietary" ask), and the price at the door. src/lib/events-math.ts.
+  kind              String         @default("CLASS")
+  earlyCents        Int?
+  earlyUntil        String?
+  depositCents      Int?
+  depositRefundable Boolean        @default(false)
+  balanceDays       Int            @default(60)
+  choices           Json?
+  doorCents         Int?
+  meetings          ClassMeeting[]
+  enrollments       Enrollment[]
+  draws             EventDraw[]
 
   @@index([shopId, firstAt])
 }
@@ -2495,18 +2536,18 @@ model ClassMeeting {
 // Someone signed up for a class (or waiting for a seat). One row per sign-up: signing up again after a cancel makes a
 // new row. Paid and refunded at the register.
 model Enrollment {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   shopId        String
-  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   classId       String
-  shopClass     ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  shopClass     ShopClass      @relation(fields: [classId], references: [id], onDelete: Cascade)
   customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   name          String // the customer's name when they signed up (the roster keeps it)
   attendee      String? // who's coming when it isn't the customer (a child, a friend)
-  status        String    @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
+  status        String         @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
   feeCents      Int // the price for this person
-  taxable       Boolean   @default(false)
+  taxable       Boolean        @default(false)
   paidCents     Int?
   paidAt        DateTime?
   paidLineId    String? // the register sale line that paid it
@@ -2514,13 +2555,18 @@ model Enrollment {
   refundedAt    DateTime?
   refundLineId  String?
   note          String?
-  source        String    @default("counter") // counter | online
+  source        String         @default("counter") // counter | online
   // An owner's class that came with a machine bought here (the StockUnit id, plain): the seat is free
   creditUnitId  String?
   cancelledAt   DateTime?
   createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  // Events (4.5): what she chose ({ room: "Single", meals: "All meals", dietary: "gluten free" }) and when she came in
+  // the door; payments toward an event (deposit, balance) are EventPayment rows beside the one-payment paidAt above.
+  choices       Json?
+  checkedInAt   DateTime?
+  eventPayments EventPayment[]
 
   @@index([classId, customerId])
   @@index([shopId, customerId])
@@ -2729,6 +2775,10 @@ model PurchaseOrderLine {
   boltYards     Float         @default(15)
   costCents     Int?
   receivedYards Float         @default(0)
+  // The supplier says it's back ordered (shop-features-round-2-design.md 4.4): when the shop marked it, and the day it is
+  // expected (YYYY-MM-DD, the shop's zone; null: not known). Cleared when it comes or the shop takes the mark off.
+  backorderedOn DateTime?
+  expectedOn    String?
 
   @@index([orderId])
   @@index([shopId, partId])
@@ -3430,4 +3480,154 @@ model CustomerQuestion {
   handledBy String?
 
   @@index([shopId, handledAt])
+}
+
+// "Raise prices" (shop-features-round-2-design.md 4.4): one raise as the shop chose it (rule: whose, by how much, how
+// rounded) and every item it changed with the old and new price, so "Undo" (for a day) puts back what it raised.
+model PriceChange {
+  id       String    @id @default(cuid())
+  shopId   String
+  shop     Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  at       DateTime  @default(now())
+  userId   String?
+  rule     Json
+  items    Json // [{ partId, oldCents, newCents }]
+  undoneAt DateTime?
+
+  @@index([shopId, at])
+}
+
+// A live sale (shop-features-round-2-design.md 4.3): a Facebook Live or similar show. The shop picks what's on today's
+// show beforehand (picks: plain part ids), claims each buyer's items as they're called out, and at the end sends each
+// buyer one pay link for her claims. status OPEN | CLOSED; holdHours: unpaid claims after this show "Let go of these?".
+model LiveSale {
+  id          String      @id @default(cuid())
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  startsAt    DateTime    @default(now())
+  status      String      @default("OPEN")
+  holdHours   Int         @default(48)
+  picks       String[]    @default([])
+  createdById String?
+  createdAt   DateTime    @default(now())
+  closedAt    DateTime?
+  claims      LiveClaim[]
+
+  @@index([shopId, startsAt])
+}
+
+// One buyer's claim on a live sale: the item (plain part id), how much (yards in eighths for fabric), the price, and
+// where it stands: HELD (the stock is held for her), SENT (in her pay link, webOrderId), PAID, LET_GO (back on the shelf).
+// customerId is a plain id (a new name is fine: the customer is made when the pay link is sent).
+model LiveClaim {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  liveSaleId  String
+  liveSale    LiveSale  @relation(fields: [liveSaleId], references: [id], onDelete: Cascade)
+  customerId  String?
+  name        String
+  phone       String?
+  partId      String?
+  description String
+  qty         Float
+  unit        String?
+  priceCents  Int
+  status      String    @default("HELD")
+  webOrderId  String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  paidAt      DateTime?
+  letGoAt     DateTime?
+
+  @@index([liveSaleId, status])
+  @@index([shopId, status, partId])
+}
+
+// A payment toward an event sign-up (shop-features-round-2-design.md 4.5): a deposit or the balance, taken at the counter
+// (a register sale, saleId) or by a pay link (webOrderId; paidAt is set when she pays). kind DEPOSIT | BALANCE | PAYMENT.
+model EventPayment {
+  id           String     @id @default(cuid())
+  shopId       String
+  shop         Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  kind         String     @default("PAYMENT")
+  amountCents  Int
+  saleId       String?
+  webOrderId   String?
+  paidAt       DateTime?
+  cancelledAt  DateTime?
+  createdById  String?
+  createdAt    DateTime   @default(now())
+
+  @@index([enrollmentId])
+  @@index([shopId, webOrderId])
+}
+
+// A door prize drawn at an event (4.5): who, for which prize, and whether she was there (a draw again keeps the first,
+// marked not present).
+model EventDraw {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  classId      String
+  shopClass    ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  name         String
+  prize        String
+  drawnAt      DateTime  @default(now())
+  present      Boolean   @default(true)
+
+  @@index([classId, drawnAt])
+}
+
+// A shop hop this shop takes part in (shop-features-round-2-design.md 4.6), as the hub last told it: the hub's id, the
+// name and dates (YYYY-MM-DD), the prize rule ("all", or "any:6"), how many shops, and this shop's part: ORGANIZER or
+// MEMBER, status JOINED | LEFT. The hub holds the hop, its shops, passports and stamps.
+model ShopHop {
+  id         String          @id @default(cuid())
+  shopId     String
+  shop       Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hubHopId   String
+  name       String
+  startsOn   String?
+  endsOn     String?
+  rule       String          @default("all")
+  shopsCount Int             @default(1)
+  role       String          @default("MEMBER")
+  status     String          @default("JOINED")
+  slug       String?
+  updatedAt  DateTime        @updatedAt
+  createdAt  DateTime        @default(now())
+  stamps     HopStampLocal[]
+
+  @@unique([shopId, hubHopId])
+}
+
+// A passport stamped at this shop (4.6): the shop's own record, sent to the hub signed (sentAt when the hub took it).
+// One per passport per hop. What the hub answered: the stamp's number of how many, and the shopper's details only if she
+// chose to share them with this shop.
+model HopStampLocal {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hopId        String
+  hop          ShopHop   @relation(fields: [hopId], references: [id], onDelete: Cascade)
+  passportRef  String
+  at           DateTime  @default(now())
+  byUserId     String?
+  sentAt       DateTime?
+  stampNo      Int?
+  stampsOf     Int?
+  complete     Boolean   @default(false)
+  shopperName  String?
+  shopperEmail String?
+  shopperPhone String?
+  error        String?
+
+  @@unique([hopId, passportRef])
+  @@index([shopId, at])
 }

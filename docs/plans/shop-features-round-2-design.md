@@ -1437,3 +1437,232 @@ Decisions made while building:
 - It works whether or not the booking-page answers are switched on: making a key is the shop's choice to turn it on.
 - Rate limits: 120 a minute per address, 2,000 an hour per shop, 300 ticket lookups an hour per shop.
 - No phone service is built or chosen (question 3); the first interested shop's service is tested against this.
+
+**`pay-links` (1.3, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021000000_pay_links` (`WebOrder.source`,
+`specialOrderIds`, `createdById`, `expiresAt`). Code: `src/lib/pay-links.ts` (`makePayLinkFor`, `openPayLink`,
+`resendPayLinkFor`, `cancelPayLinkFor`, `payLinksFor`, `payLinkProblem`), `src/actions/pay-links.ts`, the staff page
+**Register → Pay links** (`/register/pay-links`, `src/components/pay-link-form.tsx`; "Send a pay link" on a customer's page
+and on Online orders), the customer's link page (`/shop/o/<token>` shows **Pay $X**; `POST /shop/o/<token>/pay` opens
+Stripe), `finishStaffPaid` in `src/lib/shop/online-shop.ts`, message wording `pay_link`. Check:
+`scripts/checks/pay-links.check.ts` (6 groups); `online-shop`, `base-license`, `move-export` still pass.
+Decisions made while building:
+- A link is a web order with `source = "staff"` and no Stripe page until the customer presses Pay; the page is made then
+  (open for 24 hours) and made again if she comes back after it ran out, so the link itself lasts 14 days (the shop can
+  pass 1 to 60). The online shop's two-hour "never paid" rule leaves links alone; a link past its day is cancelled.
+  A payment on an earlier Stripe page still finds its link (by the order id Stripe carries).
+- Paid, the sale is written as the shop filled it in, at the tax worked out when the link was made (the customer's
+  exemption counted), tender "Paid online", no stock check (the shop promised the items). A link of money only (a balance,
+  a deposit, rent) is done at once; one with stock items waits to be picked up like any online order.
+- Owners and admins type amounts; a tech can send only stock items at their own price. Special orders and rentals send
+  their own links with their own prices (`trusted`). Sending asks once ("Tap again to send $34.95"); "Take it back"
+  works until she pays.
+- Sent the customer's usual way (text or email) when Marketing is on, else the shop copies the link ("Copy the link").
+- Needs the program's public address and the shop's Stripe key (Settings → Online shop); the page says so otherwise. The
+  online shop itself doesn't have to be switched on.
+- Browser test needed: `tests/pay-links.spec.ts` (the page before and after the Stripe key, the customer page's link,
+  sending with two taps, Copy the link, the customer paying on the Stripe mock, the link shown paid).
+
+**`product-feeds` (4.1 and 4.2, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023000000_product_feeds`
+(`Part.gtin`, `Shop.feedToken` unique, `Shop.feedStoreCode`). Code: `src/lib/shop/feeds-math.ts` (pure: the GTIN check
+digit and forgiving input, which items go in and why not, Google's product feed as RSS 2.0 with the g: namespace,
+Google's local inventory feed as tab-separated `store_code, id, quantity, price, availability, pickup_method,
+pickup_sla`, Meta's catalog CSV), `src/lib/shop/feeds.ts`, `src/actions/feeds.ts`, the public route
+`/shop/{slug}/feeds/{token}/google.xml | local.tsv | meta.csv` (rate limited per address and per shop, 404 for anything
+wrong), Settings → Online shop → **Google and Facebook** (`/settings/shop/feeds`: the guided steps for Merchant Center and
+Commerce Manager, the three links with Copy, the counts, "Listed online but not in the feeds" with each reason; More
+choices: Make new links, Switch the feeds off), the item form's **Barcode (UPC or EAN, for Google and Facebook)**. Check:
+`scripts/checks/product-feeds.check.ts` (5 groups). Spec: `tests/product-feeds.spec.ts`.
+Decisions made while building:
+- An item goes in when it is **listed in the online shop** with a price and a barcode: Google's listing and Meta's item
+  both link to the item's page in the shop's own online shop, and the photo is served only for listed items. The feeds
+  work only while the online shop is open (so they pause with it when the program is read-only). Meta also needs a
+  photo. Machine models to order and a partner's consigned stock never go in.
+- The barcode is the item's own `gtin`, else the first valid GTIN among its part number and other numbers (a supplier
+  list's UPC column lands there, 2.3), so most shops need no retyping. A barcode typed with spaces or dashes is kept as
+  digits; a wrong check digit is refused in words.
+- Fabric by the yard: the price is a yard's, the title says "(price per yard)" and Google gets `unit_pricing_measure 1yd`;
+  the shelf count is whole yards.
+- The store code is the shop's Business Profile store code (typed once; the shop's address is used until then).
+- Not built: leaving out items priced under the maker's minimum advertised price (9.3 `map-prices` has no MAP field yet;
+  add the rule to `leftOutReason` when it lands). The Merchant Center steps are words, not screenshots.
+- Browser test needed: `tests/product-feeds.spec.ts`.
+
+**`repricing` (4.4, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023100000_repricing` (`PriceChange`, carried
+by the company file; `Shop.marginFloor` JSON; `PurchaseOrderLine.backorderedOn`, `expectedOn`). Code:
+`src/lib/repricing-math.ts` (pure: rounding up to .99 / 25 / 50 cents / the cent, margins, floors per kind),
+`src/lib/repricing.ts` (choices, preview, raise, undo, floors), `src/lib/backorders.ts` (mark, clear, Coming in, Let them
+know), `src/actions/repricing.ts`; pages **Raise prices** (`/parts/raise-prices`, from Inventory's header and the floor
+notice: whose, by how much, rounding, old and new with the margin before and after, "Raise them", the raises with Undo
+for a day) and **Coming in** (`/parts/coming-in`, from Orders to suppliers); a sent order's line has **Back ordered**
+(the expected day, Change, "It came off back order", `src/components/backorder-control.tsx`); Settings → Selling →
+**Margin floor** (`src/components/margin-floor-settings.tsx`, per kind under More choices); "N items are under your
+margin floor" with **Raise prices** on Inventory and the repair dashboard (`src/components/margin-floor-notice.tsx`,
+owners and admins); message wording `order_delay`. Check: `scripts/checks/repricing.check.ts` (6 groups). Spec:
+`tests/repricing.spec.ts`.
+Decisions made while building:
+- New prices are always rounded **up** (a raise never comes out lower than asked); a percent group raise never lowers a
+  price. "Under your margin floor" raises each item to its floor (cost / (1 - floor)), rounded the same way.
+- Whose: a supplier, a maker, a kind or a collection, matched in any case; machine models and partner stock left out;
+  at most 2,000 items at once. Owners and admins only (a tech sees the page and the preview).
+- Undo works for 24 hours and puts back only items still at the raised price; one changed since is left and counted.
+- Back orders: only a line on a sent (or partly received) order with something still to come. "Who's waiting" is the
+  repair tickets waiting for that part (`PartWait`); special orders (1.2) and live-sale claims add their customers when
+  phase 1 is merged. "Let them know" needs the expected day, moves each ticket's expected day, sends `order_delay` once
+  per line, customer and day (Marketing on, as pay links), with refType `po_line`.
+- The invoice reader (1.10) setting a back order, and the dashboard on a shop without a repair bench (it opens on the
+  register), are left: the notice shows on Inventory for them.
+- Browser test needed: `tests/repricing.spec.ts`.
+
+**`live-sales` (4.3, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023200000_live_sales` (`LiveSale`,
+`LiveClaim`, both carried by the company file). Code: `src/lib/live-sales.ts` (start, today's show, claim, take off and
+undo, send pay links, paid sync, let go, send again, `liveHeld`), `src/actions/live-sales.ts`; pages Register → **Live
+sale** (`/register/live`: start one with a name and the hold hours, the ones before) and the claim list
+(`/register/live/[id]`: `src/components/live-claim-form.tsx` with today's show as big buttons, item search, buyer search
+or a new name with a phone or email, how many; today's show with what's left; buyers with their claims; "End the show
+and send pay links", two taps). Check: `scripts/checks/live-sales.check.ts` (6 groups). Spec: `tests/live-sales.spec.ts`.
+Decisions made while building:
+- Held stock is **counted, not moved**: what's left = on hand - claims held or sent (`liveHeld`). The pay link's sale
+  takes the stock off when she pays, so nothing is taken off twice. **For the lead at merge:** the register's "held"
+  rule from special orders (1.2, phase 1) should add `liveHeld(shopId, partIds)` to its held quantity.
+- Each buyer gets one pay link (`makePayLinkFor`, `trusted`, taxed items) for the days of the hold time (48 hours: 2
+  days), noted "From our <sale name>." A new name becomes a customer when the link is sent: one with the same phone (or
+  email) if there is exactly one, else a new customer (`notifyBy` sms or email from what was typed). A buyer who can't
+  get messages is named in the result ("Copy the link for Ann").
+- A tech claims at the item's price; an owner or admin may type a show price under More choices.
+- Sending ends the show (no more claims); "Send it again" and "Let go" stay. A link unpaid after the hold time shows
+  "Not paid after 48 hours. Let go of these?" (one tap); before that, Let go asks for a second tap. Letting go takes the
+  link back (`cancelPayLinkFor`). A link that ran out or was taken back on the Pay links page still holds the stock until
+  Let go.
+- Paid claims are found when the page opens (the web order is paid), not by a hook in the payment path.
+- Reading Facebook comments into the list stays 9.12 (gated).
+- Browser test needed: `tests/live-sales.spec.ts`.
+
+**`events` (4.5, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023300000_events` (`ShopClass.kind`,
+`earlyCents`, `earlyUntil`, `depositCents`, `depositRefundable`, `balanceDays`, `choices`, `doorCents`;
+`Enrollment.choices`, `checkedInAt`; `EventPayment`, `EventDraw`, both carried by the company file). Code:
+`src/lib/events-math.ts` (pure: choices with prices typed "Single +120, Double", picks, the early-bird price, the balance
+day, deposit then balance, the receipt's words), `src/lib/events.ts`, `src/lib/events-wanted.ts` (the worker's check),
+`src/actions/events.ts`; `enrollIn` prices an event sign-up (early-bird or door price plus her choices); the class form's
+**What is it?** (Class, Retreat, Trunk show, sew-in or event) with the extras under More choices; Classes → **New
+retreat or event**; on the event's page the sign-up form asks her choices and shows the price, the roster says owes or
+paid in full, and **Who's coming** (`src/components/event-panel.tsx`) takes the deposit or balance at the counter (card,
+cash, check, other), sends a pay link, **Ask for the balances**; **At the door** (`/classes/[id]/door`: the drawing with
+the name big, "She's not here: draw again", check-in, **Sell a ticket**), **Room and meal lists** to print
+(`/classes/[id]/lists`); the hourly balance reminders (`runEventReminders` in `src/instrumentation.ts`, wording
+`event_balance`). Check: `scripts/checks/events.check.ts` (6 groups); `classes`, `register-bookings`, `online-booking`,
+`move-export`, `audit-log`, `base-license`, `messaging-core` still pass. Spec: `tests/events.spec.ts`.
+Decisions made while building:
+- An event's price for a person is fixed at sign-up: the early-bird price through its last day (the shop's zone), else
+  the price, plus what her room and meals add; a ticket at the door is the door price. "Price for this person" still
+  works before anything is paid.
+- Money in parts: a payment taken at the counter is a register sale with one line ("Deposit (non-refundable): Fall
+  Retreat for Jane", taxed as the event is), so it is income when paid, as class fees are; a pay link is a staff pay
+  link (1.3), found paid when the page opens. Payments are `EventPayment` rows. The register's one-tap class seat still
+  takes a whole fee in one go; once part is paid it refuses ("take the rest on the event's page") and the seat leaves
+  the register's "owes" list (`register-sale.ts`, two small edits).
+- A tech takes the deposit or the balance as worked out; only an owner or admin types another amount. Never more than
+  is owed. "Take off" a payment (owner or admin, after refunding it at the register) is the only undo; the refund itself
+  goes through the existing register return.
+- Balance reminders go 14 days before the due day and on it (due = first day - the balance days), only to someone who
+  has paid something and still owes, Marketing on, once each; the worker drops one paid in full or cancelled.
+- The drawing picks among those checked in (everyone signed up when nobody is), never someone who has already won a
+  prize and was there, nor anyone drawn for that prize before.
+- The sign-up online (`/book`) gets the early-bird price and the first room and meal choice; choosing online and paying
+  a deposit online are left for later. "Hold event payments as deposits" (Customer deposits until the first day) is not
+  built: it needs the special orders' DEPOSIT lines (1.2, phase 1); the payments count as income when paid.
+- Selling a door ticket happens on the event's door page, not in the register's search.
+- Browser test needed: `tests/events.spec.ts`.
+
+**`switch-imports` (4.7, 7 Oct 2026, branch `phase3-channels`).** No migration. Code: `src/lib/switch/formats.ts` (pure:
+each system's layout by column names for items, customers and gift cards, recognising a file by its columns, reading
+the rows, the export steps), `src/lib/switch/import.ts` (preview and "Bring them in"), `src/actions/switch.ts`
+(`previewSwitchFile` only reads, listed in `lapse-allow.ts` HAND_ALLOWED; `bringSwitchIn` is a safe() action);
+Settings → **Switching from another system** (`/settings/switch`, `src/components/switch-import.tsx`: From Square / From
+Rain or Like Sew / From QuickBooks Point of Sale, Items / Customers / Gift card balances, the export steps, open the
+file, "See what will come in" with new and already-here counts, the first ten and the rows that can't be read, "Bring
+them in"). Check: `scripts/checks/switch-imports.check.ts` (5 groups). Spec: `tests/switch-imports.spec.ts`.
+Decisions made while building:
+- Items go through the existing spreadsheet import (`runImport`: new added, ones here by number updated, stock received
+  unless untold), with each row's supplier filled on items that have none. Square's variations become "Item, Variation";
+  a row without a number uses its barcode. One kind for the whole file (More choices; Notions by default).
+- Customers are matched by email or phone (missing email, phone and address filled, nothing overwritten); a new one is
+  added. "History where possible": what the export says she spent, her visits and first and last visit go in her notes
+  ("From Square: spent $1234.50, 42 visits, first ..., last ..."), once; a birthday and memo too. Past sales themselves
+  are not brought in as sales (they would change the books and the tax reports). Nobody is signed up for marketing.
+- This import doesn't need Marketing (the customer list import in Messages does).
+- Gift cards become existing cards (`addExistingCardAs`: OPENING on the ledger, in the liability, not in sales) under
+  their own numbers, linked to a customer by email when the file has one; a used-up or deactivated card is left out; a
+  number shown masked ("****1234") is refused in words; a number already here is named, not doubled.
+- **Formats not verified against real files** (question 13: ask the first switching shop for its files): Square's item
+  library ("Item Name", "Variation Name", "SKU", "GTIN", "Price", "Default Unit Cost", "Default Vendor Name", "Current
+  Quantity <location>") and customer directory ("First Name", "Last Name", "Email Address", "Phone Number", "Street
+  Address 1", "Postal Code", "Memo", "Square Customer ID", "First Visit", "Last Visit", "Transaction Count", "Total
+  Spend") are from Square's documented import template and exports as remembered; Square's gift card export (whole
+  numbers and balances) is unconfirmed: Square may mask the numbers. Rain and Like Sew publish no export layout: their
+  columns are the usual names ("SKU", "Name", "UPC", "Price", "Cost", "Quantity On Hand", "Manufacturer", "Vendor").
+  QuickBooks Desktop POS's item list ("Item Number", "Item Name", "UPC", "Regular Price", "Average Unit Cost", "On Hand
+  Qty", "Vendor Name") and customer list ("First Name", "Last Name", "Phone 1", "EMail", "Street", "ZIP") follow its
+  Data Import Wizard templates; its gift certificate report layout is a guess. Each field takes several names, and the
+  file's own columns are shown under "Columns read", so a different version only needs another name added in
+  `LAYOUTS`. Square's item library comes as Excel: the page says to save it as CSV (no .xlsx reader in the program).
+  The export steps are words, not pictures.
+- Browser test needed: `tests/switch-imports.spec.ts`.
+
+**`shop-hop-program` (4.6, the program's side, 7 Oct 2026, branch `phase3-channels`).** Built without the organizer's
+answer (question 1), **off by default** until a shop turns it on. Migration `20261023400000_shop_hops` (`Shop.hopOn`,
+`ShopHop`, `HopStampLocal`, both carried by the company file). Code: `src/lib/hops/hop-math.ts` (pure: the passport code
+read forgivingly, the prize rule, the SBHS1 stamp signature and its check), `src/lib/hops/hops.ts` (on/off, hops from the
+hub, start, invite code, take part, leave, stamp, send what's waiting, today's visitors, the organizer's completed
+passports and drawing), `src/actions/hops.ts` (`stampPassport` is a data action, listed in `lapse-allow.ts` BY_HAND);
+Settings → Selling → **Shop hops** (turn on or off; `src/components/hop-settings.tsx`), the menu's **Shop hop** (only while
+on), `/hops` (your hops, "Take part" with the organizer's code, "Organizing a hop? Start one"), `/hops/[id]` ("Stamp a
+passport": camera or typed code, the big tick "Stamp 4 of 10", `src/components/hop-stamper.tsx`; today's visitors and
+totals; waiting stamps with Send now; for the organizer: completed passports, Draw a winner, "She's not here: draw
+again", Invite a shop). Check: `scripts/checks/shop-hops.check.ts` (6 groups, against an in-process mock of the routes
+below). Spec: `tests/shop-hops.spec.ts` (its hub part skips until `E2E_HUB_HOPS=1`).
+Decisions made while building:
+- One stamp per passport per shop per hop; a passport the hub doesn't know is refused and not kept. When the hub can't be
+  reached the stamp is kept and goes on the next "Send now" or page visit (the counter never waits on the hub).
+- Stamps are signed with the shop's partner key (`ownKey`, Ed25519); the public half is sent when the shop starts or
+  joins a hop and the hub pins it then.
+- The drawing is the program's (as at events, 4.5): among completed passports, never someone who won and was there,
+  never twice for one prize; the hub records each draw.
+- Shoppers' details are shown only when the hub sends them (the shopper ticked "share with each shop I visit"); the
+  rest are counts.
+
+**For the lead: what the hub needs (`shop-hop-hub`).** All under the install key (`Authorization: Bearer <installKey>`)
+with the company in `X-Shop-Ref`, as the other `/v1/` routes; JSON; errors as `{ error }` (the program shows them).
+Tables (one migration on the hub):
+- `hops` (id text pk, slug unique, name, starts_on date, ends_on date, rule text "all" | "any:N", organizer_install,
+  organizer_shop_ref, created_at, ended_at).
+- `hop_shops` (hop_id, install_id, shop_ref, shop_name, public_key text (base64 SPKI DER), role ORGANIZER | MEMBER, status
+  JOINED | LEFT, joined_at; pk hop_id + install_id + shop_ref).
+- `hop_invites` (code_hash pk, hop_id, expires_at (14 days), used_by_shop_ref, used_at).
+- `hop_passports` (id, hop_id, code char(8) unique per hop (Crockford: 0-9 A-Z without I L O U), name, email, phone,
+  share bool default false, created_at; email or phone required).
+- `hop_stamps` (id, hop_id, passport_id, shop_ref, stamp_id unique (the program's id), at, sig jsonb, received_at;
+  unique hop_id + passport_id + shop_ref).
+- `hop_draws` (id, hop_id, passport_id, prize, present bool, drawn_at).
+Routes the program calls:
+- `GET /v1/hops` → `{ hops: [{ id, name, startsOn, endsOn, rule, shops (joined count), role, status, slug }] }` for this shop.
+- `POST /v1/hops { name, startsOn, endsOn, rule, publicKey }` → `{ hop }` (the caller is the organizer; pins its key).
+- `POST /v1/hops/:id/invite-code` (organizer) → `{ code }` (shown to the owner to send; one use, 14 days).
+- `POST /v1/hops/join { code, publicKey }` → `{ hop }` (the caller chose to take part; pins its key).
+- `POST /v1/hops/:id/leave` → `{ ok }`.
+- `POST /v1/hops/:id/stamps { stampId, passport (8 chars), at (ISO), sig: { v: 1, pub, sig } }` → `{ stampNo, of,
+  complete, shopper: { name, email, phone } | null }`. Check: the shop is JOINED, `pub` equals its pinned key, and the
+  Ed25519 signature verifies over `SBHS1\n<hopId>\n<shopRef>\n<stampId>\n<passport>\n<at>\n<sha256 hex of the canonical
+  JSON of { at, hopId, passport, shopRef, stampId }>` (keys sorted; `canonical` in `src/lib/partner-signing.ts`, the hub's
+  `partnersign.mjs` already has it; `verifyStamp` in `hop-math.ts` is the reference). Unknown passport: 404 with
+  `{ error, code: "no_passport" }`. The same passport at the same shop again: 200 with the first stamp's numbers (the
+  program records one per shop anyway). `of` is the number of joined shops for "all", N for "any:N"; `shopper` only when
+  the passport's `share` is true.
+- `GET /v1/hops/:id/completed` (organizer) → `{ passports, stamps, completed: [{ passport, name }], draws: [{ id,
+  passport, name, prize, present, at }] }`.
+- `POST /v1/hops/:id/draws { passport, prize }` (organizer, the passport must be complete) → `{ draw }`;
+  `PATCH /v1/hops/:id/draws/:drawId { present: false }` → `{ draw }`.
+Public pages on the hub (no login): `/hop/:slug` (the hop's shops and dates; sign up: name, email or phone, a tick "share
+my name and contact with each shop I visit", off by default) → `/p/:code` (the passport: "HOP-XXXX-XXXX" big, a QR code
+of that text, the stamps so far by shop, and a printable card with the same code); the organizer's hub page lists the
+shops and links the sign-up page. Rate-limit sign-ups; one passport per email or phone per hop.
+- Browser test needed: `tests/shop-hops.spec.ts` (and its hub part once the routes are on the test hub).

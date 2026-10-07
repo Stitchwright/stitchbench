@@ -347,6 +347,15 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
+        <Section title="Switching from another system">
+          <p className="muted mb-2 text-sm">Bring your items, customers and gift card balances from Square, Rain or Like Sew, or QuickBooks Point of Sale.</p>
+          <Link href="/settings/switch" className="btn btn-sm">
+            Bring them in
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Your data">
           <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
           <div className="flex flex-wrap gap-2">

@@ -30,6 +30,9 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
         sub={all ? "Every order, newest first." : "Paid orders to pack, and ready ones waiting at the counter."}
         actions={
           <>
+            <Link href="/register/pay-links" className="btn">
+              Pay links
+            </Link>
             <Link href={all ? "/register/online" : "/register/online?all=1"} className="btn">
               {all ? "To do only" : "Show all"}
             </Link>
@@ -63,6 +66,7 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div>
                     <span className="text-lg font-semibold">#{o.number}</span> <span className={`pill ${TONE[status]}`}>{ORDER_STATUS_LABEL[status]}</span>{" "}
+                    {o.source === "staff" && <span className="pill tone-neutral">Pay link</span>}{" "}
                     <span className="pill">{o.fulfil === "ship" ? "Ship" : "Pickup"}</span>
                   </div>
                   <div className="muted text-sm">
