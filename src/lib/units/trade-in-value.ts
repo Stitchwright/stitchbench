@@ -6,12 +6,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { modelKey } from "@/lib/format";
 import { median } from "@/lib/reports/tickets";
-
-/**
- * The 1.9 rule, "what we expect to sell it for, less 30%". `trade-up` (phase 1) adds the shop's own setting
- * (Shop.tradeInLessPct); until it lands on this branch the rule is the design's default.
- */
-export const TRADE_IN_LESS_PCT = 30;
+import { tradeUpSettings } from "@/lib/trade-up";
 
 export type TradeInEstimate = {
   /** What the past sales were matched on: the same model, or the same brand and kind; null when there were none. */
@@ -29,7 +24,8 @@ export type TradeInEstimate = {
 const DAY = 86_400_000;
 
 export async function tradeInEstimate(shopId: string, o: { kind?: string | null; brand: string; model: string }): Promise<TradeInEstimate> {
-  const lessPct = TRADE_IN_LESS_PCT;
+  // The 1.9 rule, "what we expect to sell it for, less N%": the shop's own percent (Shop.tradeInLessPct, 30 unless changed).
+  const { lessPct } = await tradeUpSettings(shopId);
   const brand = String(o.brand ?? "").trim();
   const key = modelKey(String(o.model ?? ""));
   const none: TradeInEstimate = { basis: null, count: 0, medianCents: null, lowCents: null, highCents: null, medianDays: null, lessPct, startCents: null };
