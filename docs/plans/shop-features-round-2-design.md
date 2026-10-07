@@ -1287,3 +1287,62 @@ Decisions made while building:
   `LAYOUTS`. Square's item library comes as Excel: the page says to save it as CSV (no .xlsx reader in the program).
   The export steps are words, not pictures.
 - Browser test needed: `tests/switch-imports.spec.ts`.
+
+**`shop-hop-program` (4.6, the program's side, 7 Oct 2026, branch `phase3-channels`).** Built without the organizer's
+answer (question 1), **off by default** until a shop turns it on. Migration `20261023400000_shop_hops` (`Shop.hopOn`,
+`ShopHop`, `HopStampLocal`, both carried by the company file). Code: `src/lib/hops/hop-math.ts` (pure: the passport code
+read forgivingly, the prize rule, the SBHS1 stamp signature and its check), `src/lib/hops/hops.ts` (on/off, hops from the
+hub, start, invite code, take part, leave, stamp, send what's waiting, today's visitors, the organizer's completed
+passports and drawing), `src/actions/hops.ts` (`stampPassport` is a data action, listed in `lapse-allow.ts` BY_HAND);
+Settings → Selling → **Shop hops** (turn on or off; `src/components/hop-settings.tsx`), the menu's **Shop hop** (only while
+on), `/hops` (your hops, "Take part" with the organizer's code, "Organizing a hop? Start one"), `/hops/[id]` ("Stamp a
+passport": camera or typed code, the big tick "Stamp 4 of 10", `src/components/hop-stamper.tsx`; today's visitors and
+totals; waiting stamps with Send now; for the organizer: completed passports, Draw a winner, "She's not here: draw
+again", Invite a shop). Check: `scripts/checks/shop-hops.check.ts` (6 groups, against an in-process mock of the routes
+below). Spec: `tests/shop-hops.spec.ts` (its hub part skips until `E2E_HUB_HOPS=1`).
+Decisions made while building:
+- One stamp per passport per shop per hop; a passport the hub doesn't know is refused and not kept. When the hub can't be
+  reached the stamp is kept and goes on the next "Send now" or page visit (the counter never waits on the hub).
+- Stamps are signed with the shop's partner key (`ownKey`, Ed25519); the public half is sent when the shop starts or
+  joins a hop and the hub pins it then.
+- The drawing is the program's (as at events, 4.5): among completed passports, never someone who won and was there,
+  never twice for one prize; the hub records each draw.
+- Shoppers' details are shown only when the hub sends them (the shopper ticked "share with each shop I visit"); the
+  rest are counts.
+
+**For the lead: what the hub needs (`shop-hop-hub`).** All under the install key (`Authorization: Bearer <installKey>`)
+with the company in `X-Shop-Ref`, as the other `/v1/` routes; JSON; errors as `{ error }` (the program shows them).
+Tables (one migration on the hub):
+- `hops` (id text pk, slug unique, name, starts_on date, ends_on date, rule text "all" | "any:N", organizer_install,
+  organizer_shop_ref, created_at, ended_at).
+- `hop_shops` (hop_id, install_id, shop_ref, shop_name, public_key text (base64 SPKI DER), role ORGANIZER | MEMBER, status
+  JOINED | LEFT, joined_at; pk hop_id + install_id + shop_ref).
+- `hop_invites` (code_hash pk, hop_id, expires_at (14 days), used_by_shop_ref, used_at).
+- `hop_passports` (id, hop_id, code char(8) unique per hop (Crockford: 0-9 A-Z without I L O U), name, email, phone,
+  share bool default false, created_at; email or phone required).
+- `hop_stamps` (id, hop_id, passport_id, shop_ref, stamp_id unique (the program's id), at, sig jsonb, received_at;
+  unique hop_id + passport_id + shop_ref).
+- `hop_draws` (id, hop_id, passport_id, prize, present bool, drawn_at).
+Routes the program calls:
+- `GET /v1/hops` → `{ hops: [{ id, name, startsOn, endsOn, rule, shops (joined count), role, status, slug }] }` for this shop.
+- `POST /v1/hops { name, startsOn, endsOn, rule, publicKey }` → `{ hop }` (the caller is the organizer; pins its key).
+- `POST /v1/hops/:id/invite-code` (organizer) → `{ code }` (shown to the owner to send; one use, 14 days).
+- `POST /v1/hops/join { code, publicKey }` → `{ hop }` (the caller chose to take part; pins its key).
+- `POST /v1/hops/:id/leave` → `{ ok }`.
+- `POST /v1/hops/:id/stamps { stampId, passport (8 chars), at (ISO), sig: { v: 1, pub, sig } }` → `{ stampNo, of,
+  complete, shopper: { name, email, phone } | null }`. Check: the shop is JOINED, `pub` equals its pinned key, and the
+  Ed25519 signature verifies over `SBHS1\n<hopId>\n<shopRef>\n<stampId>\n<passport>\n<at>\n<sha256 hex of the canonical
+  JSON of { at, hopId, passport, shopRef, stampId }>` (keys sorted; `canonical` in `src/lib/partner-signing.ts`, the hub's
+  `partnersign.mjs` already has it; `verifyStamp` in `hop-math.ts` is the reference). Unknown passport: 404 with
+  `{ error, code: "no_passport" }`. The same passport at the same shop again: 200 with the first stamp's numbers (the
+  program records one per shop anyway). `of` is the number of joined shops for "all", N for "any:N"; `shopper` only when
+  the passport's `share` is true.
+- `GET /v1/hops/:id/completed` (organizer) → `{ passports, stamps, completed: [{ passport, name }], draws: [{ id,
+  passport, name, prize, present, at }] }`.
+- `POST /v1/hops/:id/draws { passport, prize }` (organizer, the passport must be complete) → `{ draw }`;
+  `PATCH /v1/hops/:id/draws/:drawId { present: false }` → `{ draw }`.
+Public pages on the hub (no login): `/hop/:slug` (the hop's shops and dates; sign up: name, email or phone, a tick "share
+my name and contact with each shop I visit", off by default) → `/p/:code` (the passport: "HOP-XXXX-XXXX" big, a QR code
+of that text, the stamps so far by shop, and a printable card with the same code); the organizer's hub page lists the
+shops and links the sign-up page. Rate-limit sign-ups; one passport per email or phone per hop.
+- Browser test needed: `tests/shop-hops.spec.ts` (and its hub part once the routes are on the test hub).

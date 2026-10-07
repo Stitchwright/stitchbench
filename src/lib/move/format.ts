@@ -148,6 +148,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "WebOrder", key: "id", leftOut: ["linkSealed"] },
   { t: "LiveSale", key: "id" }, // live sales (shop-features-round-2-design.md 4.3)
   { t: "LiveClaim", key: "id" }, // -> LiveSale (its customer, part and web order ids are plain)
+  { t: "ShopHop", key: "id" }, // the shop hops this company takes part in, as the hub last told it (4.6)
+  { t: "HopStampLocal", key: "id" }, // -> ShopHop (passports stamped here)
   { t: "AssistantSettings", key: '"shopId"' }, // the company's own Assistant switches and voice sample (one row per company)
   { t: "AssistantCall", key: "id" }, // the company's own log of what the Assistant was asked and said
 ];

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Stamp,
   LayoutDashboard,
   ClipboardList,
   Cog,
@@ -38,7 +39,7 @@ import {
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
 // module: a paid module's item, shown while the module is on (or read-only with a lock once it has ended), hidden otherwise.
-type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean };
+type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean; hop?: boolean };
 
 // repair: shown to repair benches; retail: to shops with a counter; partners: to shops with partner shops. Unmarked: everyone.
 const items: Item[] = [
@@ -72,6 +73,8 @@ const items: Item[] = [
   { href: "/sales", label: "Sales log", icon: Receipt, repair: true },
   { href: "/register/sales", label: "Register sales", icon: Receipt, retail: true },
   { href: "/register/online", label: "Online orders", icon: Globe, retail: true },
+  // Shop hops (shop-features-round-2-design.md 4.6): only once the shop turns them on.
+  { href: "/hops", label: "Shop hop", icon: Stamp, retail: true, hop: true },
   { href: "/reports", label: "Reports", icon: BarChart3, admin: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -87,6 +90,7 @@ export function Nav({
   gates,
   badges,
   pausePill,
+  hopOn = false,
 }: {
   platformAdmin?: boolean;
   chatUrl?: string | null;
@@ -100,11 +104,14 @@ export function Nav({
   badges?: Partial<Record<string, number>>;
   /** A warning under the items ("Texts paused: fix in Settings"), or nothing. */
   pausePill?: string | null;
+  /** Shop hops are on (Settings, Selling). */
+  hopOn?: boolean;
 }) {
   const path = usePathname();
   const shown = items
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
     .filter((i) => !i.admin || showReports)
+    .filter((i) => !i.hop || hopOn)
     .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
     .map((i) => (i.href === "/parts" && !doesRepair ? { ...i, label: "Inventory" } : i));
   // The most specific menu entry wins (/register/sales over /register).
