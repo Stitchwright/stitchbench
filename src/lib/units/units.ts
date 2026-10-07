@@ -13,7 +13,8 @@ import { UNIT_CONDITION_LABEL } from "@/lib/constants";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { readAnswers } from "@/lib/equipment/form";
 import { canWorkOn, requireEquipment } from "@/lib/equipment/gate";
-import { kindOf, usableKind } from "@/lib/equipment/shop";
+import { kindOf, sellableKind, sellsFree } from "@/lib/equipment/shop";
+import { SELL_FREE_KEYS, builtInKind } from "@/lib/equipment";
 import type { EquipmentKind } from "@/lib/equipment/types";
 import { modelKey, str } from "@/lib/format";
 import { escapeLike } from "@/lib/input";
@@ -239,16 +240,25 @@ async function planField(shopId: string, fd: FormData): Promise<string | null> {
   return p.id;
 }
 
-/** The kind a new unit is of, checked: one the shop can take new work for (a vacuum needs Vac Shop). */
+/**
+ * The kind a new unit is of, checked: one the shop can take new work for (a vacuum needs Vac Shop), or one that sells
+ * with no module (printers, cutters, lasers: shop-features-round-2-design.md 6.1).
+ */
 async function unitKind(user: CurrentUser, key: string | null): Promise<EquipmentKind> {
-  const kind = await usableKind(user.shopId, key ?? "sewing");
+  const kind = await sellableKind(user.shopId, key ?? "sewing");
   if (!kind) {
     // A vacuum while Vac Shop is off says why; anything else just isn't on the list.
     if (key === "vacuum") await requireEquipment(user, "VACUUM");
     throw new UserError("Pick what kind of machine it is.");
   }
-  await requireEquipment(user, kind.equipment);
+  if (!sellsFree(kind)) await requireEquipment(user, kind.equipment);
   return kind;
+}
+
+/** A machine for sale being changed: its module allows new work, unless its kind sells with no module. */
+async function requireForSale(user: CurrentUser, m: { equipment: string; kind: string }): Promise<void> {
+  if (sellsFree(builtInKind(m.kind))) return;
+  await requireEquipment(user, m.equipment);
 }
 
 /** The "Add machines for sale" form: one unit per serial. Returns the new units' ids. */
@@ -272,7 +282,7 @@ export async function receiveUnitsFor(user: CurrentUser, fd: FormData): Promise<
     ),
   ];
   if (serials.length > MAX_SERIALS) throw new UserError(`Up to ${MAX_SERIALS} serial numbers at a time.`);
-  if (!serials.length && condition !== "USED") throw new UserError("Enter the serial number. It's on the label; the warranty needs it.");
+  if (!serials.length && condition !== "USED" && !kind.serialOptional) throw new UserError("Enter the serial number. It's on the label; the warranty needs it.");
   if (serials.some((s) => s.length > 60)) throw new UserError("A serial number is 60 characters at most.");
   const details = readAnswers(kind.intakeFields, "machine", fd, undefined, requiredAnswers(kind));
   const costCents = centsField(fd.get("costCents"), "Cost");
@@ -320,7 +330,7 @@ export async function updateUnitFor(user: CurrentUser, id: string, fd: FormData)
   await requireBaseWritable(user);
   const u = await db.stockUnit.findFirst({ where: { id, shopId }, include: { machine: true } });
   if (!u) throw new UserError("Unit not found.");
-  await requireEquipment(user, u.machine.equipment);
+  await requireForSale(user, u.machine);
   const kind = await kindOf(shopId, u.machine);
   const brand = str(fd.get("brand")) ?? u.machine.brand;
   const model = str(fd.get("model")) ?? u.machine.model;
@@ -360,9 +370,9 @@ export async function updateUnitFor(user: CurrentUser, id: string, fd: FormData)
 export async function setUnitOffSaleFor(user: CurrentUser, id: string, off: boolean, fd?: FormData): Promise<void> {
   const shopId = user.shopId;
   await requireBaseWritable(user);
-  const u = await db.stockUnit.findFirst({ where: { id, shopId }, select: { id: true, events: true, status: true, machine: { select: { equipment: true } } } });
+  const u = await db.stockUnit.findFirst({ where: { id, shopId }, select: { id: true, events: true, status: true, machine: { select: { equipment: true, kind: true } } } });
   if (!u) throw new UserError("Unit not found.");
-  await requireEquipment(user, u.machine.equipment);
+  await requireForSale(user, u.machine);
   const reason = str(fd?.get("reason") ?? null)?.slice(0, 200);
   const note = off ? `Taken off sale by ${user.name}${reason ? `: ${reason}` : ""}` : `Put back on sale by ${user.name}`;
   const r = await db.stockUnit.updateMany({
@@ -399,7 +409,7 @@ export async function unitFromAbandonedFor(user: CurrentUser, machineId: string)
     include: { stock: { select: { id: true } }, tickets: { orderBy: { intakeAt: "desc" }, take: 1, include: { lines: true, payments: true } } },
   });
   if (!m) throw new UserError("Machine not found.");
-  await requireEquipment(user, m.equipment);
+  await requireForSale(user, m);
   if (m.stock) throw new UserError("That machine is already in your stock.");
   const t = m.tickets[0];
   if (!t || t.status !== "ABANDONED") throw new UserError("Only a machine whose ticket was marked Abandoned can go up for sale.");
@@ -530,11 +540,20 @@ export async function sellableEquipment(shopId: string): Promise<string[]> {
   return out;
 }
 
+/** Machines of a kind the shop may sell now: its equipment allows new work, or the kind sells with no module (6.1). */
+export async function sellableMachines(shopId: string): Promise<Prisma.MachineWhereInput> {
+  return { OR: [{ equipment: { in: await sellableEquipment(shopId) } }, { kind: { in: SELL_FREE_KEYS } }] };
+}
+
+/** Whether a machine is of a kind the shop may sell now. */
+export async function isSellableMachine(shopId: string, m: { equipment: string; kind: string }): Promise<boolean> {
+  return SELL_FREE_KEYS.includes(m.kind) || (await sellableEquipment(shopId)).includes(m.equipment);
+}
+
 /** Up to 20 in-stock units matching `q` (serial, brand or model) of a kind the shop may sell. */
 export async function unitsForSaleFor(shopId: string, q: string | null): Promise<UnitForSale[]> {
-  const equipment = await sellableEquipment(shopId);
   const rows = await db.stockUnit.findMany({
-    where: { shopId, status: "IN_STOCK", machine: { AND: [machineMatch(q) ?? {}, { equipment: { in: equipment } }] } },
+    where: { shopId, status: "IN_STOCK", machine: { AND: [machineMatch(q) ?? {}, await sellableMachines(shopId)] } },
     include: { machine: true },
     orderBy: { createdAt: "desc" },
     take: 20,

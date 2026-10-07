@@ -5,6 +5,8 @@
 // what fits it. Never a pop-up: a line under the search box, opened with one tap; each item has its own Add.
 import { useEffect, useState } from "react";
 import { fitsForCustomerNow, fitsForUnitsNow } from "@/actions/fits";
+import { starterBundlesNow } from "@/actions/starter-bundles";
+import type { UnitBundles } from "@/lib/starter-bundles";
 import type { MachineFits } from "@/lib/fits";
 import type { RegisterItem } from "@/lib/register-item";
 import { money } from "@/lib/format";
@@ -86,6 +88,47 @@ export function GoesWith({ unitIds, onAdd }: { unitIds: string[]; onAdd: (it: Re
       {shown.map((f) => (
         <FitList key={f.machineId} fits={f} title={`Goes with this ${f.label}: {n} {items} it`} onAdd={onAdd} />
       ))}
+    </div>
+  );
+}
+
+/** "Add the starter bundle" (6.1): for each machine for sale on the sale, its kind's bundles, each added in one tap. */
+export function StarterBundles({ unitIds, onAdd }: { unitIds: string[]; onAdd: (it: RegisterItem) => void }) {
+  const key = unitIds.join(",");
+  const [found, setFound] = useState<{ key: string; list: UnitBundles[] } | null>(null);
+  const [added, setAdded] = useState<string[]>([]);
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    starterBundlesNow(key.split(","))
+      .then((list) => live && setFound({ key, list }))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  if (!key || found?.key !== key) return null;
+  const rows = found.list.flatMap((u) => u.bundles.map((b) => ({ u, b })));
+  if (!rows.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2" aria-label="Starter bundles">
+      {rows.map(({ u, b }) => {
+        const tag = `${u.unitId}:${b.id}`;
+        return (
+          <button
+            key={tag}
+            type="button"
+            className="btn"
+            disabled={added.includes(tag)}
+            onClick={() => {
+              for (const x of b.items) for (let n = 0; n < x.qty; n++) onAdd(x.item);
+              setAdded((a) => [...a, tag]);
+            }}
+          >
+            {added.includes(tag) ? `${b.name} added` : `Add the starter bundle for the ${u.label}: ${b.name} (${b.items.map((x) => `${x.qty} ${x.item.description}`).join(", ")})`}
+          </button>
+        );
+      })}
     </div>
   );
 }

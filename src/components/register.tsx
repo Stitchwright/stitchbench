@@ -29,7 +29,7 @@ import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-cam
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
-import { CustomerFits, GoesWith } from "@/components/register-fits";
+import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
 import { SoftwareLineFields } from "@/components/software-line";
 import type { SoftwareLineInput } from "@/lib/software";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
@@ -855,6 +855,7 @@ export function Register({
         {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
         {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
         {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
+        {!returnMode && <StarterBundles unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
         {results.length > 0 && (
           <div className="card">

@@ -8,7 +8,10 @@ const menu = (names: string[]): ServiceDef[] => names.map((name) => ({ name }));
 
 type Spec = Pick<EquipmentKind, "key" | "label" | "plural" | "noun" | "modelHint" | "types" | "brands" | "accessories" | "defaultChecked" | "checklist" | "intakeFields" | "readings"> & { menu: string[] };
 
-function kind(a: Spec): EquipmentKind {
+/** A kind sold with no module (shop-features-round-2-design.md 6.1). */
+export const sellFree = (k: EquipmentKind): EquipmentKind => ({ ...k, sellFree: true });
+
+export function kind(a: Spec): EquipmentKind {
   const { menu: names, ...rest } = a;
   return {
     ...rest,
@@ -56,7 +59,7 @@ export const STAND_MIXER_KIND = kind({
   ],
 });
 
-export const PRINTER_KIND = kind({
+export const PRINTER_KIND = sellFree(kind({
   key: "3d-printer",
   label: "3D printer",
   plural: "3D printers",
@@ -98,9 +101,9 @@ export const PRINTER_KIND = kind({
     { key: "firmware", label: "Firmware version", type: "text", foundLeft: true },
     { key: "testprint", label: "Test print", type: "passfail", foundLeft: true },
   ],
-});
+}));
 
-export const RESIN_PRINTER_KIND = kind({
+export const RESIN_PRINTER_KIND = sellFree(kind({
   key: "resin-printer",
   label: "Resin 3D printer",
   plural: "Resin 3D printers",
@@ -127,7 +130,7 @@ export const RESIN_PRINTER_KIND = kind({
     { key: "exposure", label: "LCD exposure test", type: "passfail", foundLeft: true },
     { key: "testprint", label: "Test print", type: "passfail", foundLeft: true },
   ],
-});
+}));
 
 export const OTHER_APPLIANCE_KIND = kind({
   key: "other",

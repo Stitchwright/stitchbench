@@ -23,6 +23,7 @@ import { listMakerTerms, termsText } from "@/lib/units/units";
 import { deleteMakerTerms, saveMakerTerms, savePlan } from "@/actions/units";
 import { saveLayawaySettings } from "@/actions/layaway";
 import { saveSoftwareSettings } from "@/actions/software";
+import { StarterBundleSettings } from "@/components/starter-bundle-settings";
 import { layawaySettings } from "@/lib/layaway";
 import { EVERY_LABEL, LAYAWAY_EVERY } from "@/lib/layaway-math";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
@@ -487,6 +488,7 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
           </div>
         )}
       </Section>
+      {admin && <StarterBundleSettings shopId={user.shopId} />}
       {/* Software licences (shop-features-round-2-design.md 2.5): when a licence counts as activated. */}
       <Section title="Software" id="software">
         <ActionForm action={saveSoftwareSettings} success="Saved" className="space-y-2">

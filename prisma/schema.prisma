@@ -240,6 +240,7 @@ model Shop {
   fitGroups         FitGroup[]
   softwareLicenses  SoftwareLicense[]
   softwareCodes     SoftwareCode[]
+  starterBundles    StarterBundle[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -893,6 +894,22 @@ model SoftwareCode {
 
   @@unique([shopId, partId, code])
   @@index([shopId, partId, usedById])
+}
+
+// A starter bundle (shop-features-round-2-design.md 6.1): what the shop puts with a new machine of a kind ("Bambu starter:
+// 2 spools PLA, build plate glue"), added to the sale in one tap. kind: the equipment kind's key; lines: [{ partId, qty }]
+// with plain ids of this company's items (checked when used).
+model StarterBundle {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind      String
+  name      String
+  lines     Json     @default("[]")
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, name])
+  @@index([shopId, kind])
 }
 
 // A fit group (shop-features-round-2-design.md 2.4): a name the shop gives once ("Brother 7 mm low shank", "Cricut

@@ -180,6 +180,9 @@ export function machineKindKey(v: string | null | undefined): string {
 export function machineKindFromWords(text: string | null | undefined): string | null {
   const w = (text ?? "").toLowerCase();
   if (/resin/.test(w) && /print/.test(w)) return "resin-printer";
+  if (/laser/.test(w)) return "laser-cutter";
+  if (/die cut|accuquilt/.test(w)) return "die-cutter";
+  if (/cricut|silhouette|scan ?n ?cut|craft cut|cutting machine|cutter/.test(w)) return "craft-cutter";
   if (/3d|printer/.test(w)) return "3d-printer";
   if (/vac/.test(w)) return "vacuum";
   if (/sew|embroider|serger|overlock|quilt|longarm|machine/.test(w)) return "sewing";
@@ -315,7 +318,7 @@ export function kindChoiceValue(v: string | null | undefined): string | null {
 }
 
 const KIND_WORDS: [RegExp, string][] = [
-  [/sewing machine|embroidery machine|serger|overlock|quilting machine|longarm|vacuum|3d printer|resin printer|embroidery unit/, "MACHINE"],
+  [/sewing machine|embroidery machine|serger|overlock|quilting machine|longarm|vacuum|3d printer|resin printer|embroidery unit|cutting machine|craft cutter|die cutter|laser cutter/, "MACHINE"],
   [/filament|\bpla\b|petg|\babs\b|\btpu\b/, "SUPPLY:filament"],
   [/resin/, "SUPPLY:resin"],
   [/vinyl|\bhtv\b|iron.?on/, "SUPPLY:vinyl"],
