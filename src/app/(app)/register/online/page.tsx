@@ -13,6 +13,8 @@ import { orderCancel, orderDone, orderNote, orderReady, orderRetry } from "@/act
 import { ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader } from "@/components/ui";
 import { pirateShipFile } from "@/lib/ship-orders";
+import { shippoSettings } from "@/lib/shippo";
+import { ShippoLabel } from "@/components/shippo-label";
 
 const TONE: Record<OrderStatus, string> = { PENDING: "tone-wait", PAID: "tone-warn", READY: "tone-ok", DONE: "", CANCELLED: "tone-bad" };
 
@@ -26,6 +28,8 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
   // Shipping labels (shop-features-round-2-design.md 9.5): the paid orders to post, as a Pirate Ship spreadsheet.
   const ship = await pirateShipFile(user.shopId);
   const toShip = ship.rows.length - 1;
+  // Labels through Shippo (9.5), when the shop turned them on.
+  const shippo = await shippoSettings(user.shopId);
   const admin = user.role !== "TECH";
   return (
     <div className="space-y-6">
@@ -129,6 +133,15 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                     Tracking: <span className="mono">{o.tracking}</span>
                   </p>
                 )}
+                {o.labelUrl && (
+                  <p className="text-sm">
+                    <a href={o.labelUrl} target="_blank" rel="noreferrer" className="btn btn-sm btn-primary">
+                      Print the label
+                    </a>{" "}
+                    {o.labelCarrier ?? ""} {o.labelCents != null ? money(o.labelCents) : ""}
+                  </p>
+                )}
+                {shippo.on && status === "PAID" && o.fulfil === "ship" && !o.shippoTxId && <ShippoLabel orderId={o.id} weightOz={shippo.parcel.weightOz} canBuy={admin} />}
                 <div className="flex flex-wrap items-end gap-3">
                   {o.saleId && (
                     <Link href={`/register/sales/${o.saleId}`} className="btn btn-sm">
@@ -156,7 +169,7 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                         <label htmlFor={`trk-${o.id}`} className="label">
                           Tracking number
                         </label>
-                        <input id={`trk-${o.id}`} name="tracking" className="input" maxLength={120} placeholder="optional" />
+                        <input id={`trk-${o.id}`} name="tracking" className="input" maxLength={120} placeholder="optional" defaultValue={o.tracking ?? ""} />
                       </div>
                       <Submit className="btn btn-sm btn-primary">Shipped</Submit>
                     </ActionForm>

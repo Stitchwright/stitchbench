@@ -6,7 +6,7 @@ import { pirateShipRows } from "@/lib/ship-export";
 
 export async function ordersToShip(shopId: string) {
   return db.webOrder.findMany({
-    where: { shopId, fulfil: "ship", status: "PAID", tracking: null },
+    where: { shopId, fulfil: "ship", status: "PAID", tracking: null, shippoTxId: null },
     select: { id: true, number: true, name: true, email: true, phone: true, address: true, items: true },
     orderBy: { number: "asc" },
     take: 500,

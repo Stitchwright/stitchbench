@@ -1467,3 +1467,26 @@ Decisions made while building:
   stock is much closer. Threads without a swatch can't be matched and are counted on the screen.
 - Offered as "pull these and check": photos are never exact, and the swatch card decides.
 - Listing photo clean-up and counting spools from a rack photo (9.11) stay unbuilt, as the design says.
+
+**`shippo` (9.5, built 7 Oct 2026 on the owner's "everything today"; the "shops ask" gate lifted).** Migration
+`20261024900000_shippo` (`Shop.shippoOn` off by default, `shippoKeySealed`, `shipFrom`, `shipParcel`; `WebOrder.labelUrl`,
+`labelCarrier`, `labelCents`, `shippoTxId`; the Shippo key is left out of the company file like the Stripe keys). Code:
+`src/lib/shippo.ts` (plain fetch against SHIPPO_API_BASE), `src/actions/shippo.ts`, **Settings → Shipping labels**
+(`/settings/shipping`: the shop's own Shippo API key, sealed; "Buy labels from Online orders"; where parcels ship from,
+filled from the shop's address; the usual box), and on Online orders a paid order to post gets the weight (the usual
+box's), **Get label rates** (the cheapest four) and **Buy $5.40** (owners and admins, "Tap again: buy for $5.40"), then
+"Print the label" with the carrier and cost, and the tracking number already in Shipped's box
+(`src/components/shippo-label.tsx`). An order with a Shippo label leaves the Pirate Ship export. Check:
+`scripts/checks/shippo.check.ts` (4 groups) against the new mock `scripts/test-mail/shippo-mock.mjs` (never a real
+label); `ship-export`, `move-export`, `online-shop` still pass. Spec: `tests/shippo.spec.ts` (skipped unless the app
+runs with SHIPPO_API_BASE on the mock, port 3405).
+Decisions made while building:
+- The order's address is split the same way as the Pirate Ship export; an address that can't be split for sure is
+  refused in words (check it with the customer, or export it for Pirate Ship).
+- One label an order; a label bought by mistake is refunded in Shippo (its own refund window), not here.
+- What the label cost is kept on the order for the owner to see; it isn't booked (Shippo bills the shop's card).
+
+**Phase 6, not built on this branch.** `fb-comments` (9.12, reading Facebook Live comments into the claim list) comes
+**after phase 3** (`live-sales`, 4.3, on another branch). `store-link-hub`, `store-sync-customers` and
+`store-sync-gift-cards` (7.8, a store on its own Windows PC kept in step through StitchHub) come **after phase 5**
+(multiple stores, on another branch).
