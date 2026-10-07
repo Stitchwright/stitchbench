@@ -21,7 +21,22 @@ type C = {
 };
 
 /** `marketingHidden`: Marketing was never on for this company, so "how should we tell them" isn't asked here. */
-export function CustomerForm({ action, customer, submitLabel, marketingHidden = false, taxFields = false }: { action: (fd: FormData) => Promise<ActionResult>; customer?: C; submitLabel: string; marketingHidden?: boolean; taxFields?: boolean }) {
+export function CustomerForm({
+  action,
+  customer,
+  submitLabel,
+  marketingHidden = false,
+  taxFields = false,
+  preset,
+}: {
+  action: (fd: FormData) => Promise<ActionResult>;
+  customer?: C;
+  submitLabel: string;
+  marketingHidden?: boolean;
+  taxFields?: boolean;
+  /** A new customer: what the search typed ("Add 'dorthy' as a new customer"). */
+  preset?: { name?: string; phone?: string };
+}) {
   const [kind, setKind] = useState<C["kind"]>(customer?.kind ?? "RETAIL");
   return (
     <ActionForm action={action} success={customer ? "Saved" : undefined} className="grid-form">
@@ -29,7 +44,7 @@ export function CustomerForm({ action, customer, submitLabel, marketingHidden = 
         <label htmlFor="name" className="label">
           Name
         </label>
-        <input id="name" name="name" required defaultValue={customer?.name} className="input" />
+        <input id="name" name="name" required defaultValue={customer?.name ?? preset?.name} className="input" />
       </div>
       <div className="field">
         <label htmlFor="kind" className="label">
@@ -44,7 +59,7 @@ export function CustomerForm({ action, customer, submitLabel, marketingHidden = 
         <label htmlFor="phone" className="label">
           Phone
         </label>
-        <input id="phone" name="phone" type="tel" defaultValue={customer?.phone ?? ""} className="input" />
+        <input id="phone" name="phone" type="tel" defaultValue={customer?.phone ?? preset?.phone ?? ""} className="input" />
       </div>
       <div className="field">
         <label htmlFor="email" className="label">
