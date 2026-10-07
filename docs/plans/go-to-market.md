@@ -257,7 +257,7 @@ already happening, so it isn't counted.
 | # | Buy | About | Why first |
 |---|---|---|---|
 | 1 | 250 two-sided flyers (counter and hop-bag size) with a QR code to the site | $40 | Every visit leaves something on the counter. Older owners keep paper |
-| 2 | A wired clip-on mic for Bruce's phone (YouTube, `youtube-plan.md` section 5) | $20 | Sound makes or breaks a video; everything else in the kit is free |
+| 2 | 250 more flyers (Bruce already owns the camera, mic, DJI cameras and drone for YouTube) | $20 | The video kit costs nothing, so the money goes to paper |
 | 3 | 250 business cards for Bruce and Denise ("Timing & Tension · StitchBench / StitchShop", QR code) | $20 | For every handshake and hop |
 | 4 | 3D printer filament for about 100 bobbin clips or spool holders with the QR code | $15 | Something an owner uses at the cutting table keeps the name in sight; Bruce prints them |
 | 5 | Keep $5 | $5 | Postage for a flyer pack mailed to a tech's quilt shops |

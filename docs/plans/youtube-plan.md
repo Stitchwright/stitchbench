@@ -82,12 +82,13 @@ Start during the test month, so 4-6 videos exist on launch day. Week 1 = the wee
 Keep weeks 9 and 12 fair: name the rival's strengths (QuickBooks, loyalty, live sales, the Notions catalog) and link
 the comparison page. Swap a week for a repair tip whenever a machine on the bench makes a better story.
 
-## 5. Kit on the $100 budget
+## 5. Kit (Bruce already owns a camera, a mic, DJI cameras and a drone: $0)
 
 | Item | Cost (est.) | Note |
 |---|---|---|
-| The phone Bruce has | $0 | Film at 1080p 30 fps; wipe the lens |
-| A wired clip-on (lavalier) mic for the phone | about $20 | Sound matters more than picture. Taken from the first $100 (`go-to-market.md` section 5) |
+| Bruce's camera, or a DJI camera on the bench (the phone for quick Shorts) | $0 | Film at 1080p 30 fps (4K only if the PC edits it smoothly). A DJI action/pocket camera on a bench arm gives the close-up over the machine |
+| Bruce's mic | $0 | Sound matters more than picture: mic on every talking shot |
+| The drone (DJI) | $0 | Opening shots of shops on the hop and RV episodes (outside only, with the owner's OK; follow FAA Part 107 if a video earns money: the recreational rules don't cover business use, so get the Part 107 certificate first or keep drone shots to personal channels) |
 | A phone clamp or bench-arm mount | $0-15 | Rig one from the 3D printer first |
 | Light | $0 | The bench lamp plus a window; no light on the screen part |
 | Screen recording | $0 | OBS Studio |
@@ -95,7 +96,7 @@ the comparison page. Swap a week for a repair tip whenever a machine on the benc
 | Thumbnails | $0 | Canva free: one template, reused every week |
 | Music | $0 | YouTube Audio Library |
 
-A ring light and a tripod come from the revenue ladder ($250 a month step).
+A ring light comes from the revenue ladder ($250 a month step).
 
 ## 6. Search, titles, descriptions, chapters
 
