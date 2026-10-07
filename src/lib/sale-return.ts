@@ -8,7 +8,9 @@ export type ReturnUnit = { qty: number; unitPriceCents: number };
  * Why a sold line can't come back as a plain return line from its receipt (null: it can). A repair bill is sorted out
  * with the repair shop; a gift card through the card; a class seat or appointment, a vacuum from stock or a trade-in
  * through "Return an item" with its own tools, so the booking or the unit is settled with the refund (a plain line
- * would refund the money and leave the booking paid or the unit sold, ready to be refunded again).
+ * would refund the money and leave the booking paid or the unit sold, ready to be refunded again). A machine's service
+ * plan comes back with its machine (sales-features); a layaway's payments, used-up payments and cancel fee are settled
+ * on the layaway itself (a plain line would refund money the layaway still counts as paid).
  */
 export function returnSkip(l: {
   repairJobId?: string | null;
@@ -17,11 +19,14 @@ export function returnSkip(l: {
   appointmentId?: string | null;
   stockUnitId?: string | null;
   tradeInUnitId?: string | null;
-}): "repair" | "card" | "booking" | "unit" | null {
+  machinePlanId?: string | null;
+  kind?: string | null;
+}): "repair" | "card" | "booking" | "unit" | "layaway" | null {
   if (l.repairJobId) return "repair";
   if (l.giftCardId) return "card";
   if (l.enrollmentId || l.appointmentId) return "booking";
-  if (l.stockUnitId || l.tradeInUnitId) return "unit";
+  if (l.stockUnitId || l.tradeInUnitId || l.machinePlanId) return "unit";
+  if (l.kind === "LAYAWAY" || l.kind === "LAYAWAY_FEE") return "layaway";
   return null;
 }
 

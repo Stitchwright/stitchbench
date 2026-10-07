@@ -1,7 +1,8 @@
 import "server-only";
 // The register's sale (completeSaleAs) and void (voidSaleAs), callable with a user so the check scripts can drive them;
-// src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, the Vac Shop's units
-// and trade-ins, and (scheduling-messaging-design.md 12.3) class seats and appointments paid or refunded here.
+// src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, machines for sale and
+// trade-ins, service plans (tax-machine-sales-layaway-design.md section 3), and (scheduling-messaging-design.md 12.3)
+// class seats and appointments paid or refunded here.
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -11,16 +12,23 @@ import { withDisclosure } from "@/lib/part-labels";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, ALL_TENDER_METHODS, type Tender } from "@/lib/register-math";
-import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/vac/sale-units";
-import type { TradeInInput } from "@/lib/vac/types";
+import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/units/sale-units";
+import { applyPlanLine, endPlansOf, preparePlanLine, type PlanLineInput, type PreparedPlan } from "@/lib/units/plans";
+import { afterLayawaySale, beforeLayawayLines, voidLayawaySale, type LayawayHook } from "@/lib/layaway-hooks";
+import type { TradeInInput } from "@/lib/units/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
 import { actorOf, audit } from "@/lib/audit";
 import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type CardLine, type Issued } from "@/lib/gift-cards";
-import { fmtWhen } from "@/lib/zoned";
+import { fmtWhen, ymdOf } from "@/lib/zoned";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { saleLineKind } from "@/lib/sale-kind";
 import { linesOfSale } from "@/lib/sale-return";
+import { holidaysOn } from "@/lib/tax-holidays";
+import { prepareFinanced, recordFinanced, voidFinanced } from "@/lib/financing";
+import { promotionsOn } from "@/lib/promotions";
+import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
+import { holidayCovers } from "@/lib/tax-holiday-math";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -39,7 +47,7 @@ export type SaleLineInput = {
   unitPriceCents: number;
   discountCents?: number;
   taxable: boolean;
-  /** Vac Shop: the customer's vacuum this bag, belt or filter is for; a unit sold from stock; a trade-in taken as credit. */
+  /** Vac Shop: the customer's vacuum this bag, belt or filter is for. Any shop: a machine sold from stock; a trade-in taken as credit. */
   machineId?: string | null;
   stockUnitId?: string | null;
   tradeIn?: TradeInInput | null;
@@ -48,6 +56,12 @@ export type SaleLineInput = {
   appointmentId?: string | null;
   /** A gift card sold ("new" or a pre-printed "printed" blank), loaded, or its balance paid out (negative): later-round-1-design.md 2.3. */
   giftCard?: CardLine | null;
+  /** The shop's service plan sold for a machine on this sale or one of the customer's. */
+  servicePlan?: PlanLineInput | null;
+  /** A tax holiday covers this line but the cashier charges tax anyway (an item the state leaves out that its kind didn't catch). */
+  taxAnyway?: boolean;
+  /** Layaway money (src/lib/layaway.ts only, with opts.layaway): a payment or the payments used up / given back, or its cancel fee. */
+  layawayKind?: "LAYAWAY" | "LAYAWAY_FEE" | null;
 };
 
 export type SaleInput = {
@@ -91,9 +105,17 @@ function saleByKey(shopId: string, clientKey: string | null) {
  * `paidOnline`: the books write for an online order the customer has already paid (online-shop.ts only, never an
  * action). Money taken is always booked, so the lapsed / moving gate is skipped for it.
  */
-export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: { paidOnline?: boolean } = {}): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
+export async function completeSaleAs(
+  user: CurrentUser,
+  input: SaleInput,
+  opts: { paidOnline?: boolean; layaway?: LayawayHook } = {},
+): Promise<{ saleId: string; number: number; changeCents: number; cards?: Issued[] }> {
   {
     const shopId = user.shopId;
+    // Layaway money and its held items come only from src/lib/layaway.ts; the items' prices were settled when it began.
+    const lay = opts.layaway ?? null;
+    if (!lay && input.lines.some((l) => l.layawayKind)) throw new UserError("A line can only be one thing.");
+    const priceRole: CurrentUser["role"] = lay ? "OWNER" : user.role;
     // Sent again after the answer to the first try was lost (a dropped connection): that sale, not a second one.
     const clientKey = typeof input.clientKey === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(input.clientKey) ? input.clientKey : null;
     const made = await saleByKey(shopId, clientKey);
@@ -129,10 +151,11 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       throw new UserError("That vacuum isn't one of this shop's.");
     }
     if (input.customerId && !(await db.customer.findFirst({ where: { id: input.customerId, shopId } }))) throw new UserError("Customer not found.");
-    // Vacuums sold from stock and trade-ins, checked and worded by the Vac Shop (by line index).
+    // Machines sold from stock and trade-ins, checked and worded by the unit hooks (by line index).
     const units = await prepareUnitLines({
       shopId,
-      role: user.role,
+      role: priceRole,
+      heldFor: lay?.mode === "pickup" ? lay.id : null,
       customerId: input.customerId ?? null,
       lines: input.lines.map((l) => ({
         stockUnitId: l.stockUnitId ?? null,
@@ -143,11 +166,20 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       })),
     });
 
+    // Service plans, checked and priced by the server (by line index): the machine is a unit on this sale or the customer's.
+    const planLines = new Map<number, PreparedPlan>();
+    const unitIdsOnSale = input.lines.filter((l) => l.stockUnitId && Number(l.qty) > 0).map((l) => l.stockUnitId!);
+    for (const [i, l] of input.lines.entries()) {
+      if (!l.servicePlan) continue;
+      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId, l.giftCard].some(Boolean)) throw new UserError("A line can only be one thing.");
+      planLines.set(i, await preparePlanLine({ shopId, role: user.role, customerId: input.customerId ?? null, unitIdsOnSale }, l.servicePlan, Number(l.qty), Number(l.unitPriceCents)));
+    }
+
     // Gift card lines (sold, loaded, paid out), checked and priced by the server (by line index).
     const giftLines = new Map<number, Awaited<ReturnType<typeof prepareCardLine>>>();
     for (const [i, l] of input.lines.entries()) {
       if (!l.giftCard) continue;
-      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId].some(Boolean)) throw new UserError("A line can only be one thing.");
+      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId, l.servicePlan].some(Boolean)) throw new UserError("A line can only be one thing.");
       giftLines.set(i, await prepareCardLine(shopId, user.role, l.giftCard, Number(l.qty), Math.round(Number(l.unitPriceCents))));
     }
     if ([...giftLines.values()].some((g) => g.qty < 0) && rawTenders.some((t) => t?.method !== "CASH" && Number(t?.amountCents))) {
@@ -155,6 +187,34 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     }
 
     const lines = input.lines.map((l, i) => {
+      const plan = planLines.get(i);
+      if (plan) {
+        let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
+        if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+        disc = Math.min(disc, plan.unitPriceCents);
+        return {
+          partId: null,
+          repairJobId: null,
+          pickedUp: false,
+          description: plan.description,
+          partNumber: null,
+          qty: 1,
+          unit: null,
+          unitPriceCents: plan.unitPriceCents,
+          discountCents: disc,
+          taxable: plan.taxable,
+          discountable: true,
+          costCents: null,
+          costTenThou: null,
+          consignLinkId: null,
+          consignItemKey: null,
+          machineId: null,
+          stockUnitId: null,
+          tradeIn: null,
+          enrollmentId: null,
+          appointmentId: null,
+        };
+      }
       const gift = giftLines.get(i);
       if (gift) {
         // Selling or loading a card isn't a sale of goods: untaxed, never discounted (and the tax reports leave it out).
@@ -189,7 +249,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         const total = Math.abs(roundCents(unitLine.qty * unitLine.unitPriceCents));
         if (unitLine.unitPriceCents > MAX_MONEY || total > MAX_MONEY) throw new UserError(`${unitLine.description} comes to more than $100,000. Check the price.`);
         let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
-        if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+        if (priceRole === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
         disc = unitLine.discountable ? Math.min(disc, total) : 0;
         return {
           partId: null,
@@ -237,12 +297,12 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       if (part) {
         if (part.unit !== "yd" && !Number.isInteger(qty)) throw new UserError(`${part.partNumber} is sold each: use a whole number.`);
         if (part.unit === "yd" && !inEighths(qty) && !remnants.has(part.id)) throw new UserError(`Check the yardage of ${part.partNumber}: fabric is cut in eighths of a yard (2 3/8 is 2.375).`);
-        if (user.role === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
+        if (priceRole === "TECH" && part.priceCents != null && unit !== part.priceCents) throw new UserError(`Only an owner or admin can change the price of ${part.partNumber}.`);
         // A tech can type the price of an item that has none, but not leave it free.
-        if (user.role === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
+        if (priceRole === "TECH" && part.priceCents == null && unit === 0) throw new UserError(`${part.partNumber} has no price yet. Type the price on the line.`);
       }
       // A discount is a price change too.
-      if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+      if (priceRole === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
       if (unit > MAX_MONEY || Math.abs(qty * unit) > MAX_MONEY) {
         throw new UserError(`${part?.partNumber ?? (l.description || "A line")} comes to more than $100,000. Check the price and quantity.`);
       }
@@ -261,9 +321,10 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         unit: part?.unit ?? null,
         unitPriceCents: unit,
         discountCents: disc,
-        // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc line only.
-        taxable: job ? false : part ? true : Boolean(l.taxable),
-        discountable: !job,
+        // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc
+        // line only. Layaway money is never taxed nor discounted (it isn't a sale).
+        taxable: job || l.layawayKind ? false : part ? true : Boolean(l.taxable),
+        discountable: !job && !l.layawayKind,
         costCents: part?.costCents ?? null,
         costTenThou: part ? fineCost(part.costCents, part.costTenThou) : null,
         consignLinkId: part?.consignLinkId ?? null,
@@ -282,9 +343,12 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         amountCents: Math.round(Number(t?.amountCents) || 0),
         note: typeof t?.note === "string" ? t.note.slice(0, 100) || null : null,
         cardNumber: typeof t?.cardNumber === "string" ? t.cardNumber.slice(0, 40) : null,
+        ...(t?.method === "FINANCED" ? { lenderId: typeof t.lenderId === "string" ? t.lenderId : "" } : {}),
       }))
       .filter((t) => t.amountCents !== 0);
     if (tenders.some((t) => Math.abs(t.amountCents) > MAX_MONEY)) throw new UserError("A payment can't be more than $100,000. Check the amount.");
+    // A Financing payment names one of this shop's lenders and its approval number (the lender's name is kept with it).
+    await prepareFinanced(shopId, tenders);
     const orderDiscountCents = Math.max(0, Math.round(Number(input.orderDiscountCents) || 0));
     if (user.role === "TECH" && orderDiscountCents) throw new UserError("Only an owner or admin can give a discount.");
     // A tax amount the processor worked out (Stripe Tax) stands in for the rate; the rate recorded is the effective one,
@@ -296,8 +360,11 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // A return scanned in from a receipt (every line a return, each an item that sale sold) gives back the tax as that
     // sale charged it: its rate and exemption, not the customer's or the shop's today.
     const fromReceipt = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.every((l) => l.qty < 0);
+    // Release review fix + tax holidays combined: the receipt is used only while every return line came from it
+    // (linesOfSale); then each line comes back taxed as that sale taxed it (taxable + taxNote, so a holiday line returns
+    // tax free), at its rate and exemption. Otherwise the shop's rules today apply (exempt, holidays, tax included).
     const receipt = fromReceipt
-      ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true, lines: { select: { partId: true, description: true } } } })
+      ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true, lines: { select: { partId: true, description: true, taxable: true, taxNote: true } } } })
       : null;
     if (fromReceipt && !receipt) throw new UserError("The sale being returned wasn't found.");
     const original = receipt && linesOfSale(lines, receipt.lines) ? receipt : null;
@@ -306,12 +373,83 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       : givenTax == null && customerId && input.chargeTax !== true
         ? exemptCertificate(await db.customer.findFirst({ where: { id: customerId, shopId }, select: { taxExemptId: true, taxExemptUntil: true } }))
         : null;
+    // Each line's category (written on it below), and why a line that could be taxed wasn't (SaleLine.taxNote).
+    const lineKinds = lines.map((l, i) =>
+      saleLineKind({
+        ...l,
+        kind: input.lines[i].layawayKind ?? null,
+        giftCardId: input.lines[i].giftCard ? "pending" : null,
+        tradeInUnitId: l.tradeIn ? "pending" : null,
+        machinePlanId: planLines.has(i) ? "pending" : null,
+        partKind: l.partId ? parts.get(l.partId)?.kind : null,
+      }),
+    );
+    const taxNotes: (string | null)[] = lines.map(() => null);
+    // Promotions in force today (tax-machine-sales-layaway-design.md section 2): the best percent or amount off that
+    // covers an item being bought becomes its own discount (a bigger one an owner typed stands). Not for a return, a
+    // layaway (its prices were settled when it began), the online shop (priced at checkout) or a given tax amount.
+    const promoIds: (string | null)[] = lines.map(() => null);
+    const promos = lay || original || givenTax != null || opts.paidOnline ? [] : await promotionsOn(shopId, ymdOf(new Date(), shop.timeZone));
+    const unitBrands = new Map<string, string>();
+    if (promos.length) {
+      const ids = lines.map((l) => l.stockUnitId).filter((x): x is string => !!x);
+      if (ids.length) for (const u of await db.stockUnit.findMany({ where: { shopId, id: { in: ids } }, select: { id: true, machine: { select: { brand: true } } } })) unitBrands.set(u.id, u.machine.brand);
+    }
+    const promoLine = (l: (typeof lines)[number], i: number) => ({ ...l, kind: lineKinds[i], brand: l.partId ? parts.get(l.partId)?.brand : l.stockUnitId ? unitBrands.get(l.stockUnitId) : null });
+    for (const [i, l] of lines.entries()) {
+      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind) continue;
+      const best = bestDiscount(promos, promoLine(l, i));
+      if (best && best.cents > l.discountCents) {
+        l.discountCents = best.cents;
+        promoIds[i] = best.promo.id;
+      }
+    }
+    if (original) {
+      // A return from a receipt gives each item back as it was taxed: one bought on a tax holiday comes back tax free.
+      for (const [i, l] of lines.entries()) {
+        // The sold line it matches, as linesOfSale matched it: the same part, or (no part) the same description.
+        const o = original.lines.find((x) => (l.partId ? x.partId === l.partId : !x.partId && x.description === l.description));
+        if (o) {
+          l.taxable = o.taxable;
+          taxNotes[i] = o.taxNote;
+        }
+      }
+    } else if (givenTax == null && exemptId) {
+      for (const [i, l] of lines.entries()) if (l.taxable) taxNotes[i] = "exempt";
+    } else if (givenTax == null) {
+      // A sales tax holiday in force today (tax-machine-sales-layaway-design.md section 1), or for a layaway's pick-up
+      // on the day it began, takes the tax off the lines it covers, unless the cashier charged it anyway on that line.
+      const days = [ymdOf(new Date(), shop.timeZone)];
+      if (lay?.mode === "pickup") {
+        const began = await db.layaway.findFirst({ where: { id: lay.id, shopId }, select: { startedAt: true } });
+        if (began) days.push(ymdOf(began.startedAt, shop.timeZone));
+      }
+      const holidays = await holidaysOn(shopId, days);
+      for (const [i, l] of lines.entries()) {
+        if (l.qty <= 0 || input.lines[i].taxAnyway) continue;
+        const h = holidays.find((x) => holidayCovers(x, { ...l, kind: lineKinds[i] }));
+        if (h) {
+          l.taxable = false;
+          taxNotes[i] = `holiday:${h.id}`;
+        }
+      }
+      // "Price includes the tax" (off unless the owner turned it on): the sticker price is the most the customer pays;
+      // the line keeps the price before tax, worked out at the shop's rate, so the books and the tax report show the real tax.
+      for (const [i, l] of lines.entries()) {
+        if (l.qty <= 0 || !l.taxable || taxNotes[i] || l.discountCents || !(l.partId || l.stockUnitId)) continue;
+        const p = includedPromo(promos, promoLine(l, i));
+        if (!p) continue;
+        l.unitPriceCents = priceBeforeTax(l.unitPriceCents, shop.taxRatePct);
+        taxNotes[i] = "included";
+        promoIds[i] = p.id;
+      }
+    }
     const taxRatePct = original ? original.taxRatePct : givenTax != null ? effectiveRate(lines, givenTax) : exemptId ? 0 : shop.taxRatePct;
     const totals = givenTax != null ? withTax(saleTotals(lines, orderDiscountCents, 0, tenders), givenTax) : saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
     if (problem) throw new UserError(problem);
-    // Each line's share of the whole-sale discount as the tax was worked out (what a vacuum really sold for).
+    // Each line's share of the whole-sale discount as the tax was worked out (what a machine really sold for).
     const shares = discountShares(lines, totals.orderDiscount);
 
     // The sewing shop's share of consigned sales, as the partnership stands today (kept with each sale).
@@ -331,6 +469,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
         const number = sh.nextSaleNumber - 1;
         const actor = actorOf(user);
         const cards: Issued[] = [];
+        // A pick-up or a cancel: the layaway is finished and its held items back on the shelf, so the lines can sell them.
+        if (lay) await beforeLayawayLines(tx, { shopId, hook: lay, user, at });
         const sale = await tx.sale.create({
           data: {
             shopId,
@@ -352,11 +492,10 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           },
         });
         for (const [i, l] of lines.entries()) {
-          // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
+          // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const kind = saleLineKind({ ...row, giftCardId: input.lines[i].giftCard ? "pending" : null, tradeInUnitId: tradeIn ? "pending" : null, partKind: row.partId ? parts.get(row.partId)?.kind : null });
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
@@ -366,6 +505,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           if (l.stockUnitId || tradeIn) {
             await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
           }
+          const plan = planLines.get(i);
+          if (plan) await applyPlanLine(tx, { shopId, at, timeZone: shop.timeZone, line, prepared: plan });
           if (l.enrollmentId || l.appointmentId) await settleBooking(tx, shopId, l, line.id, at);
           if (l.partId) {
             await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
@@ -453,9 +594,12 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           }
           await tx.sale.update({ where: { id: sale.id }, data: { tenders: stored as Prisma.InputJsonValue } });
         }
+        // What each lender now owes the shop (Financing payments).
+        await recordFinanced(tx, { shopId, saleId: sale.id, tenders, at });
+        if (lay) await afterLayawaySale(tx, { shopId, hook: lay, saleId: sale.id });
         // The exceptions go in the audit log (design 4.1: the sale is its own record, what is unusual about it is not).
         const label = `Sale #${number}`;
-        if (lines.some((l) => l.qty < 0)) {
+        if (lines.some((l, i) => l.qty < 0 && !input.lines[i].layawayKind)) {
           await audit(tx, actor, { action: "sale.return", subjectType: "Sale", subjectId: sale.id, subjectLabel: label, amountCents: totals.total, reason: input.note?.slice(0, 200) || null });
         }
         const lineDiscounts = lines.reduce((a, l) => a + (l.discountCents > 0 ? l.discountCents : 0), 0);
@@ -518,13 +662,20 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     // Gift cards and store credit the sale used come back; a card it sold goes void, unless it has been spent since
     // (then the void is refused and nothing changes).
     await reverseSale(tx, actorOf(user), sale.id, sale.number);
-    // Vacuums sold go back in stock; trade-ins taken come back out (Vac Shop).
-    await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
+    // Financing on it is voided too (refused once the lender has paid).
+    await voidFinanced(tx, { shopId, saleId: sale.id, at });
+    // Machines sold go back in stock (their plans end); trade-ins taken come back out.
+    await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at, saleAt: sale.createdAt });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.
     await unpayClubSale(tx, shopId, sale.id, at);
+    // A layaway's pick-up or cancel voided: the layaway is open again and its items held again (after the lines below
+    // put them back on the shelf); a payment can't be voided once the layaway is finished.
+    const layawayVoid = sale.lines.some((l) => l.layawayId);
     // A quilt collected on this sale is back on the shelf (ready, not collected).
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
     for (const l of sale.lines) {
+      // A service plan sold here ends (lines it already covered stay covered).
+      if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);
       if (l.enrollmentId || l.appointmentId) await unsettleBooking(tx, shopId, l);
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
@@ -559,6 +710,7 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
         await sendToPartner(shopId, l.consignLinkId, "consign.sale", { id, itemKey: l.consignItemKey, qty: -l.qty, priceCents: net, saleNumber: sale.number, at: at.toISOString() }, tx, false);
       }
     }
+    if (layawayVoid) await voidLayawaySale(tx, { shopId, saleId: sale.id, lines: sale.lines, user, at });
   });
 }
 

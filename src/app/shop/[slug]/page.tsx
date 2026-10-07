@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { allowPublic } from "@/lib/rate-limit";
 import { catalog, catalogKinds, decodeCartParam, encodeCart, publicStore } from "@/lib/shop/online-shop";
 import { Price, ShopShell, Thumb } from "@/components/shop/shell";
+import { listLenders } from "@/lib/financing";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Shop online", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -27,10 +28,26 @@ export default async function ShopHome({ params, searchParams }: { params: Promi
   }
   const q = typeof sp.q === "string" ? sp.q.slice(0, 80) : "";
   const k = typeof sp.k === "string" ? sp.k : "";
-  const [items, kinds] = await Promise.all([catalog(store.id, { q, kind: k || null }), catalogKinds(store.id)]);
+  const [items, kinds, lenders] = await Promise.all([catalog(store.id, { q, kind: k || null }), catalogKinds(store.id), listLenders(store.id, true)]);
+  // Financing the shop offers (tax-machine-sales-layaway-design.md section 5): each lender's own "apply now" page.
+  const apply = lenders.filter((l) => l.applyUrl);
   return (
     <ShopShell shop={store} cart={cart}>
       {store.welcome && !q && !k && <p className="whitespace-pre-wrap">{store.welcome}</p>}
+      {apply.length > 0 && !q && !k && (
+        <p className="text-sm">
+          Financing available:{" "}
+          {apply.map((l, i) => (
+            <span key={l.id}>
+              {i > 0 && ", "}
+              <a href={l.applyUrl!} className="link" target="_blank" rel="noreferrer">
+                apply with {l.name}
+              </a>
+            </span>
+          ))}
+          .
+        </p>
+      )}
       <form method="get" className="flex gap-2" role="search">
         {cart.size > 0 && <input type="hidden" name="c" value={encodeCart(cart)} />}
         {k && <input type="hidden" name="k" value={k} />}

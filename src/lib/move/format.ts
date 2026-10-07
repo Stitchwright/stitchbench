@@ -100,6 +100,15 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Sale", key: "id" }, // -> Customer, User
   { t: "SaleLine", key: "id", via: { column: "saleId", parent: "Sale" } }, // -> Part too
   { t: "StockUnit", key: "id" }, // -> Machine
+  { t: "ServicePlan", key: "id" }, // the shop's own service plans
+  { t: "MakerWarranty", key: "id" }, // each maker's warranty as the shop typed it
+  { t: "TaxHoliday", key: "id" }, // the shop's sales tax holidays
+  { t: "Lender", key: "id" }, // the lenders the shop offers financing through
+  { t: "Promotion", key: "id" }, // the shop's planned sales
+  { t: "FinancedSale", key: "id" }, // -> Lender (its sale id is plain)
+  { t: "MachinePlan", key: "id" }, // -> Machine (its sale line and unit ids are plain)
+  { t: "Layaway", key: "id" }, // -> Customer (its sale id is plain)
+  { t: "LayawayLine", key: "id", via: { column: "layawayId", parent: "Layaway" } }, // its part and unit ids are plain
   { t: "VacCare", key: '"machineId"' }, // -> Machine (one row per machine)
   { t: "PartnerKey", key: '"shopId"', leftOut: ["privateSealed"] }, // the sealed private key stays behind: the company makes a new key (src/lib/partner-keys.ts)
   { t: "PartnerLink", key: "id" },

@@ -263,6 +263,7 @@ async function main() {
     await db.estimateLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), maskedUrl: "https://x/e/•••abcd", totalCents: 4500, lines: [], expiresAt: new Date(Date.now() + DAY) } });
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -439,6 +440,7 @@ async function main() {
       },
     });
     await db.longarmOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    const delLayaway = await db.layaway.create({ data: { shopId: A, number: 2, customerId: del.id, status: "OPEN", dueBy: "2026-12-31", terms: "Terms" } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -458,11 +460,13 @@ async function main() {
       /seat in Free-motion quilting/,
       /Partner repair tag T9/,
       /partnership with Old partner/,
+      /Layaway #2 is still being paid for/,
     ]) {
       assert.match(why, re);
     }
-    assert.equal(dplan.blockers.length, 6);
-    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 3 more\)/);
+    assert.equal(dplan.blockers.length, 7);
+    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 4 more\)/);
+    await db.layaway.update({ where: { id: delLayaway.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
     // Close each: the ticket collected but unpaid is still refused (money owed).
     await db.ticket.update({ where: { id: dt.id }, data: { status: "COLLECTED", closedAt: new Date() } });
     await db.webOrder.update({ where: { id: order.id }, data: { status: "DONE" } });
@@ -567,6 +571,7 @@ async function main() {
     });
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
     await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
+    await db.machinePlan.create({ data: { shopId: A, machineId: md.id, name: "Free yearly cleaning", visits: 3, startsAt: new Date(2026, 0, 1), endsAt: new Date(2029, 0, 1) } });
     await db.vacCare.createMany({
       data: [
         { machineId: md.id, shopId: A, contactedAt: new Date(2026, 8, 20), contactedBy: "Ann", stopped: true },
@@ -592,8 +597,8 @@ async function main() {
     await expectError("different equipment", () => mergeMachinesFor(a.user, md.id, vac.id, "Janome HD 3000"), /aren't the same kind of thing/);
     const stockA = await db.machine.create({ data: { shopId: A, brand: "Miele", model: "C3", modelKey: modelKey("C3"), equipment: "VACUUM", kind: "vacuum", stock: { create: { shopId: A } } } });
     const stockB = await db.machine.create({ data: { shopId: A, brand: "Miele", model: "C3", modelKey: modelKey("C3"), equipment: "VACUUM", kind: "vacuum", stock: { create: { shopId: A } } } });
-    assert.match((await machineMergePlan(a.user, stockA.id, stockB.id)).blockers.join(" "), /Both are Vac Shop stock/);
-    await expectError("both for sale", () => mergeMachinesFor(a.user, stockA.id, stockB.id, "Miele C3"), /Both are Vac Shop stock/);
+    assert.match((await machineMergePlan(a.user, stockA.id, stockB.id)).blockers.join(" "), /Both are machines-for-sale stock/);
+    await expectError("both for sale", () => mergeMachinesFor(a.user, stockA.id, stockB.id, "Miele C3"), /Both are machines-for-sale stock/);
     await expectError("wrong name typed", () => mergeMachinesFor(a.user, md.id, mk.id, "Janome"), /Type Janome HD 3000 to confirm/);
     await expectError("a tech", () => mergeMachinesFor(tech, md.id, mk.id, "Janome HD 3000"), /Only the shop owner or an admin/);
     assert.deepEqual(await counts(MACHINE_REFS, md.id, A), mBeforeDup, "a refused merge moves nothing");
@@ -617,7 +622,7 @@ async function main() {
 
     // ---------- 5. machine delete ----------
     await expectError("has tickets", () => deleteMachineFor(a.user, mk.id, "Janome HD3000"), /It has 1 ticket:/);
-    await expectError("stock record", () => deleteMachineFor(a.user, stockA.id, "Miele C3"), /Vac Shop stock record/);
+    await expectError("stock record", () => deleteMachineFor(a.user, stockA.id, "Miele C3"), /machine-for-sale stock record/);
     const gone = await db.machine.create({ data: { shopId: A, customerId: owner.id, brand: "Eureka", model: "Mighty Mite", modelKey: modelKey("Mighty Mite"), equipment: "VACUUM", kind: "vacuum" } });
     const openJob = await db.repairJob.create({
       data: { id: `rj${token()}`, shopId: A, linkId: "l1", side: "retail", tag: "T4", customerName: "Mo O.", brand: "Eureka", model: "Mighty Mite", machineId: gone.id, status: "ON_BENCH" },

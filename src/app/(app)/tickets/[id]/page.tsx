@@ -31,7 +31,9 @@ import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
 import { ManualsAsk } from "@/components/assistant/manuals-ask";
-import { UnitBadge } from "@/components/vac/unit-badge";
+import { UnitBadge } from "@/components/units/unit-badge";
+import { coverLine } from "@/actions/units";
+import { machinePlansFor } from "@/lib/units/plans";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
@@ -83,6 +85,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   // that came in before the module ended can be finished; otherwise only closing it out is left).
   const kind = await kindOf(user.shopId, m);
   const canWork = await canWorkOn(user.shopId, m.equipment, { intakeAt: t.intakeAt, status: t.status });
+  // Service plans on the machine the day it came in: a line can be marked covered by one (tax-machine-sales-layaway-design.md section 3).
+  const allPlans = await machinePlansFor(user.shopId, m.id, tz, t.intakeAt);
+  const plans = allPlans.filter((p) => p.current);
+  const planName = new Map(allPlans.map((p) => [p.id, p.name]));
   const isSite = t.jobType === "SITE";
   const exemptNow = Boolean(exemptCertificate(t.customer) ?? exemptCertificate(t.viaAccount));
   // Came in through a partner sewing shop (StitchShop)?
@@ -160,7 +166,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </>
         }
       />
-      {m.equipment === "VACUUM" && <UnitBadge machineId={m.id} user={user} />}
+      <UnitBadge machineId={m.id} user={user} at={t.intakeAt} />
 
       {!canWork &&
         (blocked ? (
@@ -437,6 +443,22 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                         <td>
                           <span className="label mr-2">{LINE_LABEL[l.kind]}</span>
                           {l.description}
+                          {l.coveredPlanId && (
+                            <span className="muted block text-xs">
+                              Covered by {planName.get(l.coveredPlanId) ?? "the service plan"} (would have been {money(l.coveredCents ?? 0)} each)
+                              {canWork && (
+                                <ActionButton action={coverLine.bind(null, l.id, null)} className="link ml-2 text-xs">
+                                  Charge it instead
+                                </ActionButton>
+                              )}
+                            </span>
+                          )}
+                          {!l.coveredPlanId && canWork && l.kind !== "DISCOUNT" && l.kind !== "FEE" && l.unitPriceCents > 0 &&
+                            plans.map((p) => (
+                              <ActionButton key={p.id} action={coverLine.bind(null, l.id, p.id)} className="btn btn-sm no-print ml-2">
+                                Covered by {p.name}
+                              </ActionButton>
+                            ))}
                         </td>
                         <td className="num text-right">{l.qty}</td>
                         <td className="num text-right">{money(l.unitPriceCents)}</td>

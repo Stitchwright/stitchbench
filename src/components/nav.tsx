@@ -33,6 +33,7 @@ import {
   type LucideIcon,
   Scissors,
   Ruler,
+  Tag,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
@@ -48,6 +49,8 @@ const items: Item[] = [
   { href: "/invoices", label: "Invoices", icon: FileText, repair: true },
   { href: "/machines", label: "Machines", icon: Cog, repair: true },
   // Vac Shop: whatever doesRepair and sellsRetail say (a StitchShop counter can sell vacuums too).
+  // Machines for sale (tax-machine-sales-layaway-design.md section 3): every shop with a counter.
+  { href: "/units", label: "Machines for sale", icon: Tag, retail: true },
   { href: "/vac", label: "Vac Shop", icon: Fan, module: "vac" },
   { href: "/customers", label: "Customers", icon: Users },
   // Scheduling: the calendar (its Staff tab is the staff schedule) for every company; classes need a counter.

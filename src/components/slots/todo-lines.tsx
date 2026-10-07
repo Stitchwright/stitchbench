@@ -4,15 +4,18 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { ABANDON_STAGE_LABEL } from "@/lib/constants";
-import { ticketNo } from "@/lib/format";
+import { money, ticketNo } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { shopTimeZone } from "@/lib/shop-zone";
-import { fmtDay } from "@/lib/zoned";
+import { fmtDay, ymdOf } from "@/lib/zoned";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
 import { scheduleFor } from "@/lib/notices/vars";
 import { markBackAtCounter } from "@/actions/notices";
 import { ActionButton } from "@/components/action-form";
+import { REGISTER_AFTER_DAYS } from "@/lib/units/units";
+import { listLayaways } from "@/lib/layaway";
+import { presetReminders } from "@/lib/tax-holidays";
 
 const WEEK = 7 * 86_400_000;
 const SHOWN = 5;
@@ -60,6 +63,60 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         node: (
           <Link href="/repairs" className="link">
             and {back.length - SHOWN} more on Repairs
+          </Link>
+        ),
+      });
+    }
+  }
+
+  // New machines sold here more than a week ago that nobody has registered with the maker (machines for sale).
+  const toRegister = await db.stockUnit.count({
+    where: { shopId, status: "SOLD", condition: { in: ["NEW", "OPEN_BOX"] }, registeredAt: null, soldAt: { lt: new Date(now.getTime() - REGISTER_AFTER_DAYS * 86_400_000) } },
+  });
+  if (toRegister) {
+    lines.push({
+      key: "register",
+      node: (
+        <Link href="/units?tab=register" className="link">
+          Register {toRegister === 1 ? "this machine" : `these ${toRegister} machines`} with the maker: sold over a week ago, not registered yet
+        </Link>
+      ),
+    });
+  }
+
+  // A state's tax holiday the shop used before: confirm this year's dates (they are set by law each year).
+  if (admin) {
+    for (const r of await presetReminders(shopId, ymdOf(now, tz))) {
+      lines.push({
+        key: `holiday-${r.key}`,
+        node: (
+          <Link href={`/settings/sales?preset=${r.key}#holidays`} className="link">
+            Is {r.state}&apos; tax-free weekend on this year? Confirm the dates.
+          </Link>
+        ),
+      });
+    }
+  }
+
+  // Layaways behind on their payments (or past the last day).
+  if (await db.layaway.count({ where: { shopId, status: "OPEN" } })) {
+    const late = (await listLayaways(shopId, "OPEN")).filter((l) => l.behindCents > 0);
+    for (const l of late.slice(0, SHOWN)) {
+      lines.push({
+        key: `layaway-${l.id}`,
+        node: (
+          <Link href={`/layaways/${l.id}`} className="link">
+            Layaway #{l.number}{l.customer ? ` for ${l.customer.name}` : ""} is {money(l.behindCents)} behind on payments
+          </Link>
+        ),
+      });
+    }
+    if (late.length > SHOWN) {
+      lines.push({
+        key: "layaway-more",
+        node: (
+          <Link href="/layaways" className="link">
+            and {late.length - SHOWN} more layaways behind
           </Link>
         ),
       });

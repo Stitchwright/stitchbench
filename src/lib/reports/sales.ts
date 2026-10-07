@@ -67,7 +67,7 @@ function lineCost(l: { qty: number; costCents: number | null; costTenThou: numbe
  */
 export function saleLines(s: SaleWithLines) {
   const kinds = s.lines.map((l) => saleLineKind({ ...l, partKind: l.part?.kind }));
-  const eligible = s.lines.map((l, i) => lineNet(l) > 0 && !["REPAIR", "GIFT_CARD", "TRADE_IN", "CLASS", "APPOINTMENT"].includes(kinds[i]));
+  const eligible = s.lines.map((l, i) => lineNet(l) > 0 && !["REPAIR", "GIFT_CARD", "TRADE_IN", "CLASS", "APPOINTMENT", "LAYAWAY", "LAYAWAY_FEE"].includes(kinds[i]));
   const base = s.lines.reduce((a, l, i) => a + (eligible[i] ? lineNet(l) : 0), 0);
   const orderDiscount = Math.min(s.discountCents, base);
   let left = orderDiscount;
@@ -138,7 +138,8 @@ export async function salesReport(shopId: string, tz: string, start: Date, end: 
       r.tax += sign * s.taxCents;
       for (const t of s.tenders as Tender[]) {
         addTender(t.method, sign * t.amountCents);
-        if (t.method !== "GIFT" && t.method !== "CREDIT") r.taken += sign * t.amountCents;
+        // Gift cards and store credit were taken before; financing is the lender's money, owed until it pays.
+        if (t.method !== "GIFT" && t.method !== "CREDIT" && t.method !== "FINANCED") r.taken += sign * t.amountCents;
       }
       if (s.changeCents) {
         addTender("CASH", -sign * s.changeCents);

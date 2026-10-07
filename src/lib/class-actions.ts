@@ -16,6 +16,7 @@ import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView } from "@/lib/messaging/settings";
 import { cleanText, plainText, renderKind } from "@/lib/messaging/templates";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { classCreditsFor } from "@/lib/units/units";
 import { fmtDay, fmtWhen, rangeFromForm, wall, ymdOf, zonedTime } from "@/lib/zoned";
 
 type Tx = Prisma.TransactionClient;
@@ -323,6 +324,34 @@ export async function setEnrollmentFeeAs(user: CurrentUser, enrollmentId: string
   const fee = toCents(fd.get("fee"));
   if (fee == null || fee < 0 || fee > 10_000_000) throw new UserError("Check the fee.");
   await db.enrollment.updateMany({ where: { id: e.id, shopId: user.shopId }, data: { feeCents: fee } });
+  return { classId: e.classId, customerId: e.customerId };
+}
+
+/**
+ * An owner's class that came with a machine bought here (tax-machine-sales-layaway-design.md section 3): the seat is
+ * free, counted against that machine's classes. `unitId` null puts the class's price back. Anyone at the counter: the
+ * shop promised the classes when it sold the machine.
+ */
+export async function applyClassCreditAs(user: CurrentUser, enrollmentId: string, unitId: string | null) {
+  await asUser(user);
+  const e = await ownEnrollment(user.shopId, enrollmentId);
+  if (e.paidAt) throw new UserError("It's already paid. Refund it at the register first.");
+  if (e.status === "CANCELLED") throw new UserError("That sign-up was cancelled.");
+  if (!unitId) {
+    if (e.creditUnitId) await db.enrollment.updateMany({ where: { id: e.id, shopId: user.shopId, paidAt: null }, data: { creditUnitId: null, feeCents: e.shopClass.feeCents } });
+    return { classId: e.classId, customerId: e.customerId };
+  }
+  if (e.creditUnitId) throw new UserError("This seat already uses an owner's class.");
+  if (!e.customerId) throw new UserError("Pick the customer first.");
+  const left = (await classCreditsFor(user.shopId, e.customerId)).find((c) => c.unitId === unitId);
+  if (!left || left.left <= 0) throw new UserError("No owner's classes left for that machine.");
+  await db.$transaction(async (tx) => {
+    // Two clicks at once must not use the same last class twice.
+    await lockKeys(tx, [`credit:${unitId}`]);
+    const used = await tx.enrollment.count({ where: { shopId: user.shopId, creditUnitId: unitId, status: { not: "CANCELLED" } } });
+    if (used >= left.granted) throw new UserError("No owner's classes left for that machine.");
+    await tx.enrollment.updateMany({ where: { id: e.id, shopId: user.shopId, paidAt: null, creditUnitId: null }, data: { creditUnitId: unitId, feeCents: 0 } });
+  });
   return { classId: e.classId, customerId: e.customerId };
 }
 

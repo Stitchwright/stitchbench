@@ -51,6 +51,8 @@ function tenderKey(method: string, cfg: BooksConfig): { account: string } {
       return { account: accountName(cfg, "receivable") };
     case "SHOP_COLLECTED":
       return { account: accountName(cfg, "dueFromPartners") };
+    case "FINANCED":
+      return { account: accountName(cfg, "lenderReceivable") };
     default:
       return { account: accountName(cfg, "undeposited") };
   }
@@ -97,6 +99,7 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
         const a = x.amount;
         if (x.kind === "GIFT_CARD") post(one, acct(x.line.giftCardId && creditCards.has(x.line.giftCardId) ? "creditLiability" : "giftLiability"), -sign * a);
         else if (x.kind === "TRADE_IN") post(one, acct("tradeIns"), -sign * a);
+        else if (x.kind === "LAYAWAY") post(one, acct("customerDeposits"), -sign * a);
         else if (x.kind === "REPAIR") post(one, acct("dueToPartners"), -sign * a);
         else if (!cfg.netDiscounts && x.discount > 0 && x.line.qty * x.line.unitPriceCents > 0) {
           post(one, salesAccount(x.kind), -sign * (a + x.discount));
@@ -149,6 +152,14 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
       post(led, kinds.get(e.cardId) === "credit" ? acct("creditLiability") : acct("giftLiability"), -e.amountCents);
       post(led, acct("giftAdjust"), e.amountCents);
     }
+  }
+
+  // ----- a lender paying a financed sale: the money in, what it owed off (marked paid on that day) -----
+  const lenderPaid = await db.financedSale.findMany({ where: { shopId, voidedAt: null, paidAt: { gte: start, lt: end } }, select: { amountCents: true, paidAt: true } });
+  for (const f of lenderPaid) {
+    const led = dayLedger(f.paidAt!);
+    post(led, acct("undeposited"), f.amountCents);
+    post(led, acct("lenderReceivable"), -f.amountCents);
   }
 
   const out: DayEntry[] = [...days.entries()]
