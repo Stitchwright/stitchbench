@@ -28,6 +28,8 @@ export type AuditInput = {
   changes?: Record<string, [unknown, unknown]> | null;
   amountCents?: number | null;
   reason?: string | null;
+  /** Leave the sender's address out (a sign-in try that may have been meant for another company's login). */
+  noIp?: boolean;
 };
 
 /** Which of `fields` differ: { field: [before, after] }, or null when nothing changed. */
@@ -69,7 +71,7 @@ export async function audit(tx: Db, actor: Actor, e: AuditInput): Promise<void> 
       changes: (e.changes ?? undefined) as Prisma.InputJsonValue | undefined,
       amountCents: e.amountCents ?? null,
       reason: e.reason?.slice(0, 500) ?? null,
-      ip: await requestAddress(),
+      ip: e.noIp ? null : await requestAddress(),
     },
   });
 }
