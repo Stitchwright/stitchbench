@@ -6,14 +6,67 @@ import { jsonOf } from "@/lib/assistant/prompts";
 
 export const INVOICE_SYSTEM = `You read one page of a supplier's packing slip or invoice for a sewing and quilting shop. Answer with JSON only: {"lines":[{"itemNumber":"","description":"","qty":0,"unitCost":0}],"supplier":""}. One entry per product line on the page, in order. "itemNumber": the supplier's or maker's item number exactly as printed (empty if none). "qty": the quantity shipped (not ordered, not back-ordered) as a number. "unitCost": the price each (or a yard) in dollars as a number, empty if not shown. Leave out freight, tax, totals and subtotals. Never guess a number you can't read.`;
 
+/**
+ * The most the hub lets a slip reading answer with (its cap for read_invoice; asking for more is refused). A page with
+ * more lines than fit comes back cut off: what came is kept and the rest is asked for (buildInvoiceRest).
+ */
+export const INVOICE_MAX_TOKENS = 2000;
+
 export function buildInvoiceRead(page: number, of: number, supplier: string | null): Built {
   return {
     feature: "read_invoice",
     cls: "read",
     system: INVOICE_SYSTEM,
     messages: [{ role: "user", content: `Read page ${page} of ${of}.${supplier ? ` The supplier is ${supplier.slice(0, 80)}.` : ""}` }],
-    maxTokens: 1500,
+    maxTokens: INVOICE_MAX_TOKENS,
   };
+}
+
+/** The rest of a page whose answer was cut off: the lines after the ones already read (the last one named). */
+export function buildInvoiceRest(page: number, of: number, supplier: string | null, got: SlipLine[]): Built {
+  const last = got[got.length - 1];
+  const which = last ? (last.itemNumber ? `item number ${last.itemNumber}` : `"${last.description.slice(0, 80)}"`) : "the first line";
+  return {
+    ...buildInvoiceRead(page, of, supplier),
+    messages: [
+      {
+        role: "user",
+        content: `Read page ${page} of ${of}.${supplier ? ` The supplier is ${supplier.slice(0, 80)}.` : ""} The first ${got.length} product lines are read already, ending with ${which}. Answer with only the product lines after that one.`,
+      },
+    ],
+  };
+}
+
+/**
+ * The whole line objects in an answer cut off mid-JSON (the hub's token cap): each complete {...} inside "lines", in
+ * order; null when there are none.
+ */
+export function salvageSlip(answer: string): SlipLine[] | null {
+  const s = String(answer ?? "");
+  const at = s.search(/"lines"\s*:\s*\[/);
+  if (at < 0) return null;
+  const objs: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inStr = false;
+  for (let i = s.indexOf("[", at) + 1; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) objs.push(s.slice(start, i + 1));
+    } else if (c === "]" && depth === 0) break;
+  }
+  if (!objs.length) return null;
+  return parseSlip(`{"lines":[${objs.join(",")}]}`);
 }
 
 export type SlipLine = { itemNumber: string | null; description: string; qty: number; unitCostTenThou: number | null };

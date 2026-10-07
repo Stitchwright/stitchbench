@@ -168,7 +168,7 @@ export async function runAssistant(o: {
   if (answer.month && typeof answer.calls === "number") {
     await db.shop.update({ where: { id: shopId }, data: { assistantMonth: answer.month, assistantCalls: answer.calls, ...(typeof answer.limit === "number" ? { assistantLimit: answer.limit } : {}) } }).catch(() => {});
   }
-  return { row, text: answer.text, free: answer.free === true };
+  return { row, text: answer.text, free: answer.free === true, stopReason: answer.stopReason ?? null };
 }
 
 /** A refusal for the month's allowance: the local count follows the hub's (the Settings page shows it offline). */

@@ -14,7 +14,7 @@ import { runAssistant, type Photo } from "@/lib/assistant/client";
 import { partKeys, takeShopNumber } from "@/lib/parts";
 import { receiveOrderFor } from "@/lib/fabric-orders";
 import { afterArrival } from "@/lib/arrivals";
-import { buildInvoiceRead, matchSlip, parseSlip, slipKey, type Matched, type SlipLine } from "@/lib/invoice-reader-math";
+import { buildInvoiceRead, buildInvoiceRest, matchSlip, parseSlip, salvageSlip, slipKey, type Matched, type SlipLine } from "@/lib/invoice-reader-math";
 import { currentStoreId } from "@/lib/stores";
 import { moveStock, placeNewStock } from "@/lib/stock";
 
@@ -42,9 +42,21 @@ export async function readSlipFor(user: CurrentUser, a: { orderId: string | null
   if (po && (po.status === "DRAFT" || po.status === "RECEIVED" || po.status === "CANCELLED")) throw new UserError(`Order #${po.number} isn't waiting for anything (${po.status === "DRAFT" ? "not sent yet" : po.status === "RECEIVED" ? "all in" : "cancelled"}).`);
   const slip: SlipLine[] = [];
   for (const [i, p] of photos.entries()) {
-    const { text } = await runAssistant({ shopId: user.shopId, userId: user.id, built: buildInvoiceRead(i + 1, photos.length, po?.supplierName ?? null), photo: photoOf(p), target: po ? { purchaseOrderId: po.id } : {} });
-    const lines = parseSlip(text);
-    if (lines) slip.push(...lines);
+    // A long page can come back cut off at the hub's answer limit: the whole lines that came are kept and the rest of the
+    // page is asked for (up to four parts a page).
+    const supplier = po?.supplierName ?? null;
+    const photo = photoOf(p);
+    const page: SlipLine[] = [];
+    let built = buildInvoiceRead(i + 1, photos.length, supplier);
+    for (let part = 0; part < 4; part++) {
+      const { text, stopReason } = await runAssistant({ shopId: user.shopId, userId: user.id, built, photo, target: po ? { purchaseOrderId: po.id } : {} });
+      const whole = parseSlip(text);
+      const lines = whole ?? salvageSlip(text) ?? [];
+      page.push(...lines);
+      if ((whole && stopReason !== "max_tokens") || !lines.length) break;
+      built = buildInvoiceRest(i + 1, photos.length, supplier, page);
+    }
+    slip.push(...page);
   }
   if (!slip.length) throw new UserError("The Assistant couldn't read any lines from that. Take the picture again, flat and in good light, or receive it by hand.");
   const keys = [...new Set(slip.map((s) => (s.itemNumber ? slipKey(s.itemNumber) : "")).filter(Boolean))];
@@ -75,9 +87,34 @@ export type ReceiveRow = {
   description?: string | null;
 };
 
-/** "Receive these": the ticked rows received, new items made, costs updated as ticked. Returns what happened, in words. */
-export async function receiveSlipFor(user: CurrentUser, a: { orderId: string | null; rows: ReceiveRow[] }): Promise<string> {
+/**
+ * "Receive these": the ticked rows received, new items made, costs updated as ticked. Returns what happened, in words.
+ * `key`: made once per reading on the screen; sent again (a retry after a lost answer, a second tap) it receives nothing
+ * twice and says what the first time did.
+ */
+export async function receiveSlipFor(user: CurrentUser, a: { orderId: string | null; rows: ReceiveRow[]; key?: string | null }): Promise<string> {
   await requireBaseWritable(user);
+  const key = typeof a.key === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(a.key) ? a.key : null;
+  if (!key) return receiveSlipNow(user, a);
+  const id = { shopId_key: { shopId: user.shopId, key } };
+  // Claimed once (two tries at the same moment: one receives, the other is told).
+  const claimed = await db.slipReceipt.createMany({ data: [{ shopId: user.shopId, key }], skipDuplicates: true });
+  if (!claimed.count) {
+    const done = await db.slipReceipt.findUnique({ where: id });
+    return done?.words ? `Received already: ${done.words}` : "That slip is being received already. Look at the stock in a moment.";
+  }
+  try {
+    const words = await receiveSlipNow(user, a);
+    await db.slipReceipt.update({ where: id, data: { words: words.slice(0, 2000) || "Received." } });
+    return words;
+  } catch (e) {
+    // Nothing came in (or only the order's lines, which the order's own receipt guards): it can be tried again.
+    await db.slipReceipt.deleteMany({ where: { shopId: user.shopId, key } });
+    throw e;
+  }
+}
+
+async function receiveSlipNow(user: CurrentUser, a: { orderId: string | null; rows: ReceiveRow[] }): Promise<string> {
   const rows = (Array.isArray(a.rows) ? a.rows : []).filter((r) => r && Number(r.qty) > 0).slice(0, 300);
   if (!rows.length) throw new UserError("Tick what came.");
   if (user.role === "TECH" && rows.some((r) => r.updateCost)) throw new UserError("Only an owner or admin can change costs. Untick the new costs.");
