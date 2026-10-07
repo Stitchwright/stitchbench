@@ -72,7 +72,7 @@ export default async function AssistantSettingsPage() {
       <Section title="What it may do">
         {canEdit ? (
           <ActionForm action={saveAssistantSettings} success="Saved" className="space-y-3">
-            {(["draft", "causes", "plate", "manuals", "parts"] as const).map((g) => (
+            {(["draft", "causes", "plate", "manuals", "parts", "fabric"] as const).map((g) => (
               <label key={g} className="flex items-start gap-2 text-sm">
                 <input type="checkbox" name={`${g}On`} defaultChecked={settings[`${g}On` as "draftOn"]} className="check mt-1" />
                 <span>
@@ -98,7 +98,7 @@ export default async function AssistantSettingsPage() {
           </ActionForm>
         ) : (
           <ul className="space-y-1 text-sm">
-            {(["draft", "causes", "plate", "manuals", "parts"] as const).map((g) => (
+            {(["draft", "causes", "plate", "manuals", "parts", "fabric"] as const).map((g) => (
               <li key={g}>
                 {GROUP_LABEL[g].label}: {settings[`${g}On` as "draftOn"] ? "on" : "off"}
               </li>

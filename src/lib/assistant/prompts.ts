@@ -198,3 +198,53 @@ export function parsePlate(text: string): Plate | null {
   if (!p.model) p.sure = false;
   return p;
 }
+
+// ----- fabric: the bolt label and the swatch (fabric-smarts-design.md section 3) -----
+
+export const LABEL_SYSTEM = `You read the label on the end of a bolt of quilting fabric from a photo and return what is printed on it.
+Answer with JSON only: {"itemNumber":"","name":"","color":"","maker":"","collection":"","widthInches":"","content":"","confidence":"sure"}. Use an empty string for anything you cannot read. Copy the item number exactly as printed (letters, digits and dashes). "name" is the print's name, "color" the colorway. Set confidence to "sure" only when the item number is clearly legible; otherwise "guess". Never describe the photo and never add fields.`;
+
+export function buildLabelRead(makers: readonly string[]): Built {
+  const hint = makers.length ? ` The shop's usual makers: ${makers.slice(0, 40).join(", ")}.` : "";
+  return { feature: "read_label", cls: "read", system: LABEL_SYSTEM, messages: [{ role: "user", content: `Read this bolt label.${hint}` }], maxTokens: 300 };
+}
+
+export type BoltLabel = { itemNumber: string | null; name: string | null; color: string | null; maker: string | null; collection: string | null; widthInches: number | null; content: string | null; sure: boolean };
+
+export function parseLabel(text: string): BoltLabel | null {
+  const j = jsonOf(text) as Record<string, unknown> | null;
+  if (!j || typeof j !== "object") return null;
+  const w = Number(/\d+(\.\d+)?/.exec(String(j.widthInches ?? ""))?.[0] ?? NaN);
+  const l: BoltLabel = {
+    itemNumber: field(j.itemNumber, 60),
+    name: field(j.name, 80),
+    color: field(j.color, 60),
+    maker: field(j.maker, 60),
+    collection: field(j.collection, 80),
+    widthInches: Number.isFinite(w) && w >= 10 && w <= 120 ? w : null,
+    content: field(j.content, 80),
+    sure: j.confidence === "sure",
+  };
+  if (!l.itemNumber && !l.name && !l.color) return null;
+  if (!l.itemNumber) l.sure = false;
+  return l;
+}
+
+/** Color and theme words a fabric may carry (the model picks from the themes; colors are plain color names). */
+export const FABRIC_THEMES = ["floral", "batik", "solid", "holiday", "geometric", "novelty", "stripe", "plaid", "dot", "tonal", "text", "animal", "landscape", "juvenile"] as const;
+export const TAG_SYSTEM = `You look at a photo of a quilting fabric's swatch and tag it. Answer with JSON only: {"colors":[],"themes":[]}. "colors": the one to three main colors as plain lowercase color names (blue, red, green, pink, yellow, orange, purple, brown, black, white, cream, gray, teal, navy, aqua). "themes": zero to three of ${FABRIC_THEMES.join(", ")}. Never describe the photo and never add fields.`;
+
+export function buildSwatchTags(): Built {
+  return { feature: "tag_fabric", cls: "read", system: TAG_SYSTEM, messages: [{ role: "user", content: "Tag this fabric." }], maxTokens: 120 };
+}
+
+/** The tags in an answer: lowercase single words, themes only from the list, at most five. */
+export function parseTags(text: string): string[] | null {
+  const j = jsonOf(text) as { colors?: unknown; themes?: unknown } | null;
+  if (!j || typeof j !== "object") return null;
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((x) => x.trim().toLowerCase().replace(/[^a-z -]/g, "")).filter((x) => x && x.length <= 20) : []);
+  const colors = [...new Set(list(j.colors))].slice(0, 3);
+  const themes = [...new Set(list(j.themes))].filter((t) => (FABRIC_THEMES as readonly string[]).includes(t)).slice(0, 3);
+  const all = [...new Set([...colors, ...themes])].slice(0, 5);
+  return all.length ? all : null;
+}

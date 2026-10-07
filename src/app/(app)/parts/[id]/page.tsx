@@ -18,6 +18,7 @@ import { PartSearchLinks } from "@/components/part-search-links";
 import { hubJoined } from "@/lib/hub";
 import { entryFor } from "@/lib/assistant/ui";
 import { LooksLikeCard } from "@/components/assistant/parts-helpers";
+import { TagOneButton } from "@/components/assistant/tag-fabric";
 import { listingDefaultsFor, offersFor } from "@/lib/offer";
 import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XNumber, type XSource } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
@@ -54,6 +55,8 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   const tno = new Map(tickets.map((t) => [t.id, t.number]));
   const consignedBy = p.consignLinkId ? await db.partnerLink.findUnique({ where: { shopId_id: { shopId: user.shopId, id: p.consignLinkId } } }) : null;
   const shopFlags = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, shopOn: true } });
+  const swatchPhoto = p.kind === "FABRIC" && shopFlags.sellsRetail ? await db.partPhoto.findFirst({ where: { partId: p.id, shopId: user.shopId }, orderBy: { sortOrder: "asc" }, select: { id: true } }) : null;
+  const tagEntry = swatchPhoto ? await entryFor(user.shopId, "fabric") : null;
   // The items this fabric's cuts feed (fat quarters, half yards, remnant): only this shop's own.
   const cutIds = [p.fatQuarterId, p.halfYardId, p.remnantId].filter((x): x is string => !!x);
   const cutItems = cutIds.length ? await db.part.findMany({ where: { id: { in: cutIds }, shopId: user.shopId }, select: { id: true, partNumber: true, description: true, qtyOnHand: true, unit: true } }) : [];
@@ -134,6 +137,12 @@ export default async function PartPage({ params, searchParams }: { params: Promi
               </div>
             )}
           </Section>
+          {swatchPhoto && tagEntry?.show && (
+            <Section title="Color and theme tags">
+              <p className="mb-2 text-sm">{p.colorTags.length ? p.colorTags.join(", ") : <span className="muted">No tags yet.</span>}</p>
+              <TagOneButton partId={p.id} photoId={swatchPhoto.id} unavailable={tagEntry.unavailable} />
+            </Section>
+          )}
           {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
