@@ -85,7 +85,8 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
     if (!a.customerId) throw new UserError("Pick the customer first: a warranty needs the buyer.");
     if (unit.priceCents == null) throw new UserError(`Set a price for ${desc} first (Machines for sale).`);
     if (a.role === "TECH" && price !== unit.priceCents) throw new UserError(`Only an owner or admin can change the price of ${desc}.`);
-    out.set(i, { description: desc, qty: 1, unitPriceCents: price, taxable: l.taxable, discountable: true, costCents: unit.costCents, stockUnitId: unit.id });
+    // A machine sold is taxed (decided here, not by the browser; an exempt customer or a holiday is worked out by the sale).
+    out.set(i, { description: desc, qty: 1, unitPriceCents: price, taxable: true, discountable: true, costCents: unit.costCents, stockUnitId: unit.id });
   }
   return out;
 }
@@ -140,6 +141,11 @@ export async function applyUnitLine(
   });
   if (!back.count) throw new UserError(`${desc} was just returned.`);
   await payoutOnReturn(tx, { shopId, soldLineId: unit.soldLineId, at });
+  // A consigned machine returned after its consignor was paid: the shop has bought it from her, so it is the shop's own
+  // now (a resale owes her nothing). Not paid yet: her payout was taken back above and it is still hers.
+  if (unit.consignorId && unit.soldLineId && (await tx.consignPayout.count({ where: { shopId, saleLineId: unit.soldLineId, paidAt: { not: null }, voidedAt: null } }))) {
+    await tx.stockUnit.updateMany({ where: { shopId, id: unit.id }, data: { consignorId: null, consignPct: null, consignUntil: null } });
+  }
   await tx.machine.updateMany({ where: { id: unit.machineId, shopId }, data: { customerId: null } });
   // Its service plans end with it (work already covered stays covered); voiding this return starts them again.
   await tx.machinePlan.updateMany({ where: { shopId, machineId: unit.machineId, stockUnitId: unit.id, voidedAt: null }, data: { voidedAt: at } });
@@ -187,6 +193,9 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
       costCents: unit.costCents,
       priceCents: unit.priceCents,
       tradeInLineId: unit.tradeInLineId,
+      consignorId: unit.consignorId,
+      consignPct: unit.consignPct,
+      consignUntil: unit.consignUntil,
     };
     const r = await tx.stockUnit.updateMany({
       where: { shopId, id: unit.id, status: "SOLD" },
@@ -203,6 +212,10 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
         costCents: credit,
         priceCents: null,
         tradeInLineId: line.id,
+        // Bought back from its buyer: the shop's own now, whoever consigned it before (her sale stands and is paid as it was).
+        consignorId: null,
+        consignPct: null,
+        consignUntil: null,
         // In stock at the store that took it in (7.2).
         locationId: a.locationId ?? null,
         ...(conditionNote ? { note: conditionNote } : {}),
@@ -252,6 +265,9 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
       });
       if (!r.count) throw new UserError(`${unitDescription(unit)} was sold again since; void that sale first.`);
       await payoutOnVoidReturn(tx, { shopId, soldLineId: unit.soldLineId, returnedAt: a.saleAt });
+      // Its consignment, cleared when it came back after she was paid, is as it was (sold again, her paid sale stands).
+      const paidOut = !unit.consignorId && unit.soldLineId ? await tx.consignPayout.findFirst({ where: { shopId, saleLineId: unit.soldLineId, paidAt: { not: null }, voidedAt: null } }) : null;
+      if (paidOut) await tx.stockUnit.updateMany({ where: { shopId, id: unit.id }, data: { consignorId: paidOut.customerId, consignPct: paidOut.pct } });
       // The plans the return ended start again.
       if (a.saleAt) await tx.machinePlan.updateMany({ where: { shopId, machineId: unit.machineId, stockUnitId: unit.id, voidedAt: a.saleAt }, data: { voidedAt: null } });
       const original = unit.soldLineId ? await tx.saleLine.findFirst({ where: { id: unit.soldLineId, sale: { shopId } }, select: { sale: { select: { customerId: true } } } }) : null;
@@ -278,6 +294,9 @@ export async function voidUnitLines(tx: Tx, a: { shopId: string; saleNumber: num
             costCents: numOf(p.costCents),
             priceCents: numOf(p.priceCents),
             tradeInLineId: strOf(p.tradeInLineId),
+            consignorId: strOf(p.consignorId),
+            consignPct: numOf(p.consignPct),
+            consignUntil: strOf(p.consignUntil),
             events: pushEvent(unit.events, { at: when, note: `Trade-in on sale #${a.saleNumber} void: as it was before` }),
           },
         });

@@ -91,6 +91,13 @@ async function main() {
     await expectError("undo store credit", () => undoPayoutFor(a.user, owed[0].id), /store credit/);
     ok("a return before payment takes it back, its void owes it again; paid in store credit on her card");
 
+    // 3b. Returned after she was paid (review fix): the shop's own now, so a resale owes her nothing; the return voided: as before.
+    const back = await completeSaleAs(a.user, { customerId: buyer.id, lines: [{ description: "", qty: -1, unitPriceCents: 40000, taxable: true, stockUnitId: u1 }], tenders: cash(-40000) });
+    assert.equal((await db.stockUnit.findUniqueOrThrow({ where: { id: u1 } })).consignorId, null, "the shop's own");
+    await voidSaleAs(a.user, back.saleId, "x");
+    assert.equal((await db.stockUnit.findUniqueOrThrow({ where: { id: u1 } })).consignorId, her.id, "the return's void: hers as before (sold, her paid sale stands)");
+    ok("returned after she was paid: the shop's own (a resale makes no payout); the return voided, as it was");
+
     // 4. Given back; the statement; the books; the delete.
     let plan = await customerDeletePlan(a.user, her.id);
     assert.ok(plan.blockers.some((x) => /for sale on consignment/.test(x)), "her machine for sale blocks deleting her");
