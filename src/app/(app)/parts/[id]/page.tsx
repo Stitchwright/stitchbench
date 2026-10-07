@@ -27,6 +27,7 @@ import { qtyText } from "@/lib/register-math";
 import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
 import { ColorDot } from "@/components/color-dot";
 import { SameColor } from "@/components/same-color";
+import { FitsSection } from "@/components/fits-section";
 import { OrderMoreForm } from "@/components/fabric-orders-forms";
 import { eachSuggestion } from "@/lib/fabric-orders-math";
 
@@ -171,6 +172,8 @@ export default async function PartPage({ params, searchParams }: { params: Promi
               <TagOneButton partId={p.id} photoId={swatchPhoto.id} unavailable={tagEntry.unavailable} />
             </Section>
           )}
+          {/* Which machines it fits (shop-features-round-2-design.md 2.4); a machine model or fabric fits nothing. */}
+          {p.kind !== "MACHINE" && p.kind !== "FABRIC" && <FitsSection shopId={user.shopId} partId={p.id} />}
           {/* The shop's own color matches (shop-features-round-2-design.md 2.2), for items with a color. */}
           {shopFlags.sellsRetail && (p.colorNumber || p.colorName || p.colorHex || typeOf(p) === "thread") && <SameColor shopId={user.shopId} partId={p.id} />}
           {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}

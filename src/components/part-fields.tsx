@@ -166,7 +166,7 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
       )}
       <div className="field">
         <label htmlFor="fits" className="label">
-          Fits models
+          Fits (notes)
         </label>
         <input id="fits" name="fits" defaultValue={part?.fits ?? ""} className="input" placeholder="MC6700P, MC6600P" />
       </div>

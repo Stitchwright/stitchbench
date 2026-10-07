@@ -29,6 +29,7 @@ import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-cam
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
+import { CustomerFits, GoesWith } from "@/components/register-fits";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
@@ -840,6 +841,9 @@ export function Register({
           </div>
         )}
         {returnMode && <p className="pill tone-wait">Return mode: scanned items come off the sale (negative quantity) and go back on the shelf.</p>}
+        {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
+        {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
+        {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
         {results.length > 0 && (
           <div className="card">
