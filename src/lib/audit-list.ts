@@ -55,6 +55,7 @@ export const AUDIT_ACTIONS = {
   "hub.leave": { category: "settings", label: "Left StitchHub" },
   "hub.usage": { category: "settings", label: "Sharing of parts used switched on or off" },
   "shop.details": { category: "settings", label: "Shop details changed" },
+  "feeds.settings": { category: "settings", label: "Google and Facebook feeds switched on or off" },
   // People
   "user.add": { category: "people", label: "Login added" },
   "user.role": { category: "people", label: "Role changed" },
