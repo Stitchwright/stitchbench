@@ -7,9 +7,10 @@ import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { storesOf } from "@/lib/stores";
 import { STORE_ZONES } from "@/lib/stores-admin";
-import { addStore, saveApproveCode, saveDailySummary, saveStore, setHomeStore, setOnlineStore, setStoreOpen } from "@/actions/stores";
+import { addStore, joinCompany, saveApproveCode, saveDailySummary, saveStore, setHomeStore, setOnlineStore, setStoreOpen } from "@/actions/stores";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { PageHeader, Section } from "@/components/ui";
+import { joinCandidatesFor, sameCustomersFor, type JoinCandidate } from "@/lib/join-companies";
 
 function ZoneSelect({ id, value }: { id: string; value: string }) {
   const known = STORE_ZONES.some((z) => z.id === value);
@@ -74,6 +75,53 @@ function DetailFields({ prefix, s }: { prefix: string; s?: { address: string | n
   );
 }
 
+/** "Join another company into this one" (7.6): the owner's other companies on this install, each joinable as a store. */
+function JoinSection({ candidates }: { candidates: JoinCandidate[] }) {
+  if (!candidates.length) return null;
+  return (
+    <Section title="Bring another of your companies in as a store">
+      <p className="muted mb-3 text-sm">
+        You own these companies too. Joining one brings its items, customers, gift cards, tickets and sales in as a store of this company (its tickets and sales are numbered on from
+        this company&apos;s). It can&apos;t be undone. Its own StitchHub subscription is then yours to cancel.
+      </p>
+      <ul className="space-y-4">
+        {candidates.map((c) => (
+          <li key={c.id} className="rounded border border-line p-3" data-testid="join-candidate">
+            <p className="text-base font-semibold">{c.name}</p>
+            <p className="muted text-sm">
+              {c.items} items · {c.customers} customers · {c.tickets} tickets · {c.sales} sales
+            </p>
+            {c.problem ? (
+              <p className="mt-2 text-sm">{c.problem}</p>
+            ) : (
+              <details className="mt-2">
+                <summary className="link cursor-pointer text-sm">Join {c.name} into this company</summary>
+                <ActionForm action={joinCompany.bind(null, c.id)} className="mt-2 grid-form">
+                  <div className="field">
+                    <label htmlFor={`jn-${c.id}`} className="label">
+                      The store will be called
+                    </label>
+                    <input id={`jn-${c.id}`} name="storeName" className="input" defaultValue={c.name} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`jc-${c.id}`} className="label">
+                      Type {c.name} to confirm
+                    </label>
+                    <input id={`jc-${c.id}`} name="confirm" required className="input" autoComplete="off" />
+                  </div>
+                  <div className="col-span-full">
+                    <Submit className="btn btn-primary">Join it in as a store</Submit>
+                  </div>
+                </ActionForm>
+              </details>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 export default async function StoresPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
@@ -86,6 +134,7 @@ export default async function StoresPage() {
   ]);
   const open = stores.filter((s) => s.active);
   const multi = open.length > 1;
+  const candidates = owner ? await joinCandidatesFor(user) : [];
   const codes = new Map((await db.location.findMany({ where: { shopId: user.shopId }, select: { id: true, feedStoreCode: true } })).map((l) => [l.id, l.feedStoreCode]));
   const main = stores.find((s) => s.main);
 
@@ -119,6 +168,7 @@ export default async function StoresPage() {
         ) : (
           <p className="muted text-sm">The owner adds a store.</p>
         )}
+        <JoinSection candidates={candidates} />
         {stores.some((s) => !s.active) && (
           <Section title="Closed stores">
             <ul className="divide-y divide-line text-sm">
@@ -274,6 +324,27 @@ export default async function StoresPage() {
           </p>
         </Section>
       )}
+
+      {admin &&
+        (await Promise.all(open.filter((s) => !s.main).map(async (s) => ({ s, same: await sameCustomersFor(user, s.id) }))))
+          .filter((x) => x.same.length)
+          .map(({ s, same }) => (
+            <Section key={s.id} title={`Customers who may be the same person (${s.name})`}>
+              <p className="muted mb-2 text-sm">The same email, phone or name at {s.name} and another store. Open one to merge them (nothing is merged by itself).</p>
+              <ul className="divide-y divide-line text-sm">
+                {same.slice(0, 50).map((m) => (
+                  <li key={m.fromId} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <span>{m.name}</span>
+                    <Link href={`/customers/${m.fromId}?merge=${m.intoId}`} className="btn btn-sm">
+                      Compare and merge
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ))}
+
+      <JoinSection candidates={candidates} />
 
       {owner && (
         <Section title="Add another store">

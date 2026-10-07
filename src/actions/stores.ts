@@ -10,6 +10,7 @@ import { addStoreFor, pickStoreFor, saveDailySummaryFor, saveStoreFor, setHomeSt
 import { approvalState, approveWithCodeFor, askOwnerFor, decideApprovalFor, setApproveCodeFor } from "@/lib/approvals";
 import { currentStore } from "@/lib/stores";
 import { claimShopNow } from "@/lib/hub";
+import { joinCompanyFor } from "@/lib/join-companies";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -100,4 +101,19 @@ export const decideApproval = safe(async function decideApproval(id: string, yes
   const user = await requireUser();
   await decideApprovalFor(user, String(id), yes === true, formData ? str(formData.get("note")) : null);
   refresh();
+});
+
+/** "Join another company into this one" (7.6): the owner of both types its name to confirm. */
+export const joinCompany = safe(async function joinCompany(fromId: string, formData: FormData) {
+  const user = await requireUser();
+  const r = await joinCompanyFor(user, String(fromId), String(formData.get("confirm") ?? ""), str(formData.get("storeName")));
+  await tellHub(user.shopId);
+  refresh();
+  const bits = [`Joined in as the ${r.storeName} store.`];
+  if (r.renumbered) bits.push(`${r.renumbered} tickets, sales and orders were numbered on from this company's.`);
+  if (r.renamedItems) bits.push(`${r.renamedItems} item numbers both used now end in (${r.storeName}).`);
+  if (r.loginsOff) bits.push(`${r.loginsOff} ${r.loginsOff === 1 ? "login" : "logins"} both had were kept for the history and switched off.`);
+  if (r.maybeSame.length) bits.push(`${r.maybeSame.length} customers may be the same person at both: see the list below.`);
+  bits.push("Cancel the other company's StitchHub subscription on your account page.");
+  return noted(bits.join(" "));
 });
