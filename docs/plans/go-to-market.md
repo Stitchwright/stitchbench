@@ -122,15 +122,12 @@ recommended in the Academy's business school. Offer, don't push; no commission s
   only "try it".
 - Ask at the moment of thanks: after a shop's first good week, Bruce asks, "Who else should have this?"
 
-**5. Own YouTube channel.** Use a channel separate from Denise's RV channel (see Q2), with short videos in Bruce's
-voice:
-- Repair tips first, software second: "Why your Brother skips stitches," with the fix logged on a StitchBench
-  ticket at the end. Techs search for repair tips, not for software.
-- 2-minute demos: "Check in a machine in 60 seconds," "Text a customer her machine is ready," "Send a repair to your
-  tech from the quilt shop."
-- One a week, filmed at the bench with a phone. Captions on, big text, slow pace.
-- The tie-in to the RV channel: when Denise's video visits a shop, the description links Bruce's channel. Now and
-  then an episode shows Bruce fixing a shop's machine on the road.
+**5. YouTube: the full plan is `youtube-plan.md`.** Use one channel, "Timing & Tension: Sewing Machine Repair",
+with the software shown in use on the bench rather than on a separate software channel. Post one long video and two
+Shorts a week. Repair tips come first (each ends on a StitchBench ticket), then 2-minute demos, "a day at the shop",
+switching walk-throughs, and Denise's "on the road" visits once shops use it. The plan also has the 12-week
+calendar, the kit, the search words, the calls to action, what to measure and the first four outlines. Denise's RV
+channel stays her own; the two link each other.
 
 **6. Sewing repair YouTubers.** Wes (Sewing Machine Repair Guy, about 85K subscribers) has the tech tour, sent 5
 Oct. The owner does **not** want a paid plug. Follow up once with a founding account offered free for a year, and
@@ -205,7 +202,7 @@ a click and the niche terms have little volume, so skip Google Ads until the SEO
 | Email follow-up templates (after a visit, a call, a trial ending) | Claude | Gmail/Mailchimp | Yes | Before launch |
 | Booth and visit kit: tablet with the demo company ("Bobbin & Bolt Quilt Co.", `scripts/demo/seed-demo.ts`), flyers, sign-up sheet; tablecloth and banner at $250 of revenue | Bruce | The hosted demo | Checklist, yes | Before launch (tablet and flyers) |
 | 3D-printed giveaways: bobbin clips or thread-spool holders with the QR code | Bruce | His 3D printer | No | Any time |
-| YouTube channel art and the first 6 videos | Bruce | Phone, Canva (free) | Scripts, yes | Launch |
+| YouTube channel art and the first 6 videos (`youtube-plan.md`) | Bruce | Phone, clip mic, DaVinci Resolve / CapCut, Canva (free) | Scripts, yes | Start in the test month |
 | One-page founding-shop agreement in plain words | Claude drafts, the lawyer checks | Doc | Yes | Before launch |
 
 ---
@@ -259,10 +256,11 @@ already happening, so it isn't counted.
 
 | # | Buy | About | Why first |
 |---|---|---|---|
-| 1 | 250 two-sided flyers (counter and hop-bag size) with a QR code to the site | $45 | Every visit leaves something on the counter. Older owners keep paper |
-| 2 | 250 business cards for Bruce and Denise ("Timing & Tension · StitchBench / StitchShop", QR code) | $20 | For every handshake and hop |
-| 3 | 3D printer filament for about 100 bobbin clips or spool holders with the QR code | $20 | Something an owner uses at the cutting table keeps the name in sight; Bruce prints them |
-| 4 | Keep $15 | $15 | Reprints, or postage for a few flyer packs mailed to a tech's quilt shops |
+| 1 | 250 two-sided flyers (counter and hop-bag size) with a QR code to the site | $40 | Every visit leaves something on the counter. Older owners keep paper |
+| 2 | A wired clip-on mic for Bruce's phone (YouTube, `youtube-plan.md` section 5) | $20 | Sound makes or breaks a video; everything else in the kit is free |
+| 3 | 250 business cards for Bruce and Denise ("Timing & Tension · StitchBench / StitchShop", QR code) | $20 | For every handshake and hop |
+| 4 | 3D printer filament for about 100 bobbin clips or spool holders with the QR code | $15 | Something an owner uses at the cutting table keeps the name in sight; Bruce prints them |
+| 5 | Keep $5 | $5 | Postage for a flyer pack mailed to a tech's quilt shops |
 
 No ads from the first $100: a flyer handed over in person converts far better for this audience than a click.
 
@@ -273,7 +271,7 @@ in, never ahead of it. A step that fails its check (in brackets) is stopped and 
 
 | When MRR reaches (est. paying shops) | Add each month or once | About | Check |
 |---|---|---|---|
-| $250 (about 10) | Once: a small banner and tablecloth for visits and hop tables; a lavalier mic and phone tripod | $180 once | Better videos and tables |
+| $250 (about 10) | Once: a small banner and tablecloth for visits and hop tables; a tripod and a small light for videos | $180 once | Better videos and tables |
 | $500 (about 20) | 500 more flyers; Mailchimp paid tier only if the list passes 250 | $50-75 a month | Visits still win trials |
 | $1,000 (about 35-40) | Facebook ads test: test-shop story videos in the route's states | $100-150 a month | Under $150 per trial, or stop |
 | $2,000 (about 70) | Trade press: a FabShop News quarter page ($650) or a sponsor slot at FabShop's Virtual Schoolhouse, only if a free story pitch didn't land; walk VDTA or AQS Hartford as visitors | $650 once plus travel | Trials named "saw it in FabShop" |
@@ -334,7 +332,7 @@ is a quote and one number from each, and no open bug that loses money or data.
    then run to early July.
 2. **Does Denise's RV channel show the software?** *Recommended: lightly.* The shops and the travel are the show.
    The program appears only when it is the story (setting up a shop she visited, Bruce fixing a machine on the
-   road). No ad reads. Demos live on a separate StitchBench channel, linked in the descriptions.
+   road). No ad reads. Demos live on Bruce's Timing & Tension channel (`youtube-plan.md`), linked in the descriptions.
 3. **A trade show in year one?** *Recommended: no booth;* walk AQS QuiltWeek Hartford (4-7 Aug 2027) on a day ticket,
    and VDTA/SDTA only if the route passes Las Vegas in February. Book a booth when revenue reaches $3,000 a month.
 4. **Referral reward: one free month for each side?** *Recommended: yes,* up to 12 free months a year per shop,
