@@ -22,6 +22,7 @@ const answer = (rec) => {
   if (rec.system.includes("social media post")) return "New in! Come see us. #quilting";
   if (rec.system.includes("sheet a customer takes home")) return '{"whatWeDid":"We cleaned, oiled and retimed your machine.","tips":[1,2]}';
   if (rec.system.startsWith("You turn a fabric shop's own numbers")) return JSON.stringify({ lines: [...rec.userText.matchAll(/\[(c\d+)\]/g)].map((m) => ({ ref: m[1], text: `In words: card ${m[1]}.` })) });
+  if (rec.system.startsWith("You sort a customer's question")) return /open|hours/i.test(rec.userText) ? '{"topic":"hours","ticket":null}' : '{"topic":"person","ticket":null}';
   if (rec.system.startsWith("You look at photos of a used machine")) return "Light scratches on the bed, bobbin cover missing.";
   // Quilt from stock: the first fabric on the list for every part asked.
   if (rec.system.startsWith("You help a quilt shop pick")) {

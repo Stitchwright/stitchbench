@@ -1259,3 +1259,51 @@ Decisions made while building:
   (group Fabric helpers, `explain_insight`) adds one sentence to each. The sentences aren't stored.
 - Browser test needed: Care tips (starters, a tip of her own, remove and Undo), a ready ticket's pickup sheet (draft,
   save, the invoice), Fabric → What sells and Slow fabric with "At a glance" and Say it in words.
+
+**`customer-answers` (5.6, 7 Oct 2026).** Code: `src/lib/customer-answers-words.ts` (pure: a sentence per ticket
+status, hours in words, forgiving ticket and phone input, the sorting request and its reading),
+`src/lib/customer-answers.ts` (the answers, typed questions with the day's cap, "for a person", the staff list, the
+settings), the public route `POST /api/book/{slug}/ask`, **Questions?** on the booking page
+(`src/components/book/customer-answers.tsx`), Settings → **Customer questions** (`/settings/customer-questions`: the
+switch with its warning, typed questions a day, opening hours and a line under them) and the **Customer questions** list
+(`/customer-questions`: Answered with Undo), `src/actions/customer-answers.ts`. Check:
+`scripts/checks/customer-answers.check.ts` (6 groups). Spec: `tests/customer-answers.spec.ts`.
+Decisions made while building:
+- Off until an owner or admin turns it on (`AssistantSettings.customerOn`); the public route answers 404 while off, and
+  a read-only (lapsed) company's answers pause like its booking. The buttons need no Assistant and cost nothing; they
+  show on the booking page even when online booking itself is off (then "Book a drop-off" says to call).
+- Is my machine ready: the ticket number and the last four digits of the phone on the ticket's customer; a wrong
+  number, wrong digits or another company's ticket all get the same "We couldn't find a ticket..." (nothing is given
+  away). The answer is a fixed sentence per status: never a price, what was found, or a date promised. Ticket lookups
+  have their own tighter rate limit (10 per address per 10 minutes).
+- Hours come from the shop's opening hours (new: `Shop.openHours`, `hoursNote`, typed on the settings page), in words
+  ("Monday to Friday, 9:30 am to 5 pm"); none typed: "Call us at ... for our hours." Classes list the online classes
+  with seats left, never the fee; a full class is left out.
+- Typed questions (Assistant on and its customers' switch on): one `customer_question` call (suggest) sorts the
+  question into status, hours, classes, drop-off or a person and pulls out a ticket number; the program answers from the
+  records (a status question asks for the last four digits). Anything unclear goes to a person. At most
+  `customerDailyCap` (20) a day, counted from the call log in the shop's day; past it, or with no Assistant or the hub
+  down, the box says to use the buttons or leave the question, with no call. The call is logged with no person.
+- "For a person" saves the question with her name and a phone or email (one is needed) to `CustomerQuestion`; the list
+  is everyone's; Answered records who and when, Undo puts it back.
+- Browser test needed: Settings → Customer questions (on, hours), the public page signed out (Hours, Is my machine
+  ready? wrong and right digits, leave a question, a typed question with the Assistant), the staff list.
+
+**`status-link` (5.6, 7 Oct 2026).** Code: `makeStatusKeyFor`, `removeStatusKeyFor`, `shopForKey` in
+`src/lib/customer-answers.ts`, the routes `src/app/api/public/v1/[slug]/[what]/route.ts`, the "A phone-answering
+service" section of Settings → Customer questions (`src/components/status-key.tsx`); `/api/public/` added to the public
+links address's lists (`src/lib/links-host.ts`, `desktop/links-gate.mjs`). Check: `scripts/checks/status-link.check.ts`
+(4 groups); `links-gate` and `move-export` still pass. Spec: `tests/status-link.spec.ts`. Committed together with
+`customer-answers` (they share the answers and the settings page).
+Decisions made while building:
+- The link is `{PUBLIC_URL}/api/public/v1/{booking slug}`; the service sends `Authorization: Bearer sbk_...`. The key is
+  shown once, kept as a sha256 hash (`Shop.statusKeyHash`), compared in constant time; a new key stops the old, and
+  "Turn the status link off" removes it. The key isn't carried by the company file (made again after a move).
+- Endpoints: `GET status?ticket=&phone=` (the last four digits are enough), `GET hours`, `GET classes`, `GET dropoff`
+  (the next open times of what can be booked online), `POST book` (`typeId`, `startsAt`, `name`, `phone`: an online
+  booking like the public page's, noted "Booked by the phone-answering service", refused in words while online booking
+  is off). Anything else is a 404; no key, a wrong key or another company's key is a 401. JSON with an `answer`
+  sentence the service can read out. No Assistant, nothing counted.
+- It works whether or not the booking-page answers are switched on: making a key is the shop's choice to turn it on.
+- Rate limits: 120 a minute per address, 2,000 an hour per shop, 300 ticket lookups an hour per shop.
+- No phone service is built or chosen (question 3); the first interested shop's service is tested against this.
