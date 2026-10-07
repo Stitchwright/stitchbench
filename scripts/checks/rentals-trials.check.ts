@@ -91,7 +91,15 @@ async function main() {
     assert.ok(unit.status === "SOLD" && unit.use === "SALE");
     assert.ok((await db.unitLoan.findUniqueOrThrow({ where: { id: r1.loanId } })).backAt, "the rental ended");
     assert.deepEqual(await rentalsFor(a.shopId), []);
-    ok("Buy it now: the $120 rent credit off the $1,000 machine (a discount labelled Rent credit), sold, the rental ended");
+    // Voiding the buy-out (review fix): the rental is open again, the machine rented out to her again; bought again after.
+    await voidSaleAs(a.user, buy.saleId, "wrong machine");
+    const reopened = await db.unitLoan.findUniqueOrThrow({ where: { id: r1.loanId } });
+    assert.ok(reopened.backAt === null && reopened.conditionBack === null, "the rental is open again");
+    assert.equal((await db.stockUnit.findUniqueOrThrow({ where: { id: rental } })).use, "RENTAL");
+    assert.equal((await rentalsFor(a.shopId)).length, 1);
+    const buy2 = await buyRentalAs(a.user, { loanId: r1.loanId, tender: card });
+    assert.equal(buy2.creditCents, 12_000, "the rent still counts");
+    ok("Buy it now: the $120 rent credit off the $1,000 machine (a discount labelled Rent credit), sold, the rental ended; a void reopens the rental");
 
     // 4. The window passed: no credit.
     const [late] = await receiveUnitsFor(a.user, form({ kind: "sewing", brand: "Janome", model: "HD3000", condition: "USED", priceCents: "300.00", serials: "RENT-2" }));

@@ -12,7 +12,7 @@ import { enrollAs, saveClassAs } from "@/lib/class-actions";
 import { balanceDueYmd, choicesFromText, nextAsk, optionsText, parseOptions, pickedChoices, priceToday } from "@/lib/events-math";
 import { checkInFor, drawFor, eventView, notPresentFor, runEventReminders, sellDoorTicketFor, sendBalanceLinksFor, sendEventLinkFor, takeEventPaymentFor } from "@/lib/events";
 import { eventBalanceStillWanted } from "@/lib/events-wanted";
-import { completeSaleAs } from "@/lib/register-sale";
+import { completeSaleAs, voidSaleAs } from "@/lib/register-sale";
 import { handleWebhook, saveShopSettingsFor } from "@/lib/shop/online-shop";
 import { openPayLink } from "@/lib/pay-links";
 import { unseal } from "@/lib/messaging/secrets";
@@ -104,6 +104,10 @@ async function main() {
     // 3. The deposit at the counter; the register then refuses the full fee; the balance by pay link, paid.
     await expectError("a tech typing", () => takeEventPaymentFor({ ...a.user, role: "TECH" }, pj.id, { cents: 1000, method: "CASH" }), /owner or admin/);
     await expectError("more than owed", () => takeEventPaymentFor(a.user, pj.id, { cents: 50000, method: "CASH" }), /owes/);
+    // A deposit rung up by mistake and voided (review fix): no longer counted paid, so it can be taken again.
+    const wrong = await takeEventPaymentFor(a.user, pj.id, { method: "CASH" });
+    await voidSaleAs(a.user, wrong.saleId, "wrong tender");
+    assert.ok((await db.eventPayment.findFirstOrThrow({ where: { saleId: wrong.saleId } })).cancelledAt, "the voided sale's payment is cancelled");
     const dep = await takeEventPaymentFor(a.user, pj.id, { method: "CARD" });
     const sale = await db.sale.findUniqueOrThrow({ where: { id: dep.saleId }, include: { lines: true } });
     assert.ok(sale.totalCents === 15000 && sale.customerId === jane.id && sale.lines[0].description === "Deposit (non-refundable): Fall Retreat for Jane Retreat");

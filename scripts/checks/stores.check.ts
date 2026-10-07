@@ -202,6 +202,11 @@ async function main() {
     await voidSaleAs(atFl, s3.saleId, "check");
     assert.equal((await db.webOrder.findUniqueOrThrow({ where: { id: job.id } })).status, "CANCELLED", "the void cancels the shipping");
     assert.equal(await storeQty(db, A, part.id, main.id), mainBefore, "and the stock is back at Boston");
+    // One sale with the same item from both stores (one from here, one shipped from Boston): the void puts each back where it came from.
+    const s4 = await completeSaleAs(atFl, { customerId: jane.id, shipTo: "9 Palm Way, Naples FL", lines: [{ partId: part.id, description: "Walking foot", qty: 1, unitPriceCents: 1000, taxable: true }, { partId: part.id, description: "Walking foot", qty: 1, unitPriceCents: 1000, taxable: true, shipFromId: main.id }], tenders: [{ method: "CASH", amountCents: 2140 }] });
+    await voidSaleAs(atFl, s4.saleId, "check");
+    assert.equal(await storeQty(db, A, part.id, main.id), mainBefore, "Boston's one back at Boston");
+    assert.equal(await storeQty(db, A, part.id, fl.id), flBefore, "Florida's one back at Florida");
     ok("ship it to her from Boston: sold at Florida, Boston's stock, a Ship this job at Boston with her address; the void cancels it and puts it back");
 
     // ---------- 8. one purchase order for both stores ----------
