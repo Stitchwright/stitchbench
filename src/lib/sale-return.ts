@@ -10,7 +10,8 @@ export type ReturnUnit = { qty: number; unitPriceCents: number };
  * through "Return an item" with its own tools, so the booking or the unit is settled with the refund (a plain line
  * would refund the money and leave the booking paid or the unit sold, ready to be refunded again). A machine's service
  * plan comes back with its machine (sales-features); a layaway's payments, used-up payments and cancel fee are settled
- * on the layaway itself (a plain line would refund money the layaway still counts as paid).
+ * on the layaway itself (a plain line would refund money the layaway still counts as paid); a special order's or a
+ * loaner's deposit, a kept deposit, rent and loaner charges likewise on the special order, loaner or rental.
  */
 export function returnSkip(l: {
   repairJobId?: string | null;
@@ -21,12 +22,13 @@ export function returnSkip(l: {
   tradeInUnitId?: string | null;
   machinePlanId?: string | null;
   kind?: string | null;
-}): "repair" | "card" | "booking" | "unit" | "layaway" | null {
+}): "repair" | "card" | "booking" | "unit" | "layaway" | "held" | null {
   if (l.repairJobId) return "repair";
   if (l.giftCardId) return "card";
   if (l.enrollmentId || l.appointmentId) return "booking";
   if (l.stockUnitId || l.tradeInUnitId || l.machinePlanId) return "unit";
   if (l.kind === "LAYAWAY" || l.kind === "LAYAWAY_FEE") return "layaway";
+  if (l.kind === "DEPOSIT" || l.kind === "DEPOSIT_KEPT" || l.kind === "RENT" || l.kind === "LOAN_FEE") return "held";
   return null;
 }
 

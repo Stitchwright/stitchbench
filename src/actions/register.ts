@@ -210,6 +210,8 @@ export type SaleForReturn = {
   skippedUnitLines: number;
   /** Layaway payments and cancel fees, left out: settled on the layaway itself. */
   skippedLayawayLines: number;
+  /** Special-order and loaner deposits, kept deposits, rent and loaner charges, left out: settled on the order, loaner or rental. */
+  skippedHeldLines: number;
   /** Gift cards and store credit the sale was paid with: the default way back is onto the same card. */
   cardsPaid: { number: string; kind: "gift" | "credit"; amountCents: number }[];
 };
@@ -227,7 +229,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
   });
   if (!sale) return null;
   const lines: SaleReturnLine[] = [];
-  const skipped = { repair: 0, card: 0, booking: 0, unit: 0, layaway: 0 };
+  const skipped = { repair: 0, card: 0, booking: 0, unit: 0, layaway: 0, held: 0 };
   for (const l of sale.lines) {
     const skip = returnSkip(l);
     if (skip) {
@@ -247,7 +249,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     const c = cards.find((x) => x.id === t.cardId);
     return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
   });
-  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines: skipped.repair, skippedCardLines: skipped.card, skippedBookingLines: skipped.booking, skippedUnitLines: skipped.unit, skippedLayawayLines: skipped.layaway, cardsPaid };
+  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines: skipped.repair, skippedCardLines: skipped.card, skippedBookingLines: skipped.booking, skippedUnitLines: skipped.unit, skippedLayawayLines: skipped.layaway, skippedHeldLines: skipped.held, cardsPaid };
 }
 
 /** `taxExemptId`: the certificate number when the customer is tax exempt now (null: not; absent: not looked up yet). */
