@@ -155,6 +155,10 @@ model Shop {
   // The birthday offer (1.6): { kind: "pct" | "credit", value } (a percent off one sale, or store credit in cents),
   // during the birthday month, once a year; null: none
   birthdayOffer        Json?
+  // Loaners (1.7): the deposit asked by default (0: none, a "card on file" note instead) and the days a loaner is lent
+  // for by default (tickets carry no promised date)
+  loanerDepositCents   Int           @default(0)
+  loanerDays           Int           @default(14)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff         Boolean       @default(false)
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
@@ -248,6 +252,7 @@ model Shop {
   wantItems         WantItem[]
   priceGroups       PriceGroup[]
   yardBreaks        YardBreak[]
+  unitLoans         UnitLoan[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
@@ -421,6 +426,7 @@ model Customer {
   layaways      Layaway[]
   specialOrders SpecialOrder[]
   wantItems     WantItem[]
+  unitLoans     UnitLoan[]
   repairJobs    RepairJob[]
   outMessages   OutMessage[]
   consentEvents ConsentEvent[]
@@ -1433,6 +1439,8 @@ model SaleLine {
   // A special order (plain id): money paid toward it (kind DEPOSIT +), its deposits used up at pick-up or given back
   // (DEPOSIT -), a kept deposit (DEPOSIT_KEPT), or the item itself sold at pick-up
   specialOrderId String?
+  // A loaner's or rental's money (plain id, 1.7, 1.8): its deposit (DEPOSIT), a kept deposit (LOAN_FEE), rent (RENT)
+  unitLoanId     String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1999,6 +2007,9 @@ model StockUnit {
   includedPlanId  String?
   // A lifetime discount on its supplies for the buyer (1.5, the vacuum's bags, belts and filters), percent
   lifetimePctOff  Int?
+  // What the shop uses it for (shop-features-round-2-design.md 1.7): SALE (machines for sale, as before) | LOANER | DEMO |
+  // RENTAL. Only SALE units show in the register's "sell a machine" search.
+  use             String    @default("SALE")
   events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -3335,4 +3346,33 @@ model YardBreak {
   createdAt DateTime @default(now())
 
   @@index([shopId])
+}
+
+// A machine lent out (shop-features-round-2-design.md 1.7): a loaner while hers is in for repair, a demo taken to a class,
+// a show or a home. The unit is one of the shop's machines (StockUnit with use LOANER or DEMO); out until backAt. A deposit
+// is money held for the customer (SaleLine.unitLoanId, kind DEPOSIT) until it is refunded or kept (LOAN_FEE, "Loaner
+// charges").
+model UnitLoan {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  unitId        String // plain id (StockUnit)
+  kind          String    @default("LOAN") // LOAN | DEMO | RENTAL
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  ticketId      String? // plain id: the repair ticket it was lent on
+  outAt         DateTime  @default(now())
+  dueOn         String? // YYYY-MM-DD
+  backAt        DateTime?
+  depositCents  Int       @default(0)
+  cardNote      String?
+  conditionOut  String?
+  conditionBack String?
+  note          String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([shopId, backAt])
+  @@index([unitId])
+  @@index([customerId])
 }

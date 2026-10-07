@@ -27,6 +27,7 @@ import { CustomerSpecialOrders } from "@/components/customer-special-orders";
 import { CustomerWantList } from "@/components/customer-want-list";
 import { CustomerPriceGroup } from "@/components/customer-price-group";
 import { CustomerBirthday } from "@/components/customer-birthday";
+import { CustomerLoans } from "@/components/customer-loans";
 import { CustomerColors } from "@/components/customer-colors";
 import { CustomerFitsSection } from "@/components/customer-fits";
 
@@ -148,6 +149,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerWantList shopId={user.shopId} customerId={c.id} tz={tz} />}
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerPriceGroup shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerBirthday shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && <CustomerLoans shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerColors shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerFitsSection shopId={user.shopId} customerId={c.id} />}
         {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}

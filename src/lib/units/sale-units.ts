@@ -74,6 +74,8 @@ export async function prepareUnitLines(a: { shopId: string; role: "OWNER" | "ADM
     }
     const held = !!unit && !!a.heldFor && unit.status === "HELD" && unit.layawayId === a.heldFor;
     if (!unit || (unit.status !== "IN_STOCK" && !held)) throw new UserError(`${desc} isn't in stock any more.`);
+    // A loaner, demo or rental isn't for sale until the shop chooses "Sell this one" on its page (1.7).
+    if (unit.use !== "SALE") throw new UserError(`${desc} is a ${unit.use === "LOANER" ? "loaner" : unit.use === "DEMO" ? "demo" : "rental"}. To sell it, use "Sell this one" on its page first.`);
     await needActive(unit.machine.equipment);
     if (l.qty !== 1) throw new UserError("A machine for sale is one line of 1.");
     if (!a.customerId) throw new UserError("Pick the customer first: a warranty needs the buyer.");
@@ -285,7 +287,7 @@ export async function registerUnitHits(a: { shopId: string; q: string; mode: "co
       ? { serial: { equals: t, mode: "insensitive" } }
       : { AND: words.map((w) => ({ OR: [{ brand: { contains: w, mode: "insensitive" as const } }, { model: { contains: w, mode: "insensitive" as const } }, { serial: { contains: w, mode: "insensitive" as const } }] })) };
   const machine: Prisma.MachineWhereInput = { AND: [match, { equipment: { in: equipment } }] };
-  const rows = await db.stockUnit.findMany({ where: { shopId: a.shopId, status: "IN_STOCK", machine }, include: { machine: true }, orderBy: { createdAt: "desc" }, take: 10 });
+  const rows = await db.stockUnit.findMany({ where: { shopId: a.shopId, status: "IN_STOCK", use: "SALE", machine }, include: { machine: true }, orderBy: { createdAt: "desc" }, take: 10 });
   return rows.map((u) => ({
     id: u.id,
     partNumber: u.machine.serial ?? "no serial",

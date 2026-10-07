@@ -23,6 +23,8 @@ export const SALE_KIND_LABEL: Record<string, string> = {
   DEPOSIT: "Special order deposits (held for customers)",
   DEPOSIT_KEPT: "Kept deposits",
   MEMBERSHIP: "Memberships",
+  LOAN_FEE: "Loaner charges",
+  RENT: "Rentals",
   MISC: "Other",
 };
 

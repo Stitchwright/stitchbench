@@ -6,6 +6,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { specialOrderCounts } from "@/lib/special-orders";
 import { wantsHereUntold } from "@/lib/want-lists";
+import { loanCounts } from "@/lib/loans";
 import { birthdayOfferOf, monthName } from "@/lib/birthdays";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { ymdOf } from "@/lib/zoned";
@@ -25,6 +26,9 @@ export async function shopTodos(shopId: string, now = new Date()): Promise<TodoL
     const n = await db.customer.count({ where: { shopId, birthMonth: month } });
     if (n) out.push({ key: "birthdays", href: "/customers/birthdays", text: `${n} ${n === 1 ? "customer has a birthday" : "customers have birthdays"} in ${monthName(month)}` });
   }
+  // Loaners and demos out (1.7).
+  const loans = await loanCounts(shopId);
+  if (loans.overdue) out.push({ key: "loans", href: "/units/loans", text: `Out on loan: ${loans.out}, ${loans.overdue} overdue` });
   const wants = await wantsHereUntold(shopId);
   if (wants) out.push({ key: "want-here", href: "/want-lists", text: `${wants} want list ${wants === 1 ? "item is" : "items are"} here now: let ${wants === 1 ? "her" : "them"} know` });
   return out;

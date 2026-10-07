@@ -1237,3 +1237,23 @@ Decisions made while building:
   own break price stands instead of the shop's steps. Fabric cut into several lines doesn't add up.
 - Points and the reward cards' birthday bonus (reward-cards-design.md) can read the same fields later.
 - Browser test needed: `tests/birthdays-yard-breaks.spec.ts`.
+
+**`loaners` (1.7, 7 Oct 2026, branch `phase1-rest`).** Migrations `20261021050000_loaners` (`StockUnit.use`; `UnitLoan`,
+carried by the company file and the customer merge; `SaleLine.unitLoanId`; Shop loaner deposit and days) and
+`20261021050100_loaner_days` (the days default 14). Code: `src/lib/loans.ts`, `src/actions/loans.ts`, **Loaners, demos and
+rentals** (`/units/loans`: out now with "It's back", lend a loaner, take a demo out, the settings; `/units/loans/[id]`: the
+loan and the slip to sign), a machine's **What it's for** (`src/components/units/unit-use.tsx`), the ticket's **Loaner**
+(`src/components/slots/ticket-loaner.tsx`: "Loaner out: ..., due ...", "Did the loaner come back?", "Lend a machine"), a
+customer's "Machines out with her", a to-do line when one is overdue. Check: `scripts/checks/loaners.check.ts` (5 groups);
+`customer-merge`, `vac-units`, `machine-sales`, `layaway`, `special-orders`, `move-export`, `books-export`,
+`base-license` pass.
+Decisions made while building:
+- Tickets carry no promised date, so a loaner is due back after the shop's days (14 by default, Settings on the Loaners
+  page); the form shows the day and it can be changed.
+- Loaners, demos and rentals are left out of the register's machine search and refused there; "Sell this one" (What it's
+  for → For sale) puts one back on sale, a demo as open box, a loaner or rental as used, never while it's out.
+- A deposit is a DEPOSIT line naming the loan (Customer Deposits); "It's back" gives it back the way chosen (cash, card,
+  check, store credit); an owner or admin may keep part as "Loaner charges" (LOAN_FEE, income, audited `loan.keep`). No
+  deposit by default: a "card on file" note instead.
+- A demo needs no customer; a loaner does. One loan at a time per machine.
+- Browser test needed: `tests/loaners.spec.ts`.
