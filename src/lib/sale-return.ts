@@ -5,6 +5,41 @@ import { roundCents } from "@/lib/register-math";
 export type ReturnUnit = { qty: number; unitPriceCents: number };
 
 /**
+ * Why a sold line can't come back as a plain return line from its receipt (null: it can). A repair bill is sorted out
+ * with the repair shop; a gift card through the card; a class seat or appointment, a vacuum from stock or a trade-in
+ * through "Return an item" with its own tools, so the booking or the unit is settled with the refund (a plain line
+ * would refund the money and leave the booking paid or the unit sold, ready to be refunded again).
+ */
+export function returnSkip(l: {
+  repairJobId?: string | null;
+  giftCardId?: string | null;
+  enrollmentId?: string | null;
+  appointmentId?: string | null;
+  stockUnitId?: string | null;
+  tradeInUnitId?: string | null;
+}): "repair" | "card" | "booking" | "unit" | null {
+  if (l.repairJobId) return "repair";
+  if (l.giftCardId) return "card";
+  if (l.enrollmentId || l.appointmentId) return "booking";
+  if (l.stockUnitId || l.tradeInUnitId) return "unit";
+  return null;
+}
+
+/** Each return line is an item the sale sold: the same part, or (a line with no part) the same description. */
+export function linesOfSale(returned: { partId?: string | null; description: string }[], sold: { partId: string | null; description: string }[]): boolean {
+  return returned.every((r) => sold.some((s) => (r.partId ? s.partId === r.partId : !s.partId && s.description === r.description)));
+}
+
+/**
+ * The register's scanned receipt still stands for the cart: there are return lines and every one came from that
+ * receipt (another receipt's lines, or return lines typed by hand, take the shop's rate today).
+ */
+export function receiptStands(saleId: string | null | undefined, cart: { qty: number; fromSale?: string }[]): boolean {
+  const back = cart.filter((l) => l.qty < 0);
+  return !!saleId && back.length > 0 && back.every((l) => l.fromSale === saleId);
+}
+
+/**
  * A sold line's `qty` at a total charge of `netCents` (what lineNet gives for it), split into the lines a return
  * needs to refund exactly that amount: negative quantities, non-negative whole-cent prices.
  *

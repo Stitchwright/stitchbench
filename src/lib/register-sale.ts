@@ -20,6 +20,7 @@ import { applyCardLine, applyCardTender, prepareCardLine, reverseSale, type Card
 import { fmtWhen } from "@/lib/zoned";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { saleLineKind } from "@/lib/sale-kind";
+import { linesOfSale } from "@/lib/sale-return";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -290,11 +291,14 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     // A tax-exempt customer's sale charges no tax (their certificate number is kept on it), unless the cashier ticks
     // "Charge tax anyway" (chargeTax). A processor's tax amount (online shop) is never overridden here.
     const customerId = input.customerId || firstBookingCustomer(lines, bookings);
-    // A return scanned in from a receipt (every line a return) gives back the tax as that sale charged it: its rate and
-    // exemption, not the customer's or the shop's today.
+    // A return scanned in from a receipt (every line a return, each an item that sale sold) gives back the tax as that
+    // sale charged it: its rate and exemption, not the customer's or the shop's today.
     const fromReceipt = givenTax == null && typeof input.returnOfSaleId === "string" && input.returnOfSaleId !== "" && lines.every((l) => l.qty < 0);
-    const original = fromReceipt ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true } }) : null;
-    if (fromReceipt && !original) throw new UserError("The sale being returned wasn't found.");
+    const receipt = fromReceipt
+      ? await db.sale.findFirst({ where: { id: input.returnOfSaleId!, shopId }, select: { taxRatePct: true, taxExemptId: true, lines: { select: { partId: true, description: true } } } })
+      : null;
+    if (fromReceipt && !receipt) throw new UserError("The sale being returned wasn't found.");
+    const original = receipt && linesOfSale(lines, receipt.lines) ? receipt : null;
     const exemptId = original
       ? original.taxExemptId
       : givenTax == null && customerId && input.chargeTax !== true
