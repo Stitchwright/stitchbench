@@ -317,7 +317,13 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   // discounted) exactly as they were sold, ready to adjust or remove before completing the refund.
   function loadReturnSale(sale: SaleForReturn) {
     if (!sale.lines.length) {
-      toast.warning(sale.skippedRepairLines ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.` : `Sale #${sale.number} has nothing to return.`);
+      toast.warning(
+        sale.skippedRepairLines
+          ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.`
+          : sale.skippedCardLines
+            ? `Sale #${sale.number} only sold or paid out a gift card. Void the sale to take a card sale back.`
+            : `Sale #${sale.number} has nothing to return.`,
+      );
       return;
     }
     setDone(null);
@@ -346,7 +352,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       toast.message(`Sale #${sale.number} was paid with ${back.kind === "credit" ? "store credit" : "a gift card"} (${money(back.amountCents)}). Press ${back.kind === "credit" ? "Store credit" : "Gift card"} to refund it onto the same card.`);
     }
     toast.success(
-      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}`,
+      `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}${sale.skippedCardLines ? " A gift card on it was left out: void the sale or pay the card out to take that back." : ""}`,
     );
   }
 
