@@ -15,20 +15,20 @@ export const CUT_INFO: Record<CutKind, { suffix: string; tag: string; one: strin
 export type CutSettings = { fatQuarterMarkupPct: number; halfYardMarkupPct: number; remnantPricePct: number };
 export const CUT_DEFAULTS: CutSettings = { fatQuarterMarkupPct: 15, halfYardMarkupPct: 10, remnantPricePct: 50 };
 
-const toEighths = (y: number) => Math.round(y * 8) / 8;
-
 /**
  * What a cut takes off the bolt and what it makes. A fat quarter is 1/4 yd, a half yard 1/2 yd: as many as fit
  * (floor), the rest stays on the bolt. A remnant takes all that's left; its count is the yards, since the remnant item
  * is sold by the yard. `count` is what is added to the target item.
  */
 export function cutPlan(kind: CutKind, onHand: number): { count: number; usedYards: number; leftYards: number } {
-  const have = toEighths(Math.max(0, onHand));
+  // The yards exactly as counted: a bolt can hold a non-eighth amount (a sale by the inch, a count fixed by hand), and
+  // rounding it would take more than is there or leave a sliver behind.
+  const have = Math.max(0, onHand);
   if (kind === "REMNANT") return { count: have, usedYards: have, leftYards: 0 };
   const per = kind === "FQ" ? 0.25 : 0.5;
   const count = Math.floor(have / per + 1e-9);
   const usedYards = count * per;
-  return { count, usedYards, leftYards: toEighths(have - usedYards) };
+  return { count, usedYards, leftYards: Math.max(0, Math.round((have - usedYards) * 10_000) / 10_000) };
 }
 
 /** "1 3/8 yd makes 5 fat quarters, with 1/8 yd left." */
