@@ -116,7 +116,8 @@ async function main() {
     assert.match(await refundLoosePaymentFor(a.user, loose[0].id), /Refunded \$15.00/);
     const looseId = loose[0].id;
     assert.equal((await loosePayments(a.shopId)).length, 0);
-    ok("a void frees the payment; Settings refunds what is left of it to the card (owner or admin)");
+    await expectError("a refunded payment on a new sale", () => completeSaleAs(a.user, { lines: [line], tenders: [{ method: "CARD", amountCents: 2500, stripeIntent: p1.intentId }] }), /was refunded/);
+    ok("a void frees the payment; Settings refunds what is left of it to the card (owner or admin); a refunded payment can't pay a new sale");
 
     // 6. Tenant; off.
     await expectNotFound("B asks about A's payment", () => readerPaymentStatusFor(b.user, p1.paymentId));
