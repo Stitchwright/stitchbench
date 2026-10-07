@@ -1,3 +1,4 @@
+import { HistoryLink } from "@/components/history-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -19,6 +20,7 @@ import { firstValues } from "@/lib/search-params";
 import { ordersOfCustomer } from "@/lib/longarm";
 import { STATUS_LABEL as LONGARM_STATUS } from "@/lib/longarm-math";
 import { CertifyButton } from "@/components/longarm-forms";
+import { StoreCreditSection } from "@/components/store-credit-section";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -57,6 +59,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><HistoryLink role={user.role} type="Customer" id={c.id} /></div>
       <PageHeader
         back={{ href: "/customers", label: "Customers" }}
         title={c.name}
@@ -117,6 +120,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
             )}
           </Section>
         )}
+        {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}
         {orders.length > 0 && (
           <Section title="Online orders">
             <ul className="divide-y divide-line text-sm">
@@ -177,7 +181,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         <CustomerClassesSlot customerId={c.id} user={user} />
         <CustomerAppointmentsSlot customerId={c.id} user={user} />
         <Section title="Details">
-          <CustomerForm action={saveCustomer.bind(null, c.id)} customer={c} submitLabel="Save" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
+          <CustomerForm action={saveCustomer.bind(null, c.id)} customer={{ ...c, taxExemptUntil: c.taxExemptUntil?.toISOString().slice(0, 10) ?? null }} taxFields={user.role !== "TECH"} submitLabel="Save" marketingHidden={(await gateFor(user.shopId, "marketing")) === "hidden"} />
         </Section>
         <CustomerMessages customerId={c.id} user={user} />
         <CustomerMergePanel user={user} customer={{ id: c.id, name: c.name }} sp={sp} />

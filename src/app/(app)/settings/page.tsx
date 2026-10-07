@@ -289,6 +289,42 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
+        <Section title="Reports">
+          <p className="muted mb-2 text-sm">Sales by day, week or month, by category and how it was paid, tickets, top customers, the gift card liability and the sales tax report.</p>
+          <Link href="/reports" className="btn btn-sm">
+            Open Reports
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Bookkeeping">
+          <p className="muted mb-2 text-sm">The account names your bookkeeper uses, for the daily journal export to QuickBooks (Reports, Bookkeeping).</p>
+          <Link href="/settings/books" className="btn btn-sm">
+            Bookkeeping names
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Off-site backup">
+          <p className="muted mb-2 text-sm">A copy of this company, locked with a key only you hold, kept away from this computer. Off until you set it up.</p>
+          <Link href="/settings/offsite" className="btn btn-sm">
+            Off-site backup
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Audit log">
+          <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
+          <Link href="/settings/audit" className="btn btn-sm">
+            Open the audit log
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
         <Section title="Your data">
           <p className="muted mb-2 text-sm">This company&apos;s own records as spreadsheets (CSV), to keep or to take to another system.</p>
           <div className="flex flex-wrap gap-2">
@@ -340,6 +376,10 @@ export default async function SettingsPage() {
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/api/export/payments" className="btn btn-sm">
               Repair payments (all dates)
+            </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/export/audit" className="btn btn-sm">
+              Audit log
             </a>
           </div>
         </Section>

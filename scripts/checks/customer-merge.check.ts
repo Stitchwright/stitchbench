@@ -129,6 +129,8 @@ async function main() {
       smsConsentText: null,
       lastReviewAskAt: null,
       longarmCertifiedAt: null,
+      taxExemptId: null,
+      taxExemptUntil: null,
       createdAt: new Date(),
     };
     const consentAt = new Date("2026-05-01T15:00:00Z");
@@ -256,6 +258,7 @@ async function main() {
     });
     await db.bookingLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), expiresAt: new Date(Date.now() + DAY) } });
     await db.webOrder.create({ data: { shopId: A, number: nextNo(), customerId: dup.id, name: "Jane Doe", subtotalCents: 500, taxCents: 0, totalCents: 500, tokenHash: token(), status: "DONE" } });
+    await db.giftCard.create({ data: { shopId: A, number: `CHK${token()}`.toUpperCase().slice(0, 20), customerId: dup.id, balanceCents: 0 } });
     await db.inboundText.create({ data: { shopId: A, sid: `SM${token()}`, fromNumber: "+12125550199", body: "Thanks!", receivedAt: new Date(), customerId: dup.id } });
     await db.estimateLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), maskedUrl: "https://x/e/•••abcd", totalCents: 4500, lines: [], expiresAt: new Date(Date.now() + DAY) } });
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
@@ -440,6 +443,7 @@ async function main() {
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
     await db.clubMember.create({ data: { shopId: A, clubId: cldel.id, customerId: del.id } });
+    await db.giftCard.create({ data: { shopId: A, number: `CHD${token()}`.toUpperCase().slice(0, 20), customerId: del.id, balanceCents: 0 } });
     const camp2 = await db.campaign.create({ data: { shopId: A, name: "Spring", channel: "email", body: "Hi", audience: {}, status: "SENT", members: [del.id, other.id] } });
     for (const r of CUSTOMER_REFS) {
       if (r.field !== "viaAccountId") assert.ok((await refCount(db, r, del.id, A)) > 0, `the check seeds a row for ${key(r)} on the deleted customer`);

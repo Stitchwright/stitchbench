@@ -44,6 +44,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "WebOrder", field: "customerId", label: ["online order", "online orders"] },
   { model: "InboundText", field: "customerId", label: ["text reply", "text replies"] },
   { model: "EstimateLink", field: "customerId", label: ["estimate link", "estimate links"] },
+  { model: "GiftCard", field: "customerId", label: ["gift card or store credit", "gift cards and store credit"] },
   { model: "PartnerLink", field: "accountId", label: ["partnership using this account", "partnerships using this account"] },
   { model: "KitSeriesMember", field: "customerId", label: ["Block of the Month sign-up", "Block of the Month sign-ups"] },
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
@@ -294,6 +295,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const o of await tx.webOrder.findMany({ where: { shopId, customerId: c.id, status: { in: OPEN_ORDER } }, select: { number: true, status: true }, orderBy: { number: "asc" } })) {
     out.push(`Online order #${o.number} isn't finished (${ORDER_WORDS[o.status] ?? o.status.toLowerCase()}). Finish or cancel it first.`);
   }
+  for (const g of await tx.giftCard.findMany({ where: { shopId, customerId: c.id, status: "active", balanceCents: { gt: 0 } }, select: { kind: true, balanceCents: true } })) {
+    out.push(`${g.kind === "credit" ? "Store credit" : "A gift card"} of ${money(g.balanceCents)} is still owed. Pay it out or let them spend it first.`);
+  }
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -360,6 +364,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["EstimateLink.customerId"], ["estimate link", "estimate links"], "kept as the record of their answer, switched off");
   add(n["BookingLink.customerId"], ["booking link", "booking links"], "deleted");
   add(n["InboundText.customerId"], ["text reply", "text replies"], "kept, without the link");
+  add(n["GiftCard.customerId"], ["gift card or store credit record", "gift card and store credit records"], "kept with their ledger (nothing is owed on them), without the customer");
   add(n["PartnerLink.accountId"], ["ended partnership", "ended partnerships"], "no longer name this account");
   const lists = await db.campaign.count({ where: { shopId, members: { array_contains: [c.id] } } });
   add(lists, ["campaign list", "campaign lists"], "no longer name them");

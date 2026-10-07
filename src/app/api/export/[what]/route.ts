@@ -11,6 +11,8 @@ import { CONDITION_NAME, ORIGIN_NAME } from "@/lib/part-labels";
 import { PAYMENT_LABEL, STATUS_LABEL, UNIT_CONDITION_LABEL, UNIT_STATUS_LABEL } from "@/lib/constants";
 import { dateIn, dateTimeIn, todayIn } from "@/lib/time-zone";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { actorOf, audit } from "@/lib/audit";
+import { auditLabel } from "@/lib/audit-list";
 
 /** The shop's users by id, for "by" columns. */
 async function userNames(shopId: string) {
@@ -30,6 +32,20 @@ async function rows(shopId: string, what: string, tz: string): Promise<unknown[]
       return [
         ["name", "kind", "phone", "email", "address", "code", "commission_pct", "notes", "created", "notify_by", "text_consent_at", "text_consent_phone", "text_consent_source"],
         ...cs.map((c) => [c.name, c.kind, c.phone, c.email, c.address, c.code, c.commissionPct, c.notes, at(c.createdAt), c.notifyBy, at(c.smsConsentAt), c.smsConsentPhone, c.smsConsentSource]),
+      ];
+    }
+    case "gift-cards": {
+      const cs = await db.giftCard.findMany({ where: { shopId }, include: { customer: { select: { name: true } } }, orderBy: { issuedAt: "asc" } });
+      return [
+        ["number", "kind", "status", "customer", "balance", "issued", "last_used", "note"],
+        ...cs.map((c) => [c.number, c.kind === "credit" ? "store credit" : "gift card", c.status, c.customer?.name, dollars(c.balanceCents), at(c.issuedAt), at(c.lastUsedAt), c.note]),
+      ];
+    }
+    case "audit": {
+      const es = await db.auditEntry.findMany({ where: { shopId }, orderBy: [{ at: "asc" }, { id: "asc" }] });
+      return [
+        ["when", "who", "role", "actor", "category", "action", "what", "subject_type", "subject", "amount", "changes", "reason", "address"],
+        ...es.map((e) => [at(e.at), e.userName, e.role, e.actor, e.category, e.action, auditLabel(e.action), e.subjectType, e.subjectLabel, dollars(e.amountCents), json(e.changes), e.reason, e.ip]),
       ];
     }
     case "inventory": {
@@ -438,6 +454,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ what: s
   const tz = await shopTimeZone(shopId);
   const data = await rows(shopId, what, tz);
   if (!data) return new Response("Unknown export.", { status: 404 });
+  await audit(db, actorOf(user), { action: "export.download", subjectType: "Export", subjectLabel: what });
   const day = todayIn(tz);
   return csvResponse(data, `${what}_${day}.csv`);
 }

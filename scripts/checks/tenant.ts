@@ -71,6 +71,9 @@ export async function makeCompany(name: string, opts: { kind?: ShopKind; timeZon
 /** Deletes the company and everything of its own (Shop cascades; tickets and stock units first, since Machine restricts them). */
 export async function removeCompany(shopId: string): Promise<void> {
   await db.$transaction([
+    // The audit log has no foreign key and refuses deletes unless the transaction says it is pruning (src/lib/audit.ts).
+    db.$executeRaw`SELECT set_config('stitchbench.audit_prune', 'on', true)`,
+    db.auditEntry.deleteMany({ where: { shopId } }),
     db.ticket.deleteMany({ where: { shopId } }),
     db.stockUnit.deleteMany({ where: { shopId } }),
     db.shop.deleteMany({ where: { id: shopId } }),

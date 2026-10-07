@@ -59,7 +59,12 @@ export type MoveTable = {
 export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
   { t: "User", key: "id" },
+  { t: "BooksSettings", key: '"shopId"' }, // the bookkeeping export's names (one row per company)
+  { t: "OffsiteSettings", key: '"shopId"', leftOut: ["bucket"] }, // off-site backup: on or off, target, the public key; the own-bucket settings (a secret sealed under the install's key) are left out
+  { t: "OffsiteObject", key: "id" }, // the company's index of its off-site store: photos are not sent again after a move
+  { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
   { t: "Customer", key: "id" },
+  { t: "GiftCard", key: "id" }, // -> Customer
   { t: "Machine", key: "id" }, // -> Customer
   { t: "ModelNote", key: "id" }, // -> User
   { t: "ServiceItem", key: "id" },
@@ -69,6 +74,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Ticket", key: "id" }, // -> Machine, Customer
   { t: "TicketLine", key: "id", via: { column: "ticketId", parent: "Ticket" } }, // -> Part too
   { t: "Payment", key: "id", via: { column: "ticketId", parent: "Ticket" } },
+  { t: "GiftCardEntry", key: "id" }, // -> GiftCard (its sale, payment and ticket ids are plain)
   { t: "TicketSite", key: '"ticketId"' }, // -> Ticket (one row per ticket)
   { t: "PartWait", key: "id" }, // -> Ticket, Part
   { t: "StockMove", key: "id" }, // -> Part, User
@@ -140,6 +146,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
   MarketOrder: "the hub's copy of this company's marketplace orders; the hub sends them again after the move",
   CompanyMove: "this copy's own move record",
   ManualOffer: "a company's offers to the hub's manual repository: they name files in this PC's library and uploads made by this install on the hub, so they stay with this copy",
+  OffsiteRun: "this install's history of off-site backup runs",
 };
 
 /** "Table.column" for every column the file sets to null, as the header's leftOut list. */

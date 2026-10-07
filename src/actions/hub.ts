@@ -11,6 +11,7 @@ import { byWhom, hubFetch, hubId, hubReachable, joinHub, leaveHub, parseInvite, 
 import { libraryDir } from "@/lib/library-dir";
 import { alreadyHave, downloadLink, DownloadFailed, haveIndex, NO_LIBRARY, reportLink } from "@/lib/manual-downloads";
 import { requireHubWrites } from "@/lib/hub-writes";
+import { actorOf, audit } from "@/lib/audit";
 
 function refresh() {
   revalidatePath("/", "layout");
@@ -26,6 +27,7 @@ export const joinCommunityHub = safe.whileLapsed("joinCommunityHub")(async funct
   if (!inv.url || !inv.joinKey) throw new UserError("Paste the invite, or enter the hub address and the join key.");
   const shop = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
   await joinHub(inv.url, inv.joinKey, shop.name, shop.email ?? admin.email);
+  await audit(db, actorOf(admin), { action: "hub.join", subjectType: "Hub", subjectLabel: new URL(inv.url).host });
   if (inv.discord) await db.hubState.update({ where: { id: 1 }, data: { discordUrl: inv.discord } });
   await syncHub();
   refresh();
@@ -43,15 +45,20 @@ export const syncCommunityHub = safe.whileLapsed("syncCommunityHub")(async funct
 /** Whether this company offers its monthly parts counts to the community's most-used list (owner or admin). */
 export const setUsageSharing = safe(async function setUsageSharing(on: boolean) {
   const admin = await requireAdmin();
-  await db.shop.update({ where: { id: admin.shopId }, data: { shareUsage: on === true } });
+  const was = (await db.shop.findUniqueOrThrow({ where: { id: admin.shopId }, select: { shareUsage: true } })).shareUsage;
+  await db.$transaction(async (tx) => {
+    await tx.shop.update({ where: { id: admin.shopId }, data: { shareUsage: on === true } });
+    if (was !== (on === true)) await audit(tx, actorOf(admin), { action: "hub.usage", subjectType: "Shop", subjectId: admin.shopId, subjectLabel: "Parts used shared with the community", changes: { shareUsage: [was, on === true] } });
+  });
   // Sent (or taken back) with the next sync.
   usageSettingChanged(admin.shopId);
   revalidatePath("/parts/most-used");
 });
 
 export const leaveCommunityHub = safe.whileLapsed("leaveCommunityHub")(async function leaveCommunityHub() {
-  await requireInstallAdmin();
+  const admin = await requireInstallAdmin();
   await leaveHub();
+  await audit(db, actorOf(admin), { action: "hub.leave", subjectType: "Hub", subjectLabel: "StitchHub" });
   refresh();
 });
 

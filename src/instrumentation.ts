@@ -8,6 +8,8 @@ export async function register() {
     messageTimer?: NodeJS.Timeout;
     downloadTimer?: NodeJS.Timeout;
     moveSweepTimer?: NodeJS.Timeout;
+    auditTimer?: NodeJS.Timeout;
+    offsiteTimer?: NodeJS.Timeout;
   };
   if (g.hubTimer) return;
   const { syncHub } = await import("@/lib/hub");
@@ -50,4 +52,17 @@ export async function register() {
   const sweep = () => sweepUploads().catch((e) => console.error("move uploads:", e instanceof Error ? e.message : e));
   setTimeout(sweep, 60_000);
   g.moveSweepTimer = setInterval(sweep, 3600_000);
+  // The audit log keeps 7 years (sign-ins 1): the clean-up runs once a day, which is all "monthly" needs.
+  const { pruneAudit } = await import("@/lib/audit");
+  const prune = () => pruneAudit().catch((e) => console.error("audit prune:", e instanceof Error ? e.message : e));
+  setTimeout(prune, 90_000);
+  g.auditTimer = setInterval(prune, 24 * 3600_000);
+  // Off-site backup (later-round-1-design.md 1.4): off for every company until its owner turns it on. Checked every 15
+  // minutes and at start (a PC that was off catches up); a company is backed up after 2 am its time, or when overdue.
+  if (process.env.OFFSITE !== "off") {
+    const { runDueOffsiteBackups } = await import("@/lib/offsite/backup");
+    const offsite = () => runDueOffsiteBackups().catch((e) => console.error("off-site backup:", e instanceof Error ? e.message : e));
+    setTimeout(offsite, 120_000);
+    g.offsiteTimer = setInterval(offsite, 15 * 60_000);
+  }
 }

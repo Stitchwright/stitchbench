@@ -25,6 +25,18 @@ export const WHILE_LAPSED = [
   // The hosted StitchBench administrator's switch and sharing mute (their own company's standing is beside the point)
   "setCompanyModule",
   "setHubWrites",
+  // Bookkeeping names and the "exported through" day: no business record changes
+  "saveBooksSettings",
+  "markBooksExported",
+  // Off-site backup: never lost to a lapse (later-round-1-design.md 1.7)
+  "makeOffsiteKey",
+  "confirmOffsiteKey",
+  "saveOffsiteTarget",
+  "saveOffsiteBucket",
+  "testOffsiteBucket",
+  "turnOffsiteOff",
+  "backUpNow",
+  "testOffsiteKey",
   // Payments, returns and voids
   "addPayment",
   "removePayment",
@@ -100,11 +112,14 @@ export const BY_HAND = [
  */
 export const HAND_ALLOWED = [
   "itemByCode",
+  // A gift card or store credit looked up by its number (the register, the card page): reading is always allowed
+  "giftCardByNumber",
   "findItems",
   "pickupJobs",
   "pickupJobByTag",
   "saleForReturn",
   "findCustomers",
+  "customerTaxExempt",
   "bookingsDue",
   "findStockedParts",
   "findFabricItems",
@@ -138,6 +153,8 @@ export const HAND_ALLOWED = [
 export const ALSO_ALLOWED = [
   "/api/export/*",
   "/api/sales",
+  "/api/reports/*",
+  "/api/books/*",
   "/api/move/download/*",
   "/api/move/upload/*",
   "/api/move/local",

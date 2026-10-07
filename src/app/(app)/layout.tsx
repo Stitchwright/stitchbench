@@ -100,6 +100,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           doesRepair={doesRepair}
           sellsRetail={shop?.sellsRetail ?? false}
           retailPartners={retailPartners > 0}
+          showReports={user.role !== "TECH"}
           gates={gates}
           badges={{ "/messages": replies }}
           pausePill={pausePill}

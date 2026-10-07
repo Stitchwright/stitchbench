@@ -4,10 +4,11 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, CameraOff, CalendarDays, Trash2, Undo2, Wrench, Plus } from "lucide-react";
+import { Camera, CameraOff, CalendarDays, Gift, Trash2, Undo2, Wrench, Plus } from "lucide-react";
 import {
   bookingsDue,
   completeSale,
+  customerTaxExempt,
   findCustomers,
   findItems,
   itemByCode,
@@ -22,6 +23,8 @@ import {
 import type { RegisterItem } from "@/lib/register-item";
 import type { BookingDue } from "@/lib/booking-types";
 import { enrollAtRegister, openClassSeats } from "@/actions/class-register";
+import { giftCardByNumber, type GiftCardInfo } from "@/actions/gift-cards";
+import { GIFT_MAX_CENTS, GIFT_MIN_CENTS, looksLikeGiftCard, type Issued } from "@/lib/gift-card-number";
 import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
@@ -59,6 +62,8 @@ type CartLine = {
   /** A class seat or an appointment paid or refunded here (design 12.3): one each, priced by the server. */
   enrollmentId?: string;
   appointmentId?: string;
+  /** A gift card sold, loaded or paid out on this line: untaxed, never discounted, one at a time (the server prices a payout). */
+  giftCard?: { mode: "new" | "printed" | "load" | "cashout"; number?: string };
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -87,6 +92,24 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const [returnMode, setReturnMode] = useState(false);
   const [results, setResults] = useState<RegisterItem[]>([]);
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
+  // A tax-exempt customer's sale charges no tax unless the cashier ticks "Charge tax anyway".
+  const [chargeTax, setChargeTax] = useState(false);
+  const customerId = customer?.id ?? null;
+  const exemptKnown = customer ? customer.taxExemptId !== undefined : true;
+  // A customer handed over without the answer (a booking, a sale found for a return): ask the server once.
+  useEffect(() => {
+    if (!customerId || exemptKnown) return;
+    let live = true;
+    customerTaxExempt(customerId).then((cert) => {
+      if (live) setCustomer((c) => (c && c.id === customerId ? { ...c, taxExemptId: cert } : c));
+    });
+    return () => {
+      live = false;
+    };
+  }, [customerId, exemptKnown]);
+  const exemptCert = customer?.taxExemptId ?? null;
+  const exemptOn = Boolean(exemptCert) && !chargeTax;
+  const ratePct = exemptOn ? 0 : taxRatePct;
   const [custQ, setCustQ] = useState("");
   const [custHits, setCustHits] = useState<CustomerHit[]>([]);
   // The "New customer" form: open with its fields, or closed.
@@ -96,13 +119,17 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const [orderDisc, setOrderDisc] = useState({ kind: "%" as "%" | "$", value: "" });
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [tenderAmt, setTenderAmt] = useState("");
+  // The gift card or store credit number for the next Gift card / Store credit payment, and the card last scanned.
+  const [tenderCard, setTenderCard] = useState("");
+  const [gcInfo, setGcInfo] = useState<GiftCardInfo | null>(null);
+  const [gcPanel, setGcPanel] = useState<{ mode: "new" | "printed" | "load" | "cashout"; number: string; amount: string } | null>(null);
   const [misc, setMisc] = useState<{ description: string; price: string; taxable: boolean } | null>(null);
   const [jobs, setJobs] = useState<PickupJob[] | null>(null);
   // The "Classes & appointments" picker: what is owed (or refundable in return mode) and the classes with seats.
   const [bookings, setBookings] = useState<{ due: BookingDue[]; seats: Awaited<ReturnType<typeof openClassSeats>>; refunds: boolean } | null>(null);
   const [signup, setSignup] = useState<{ classId: string; name: string; phone: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ id: string; number: number; change: number } | null>(null);
+  const [done, setDone] = useState<{ id: string; number: number; change: number; cards: Issued[] } | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
@@ -110,11 +137,11 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const pending = useRef<{ key: string; sent: string } | null>(null);
 
   // A partner's repair bill is paid as billed, and a trade-in is credit: a whole-sale discount doesn't come off them.
-  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId })), [cart]);
+  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard })), [cart]);
   const base = discountBase(lines);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
-  const t = saleTotals(lines, orderDiscountCents, taxRatePct, tenders);
+  const t = saleTotals(lines, orderDiscountCents, ratePct, tenders);
   const refund = t.total < 0;
   // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
   const problem = tenderProblem(t, tenders);
@@ -312,6 +339,12 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     ]);
     setReturnMode(true);
     if (sale.customer) setCustomer(sale.customer);
+    // Paid with a gift card or store credit: the way back is onto that card (press Gift card or Store credit).
+    const back = sale.cardsPaid[0];
+    if (back) {
+      setTenderCard(back.number);
+      toast.message(`Sale #${sale.number} was paid with ${back.kind === "credit" ? "store credit" : "a gift card"} (${money(back.amountCents)}). Press ${back.kind === "credit" ? "Store credit" : "Gift card"} to refund it onto the same card.`);
+    }
     toast.success(
       `Sale #${sale.number}: ${sale.lines.length} item${sale.lines.length === 1 ? "" : "s"} added as a return.${sale.skippedRepairLines ? " A repair payment on it was left out; sort that out with the repair shop." : ""}`,
     );
@@ -321,6 +354,18 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     const c = raw.trim();
     if (!c) return;
     try {
+      // A gift card or store credit number scanned: show what it holds, ready to pay with or to add money to.
+      if (looksLikeGiftCard(c)) {
+        const info = await giftCardByNumber(c, null, undefined);
+        if (!("error" in info)) {
+          beep(true);
+          setResults([]);
+          setMissing(null);
+          setGcInfo(info);
+          setTenderCard(info.number);
+          return;
+        }
+      }
       const it = await itemByCode(c);
       if (it) {
         beep(true);
@@ -411,17 +456,71 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     setCart((c) => c.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
-  function addTender(method: TenderMethod) {
+  async function addTender(method: TenderMethod) {
     const typed = toCents(tenderAmt);
     // Something typed that isn't an amount is not the same as blank (which takes what is still to pay).
     if (tenderAmt.trim() && typed == null) return toast.error("Type the amount like 12.50, or leave it blank.");
     // A refund is paid out in negative amounts, whatever sign was typed. Blank is what is still to pay (back).
-    const amount = typed != null ? (refund ? -Math.abs(typed) : typed) : refund ? -refundLeft : t.due;
+    let amount = typed != null ? (refund ? -Math.abs(typed) : typed) : refund ? -refundLeft : t.due;
+    let card: { cardNumber: string; last4: string } | null = null;
+    if (method === "GIFT" || method === "CREDIT") {
+      const number = tenderCard.trim();
+      if (method === "GIFT" && !number) return toast.error("Scan or type the gift card number first.");
+      // A refund to store credit needs no number (the customer's card, or a new slip); every other way names a card.
+      if (!refund || number || method === "GIFT") {
+        try {
+          const info = await giftCardByNumber(number, customer?.id ?? null, method);
+          if ("error" in info) return toast.error(info.error);
+          if (!refund) {
+            if (typed == null) amount = Math.min(info.balanceCents, t.due);
+            if (amount > info.balanceCents) return toast.error(`That card has only ${money(info.balanceCents)} left.`);
+          }
+          card = { cardNumber: info.number, last4: info.last4 };
+        } catch {
+          return toast.error("Couldn't look the card up. Check the connection, then try again.");
+        }
+      }
+    }
     if (!amount) return;
     if (refund && amount > 0) return toast.error(`Already refunded ${money(amount)} too much. Take a payment off first.`);
-    setTenders((x) => [...x, { method, amountCents: amount }]);
+    setTenders((x) => [...x, { method, amountCents: amount, ...(card ?? {}) }]);
     setTenderAmt("");
+    setTenderCard("");
+    setGcInfo(null);
     // Ready for the next scan (a scanner's Enter on this button would take the payment again).
+    code.current?.focus();
+  }
+
+  /** The gift card panel's "Add to sale": a card sold, loaded or paid out becomes a line (the server decides a payout's amount). */
+  async function addGiftLine(e: React.FormEvent) {
+    e.preventDefault();
+    if (!gcPanel) return;
+    const { mode, number } = gcPanel;
+    let cents = toCents(gcPanel.amount);
+    if (mode !== "cashout") {
+      if (cents == null || cents < GIFT_MIN_CENTS || cents > GIFT_MAX_CENTS) return toast.error(`A gift card is from ${money(GIFT_MIN_CENTS)} to ${money(GIFT_MAX_CENTS)}.`);
+    }
+    if (mode !== "new" && !number.trim()) return toast.error("Scan or type the card number.");
+    let description = "Gift card";
+    if (mode === "load" || mode === "cashout") {
+      const info = await giftCardByNumber(number, null, undefined);
+      if ("error" in info) return toast.error(info.error);
+      if (info.status !== "active") return toast.error("That card is void.");
+      if (mode === "cashout") {
+        if (info.balanceCents <= 0) return toast.error("That card has nothing left to pay out.");
+        cents = info.balanceCents;
+        description = `${info.kind === "credit" ? "Store credit" : "Gift card"} balance paid out (ending ${info.last4})`;
+      } else {
+        if (info.kind !== "gift") return toast.error("Store credit is given as a refund, not loaded.");
+        description = `Gift card loaded (ending ${info.last4})`;
+      }
+    } else if (mode === "printed") description = "Gift card (pre-printed)";
+    setDone(null);
+    setCart((c) => [
+      ...c,
+      { key: newKey(), description, unit: null, qty: mode === "cashout" ? -1 : 1, unitPriceCents: cents ?? 0, priced: mode === "cashout", discountPct: 0, taxable: false, giftCard: { mode, number: number.trim() || undefined } },
+    ]);
+    setGcPanel(null);
     code.current?.focus();
   }
 
@@ -430,7 +529,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     setDone(null);
     const sale = {
       customerId: customer?.id ?? null,
+      chargeTax: Boolean(exemptCert) && chargeTax,
       lines: lines.map((l) => ({
+        giftCard: l.giftCard ?? null,
         partId: l.partId ?? null,
         repairJobId: l.repairJobId ?? null,
         pickedUp: l.pickedUp,
@@ -457,12 +558,16 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         return;
       }
       pending.current = null;
-      setDone({ id: r.saleId, number: r.number, change: r.changeCents });
+      setDone({ id: r.saleId, number: r.number, change: r.changeCents, cards: r.cards ?? [] });
       toast.success(`Sale #${r.number} done${r.changeCents ? `. Change: ${money(r.changeCents)}` : ""}`);
       setCart([]);
       setTenders([]);
+      setTenderCard("");
+      setGcInfo(null);
+      setGcPanel(null);
       setOrderDisc({ kind: "%", value: "" });
       setCustomer(null);
+      setChargeTax(false);
       setReturnMode(false);
       setJobs(null);
       setBookings(null);
@@ -503,6 +608,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
             <Plus size={14} aria-hidden /> Misc item
+          </button>
+          <button type="button" className="btn btn-sm" aria-expanded={gcPanel != null} onClick={() => setGcPanel((p) => (p ? null : { mode: "new", number: "", amount: "" }))}>
+            <Gift size={14} aria-hidden /> Gift card
           </button>
           {hasPartners && (
             <button
@@ -548,6 +656,64 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               </>
             )}
           </p>
+        )}
+        {gcPanel && (
+          <form className="card card-pad flex flex-wrap items-end gap-2 text-sm" onSubmit={addGiftLine} aria-label="Gift card">
+            <div className="field">
+              <label htmlFor="gc-mode" className="label">
+                Gift card
+              </label>
+              <select id="gc-mode" className="select" value={gcPanel.mode} onChange={(e) => setGcPanel({ ...gcPanel, mode: e.target.value as "new" | "printed" | "load" | "cashout" })}>
+                <option value="new">Sell a new card</option>
+                <option value="printed">Sell a pre-printed card (scan its number)</option>
+                <option value="load">Add money to a card</option>
+                {canSell && <option value="cashout">Pay out a balance in cash</option>}
+              </select>
+            </div>
+            {gcPanel.mode !== "new" && (
+              <div className="field">
+                <label htmlFor="gc-number" className="label">
+                  Card number
+                </label>
+                <input id="gc-number" className="input mono" autoComplete="off" value={gcPanel.number} onChange={(e) => setGcPanel({ ...gcPanel, number: e.target.value })} />
+              </div>
+            )}
+            {gcPanel.mode !== "cashout" && (
+              <div className="field">
+                <label htmlFor="gc-amount" className="label">
+                  Amount ({money(GIFT_MIN_CENTS)} to {money(GIFT_MAX_CENTS)})
+                </label>
+                <input id="gc-amount" inputMode="decimal" className="input num w-28" value={gcPanel.amount} onChange={(e) => setGcPanel({ ...gcPanel, amount: e.target.value })} />
+              </div>
+            )}
+            <button className="btn btn-primary btn-sm">Add to sale</button>
+            <button type="button" className="btn btn-sm" onClick={() => setGcPanel(null)}>
+              Cancel
+            </button>
+            <p className="muted w-full text-xs">Selling a card isn&apos;t a sale of goods: no tax, no discount. It never expires and has no fees.</p>
+          </form>
+        )}
+        {gcInfo && (
+          <div className="card card-pad flex flex-wrap items-center gap-3 text-sm" role="status">
+            <span>
+              {gcInfo.kind === "credit" ? "Store credit" : "Gift card"} ending <span className="mono">{gcInfo.last4}</span>
+              {gcInfo.customerName ? ` (${gcInfo.customerName})` : ""}: <span className="num font-bold">{money(gcInfo.balanceCents)}</span>
+              {gcInfo.status !== "active" && " (void)"}
+            </span>
+            {gcInfo.status === "active" && lines.length > 0 && gcInfo.balanceCents > 0 && !refund && (
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => addTender(gcInfo.kind === "credit" ? "CREDIT" : "GIFT")}>
+                Pay with it
+              </button>
+            )}
+            {gcInfo.status === "active" && gcInfo.kind === "gift" && (
+              <button type="button" className="btn btn-sm" onClick={() => setGcPanel({ mode: "load", number: gcInfo.number, amount: "" })}>
+                Add money
+              </button>
+            )}
+            <button type="button" className="link text-xs" onClick={() => setGcInfo(null)}>
+              Dismiss
+            </button>
+          </div>
         )}
         {returnMode && <p className="pill tone-wait">Return mode: scanned items come off the sale (negative quantity) and go back on the shelf.</p>}
 
@@ -759,7 +925,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       className="input num min-w-[4.5rem]"
                       step={l.unit === "yd" ? 0.125 : 1}
                       // A repair is paid as one line; a vacuum from stock or a trade-in is one machine; a class seat or appointment is one each.
-                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.enrollmentId || l.appointmentId)}
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.enrollmentId || l.appointmentId || l.giftCard)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}
@@ -779,7 +945,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       className="input num min-w-[4.5rem]"
                       // A tech can type the price of an item that has none, not change one that has. A booking is priced by
                       // the server; an owner or admin may lower a refund (a cancellation fee).
-                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
+                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => {
                         const cents = toCents(e.target.value);
@@ -798,7 +964,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       className="input num min-w-14"
                       min={0}
                       max={100}
-                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId)}
+                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                       onKeyDown={backToScan}
@@ -823,12 +989,20 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             <label htmlFor="register-customer" className="label">
               Customer (optional)
             </label>
+            {exemptCert && (
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={chargeTax} onChange={(e) => setChargeTax(e.target.checked)} />
+                <span>
+                  Tax exempt, certificate <strong>{exemptCert}</strong>. Charge tax anyway
+                </span>
+              </label>
+            )}
             {customer ? (
               <div className="flex items-center justify-between gap-2 text-sm">
                 <span>
                   {customer.name} {customer.phone && <span className="muted">{customer.phone}</span>}
                 </span>
-                <button type="button" className="link text-xs" onClick={() => setCustomer(null)}>
+                <button type="button" className="link text-xs" onClick={() => { setCustomer(null); setChargeTax(false); }}>
                   change
                 </button>
               </div>
@@ -933,7 +1107,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             </span>
           </div>
           {t.orderDiscount > 0 && <Row k="" v={`-${money(t.orderDiscount)}`} />}
-          <Row k={`Tax (${taxRatePct}%)`} v={money(t.tax)} />
+          <Row k={exemptOn ? `Tax exempt (certificate ${exemptCert})` : `Tax (${taxRatePct}%)`} v={money(t.tax)} />
           <div className="flex justify-between border-t border-line pt-1 text-lg font-bold">
             <span>{t.total < 0 ? "Refund" : "Total"}</span>
             <span className="num" data-testid="sale-total">
@@ -949,6 +1123,12 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             </label>
             <input id="tender-amount" inputMode="decimal" className="input num" value={tenderAmt} onChange={(e) => setTenderAmt(e.target.value)} />
           </div>
+          <div className="field">
+            <label htmlFor="tender-card" className="label">
+              Gift card or store credit number (scan or type; blank = the customer&apos;s credit)
+            </label>
+            <input id="tender-card" className="input mono" autoComplete="off" value={tenderCard} onChange={(e) => setTenderCard(e.target.value)} />
+          </div>
           <div className="flex flex-wrap gap-1">
             {TENDER_METHODS.map((m) => (
               <button key={m} type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender(m)}>
@@ -961,7 +1141,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               {tenders.map((x, i) => (
                 <li key={i} className="flex justify-between">
                   <span>
-                    {TENDER_LABEL[x.method]}{" "}
+                    {TENDER_LABEL[x.method]}
+                    {x.last4 ? ` ending ${x.last4}` : ""}{" "}
                     <button type="button" className="link text-xs" onClick={() => setTenders((ts) => ts.filter((_, j) => j !== i))}>
                       remove
                     </button>
@@ -1000,6 +1181,17 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             <Link href={`/register/sales/${done.id}`} className="link">
               Print receipt
             </Link>
+            {done.cards
+              .filter((c) => c.what !== "paid-out")
+              .map((c) => (
+                <span key={c.cardId + c.what}>
+                  {" "}
+                  ·{" "}
+                  <Link href={`/register/gift-cards/${c.cardId}/print`} className="link">
+                    Print {c.kind === "credit" ? "store credit slip" : c.what === "loaded" ? "the loaded card" : "the gift card"} ({money(c.amountCents)})
+                  </Link>
+                </span>
+              ))}
           </div>
         )}
       </aside>
