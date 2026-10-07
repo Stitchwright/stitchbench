@@ -264,6 +264,8 @@ model Shop {
   shifts            Shift[]
   companyMoves      CompanyMove[]
   priceChanges      PriceChange[]
+  liveSales         LiveSale[]
+  liveClaims        LiveClaim[]
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
@@ -3218,4 +3220,53 @@ model PriceChange {
   undoneAt DateTime?
 
   @@index([shopId, at])
+}
+
+// A live sale (shop-features-round-2-design.md 4.3): a Facebook Live or similar show. The shop picks what's on today's
+// show beforehand (picks: plain part ids), claims each buyer's items as they're called out, and at the end sends each
+// buyer one pay link for her claims. status OPEN | CLOSED; holdHours: unpaid claims after this show "Let go of these?".
+model LiveSale {
+  id          String      @id @default(cuid())
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  startsAt    DateTime    @default(now())
+  status      String      @default("OPEN")
+  holdHours   Int         @default(48)
+  picks       String[]    @default([])
+  createdById String?
+  createdAt   DateTime    @default(now())
+  closedAt    DateTime?
+  claims      LiveClaim[]
+
+  @@index([shopId, startsAt])
+}
+
+// One buyer's claim on a live sale: the item (plain part id), how much (yards in eighths for fabric), the price, and
+// where it stands: HELD (the stock is held for her), SENT (in her pay link, webOrderId), PAID, LET_GO (back on the shelf).
+// customerId is a plain id (a new name is fine: the customer is made when the pay link is sent).
+model LiveClaim {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  liveSaleId  String
+  liveSale    LiveSale  @relation(fields: [liveSaleId], references: [id], onDelete: Cascade)
+  customerId  String?
+  name        String
+  phone       String?
+  partId      String?
+  description String
+  qty         Float
+  unit        String?
+  priceCents  Int
+  status      String    @default("HELD")
+  webOrderId  String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  paidAt      DateTime?
+  letGoAt     DateTime?
+
+  @@index([liveSaleId, status])
+  @@index([shopId, status, partId])
 }

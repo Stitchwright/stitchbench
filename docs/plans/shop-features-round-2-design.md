@@ -1192,3 +1192,27 @@ Decisions made while building:
 - The invoice reader (1.10) setting a back order, and the dashboard on a shop without a repair bench (it opens on the
   register), are left: the notice shows on Inventory for them.
 - Browser test needed: `tests/repricing.spec.ts`.
+
+**`live-sales` (4.3, 7 Oct 2026, branch `phase3-channels`).** Migration `20261023200000_live_sales` (`LiveSale`,
+`LiveClaim`, both carried by the company file). Code: `src/lib/live-sales.ts` (start, today's show, claim, take off and
+undo, send pay links, paid sync, let go, send again, `liveHeld`), `src/actions/live-sales.ts`; pages Register → **Live
+sale** (`/register/live`: start one with a name and the hold hours, the ones before) and the claim list
+(`/register/live/[id]`: `src/components/live-claim-form.tsx` with today's show as big buttons, item search, buyer search
+or a new name with a phone or email, how many; today's show with what's left; buyers with their claims; "End the show
+and send pay links", two taps). Check: `scripts/checks/live-sales.check.ts` (6 groups). Spec: `tests/live-sales.spec.ts`.
+Decisions made while building:
+- Held stock is **counted, not moved**: what's left = on hand - claims held or sent (`liveHeld`). The pay link's sale
+  takes the stock off when she pays, so nothing is taken off twice. **For the lead at merge:** the register's "held"
+  rule from special orders (1.2, phase 1) should add `liveHeld(shopId, partIds)` to its held quantity.
+- Each buyer gets one pay link (`makePayLinkFor`, `trusted`, taxed items) for the days of the hold time (48 hours: 2
+  days), noted "From our <sale name>." A new name becomes a customer when the link is sent: one with the same phone (or
+  email) if there is exactly one, else a new customer (`notifyBy` sms or email from what was typed). A buyer who can't
+  get messages is named in the result ("Copy the link for Ann").
+- A tech claims at the item's price; an owner or admin may type a show price under More choices.
+- Sending ends the show (no more claims); "Send it again" and "Let go" stay. A link unpaid after the hold time shows
+  "Not paid after 48 hours. Let go of these?" (one tap); before that, Let go asks for a second tap. Letting go takes the
+  link back (`cancelPayLinkFor`). A link that ran out or was taken back on the Pay links page still holds the stock until
+  Let go.
+- Paid claims are found when the page opens (the web order is paid), not by a hook in the payment path.
+- Reading Facebook comments into the list stays 9.12 (gated).
+- Browser test needed: `tests/live-sales.spec.ts`.

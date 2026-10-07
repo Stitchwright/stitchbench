@@ -76,6 +76,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
             <Link href="/layaways" className="btn">
               Layaways
             </Link>
+            <Link href="/register/live" className="btn">
+              Live sale
+            </Link>
             <Link href="/register/sales" className="btn">
               Sales
             </Link>
