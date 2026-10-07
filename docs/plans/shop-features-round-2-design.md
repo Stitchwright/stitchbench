@@ -1212,3 +1212,26 @@ Decisions made while building:
 - `AssistantSettings.quiltOn` (on by default) hides Suggest coordinates.
 - Browser test needed: the planner with the Assistant (Suggest coordinates fills the empty part with its reason), a
   photo of what she brought, Thread to match ticked into the pull list.
+
+**`trade-in-helper` (5.4, 7 Oct 2026).** Code: `src/lib/units/trade-in-value.ts` (`tradeInEstimate`, the rule
+`TRADE_IN_LESS_PCT`), `src/lib/assistant/trade-in-prompt.ts` and `trade-in.ts` (`tradeInNote`), the actions
+`tradeInValue` (units) and `draftTradeInNote` (assistant), `src/components/units/trade-in-helper.tsx` on the register's
+trade-in step; `TradeInInput.note` is kept on the machine for sale (`StockUnit.note`). Check:
+`scripts/checks/trade-in-helper.check.ts` (4 groups); `machine-sales` and `vac-units` still pass. Spec:
+`tests/trade-in-helper.spec.ts`.
+Decisions made while building:
+- **What is it worth?** works without the Assistant: this company's used and refurbished units of the same model (by
+  model key and kind) that sold, what the buyer paid and how many days they took; with none, the same brand and kind;
+  with none of those, it says so. The number to start from is the middle price less the rule, to the dollar; "Use" puts
+  it in the credit, which she changes freely.
+- The rule is 30% (`TRADE_IN_LESS_PCT`) until `trade-up` (1.9, phase 1) lands with `Shop.tradeInLessPct`; at merge,
+  `tradeInEstimate` should read that setting instead of the constant (one line).
+- **Draft a condition note** (Assistant on, "Read the plate" switch on): up to four condition photos are put side by
+  side in one JPEG in the browser (each cell 512 px, quality lowered until it is under the hub's size), one
+  `trade_in_note` call (read class). The plate photo isn't on the register's trade-in step today, so it isn't sent.
+- The note is staff only: kept on the machine for sale's own note (shown on its page), never on a receipt or sale line.
+- **Hub change needed:** add `"trade_in_note"` to `PHOTO_FEATURES` in the hub's `src/assistant.mjs` (and its refusal
+  wording "Only the plate, bolt-label and swatch readers take a photo" to include the trade-in note). Without it the hub
+  refuses the call with a 400 and the button shows that message.
+- Browser test needed: the trade-in step's What is it worth? and Use, condition photos and Draft a condition note, a
+  trade-in rung up with its note (the unit page shows it).

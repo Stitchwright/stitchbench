@@ -112,6 +112,7 @@ export function Register({
   promotions = NO_PROMOS,
   preload,
   preloadItems,
+  tradeNote,
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -130,6 +131,8 @@ export function Register({
   preload?: BookingDue | null;
   /** Opened from the quilt planner's "Add all to the sale": each item with its quantity (yards for fabric). */
   preloadItems?: { item: RegisterItem; qty: number }[];
+  /** The Assistant's trade-in condition note (shop-features-round-2-design.md 5.4), when it can be used here. */
+  tradeNote?: { unavailable?: string } | null;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -763,7 +766,7 @@ export function Register({
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
-          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />}
+          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} tradeNote={tradeNote} />}
           {layaway && !returnMode && (
             <LayawayPanel
               customerId={customer?.id ?? null}

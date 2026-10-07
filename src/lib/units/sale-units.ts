@@ -147,6 +147,8 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
   const when = at.toISOString();
   const note = `Traded in on sale #${a.saleNumber}`;
   const answers = vacuum ? { bagged: t.bagged, ...(t.bagType ? { bagType: t.bagType } : {}) } : {};
+  // The trade-in helper's condition note (shop-features-round-2-design.md 5.4): staff only, on the machine for sale.
+  const conditionNote = typeof t.note === "string" && t.note.trim() ? t.note.trim().replace(/\s+/g, " ").slice(0, 500) : null;
   const found = serial ? await tx.machine.findFirst({ where: { shopId, equipment: kind.equipment, serial: { equals: serial, mode: "insensitive" }, modelKey: key }, include: { stock: true } }) : null;
   const machine =
     found ??
@@ -189,6 +191,7 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
         costCents: credit,
         priceCents: null,
         tradeInLineId: line.id,
+        ...(conditionNote ? { note: conditionNote } : {}),
         events: pushEvent(unit.events, { at: when, note, line: line.id, prev }),
       },
     });
@@ -196,7 +199,7 @@ async function tradeIn(tx: Tx, a: { shopId: string; saleNumber: number; at: Date
     unitId = unit.id;
   } else {
     const made = await tx.stockUnit.create({
-      data: { shopId, machineId: machine.id, status: "IN_STOCK", condition: t.condition, costCents: credit, tradeInLineId: line.id, events: [{ at: when, note, line: line.id }] },
+      data: { shopId, machineId: machine.id, status: "IN_STOCK", condition: t.condition, costCents: credit, tradeInLineId: line.id, note: conditionNote, events: [{ at: when, note, line: line.id }] },
       select: { id: true },
     });
     unitId = made.id;

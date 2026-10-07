@@ -20,6 +20,7 @@ const answer = (rec) => {
   if (rec.system.includes("describing this class")) return "Learn to bind a quilt in one evening.";
   if (rec.system.includes("online store")) return "A soft quilting cotton in a deep navy.";
   if (rec.system.includes("social media post")) return "New in! Come see us. #quilting";
+  if (rec.system.startsWith("You look at photos of a used machine")) return "Light scratches on the bed, bobbin cover missing.";
   // Quilt from stock: the first fabric on the list for every part asked.
   if (rec.system.startsWith("You help a quilt shop pick")) {
     const roles = [...rec.userText.matchAll(/^- (.+): needs /gm)].map((m) => m[1]);
