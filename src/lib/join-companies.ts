@@ -1,6 +1,7 @@
 import "server-only";
 // Bring an existing company in as a store (shop-features-round-2-design.md 7.6). An owner who runs two companies on
-// this install (the same email is the owner of both) joins the second into the first: its items, customers, gift
+// this install joins the second into the first. She proves she owns both by signing in to both: in the second she
+// makes a one-time join code (30 minutes), in the first she types it (never a matching email: emails aren't verified): its items, customers, gift
 // cards, tickets, sales and the rest of its history come in as a new store of the first, every row as it was (the
 // tables the company file carries, src/lib/move/format.ts). What can't share a number is made to fit: the second
 // company's tickets, sales and orders are numbered on from the first's (ticket 51 becomes 1051), an item number both
@@ -17,6 +18,7 @@ import type { CurrentUser } from "@/lib/session";
 import { actorOf, audit } from "@/lib/audit";
 import { MOVE_TABLES } from "@/lib/move/format";
 import { ensureMainStore } from "@/lib/stores";
+import { sameText } from "@/lib/input";
 
 /** Tables that stay with the second company: its own settings, licence keys, partnerships, hub hops and audit log. */
 const STAY = new Set([
@@ -64,20 +66,38 @@ const NUMBERED: { table: string; counter: keyof Prisma.ShopUncheckedUpdateInput 
 /** Tables with a store (locationId): the second company's rows without one were its main store's. */
 const WITH_STORE = ["Sale", "Ticket", "WebOrder", "StockUnit", "PurchaseOrder", "ShopClass", "AppointmentType", "Shift", "LongarmOrder", "MakeJob", "SpecialOrder", "UnitLoan", "GiftCardEntry", "Layaway", "LiveSale", "AccountEntry", "CardReader", "StockMove", "User", "Approval"];
 
-export type JoinCandidate = { id: string; name: string; customers: number; items: number; tickets: number; sales: number; problem: string | null };
+/** How long a join code is good for. */
+export const JOIN_CODE_MINUTES = 30;
 
-/** The other companies on this install whose owner is this owner (the same email): what could be joined in. */
-export async function joinCandidatesFor(user: CurrentUser): Promise<JoinCandidate[]> {
-  if (user.role !== "OWNER") return [];
-  const logins = await db.user.findMany({ where: { email: { equals: user.email, mode: "insensitive" }, role: "OWNER", active: true, shopId: { not: user.shopId } }, select: { shopId: true } });
-  const out: JoinCandidate[] = [];
-  for (const l of logins) {
-    const s = await db.shop.findUnique({ where: { id: l.shopId }, select: { id: true, name: true, movingAt: true, movedOutAt: true } });
-    if (!s || s.movedOutAt) continue;
-    const [customers, items, tickets, sales] = await Promise.all([db.customer.count({ where: { shopId: s.id } }), db.part.count({ where: { shopId: s.id } }), db.ticket.count({ where: { shopId: s.id } }), db.sale.count({ where: { shopId: s.id } })]);
-    out.push({ id: s.id, name: s.name, customers, items, tickets, sales, problem: await joinProblem(user.shopId, s.id, s.movingAt) });
-  }
-  return out;
+const hashJoinCode = (code: string) => crypto.createHash("sha256").update(code.replace(/[^A-Z0-9]/gi, "").toUpperCase()).digest("hex");
+
+/**
+ * "Join this company into another of yours": the owner, signed in to the company that will become a store, makes a
+ * one-time code (shown once, good for 30 minutes) and types it into the other company. Owning both is proved by
+ * signing in to both, never by a matching email (emails aren't verified).
+ */
+export async function makeJoinCodeFor(user: CurrentUser, now = new Date()): Promise<{ code: string; until: Date }> {
+  if (user.role !== "OWNER") throw new UserError("Only the owner joins companies.");
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const raw = Array.from(crypto.randomBytes(10), (b) => alphabet[b % alphabet.length]).join("");
+  const code = `${raw.slice(0, 5)}-${raw.slice(5)}`;
+  const until = new Date(now.getTime() + JOIN_CODE_MINUTES * 60_000);
+  await db.shop.update({ where: { id: user.shopId }, data: { joinCodeHash: hashJoinCode(code), joinCodeUntil: until, joinCodeById: user.id } });
+  await audit(db, actorOf(user), { action: "store.join_code", subjectType: "Shop", subjectId: user.shopId, subjectLabel: "Join code made" });
+  return { code, until };
+}
+
+/** The company a join code is for: still good, made by an owner of it who is still its active owner. Null otherwise. */
+async function companyForCode(user: CurrentUser, code: string, now: Date) {
+  const c = String(code ?? "").trim();
+  if (c.replace(/[^A-Z0-9]/gi, "").length !== 10) return null;
+  const from = await db.shop.findFirst({
+    where: { joinCodeHash: hashJoinCode(c), joinCodeUntil: { gt: now }, id: { not: user.shopId } },
+    select: { id: true, name: true, address: true, phone: true, timeZone: true, taxRatePct: true, receiptNote: true, hoursNote: true, movingAt: true, movedOutAt: true, joinCodeById: true },
+  });
+  if (!from || !from.joinCodeById || from.movedOutAt) return null;
+  const owner = await db.user.count({ where: { id: from.joinCodeById, shopId: from.id, role: "OWNER", active: true } });
+  return owner ? from : null;
 }
 
 /** Why the second company can't be joined in now, or null. */
@@ -92,24 +112,26 @@ async function joinProblem(intoId: string, fromId: string, movingAt: Date | null
 export type JoinResult = { storeId: string; storeName: string; renumbered: number; renamedItems: number; loginsOff: number; maybeSame: { intoId: string; fromId: string; name: string }[] };
 
 /**
- * Join company `fromId` into the signed-in owner's company as a new store named `storeName` (default: its company
- * name). The owner types the other company's name to confirm.
+ * Join the company whose join code this is (made by its owner while signed in there) into the signed-in owner's
+ * company as a new store named `storeName` (default: its company name). The owner types the other company's name to
+ * confirm. The code is used up by the join.
  */
-export async function joinCompanyFor(user: CurrentUser, fromId: string, typedName: string, storeName?: string | null, now = new Date()): Promise<JoinResult> {
+export async function joinCompanyFor(user: CurrentUser, code: string, typedName: string, storeName?: string | null, now = new Date()): Promise<JoinResult> {
   if (user.role !== "OWNER") throw new UserError("Only the owner joins companies.");
-  if (fromId === user.shopId) throw new UserError("That's this company.");
-  const from = await db.shop.findUnique({ where: { id: String(fromId) }, select: { id: true, name: true, address: true, phone: true, timeZone: true, taxRatePct: true, receiptNote: true, hoursNote: true, movingAt: true, movedOutAt: true } });
-  const owns = from ? await db.user.count({ where: { shopId: from.id, role: "OWNER", active: true, email: { equals: user.email, mode: "insensitive" } } }) : 0;
-  if (!from || !owns || from.movedOutAt) throw new UserError("Company not found.");
+  const from = await companyForCode(user, code, now);
+  if (!from) throw new UserError("That join code isn't right or has run out. Sign in to the other company, make a new one under Settings, Stores, and type it here.");
   if (typedName.trim().toLowerCase() !== from.name.trim().toLowerCase()) throw new UserError(`Type ${from.name} to confirm.`);
   const problem = await joinProblem(user.shopId, from.id, from.movingAt);
   if (problem) throw new UserError(problem);
   const into = user.shopId;
   const name = (storeName?.trim() || from.name).slice(0, 60);
-  if (await db.location.count({ where: { shopId: into, name: { equals: name, mode: "insensitive" } } })) throw new UserError(`A store is already called ${name}. Give the new store another name.`);
+  if (await db.location.count({ where: { shopId: into, name: sameText(name) } })) throw new UserError(`A store is already called ${name}. Give the new store another name.`);
 
   const result = await db.$transaction(
     async (tx) => {
+      // The code is used once (two tries at the same time can't both join).
+      const used = await tx.shop.updateMany({ where: { id: from.id, joinCodeHash: hashJoinCode(code), joinCodeUntil: { gt: now }, movedOutAt: null }, data: { joinCodeHash: null, joinCodeUntil: null, joinCodeById: null } });
+      if (!used.count) throw new UserError("That join code was used already. Make a new one in the other company.");
       // 1. The new store, from the second company's own details; its own stores come along (its main one is the new one).
       await ensureMainStore(tx, into);
       const order = await tx.location.count({ where: { shopId: into } });
@@ -126,7 +148,7 @@ export async function joinCompanyFor(user: CurrentUser, fromId: string, typedNam
       await tx.$executeRaw`UPDATE "StoreNote" SET "fromLocationId" = ${store.id} WHERE "shopId" = ${from.id} AND ("fromLocationId" IS NULL OR "fromLocationId" = ${fromMain?.id ?? ""})`;
       await tx.$executeRaw`UPDATE "StoreNote" SET "toLocationId" = ${store.id} WHERE "shopId" = ${from.id} AND "toLocationId" = ${fromMain?.id ?? ""}`;
       for (const o of fromOthers) {
-        const clash = await tx.location.count({ where: { shopId: into, name: { equals: o.name, mode: "insensitive" } } });
+        const clash = await tx.location.count({ where: { shopId: into, name: sameText(o.name) } });
         await tx.location.update({ where: { id: o.id }, data: { shopId: into, main: false, sortOrder: order + 1, ...(clash ? { name: `${o.name} (${name})`.slice(0, 60) } : {}) } });
       }
 
@@ -163,7 +185,7 @@ export async function joinCompanyFor(user: CurrentUser, fromId: string, typedNam
       const items = await tx.$queryRaw<{ id: string; partNumber: string }[]>`SELECT b."id", b."partNumber" FROM "Part" b WHERE b."shopId" = ${from.id} AND EXISTS (SELECT 1 FROM "Part" a WHERE a."shopId" = ${into} AND lower(a."partNumber") = lower(b."partNumber"))`;
       for (const it of items) {
         let pn = `${it.partNumber}${tag}`.slice(0, 120);
-        for (let i = 2; await tx.part.count({ where: { shopId: { in: [into, from.id] }, partNumber: { equals: pn, mode: "insensitive" } } }); i++) pn = `${it.partNumber}${tag} ${i}`.slice(0, 120);
+        for (let i = 2; await tx.part.count({ where: { shopId: { in: [into, from.id] }, partNumber: sameText(pn) } }); i++) pn = `${it.partNumber}${tag} ${i}`.slice(0, 120);
         const p = await tx.part.findUniqueOrThrow({ where: { id: it.id }, select: { altNumbers: true } });
         await tx.part.update({ where: { id: it.id }, data: { partNumber: pn, altNumbers: [...new Set([...p.altNumbers, it.partNumber])] } });
       }

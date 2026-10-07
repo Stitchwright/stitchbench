@@ -9,12 +9,11 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import { completeSaleAs } from "@/lib/register-sale";
-import { joinCandidatesFor, joinCompanyFor, sameCustomersFor } from "@/lib/join-companies";
+import { joinCompanyFor, makeJoinCodeFor, sameCustomersFor } from "@/lib/join-companies";
 import { activeStores } from "@/lib/stores";
 import { storeQty } from "@/lib/stock";
 import { storeCount } from "@/lib/hub";
 import { checkShop, cleanup } from "./lib";
-import { expectNotFound } from "./tenant";
 
 let steps = 0;
 const ok = (what: string) => {
@@ -40,8 +39,10 @@ async function main() {
   try {
     const A = a.shopId;
     const B = b.shopId;
-    // The same owner runs both: B's owner login has A's owner's email.
+    // The same owner runs both: B's owner login has A's owner's email (which alone proves nothing: she signs in to both).
     await db.user.update({ where: { id: b.user.id }, data: { email: a.user.email.toUpperCase() } });
+    // C's owner gives herself a wildcard email (emails aren't verified): it must not match anything.
+    await db.user.update({ where: { id: c.user.id }, data: { email: "%@%" } });
     await db.shop.update({ where: { id: B }, data: { name: `${b.name} Florida`, address: "2 Gulf Rd, Naples FL", taxRatePct: 7 } });
     const bName = `${b.name} Florida`;
 
@@ -61,25 +62,29 @@ async function main() {
     const bCard = await db.giftCard.create({ data: { shopId: B, number: `GJ${Date.now()}`.slice(0, 20), balanceCents: 2500, customerId: bOnly.id } });
 
     // ---------- 1. who can join what ----------
-    const cands = await joinCandidatesFor(a.user);
-    assert.deepEqual(cands.map((x) => x.id), [B], "only the owner's other company");
-    assert.equal(cands[0].problem, null);
-    assert.deepEqual(await joinCandidatesFor({ ...a.user, role: "ADMIN" }), [], "an admin sees none");
-    await expectError("an admin joins", () => joinCompanyFor({ ...a.user, role: "ADMIN" }, B, bName), /Only the owner/);
-    await expectError("wrong name", () => joinCompanyFor(a.user, B, "Florida"), /Type .* to confirm/);
-    await expectNotFound("a company she doesn't own", () => joinCompanyFor(a.user, c.shopId, c.name));
+    await expectError("an admin makes a join code", () => makeJoinCodeFor({ ...b.user, role: "ADMIN" }), /Only the owner/);
+    await expectError("no code: the same email proves nothing", () => joinCompanyFor(a.user, "", bName), /join code isn't right/);
+    const { code } = await makeJoinCodeFor(b.user);
+    assert.match(code, /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+    const stored = await db.shop.findUniqueOrThrow({ where: { id: B }, select: { joinCodeHash: true } });
+    assert.ok(stored.joinCodeHash && !stored.joinCodeHash.includes(code.slice(0, 5)), "kept hashed");
+    await expectError("wildcard email, no code", () => joinCompanyFor(c.user, "%%%%%-%%%%%", bName), /join code isn't right/);
+    await expectError("run out", () => joinCompanyFor(a.user, code, bName, null, new Date(Date.now() + 31 * 60_000)), /run out/);
+    await expectError("an admin joins", () => joinCompanyFor({ ...a.user, role: "ADMIN" }, code, bName), /Only the owner/);
+    await expectError("wrong name", () => joinCompanyFor(a.user, code, "Florida"), /Type .* to confirm/);
+    await expectError("its own code", () => joinCompanyFor(b.user, code, bName), /join code isn't right/);
     const link = await db.partnerLink.create({ data: { id: `jl${Date.now()}`, shopId: B, side: "retail", partnerName: "Some shop" } });
-    await expectError("partner shops", () => joinCompanyFor(a.user, B, bName), /partner shops/);
+    await expectError("partner shops", () => joinCompanyFor(a.user, code, bName), /partner shops/);
     await db.partnerLink.delete({ where: { shopId_id: { shopId: B, id: link.id } } });
     const clash = await db.giftCard.create({ data: { shopId: A, number: bCard.number, balanceCents: 0 } });
-    await expectError("a gift card number in both", () => joinCompanyFor(a.user, B, bName), /in both companies/);
+    await expectError("a gift card number in both", () => joinCompanyFor(a.user, code, bName), /in both companies/);
     await db.giftCard.delete({ where: { id: clash.id } });
-    ok("only the owner of both, typing its name; refused with partner shops or a gift card number both use");
+    ok("only with a join code made by the other company's owner signed in there (never by email; run out after 30 minutes), typing its name; refused with partner shops or a gift card number both use");
 
     // ---------- 2. the join ----------
     const aSaleMax = (await db.sale.aggregate({ where: { shopId: A }, _max: { number: true } }))._max.number!;
     const bSaleNo = (await db.sale.findUniqueOrThrow({ where: { id: bSale.saleId } })).number;
-    const r = await joinCompanyFor(a.user, B, bName.toLowerCase(), "Florida");
+    const r = await joinCompanyFor(a.user, ` ${code.toLowerCase()} `, bName.toLowerCase(), "Florida");
     assert.equal(r.storeName, "Florida");
     const stores = await activeStores(A);
     assert.deepEqual(stores.map((s) => s.name).sort(), ["Florida", "Main store"]);
@@ -124,13 +129,12 @@ async function main() {
     assert.deepEqual(r.maybeSame.map((m) => [m.intoId, m.fromId]), [[aCust.id, bCust.id]], "Jane at both (the same email), never merged by itself");
     assert.equal(await db.customer.count({ where: { id: { in: [aCust.id, bCust.id] }, shopId: A } }), 2);
     assert.deepEqual((await sameCustomersFor(a.user, fl.id)).map((m) => m.fromId), [bCust.id]);
-    assert.deepEqual(await joinCandidatesFor(a.user), [], "nothing more to join");
     ok("Jane Both is offered for the merge (same email at both); Flo Rida isn't; nothing is merged by itself");
 
     // ---------- 4. tenant ----------
-    await expectNotFound("C joins A", () => joinCompanyFor(c.user, A, a.name));
+    await expectError("C joins A without a code", () => joinCompanyFor(c.user, "", a.name), /join code isn't right/);
     assert.deepEqual(await sameCustomersFor(c.user, fl.id), []);
-    await expectNotFound("A joins the closed B again", () => joinCompanyFor(a.user, B, bName));
+    await expectError("the code again", () => joinCompanyFor(a.user, code, bName), /join code isn't right/);
     ok("tenant: another company's owner can't join it in or see its customers; a closed company can't be joined again");
 
     console.log(`join-companies.check: ${steps} groups passed`);
