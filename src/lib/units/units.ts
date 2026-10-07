@@ -520,7 +520,7 @@ export async function classCreditsFor(shopId: string, customerId: string): Promi
 // ---------------------------------------------------------------------------------------------------------------------
 // The register's lookups
 
-export type UnitForSale = { id: string; description: string; priceCents: number | null; serial: string | null; condition: string };
+export type UnitForSale = { id: string; description: string; priceCents: number | null; serial: string | null; condition: string; brand: string };
 export type UnitToReturn = { id: string; description: string; refundCents: number; buyer: string | null; soldAt: Date | null };
 
 /** The equipment the shop may sell from stock now: sewing always, a vacuum or an appliance while its module allows new work. */
@@ -539,7 +539,7 @@ export async function unitsForSaleFor(shopId: string, q: string | null): Promise
     orderBy: { createdAt: "desc" },
     take: 20,
   });
-  return rows.map((u) => ({ id: u.id, description: unitDescription(u), priceCents: u.priceCents, serial: u.machine.serial, condition: u.condition }));
+  return rows.map((u) => ({ id: u.id, description: unitDescription(u), priceCents: u.priceCents, serial: u.machine.serial, condition: u.condition, brand: u.machine.brand }));
 }
 
 /** Sold units by serial, brand, model or buyer, with the most a return refunds; any module state (money already owed). */

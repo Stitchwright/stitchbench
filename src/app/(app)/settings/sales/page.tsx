@@ -1,4 +1,4 @@
-// Settings → Selling (tax-machine-sales-layaway-design.md sections 1, 3, 4 and 5): sales tax holidays, the layaway
+// Settings → Selling (tax-machine-sales-layaway-design.md sections 1 to 5): sales (promotions), sales tax holidays, the layaway
 // defaults and the terms customers sign, the lenders the shop offers financing through, the shop's own service plans
 // (sold at the register or included with a machine for sale), and each maker's warranty as the shop wants it shown.
 // Owners and admins change them; everyone can read them.
@@ -10,6 +10,11 @@ import { listHolidays } from "@/lib/tax-holidays";
 import { HOLIDAY_KINDS, HOLIDAY_PRESETS, holidayDays, presetByKey } from "@/lib/tax-holiday-math";
 import { deleteHoliday } from "@/actions/tax-holidays";
 import { saveLender } from "@/actions/financing";
+import { deletePromotion, setTaxIncluded } from "@/actions/promotions";
+import { listPromotions } from "@/lib/promotions";
+import { EFFECT_LABEL, TAX_INCLUDED_WARNING } from "@/lib/promo-math";
+import { PromotionForm } from "@/components/promotion-form";
+import { db } from "@/lib/db";
 import { listLenders } from "@/lib/financing";
 import { TaxHolidayForm } from "@/components/tax-holiday-form";
 import { money } from "@/lib/format";
@@ -115,12 +120,76 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
     shopTimeZone(user.shopId),
     listLenders(user.shopId),
   ]);
+  const [promos, shop] = await Promise.all([listPromotions(user.shopId), db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { taxIncludedOn: true } })]);
   const today = ymdOf(new Date(), tz);
   const year = Number(today.slice(0, 4));
   const preset = presetByKey(sp.preset);
   return (
     <div className="max-w-3xl space-y-6">
       <PageHeader title="Selling" sub="Sales tax holidays, how layaways work at your shop, what you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
+
+      <Section title="Sales (promotions)" id="sales">
+        <p className="muted mb-3 text-sm">
+          Plan a sale ahead: on its days the register takes the percent or amount off the items it covers by itself (it shows on each line and on the receipt). After it ends, prices go back on their own.
+        </p>
+        {promos.length === 0 ? (
+          <Empty>No sales planned. Add one below.</Empty>
+        ) : (
+          <ul className="divide-y divide-line">
+            {promos.map((p) => (
+              <li key={p.id} className="py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-semibold">
+                    {p.name}
+                    {!p.active && <span className="pill tone-neutral ml-2">Off</span>}
+                    {p.active && p.firstDay <= today && today <= p.lastDay && <span className="pill tone-ready ml-2">On today</span>}
+                    {p.effect === "TAX_INCLUDED" && !shop.taxIncludedOn && <span className="pill tone-wait ml-2">Not used: price-includes-tax is switched off</span>}
+                  </span>
+                  <span className="text-sm">
+                    {p.effect === "PERCENT" ? `${p.value}% off` : p.effect === "AMOUNT" ? `${money(p.value)} off each` : EFFECT_LABEL.TAX_INCLUDED} · {holidayDays(p)}
+                  </span>
+                </div>
+                <p className="muted text-sm">
+                  Covers:{" "}
+                  {[...HOLIDAY_KINDS.filter((k) => p.scope.kinds.includes(k.key)).map((k) => k.label.toLowerCase()), ...p.scope.brands, ...p.partNumbers].join(", ")}
+                </p>
+                {admin && (
+                  <details className="mt-2">
+                    <summary className="link cursor-pointer text-sm">Change</summary>
+                    <div className="mt-2 space-y-2">
+                      <PromotionForm p={p} taxIncludedOn={shop.taxIncludedOn} today={today} prefix={`pr-${p.id}`} />
+                      <ActionButton action={deletePromotion.bind(null, p.id)} className="btn btn-sm" success="Removed">
+                        Remove
+                      </ActionButton>
+                    </div>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {admin && (
+          <div className="mt-4 space-y-3 border-t border-line pt-4">
+            <h3 className="font-semibold">Add a sale</h3>
+            <PromotionForm taxIncludedOn={shop.taxIncludedOn} today={today} prefix="pr-new" />
+            <details>
+              <summary className="link cursor-pointer text-sm">More options: sales where the price includes the tax</summary>
+              <div className="mt-2 space-y-2 text-sm">
+                <p className="card card-pad">{TAX_INCLUDED_WARNING}</p>
+                <p>
+                  When it&apos;s on, a sale can say &quot;Price includes the sales tax&quot;: the customer pays the price on the tag, and the receipt shows the tax that was inside it (&quot;Price includes $65.42 sales tax&quot;). Your books and tax report still show the real tax.
+                </p>
+                <ActionForm action={setTaxIncluded} success="Saved" className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" name="on" defaultChecked={shop.taxIncludedOn} /> I have checked my state&apos;s rule: allow &quot;price includes the tax&quot; sales
+                  </label>
+                  <Submit className="btn btn-sm">Save</Submit>
+                </ActionForm>
+              </div>
+            </details>
+          </div>
+        )}
+      </Section>
 
       <Section title="Sales tax holidays" id="holidays">
         <p className="muted mb-3 text-sm">

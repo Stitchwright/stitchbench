@@ -321,7 +321,7 @@ export function UnitTools({
                         className="btn btn-sm"
                         disabled={inCartIds.has(u.id)}
                         onClick={() => {
-                          onAdd({ description: u.description, qty: 1, unitPriceCents: u.priceCents ?? 0, taxable: true, unit: null, stockUnitId: u.id });
+                          onAdd({ description: u.description, qty: 1, unitPriceCents: u.priceCents ?? 0, taxable: true, unit: null, stockUnitId: u.id, brand: u.brand });
                           setPanel(null);
                         }}
                       >

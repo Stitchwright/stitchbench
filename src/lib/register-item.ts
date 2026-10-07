@@ -19,6 +19,8 @@ export type RegisterItem = {
   photoId?: string | null;
   /** A machine for sale: the register sells it as one unit line. */
   stockUnitId?: string | null;
+  /** The item's or machine's brand: a promotion may cover a brand. */
+  brand?: string | null;
 };
 
 export const viewItem = (p: {
@@ -45,6 +47,7 @@ export const viewItem = (p: {
   consigned: Boolean(p.consignLinkId),
   disclosure: disclosure(p),
   photoId: p.photos?.[0]?.id ?? null,
+  brand: p.brand,
 });
 
 /** What to include with a part so its picture reaches the register: the first photo's id, never the picture itself. */

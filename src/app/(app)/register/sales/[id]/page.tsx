@@ -13,6 +13,8 @@ import { voidSale } from "@/actions/register";
 import { lastFour } from "@/lib/gift-card-number";
 import { holidayNames } from "@/lib/tax-holidays";
 import { listLenders } from "@/lib/financing";
+import { promotionNames } from "@/lib/promotions";
+import { includedTax } from "@/lib/promo-math";
 
 /** A register receipt, narrow enough for an 80 mm receipt printer and fine on letter paper. */
 export default async function Receipt({ params }: { params: Promise<{ id: string }> }) {
@@ -33,6 +35,11 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
   const svg = barcodeSvg(`S${sale.number}`, 7);
   // A machine sold here: the shop's lenders' "apply now" pages print under the payments (financing, section 5).
   const apply = sale.lines.some((l) => l.stockUnitId && l.qty > 0) ? (await listLenders(user.shopId, true)).filter((l) => l.applyUrl) : [];
+  // A promotion's name under the line it priced.
+  const promos = await promotionNames(
+    user.shopId,
+    sale.lines.map((l) => l.promotionId),
+  );
   // Lines sold on a sales tax holiday print its name.
   const holidays = await holidayNames(
     user.shopId,
@@ -73,6 +80,8 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
           {sale.lines.map((l) => (
             <li key={l.id}>
               <div>{l.description}</div>
+              {l.promotionId && promos.get(l.promotionId) && <div className="text-xs">{promos.get(l.promotionId)}</div>}
+              {l.taxNote === "included" && <div className="text-xs">Price includes {money(includedTax(lineNet(l), sale.taxRatePct))} sales tax</div>}
               <div className="flex justify-between">
                 <span>
                   {qtyText(l.qty, l.unit)} @ {money(l.unitPriceCents)}

@@ -268,3 +268,26 @@ Decisions made while building:
   the shop's home page.
 - Browser test needed: Settings → Selling → Financing, the register's Financing button (lender, approval number),
   the receipt, Reports → Financing ("Lender paid", "Not paid after all"), the online shop's financing line.
+
+**Section 2, promotions with "price includes the tax" (7 Oct 2026).** Migration `20261019400000_promotions`
+(`Promotion`, `SaleLine.promotionId`, `Shop.taxIncludedOn` off by default). Code: `src/lib/promo-math.ts` (shared by
+the register and the server), `src/lib/promotions.ts`, `src/actions/promotions.ts`, `src/components/promotion-form.tsx`;
+Settings → Selling → "Sales (promotions)", with "price includes the tax" under More options behind the state-law
+warning (answer 5). Check: `scripts/checks/promotions.check.ts` (5 groups); every check named in the sections above,
+plus `clubs`, `gift-cards`, `audit-log`, `modules-tenant`, `longarm`, `kits` and the unit tests, pass after it.
+Decisions made while building:
+- The server applies promotions (by the shop's date) to items being bought: the best percent or amount off that covers
+  the line becomes its own discount, unless an owner typed a bigger one. The register sends only the discount typed
+  there, so a tech rings up a promotion without the "only an owner can give a discount" refusal. Not applied to
+  returns, a layaway's pick-up (prices settled when it began), the online shop (priced at checkout, unchanged) or a
+  given tax amount. What a promotion covers: kinds (the report categories), brands (an item's or a machine's), or item
+  numbers; any of them.
+- "Price includes the tax" keeps the line at the price before tax, worked out so price plus tax lands on the sticker
+  (a $1,000 machine at 7%: $934.58 + $65.42), with `taxNote = included`; the receipt says "Price includes $65.42 sales
+  tax". It applies only to a taxable line with no discount and no tax holiday, and not for an exempt customer. On a sale
+  that mixes such a line with other taxed lines the tax is worked out on the whole, so the total can differ from the
+  sticker prices by a cent. Switching the setting off stops every such promotion at once.
+- A promotion with sales under it is switched off, not deleted (receipts name it).
+- Browser test needed: Settings → Selling → Sales (add, change, the More options switch and warning), the register on
+  a promotion's day (the pill on lines, the totals, a tech's sale), the receipt's promotion name and "Price includes
+  ... sales tax".
