@@ -1,6 +1,7 @@
-// Settings → Selling (tax-machine-sales-layaway-design.md sections 1, 3 and 4): sales tax holidays, the layaway
-// defaults and the terms customers sign, the shop's own service plans (sold at the register or included with a machine
-// for sale), and each maker's warranty as the shop wants it shown. Owners and admins change them; everyone can read them.
+// Settings → Selling (tax-machine-sales-layaway-design.md sections 1, 3, 4 and 5): sales tax holidays, the layaway
+// defaults and the terms customers sign, the lenders the shop offers financing through, the shop's own service plans
+// (sold at the register or included with a machine for sale), and each maker's warranty as the shop wants it shown.
+// Owners and admins change them; everyone can read them.
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -8,6 +9,8 @@ import { ymdOf } from "@/lib/zoned";
 import { listHolidays } from "@/lib/tax-holidays";
 import { HOLIDAY_KINDS, HOLIDAY_PRESETS, holidayDays, presetByKey } from "@/lib/tax-holiday-math";
 import { deleteHoliday } from "@/actions/tax-holidays";
+import { saveLender } from "@/actions/financing";
+import { listLenders } from "@/lib/financing";
 import { TaxHolidayForm } from "@/components/tax-holiday-form";
 import { money } from "@/lib/format";
 import { listPlans, planTerms } from "@/lib/units/plans";
@@ -18,6 +21,31 @@ import { layawaySettings } from "@/lib/layaway";
 import { EVERY_LABEL, LAYAWAY_EVERY } from "@/lib/layaway-math";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader, Section } from "@/components/ui";
+
+/** A lender's fields, empty for a new one. */
+function LenderFields({ l, prefix }: { l?: Awaited<ReturnType<typeof listLenders>>[number]; prefix: string }) {
+  return (
+    <div className="grid-form">
+      <div className="field">
+        <label htmlFor={`${prefix}-name`} className="label">
+          Lender
+        </label>
+        <input id={`${prefix}-name`} name="name" required className="input" defaultValue={l?.name ?? ""} placeholder="Synchrony" />
+      </div>
+      <div className="field">
+        <label htmlFor={`${prefix}-url`} className="label">
+          Their &quot;apply now&quot; page (optional)
+        </label>
+        <input id={`${prefix}-url`} name="applyUrl" className="input" defaultValue={l?.applyUrl ?? ""} placeholder="https://" />
+      </div>
+      {l && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="active" defaultChecked={l.active} /> Offered at the register
+        </label>
+      )}
+    </div>
+  );
+}
 
 /** The plan's fields, empty for a new one. Module level, so the server actions don't close over anything in the page. */
 function PlanFields({ p, prefix }: { p?: Awaited<ReturnType<typeof listPlans>>[number]; prefix: string }) {
@@ -79,7 +107,14 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
   const user = await requireUser();
   const admin = user.role !== "TECH";
   const sp = await searchParams;
-  const [plans, makers, lw, holidays, tz] = await Promise.all([listPlans(user.shopId), listMakerTerms(user.shopId), layawaySettings(user.shopId), listHolidays(user.shopId), shopTimeZone(user.shopId)]);
+  const [plans, makers, lw, holidays, tz, lenders] = await Promise.all([
+    listPlans(user.shopId),
+    listMakerTerms(user.shopId),
+    layawaySettings(user.shopId),
+    listHolidays(user.shopId),
+    shopTimeZone(user.shopId),
+    listLenders(user.shopId),
+  ]);
   const today = ymdOf(new Date(), tz);
   const year = Number(today.slice(0, 4));
   const preset = presetByKey(sp.preset);
@@ -213,6 +248,44 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
             {admin && <Submit>Save layaway settings</Submit>}
           </fieldset>
         </ActionForm>
+      </Section>
+
+      <Section title="Financing">
+        <p className="muted mb-3 text-sm">
+          Lenders you offer (Synchrony, Affirm...). At the register, &quot;Financing&quot; takes the payment with the lender&apos;s approval number; the lender owes you until you mark it paid (Reports → Financing). The &quot;apply now&quot; page shows on receipts for machines and on your online shop.
+        </p>
+        {lenders.length === 0 ? (
+          <Empty>None yet. Add a lender to take financed payments.</Empty>
+        ) : (
+          <ul className="divide-y divide-line">
+            {lenders.map((l) => (
+              <li key={l.id} className="py-2">
+                <span className="font-semibold">{l.name}</span>
+                {!l.active && <span className="pill tone-neutral ml-2">Not offered</span>}
+                {l.applyUrl && (
+                  <a href={l.applyUrl} className="link ml-2 text-sm" target="_blank" rel="noreferrer">
+                    apply page
+                  </a>
+                )}
+                {admin && (
+                  <details className="mt-1">
+                    <summary className="link cursor-pointer text-sm">Change</summary>
+                    <ActionForm action={saveLender.bind(null, l.id)} success="Saved" className="mt-2 space-y-2">
+                      <LenderFields l={l} prefix={`ln-${l.id}`} />
+                      <Submit className="btn btn-sm">Save</Submit>
+                    </ActionForm>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {admin && (
+          <ActionForm action={saveLender.bind(null, null)} success="Lender added" reset className="mt-4 space-y-3 border-t border-line pt-4">
+            <LenderFields prefix="ln-new" />
+            <Submit>Add lender</Submit>
+          </ActionForm>
+        )}
       </Section>
 
       <Section title="Your service plans">

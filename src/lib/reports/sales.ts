@@ -138,7 +138,8 @@ export async function salesReport(shopId: string, tz: string, start: Date, end: 
       r.tax += sign * s.taxCents;
       for (const t of s.tenders as Tender[]) {
         addTender(t.method, sign * t.amountCents);
-        if (t.method !== "GIFT" && t.method !== "CREDIT") r.taken += sign * t.amountCents;
+        // Gift cards and store credit were taken before; financing is the lender's money, owed until it pays.
+        if (t.method !== "GIFT" && t.method !== "CREDIT" && t.method !== "FINANCED") r.taken += sign * t.amountCents;
       }
       if (s.changeCents) {
         addTender("CASH", -sign * s.changeCents);

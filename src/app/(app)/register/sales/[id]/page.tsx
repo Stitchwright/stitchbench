@@ -12,6 +12,7 @@ import { SaleUnitNotes } from "@/components/units/sale-unit-notes";
 import { voidSale } from "@/actions/register";
 import { lastFour } from "@/lib/gift-card-number";
 import { holidayNames } from "@/lib/tax-holidays";
+import { listLenders } from "@/lib/financing";
 
 /** A register receipt, narrow enough for an 80 mm receipt printer and fine on letter paper. */
 export default async function Receipt({ params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +31,8 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
     orderBy: { at: "asc" },
   });
   const svg = barcodeSvg(`S${sale.number}`, 7);
+  // A machine sold here: the shop's lenders' "apply now" pages print under the payments (financing, section 5).
+  const apply = sale.lines.some((l) => l.stockUnitId && l.qty > 0) ? (await listLenders(user.shopId, true)).filter((l) => l.applyUrl) : [];
   // Lines sold on a sales tax holiday print its name.
   const holidays = await holidayNames(
     user.shopId,
@@ -97,11 +100,17 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
         </div>
         {tenders.map((t, i) => (
           <div key={i}>
-            <Line k={`${TENDER_LABEL[t.method] ?? t.method}${t.last4 ? ` ending ${t.last4}` : ""}`} v={money(t.amountCents)} />
+            <Line k={`${TENDER_LABEL[t.method] ?? t.method}${t.lender ? ` by ${t.lender}` : ""}${t.method === "FINANCED" && t.note ? `, approval ${t.note}` : ""}${t.last4 ? ` ending ${t.last4}` : ""}`} v={money(t.amountCents)} />
             {t.leftCents != null && <div className="text-right text-xs">{t.amountCents < 0 ? "Now holds" : "Left on it"} {money(t.leftCents)}</div>}
           </div>
         ))}
         {sale.changeCents > 0 && <Line k="Change" v={money(sale.changeCents)} />}
+        {apply.length > 0 && (
+          <div className="mt-2 text-xs">
+            Financing available:{" "}
+            {apply.map((l) => `${l.name} ${l.applyUrl}`).join("; ")}
+          </div>
+        )}
         {cardEntries.map((e) => {
           const credit = e.card.kind === "credit";
           // A slip with no customer behind it carries its whole number; a customer's credit and a loaded card show the end.

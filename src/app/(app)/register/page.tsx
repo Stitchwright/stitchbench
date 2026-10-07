@@ -5,6 +5,7 @@ import { getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
 import { layawaySettings } from "@/lib/layaway";
 import { holidaysOn } from "@/lib/tax-holidays";
+import { listLenders } from "@/lib/financing";
 import { ymdOf } from "@/lib/zoned";
 import { bookingsDueFor } from "@/lib/register-sale";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -51,6 +52,8 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const layaway = { depositPct: lw.depositPct, days: lw.days, every: lw.every, today: ymdOf(new Date(), await shopTimeZone(user.shopId)) };
   // A sales tax holiday in force today: the register shows it and leaves the tax off what it covers.
   const holiday = (await holidaysOn(user.shopId, [layaway.today]))[0] ?? null;
+  // Lenders offered for financing (Settings → Selling): the Financing payment button.
+  const lenders = (await listLenders(user.shopId, true)).map((l) => ({ id: l.id, name: l.name }));
   // Opened from a roster's or an appointment's "Ring up": that one unpaid booking goes on the sale (design 12.3).
   let preload = null;
   const m = booking && /^(enrollment|appointment):([a-z0-9]{20,40})$/.exec(booking);
@@ -83,7 +86,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
-      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} preload={preload} />
+      <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} preload={preload} />
     </div>
   );
 }
