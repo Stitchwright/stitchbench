@@ -265,8 +265,8 @@ async function successorOf(tx: Tx, shopId: string, old: GiftCard): Promise<GiftC
   return on.length === 1 ? on[0].card : null;
 }
 
-/** Where an amount being put back onto `cardId` goes: the card, or (moved since) the card its balance moved to. */
-async function putBackCard(tx: Tx, shopId: string, cardId: string): Promise<GiftCard> {
+/** The card `cardId`'s balance is on now: the card, or (moved since) the card its balance moved to. Void when neither is active. */
+async function currentCard(tx: Tx, shopId: string, cardId: string): Promise<GiftCard> {
   let c = await tx.giftCard.findFirst({ where: { id: cardId, shopId } });
   if (!c) throw new UserError("Gift card not found.");
   for (let hops = 0; c.status !== "active" && hops < 10; hops++) {
@@ -274,6 +274,12 @@ async function putBackCard(tx: Tx, shopId: string, cardId: string): Promise<Gift
     if (!next) break;
     c = next;
   }
+  return c;
+}
+
+/** Where an amount being put back onto `cardId` goes: the card, or (moved since) the card its balance moved to. */
+async function putBackCard(tx: Tx, shopId: string, cardId: string): Promise<GiftCard> {
+  const c = await currentCard(tx, shopId, cardId);
   if (c.status !== "active") throw new UserError(`${cardWords(c)} is void, so the amount can't go back on it. Give it back another way (store credit, cash).`);
   return c;
 }
@@ -281,6 +287,7 @@ async function putBackCard(tx: Tx, shopId: string, cardId: string): Promise<Gift
 /** Each entry in `entries` undone: its amount comes back off (or onto) the card as a VOID line, in the transaction. */
 async function undo(tx: Tx, shopId: string, entries: { id: string; cardId: string; amountCents: number; reason: string }[], cause: Cause & { userId?: string | null }, words: string) {
   for (const e of entries) {
+    let from: GiftCard | null = null;
     try {
       const note = `Undoes ${e.reason.toLowerCase()} ${money(Math.abs(e.amountCents))}`;
       if (e.amountCents < 0) {
@@ -288,18 +295,20 @@ async function undo(tx: Tx, shopId: string, entries: { id: string; cardId: strin
         const to = await putBackCard(tx, shopId, e.cardId);
         await postEntry(tx, shopId, to.id, -e.amountCents, "VOID", { ...cause, active: true, note: to.id === e.cardId ? note : `${note} (moved from an older number)` });
       } else {
-        await postEntry(tx, shopId, e.cardId, -e.amountCents, "VOID", { ...cause, note });
+        // Money coming back off a card (a sale or load undone): a card moved since gives it up from its new number.
+        from = await currentCard(tx, shopId, e.cardId);
+        await postEntry(tx, shopId, from.id, -e.amountCents, "VOID", { ...cause, note: from.id === e.cardId ? note : `${note} (moved to a newer number)` });
       }
     } catch (err) {
       if (!(err instanceof UserError)) throw err;
-      const c = await tx.giftCard.findFirst({ where: { id: e.cardId, shopId } });
+      const c = await tx.giftCard.findFirst({ where: { id: from?.id ?? e.cardId, shopId } });
       if (c && -e.amountCents < 0) {
         throw new UserError(`That ${c.kind === "credit" ? "store credit" : "card"} has been used; ${money(c.balanceCents)} is left. ${words}`);
       }
       throw err;
     }
-    // A card the sale made is void once it is back to nothing.
-    if (e.reason === "SOLD") await tx.giftCard.updateMany({ where: { id: e.cardId, shopId, balanceCents: 0 }, data: { status: "void" } });
+    // A card the sale made (on its new number, if moved) is void once it is back to nothing.
+    if (e.reason === "SOLD") await tx.giftCard.updateMany({ where: { id: from?.id ?? e.cardId, shopId, balanceCents: 0 }, data: { status: "void" } });
   }
 }
 
