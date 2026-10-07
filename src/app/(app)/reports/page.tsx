@@ -19,7 +19,8 @@ import { markBooksExported } from "@/actions/books";
 import { ActionButton } from "@/components/action-form";
 import { entryFor } from "@/lib/assistant/ui";
 import { AskShop } from "@/components/assistant/ask-shop";
-import { activeStores, currentStore } from "@/lib/stores";
+import { activeStores, currentStore, storesOf } from "@/lib/stores";
+import { db } from "@/lib/db";
 
 const TABS = [
   { key: "sales", label: "Sales" },
@@ -76,6 +77,10 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
   const mine = multi ? await currentStore(user) : null;
   const storeKey = multi ? (sp.store === "all" || stores.some((s) => s.id === sp.store) ? sp.store! : user.role === "OWNER" ? "all" : (mine?.id ?? "all")) : "all";
   const store: StoreArg = multi && storeKey !== "all" ? (stores.find((s) => s.id === storeKey) ?? null) : null;
+  // The sales tax tab, all stores: a store closed since still files for what it sold in the period.
+  const closed = tab === "tax" && multi && !store ? (await storesOf(user.shopId)).filter((s) => !s.active) : [];
+  const closedWithSales = (await Promise.all(closed.map(async (s) => ((await db.sale.count({ where: { shopId: user.shopId, locationId: s.id, createdAt: { gte: start, lt: end } } })) ? s : null)))).filter((s): s is NonNullable<typeof s> => !!s);
+  const taxStores = [...stores, ...closedWithSales];
   const q = (over: Partial<Sp>) => {
     const p = new URLSearchParams({ tab, from: fromStr, to: toStr, period, ...(multi ? { store: storeKey } : {}), ...over } as Record<string, string>);
     return `?${p}`;
@@ -155,7 +160,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
       {tab === "tax" &&
         (multi && !store ? (
           // Each store files its own return (its own state): one section per store.
-          stores.map((s) => <TaxTab key={s.id} shopId={user.shopId} tz={tz} start={start} end={end} csv={(w) => `${csv(w).replace(/&store=[^&]*/, "")}&store=${s.id}`} store={s} />)
+          taxStores.map((s) => <TaxTab key={s.id} shopId={user.shopId} tz={tz} start={start} end={end} csv={(w) => `${csv(w).replace(/&store=[^&]*/, "")}&store=${s.id}`} store={s} />)
         ) : (
           <TaxTab shopId={user.shopId} tz={tz} start={start} end={end} csv={csv} store={store} />
         ))}

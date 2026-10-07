@@ -96,6 +96,8 @@ async function main() {
     await removePaymentFor(a.user, p.id);
     assert.equal((await accountOf(a.shopId, school.id))!.balanceCents, 25000, "the payment's removal takes it off");
     await addPaymentFor(a.user, t.id, { amountCents: 8900, method: "INVOICE", note: null });
+    // Over her $500 limit from a ticket too (review fix): $339 owed, $200 more refused.
+    await expectError("a ticket over the limit", () => addPaymentFor(a.user, t.id, { amountCents: 20000, method: "INVOICE", note: null }), /over her \$500.00 limit/);
     ok("a repair's \"Invoice (on account)\" goes on her account; removing it takes it off");
 
     // 4. Payments, aging, statement.
