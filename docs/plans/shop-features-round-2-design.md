@@ -2194,3 +2194,13 @@ Decisions made while building:
 **Not built, for later:** a store on its own Windows PC kept in step through StitchHub (7.8: `store-link-hub`,
 `store-sync-customers`, `store-sync-gift-cards`), as decided (hosted first); per-store tax holidays; texting the daily
 summary; merging two items into one.
+
+**Built (review fixes, 7 Oct, round2-all; migration `20261026000000_round2_review`):** joining a company now needs a
+one-time join code the owner makes in the company that becomes a store (Settings, Stores, 30 minutes, used once), never
+a matching email. Tax holidays name their stores (`TaxHoliday.locationIds`, empty = all; a preset ticks the stores in
+its state), so per-store holidays are no longer "for later". Manager approval codes are 6 to 8 numbers (older 4-digit
+codes work until changed, with a prompt); wrong codes are counted in the database per person and per store, 15 minutes
+after five. One pricing rule for the register and the server (`src/lib/line-pricing.ts`); program-built sales pay
+exactly their total (`completeSaleAs` `tenderExact`). Stock arriving at one store marks here only that store's special
+orders (the others are named, to send over). Pay links toward a special order or rental are taken back when it closes;
+a paid link that can't be booked is refunded at once. The slip reader's Receive is idempotent (`SlipReceipt`).
