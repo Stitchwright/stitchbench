@@ -973,6 +973,20 @@ rerun: estimate-links' text reply (worker timing); inventory's community most-us
 main again.
 Open choice: a cart mixing scanned returns with new items still taxes all at today's rate (one rate per sale).
 
+## 2al. 7-8 Oct 2026: every round-2 phase built, merged, max-reviewed and fixed (not on main)
+
+`scheduling-features` = `round2-all` (b44719c): the release plus machine sales, layaway, tax holidays, financing,
+promotions and round-2 phases 1-6 incl. multi-store (design Built notes at the end of
+`docs/plans/shop-features-round-2-design.md`). Hub: `hub-accounts` = `round2-hub` (0dc4770): add-on billing for five
+modules and the bundle, extra-store quantity billing, photo features, shop hops (migrations 031-033). A max review of
+both found a company-join takeover (now a one-time join code), money and multi-store bugs, add-on billing edge cases:
+all fixed with checks. All 120 program checks and 87 unit tests pass; every hub test passes on scratch DBs. NOT yet run:
+a fresh build and the whole Playwright regression (about 70 specs incl. many new ones written but never run; the
+stores and pay-link specs need updating for the join code and the new Pay flow). Next: owner restarts the PC, then
+start Docker, migrate the `stitchbench` dev DB, restart the test hub (now round-2 code), STITCH_TEST_BUILD=1 build in
+the foreground, run every spec one at a time (:3300 set, then the :3501 mail/text/Stripe set, then assistant with the
+Anthropic stand-in), fix, then the owner merges both to main. Stripe day needs 14 new prices (add-ons, bundle, stores).
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
