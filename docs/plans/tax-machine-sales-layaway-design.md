@@ -1,6 +1,7 @@
 # Tax holidays, shop-pays-the-tax sales, machine sales with warranty, layaway and financing: design
 
-7 Oct 2026, first draft for the owner. Document only, nothing built. Everything here ships **after the test month**
+7 Oct 2026. **Owner, 7 Oct 2026: build it, every question answered as recommended (section 7).** Being built on
+branch `sales-features` (off `scheduling-features`). Everything here ships **after the test month**
 (launch first, HANDOFF item 19). Questions for the owner are in section 7; the recommended answer is listed first.
 
 What exists today (so nothing is designed twice):
