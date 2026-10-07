@@ -98,6 +98,8 @@ model Shop {
   makeNeverCut            String        @default("PVC, vinyl")
   // Warranty claims to makers (shop-features-round-2-design.md 9.1): the next claim's number
   nextClaimNumber         Int           @default(1)
+  // Co-op advertising and rebate claims (9.2): the next one's number
+  nextCoopNumber          Int           @default(1)
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -253,6 +255,8 @@ model Shop {
   certifications    Certification[]
   makeJobs          MakeJob[]
   warrantyClaims    WarrantyClaim[]
+  coopClaims        CoopClaim[]
+  coopProofs        CoopProof[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -3401,4 +3405,51 @@ model WarrantyClaim {
   @@unique([shopId, number])
   @@index([shopId, status])
   @@index([shopId, ticketId])
+}
+
+// A co-op advertising or rebate claim to a maker (shop-features-round-2-design.md 9.2, package coop-claims): what the
+// shop spent (an ad placed, or machines sold under a rebate program), what it can claim back, the program's deadline
+// (a dashboard line 14 days before, while not sent), sent, and what came in. kind: COOP | REBATE; status: OPEN (not
+// sent) | FILED | PAID | SHORT | DENIED. placedOn and deadline are the shop's days (YYYY-MM-DD). The proof (a photo of
+// the ad, the invoice) is CoopProof.
+model CoopClaim {
+  id            String      @id @default(cuid())
+  shopId        String
+  shop          Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  maker         String
+  kind          String      @default("COOP")
+  program       String?
+  adWhere       String?
+  placedOn      String?
+  spentCents    Int         @default(0)
+  claimCents    Int         @default(0)
+  deadline      String?
+  status        String      @default("OPEN")
+  filedAt       DateTime?
+  receivedCents Int         @default(0)
+  receivedAt    DateTime?
+  note          String?
+  createdById   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  proofs        CoopProof[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status, deadline])
+}
+
+// A photo or PDF proving a co-op claim (the ad as it ran, the invoice for it), 5 MB at most.
+model CoopProof {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  claimId   String
+  claim     CoopClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  data      Bytes
+  createdAt DateTime  @default(now())
+
+  @@index([claimId])
 }

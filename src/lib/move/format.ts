@@ -107,6 +107,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Lender", key: "id" }, // the lenders the shop offers financing through
   { t: "Promotion", key: "id" }, // the shop's planned sales
   { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
+  { t: "CoopClaim", key: "id" }, // co-op advertising and rebate claims (9.2)
+  { t: "CoopProof", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> CoopClaim: the ad and invoice photos
   { t: "WarrantyClaim", key: "id" }, // warranty claims to makers (shop-features-round-2-design.md 9.1; ticket and machine ids are plain)
   { t: "SoftwareLicense", key: "id" }, // -> Customer, Part (shop-features-round-2-design.md 2.5; its sale, line and machine ids are plain)
   { t: "SoftwareCode", key: "id" }, // -> Part: activation codes on hand

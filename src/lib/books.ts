@@ -184,6 +184,14 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
     }
   }
 
+  // ----- co-op advertising and rebates (9.2): booked when the money comes in -----
+  const coop = await db.coopClaim.findMany({ where: { shopId, status: { in: ["PAID", "SHORT"] }, receivedAt: { gte: start, lt: end } }, select: { receivedCents: true, receivedAt: true } });
+  for (const c of coop) {
+    const led = dayLedger(c.receivedAt!);
+    post(led, acct("undeposited"), c.receivedCents);
+    post(led, acct("coopIncome"), -c.receivedCents);
+  }
+
   const out: DayEntry[] = [...days.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([day, m]) => {
