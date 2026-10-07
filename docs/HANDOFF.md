@@ -1262,6 +1262,14 @@ accounts and billing: design first).
 
 ## 4. Owner decisions already made (don't re-ask)
 
+- **Prices reviewed 7 Oct 2026: every recommendation in `docs/plans/pricing-review-2026-10.md` taken.** Solo $25/$250,
+  Shop $45/$450 unchanged; each extra store $25/$250 (with multi-store); founding $15/$30 closes at 25 shops or 6 months
+  after paid launch; the ready-for-pickup text and the estimate-approval link move into the base (out of Marketing);
+  Maker Shop module $10, the all-add-ons bundle (five) $30/$300; Assistant $15 with $10 top-ups, outside the bundle; a
+  partnership counts with one repair job between the shops in 6 months (checked by hand); written promises: export any
+  time (also when lapsed), 12-month price hold with 60 days' notice, founding price for life. Advertising: $100 until
+  revenue, then reinvest; no SBA loan.
+
 - Scheduling (StitchShop): classes/workshops (seats, waitlist, fee at the register), customer appointments
   (lessons, longarm time, drop-off; day/week calendar), partner repair pickup runs (both shops see them),
   staff shifts.

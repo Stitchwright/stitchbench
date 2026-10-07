@@ -1,5 +1,8 @@
 # Pricing review, October 2026 (for the owner)
 
+**Owner, 7 Oct 2026: go with every recommendation (all eight questions yes).** Advertising budget: $100 until
+customer revenue comes in, then revenue is rolled back in; no SBA loan.
+
 Read-only review of the prices decided on 3 Oct 2026 (`pricing-recommendation.md`, HANDOFF section 4), checked
 against competitors' prices read on **7 Oct 2026**, what the product now does, our own costs and the $5,000 and
 $8,000 a month goals. Nothing in code or Stripe was changed. **Estimates are marked "(est.)".**
