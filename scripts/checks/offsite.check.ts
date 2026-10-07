@@ -145,6 +145,8 @@ async function main() {
     assert.equal(dataObjectTime("data/nope"), null);
     ok(`retention: the newest, ${KEEP_DAILY} dailies, ${KEEP_SUNDAYS} Sundays and ${KEEP_MONTHS} firsts of a month`);
 
+    // A folder is a Windows program target only (refused on the hosted server): these sections run as the program.
+    process.env.STITCH_DESKTOP = "1";
     // ---------- a company backed up to a folder ----------
     const folderA = path.join(DIR, "store-a");
     const folderB = path.join(DIR, "store-b");
@@ -312,6 +314,7 @@ async function main() {
     assert.ok(photoObjectName("MachinePhoto", "x", "abcdef0123456789ff").endsWith("x-abcdef0123456789"));
     ok("tenant: B's backup holds B's rows only, in B's store; A's index names none of B's; a company with nothing set up is refused");
 
+    delete process.env.STITCH_DESKTOP;
     // ---------- the hub target, against a mock StitchHub and a mock bucket ----------
     const bucket = new Map<string, Buffer>();
     const objs = new Map<string, Map<string, { size: number; confirmed: boolean }>>(); // by company
