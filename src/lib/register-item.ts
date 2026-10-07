@@ -29,6 +29,8 @@ export type RegisterItem = {
   /** Coming soon (shop-features-round-2-design.md 1.2): the day it's expected, and the day in words ("Nov 1"). */
   comingSoonOn?: string | null;
   comingSoonText?: string;
+  /** The wholesale price (a Wholesale price group sells at it, 1.5). */
+  wholesaleCents?: number | null;
 };
 
 export const viewItem = (p: {
@@ -51,6 +53,8 @@ export const viewItem = (p: {
   material?: string | null;
   specs?: unknown;
   comingSoonOn?: string | null;
+  wholesaleCents?: number | null;
+  membershipGroupId?: string | null;
 }): RegisterItem => ({
   id: p.id,
   partNumber: p.partNumber,
@@ -58,7 +62,6 @@ export const viewItem = (p: {
   priceCents: p.priceCents,
   unit: p.unit,
   qtyOnHand: p.qtyOnHand,
-  kind: p.kind,
   consigned: Boolean(p.consignLinkId),
   disclosure: disclosure(p),
   photoId: p.photos?.[0]?.id ?? null,
@@ -67,6 +70,9 @@ export const viewItem = (p: {
   colorHex: p.colorHex ?? null,
   colorNumber: p.colorNumber ?? null,
   comingSoonOn: p.comingSoonOn ?? null,
+  wholesaleCents: p.wholesaleCents ?? null,
+  // A membership item is reported (and priced) as a membership (1.5).
+  kind: p.membershipGroupId ? "MEMBERSHIP" : p.kind,
   comingSoonText: p.comingSoonOn ? new Date(`${p.comingSoonOn}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }) : undefined,
 });
 

@@ -33,7 +33,8 @@ import { CustomerFits, GoesWith } from "@/components/register-fits";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
 import { SpecialOrderPanel, type SpecialOrderDefaults } from "@/components/special-order-panel";
-import { CustomerExtrasLines, type ExtraLine } from "@/components/register-extras";
+import { CustomerExtrasLines, useCustomerExtras, type ExtraLine } from "@/components/register-extras";
+import { bestRule, type RuleCtx } from "@/lib/price-rules";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
 import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
 
@@ -83,6 +84,9 @@ type CartLine = {
   /** A special order picked up (shop-features-round-2-design.md 1.2): its item at the order's price, and what was paid coming off. */
   specialOrderId?: string;
   depositUsed?: boolean;
+  /** The item's wholesale price (a Wholesale group sells at it), and the cashier took the customer's price rule off this line. */
+  wholesaleCents?: number | null;
+  noRule?: boolean;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -195,6 +199,10 @@ export function Register({
   // A promotion in force today gives an item its best percent or amount off, a tax holiday takes the tax off the lines
   // it covers, and a "price includes the tax" promotion backs the tax out of the price (the server applies the same rules
   // when the sale is saved; only the discount typed here is sent).
+  // The chosen customer's extras (shop-features-round-2-design.md section 1): special orders waiting, her price group,
+  // lifetime discounts; the rules price the lines as the server will (src/lib/price-rules.ts).
+  const extras = useCustomerExtras(customer?.id ?? null);
+  const ruleCtx = useMemo<RuleCtx>(() => ({ group: extras?.group?.inForce ? extras.group : null, lifetime: extras?.lifetime ?? [] }), [extras]);
   const lines = useMemo(
     () =>
       cart.map((l) => {
@@ -202,13 +210,17 @@ export function Register({
         const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard && !l.depositUsed };
         const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf && !start.specialOrderId;
         const best = item ? bestDiscount(promotions, start) : null;
-        const line = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
+        const promoLine = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
+        // The customer's price rule (her group, a lifetime discount, a yard break, the birthday offer): the bigger wins.
+        const hit = item && !l.noRule && l.kind !== "MEMBERSHIP" ? bestRule(ruleCtx, { ...promoLine, onPromo: !!best }) : null;
+        const ruled = !!hit && hit.cents > promoLine.discountCents;
+        const line = ruled ? { ...promoLine, discountCents: hit.cents } : promoLine;
         const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
         const taxable = line.taxable && !(covered && !line.taxAnyway);
         const included = item && taxable && !covered && !line.discountCents && ratePct > 0 ? includedPromo(promotions, line) : null;
-        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (best && best.cents > manual ? best.promo.name : null), taxIncluded: !!included, holidayCovered: covered, taxable };
+        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (!ruled && best && best.cents > manual ? best.promo.name : null), rule: ruled ? hit.label : null, taxIncluded: !!included, holidayCovered: covered, taxable };
       }),
-    [cart, holiday, promotions, returnOf, ratePct],
+    [cart, holiday, promotions, returnOf, ratePct, ruleCtx],
   );
   // The totals count a tax-included line at its price before tax (the tax is added back on top).
   const priced = lines.map((l) => (l.taxIncluded ? { ...l, unitPriceCents: priceBeforeTax(l.unitPriceCents, ratePct) } : l));
@@ -264,9 +276,11 @@ export function Register({
           priced: it.priceCents != null,
           onHand: it.qtyOnHand,
           discountPct: 0,
-          taxable: true,
+          // A membership isn't taxed (the server does the same).
+          taxable: it.kind !== "MEMBERSHIP",
           consigned: it.consigned,
           disclosure: it.disclosure,
+          wholesaleCents: it.wholesaleCents ?? null,
           machineId,
         },
       ];
@@ -670,6 +684,7 @@ export function Register({
         appointmentId: l.appointmentId ?? null,
         specialOrderId: l.specialOrderId ?? null,
         depositUsed: l.depositUsed ?? false,
+        noRule: l.noRule ?? false,
       })),
       orderDiscountCents,
       tenders,
@@ -877,7 +892,13 @@ export function Register({
         {returnMode && <p className="pill tone-wait">Return mode: scanned items come off the sale (negative quantity) and go back on the shelf.</p>}
         {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
         {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
-        {!returnMode && <CustomerExtrasLines customerId={customer?.id ?? null} inCart={cart.map((l) => l.specialOrderId).filter((x): x is string => !!x)} onAdd={addExtraLines} />}
+        {!returnMode && (
+          <CustomerExtrasLines
+            extras={customer ? extras : null}
+            inCart={cart.flatMap((l) => [l.specialOrderId, l.kind === "MEMBERSHIP" && l.partId ? `member:${l.partId}` : null]).filter((x): x is string => !!x)}
+            onAdd={addExtraLines}
+          />
+        )}
         {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
         {results.length > 0 && (
@@ -1082,6 +1103,11 @@ export function Register({
                     {l.description}
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
+                    {l.rule && (
+                      <button type="button" className="pill tone-ready ml-1" title="Tap to take it off this line" aria-label={`${l.rule}: take it off this line`} onClick={() => setLine(l.key, { noRule: true })}>
+                        {l.rule} ×
+                      </button>
+                    )}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">

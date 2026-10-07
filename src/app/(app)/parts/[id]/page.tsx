@@ -29,6 +29,7 @@ import { ColorDot } from "@/components/color-dot";
 import { SameColor } from "@/components/same-color";
 import { FitsSection } from "@/components/fits-section";
 import { ItemSpecialOrders } from "@/components/item-special-orders";
+import { ItemMembership } from "@/components/item-membership";
 import { OrderMoreForm } from "@/components/fabric-orders-forms";
 import { eachSuggestion } from "@/lib/fabric-orders-math";
 
@@ -180,6 +181,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
           {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}
           {/* Special orders and coming soon (shop-features-round-2-design.md 1.2). */}
           {shopFlags.sellsRetail && p.kind !== "MACHINE" && <ItemSpecialOrders shopId={user.shopId} part={p} admin={user.role !== "TECH"} />}
+          {shopFlags.sellsRetail && p.kind !== "MACHINE" && user.role !== "TECH" && <ItemMembership shopId={user.shopId} part={p} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
               <p className="muted text-sm">No suppliers yet. Add where you buy it.</p>
