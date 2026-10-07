@@ -800,6 +800,10 @@ model Part {
   material        String?
   itemType        String?
   specs           Json?
+  // The shop's own color matches (shop-features-round-2-design.md 2.2): plain ids of this company's other items that
+  // are the same color ("same as Madeira 1147"), kept both ways. No foreign key (a company file imports in any order);
+  // src/lib/colors.ts reads only the company's own.
+  sameAs          String[]      @default([])
 
   moves     StockMove[]
   markdowns FabricMarkdown[]

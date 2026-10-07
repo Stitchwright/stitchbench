@@ -19,6 +19,7 @@ import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs
 import { refuseVoidOfOnlineSale } from "@/lib/shop/online-shop";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import type { BookingDue } from "@/lib/booking-types";
+import { findColorsFor } from "@/lib/colors";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
 // functions (even a type re-export trips the bundler), and the machines-for-sale hooks (src/lib/units/sale-units.ts) build items too.
@@ -54,23 +55,32 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   return matches[0] ? view(matches[0]) : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code" }))[0] ?? null);
 }
 
-/** Items whose number or description matches, for the search box. */
+/**
+ * Items whose number or description matches, for the search box. A maker and color number in any shape ("isa 15",
+ * "Aurifil 2024"), a color name or a supply in words ("PLA black 1.75") finds items by their details too
+ * (shop-features-round-2-design.md 2.2): those come first.
+ */
 export async function findItems(q: string): Promise<RegisterItem[]> {
   const user = await requireUser();
   const t = q.trim();
   if (t.length < 2) return [];
   const words = t.split(/\s+/).slice(0, 5);
-  const parts = await db.part.findMany({
-    where: {
-      shopId: user.shopId,
-      OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
-    },
-    orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
-    take: 25,
-    include: FIRST_PHOTO,
-  });
+  const [parts, colors] = await Promise.all([
+    db.part.findMany({
+      where: {
+        shopId: user.shopId,
+        OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
+      },
+      orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
+      take: 25,
+      include: FIRST_PHOTO,
+    }),
+    findColorsFor(user.shopId, t, 15),
+  ]);
+  const seen = new Set<string>();
+  const items = [...colors.map(({ location, sameAs, boughtAt, boughtText, ...it }) => (void location, void sameAs, void boughtAt, void boughtText, it)), ...parts.map(view)].filter((it) => !seen.has(it.id) && seen.add(it.id)).slice(0, 30);
   // Machines for sale whose brand or model matches come after the parts.
-  return [...parts.map(view), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];
+  return [...items, ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];
 }
 
 export type PickupJob = {

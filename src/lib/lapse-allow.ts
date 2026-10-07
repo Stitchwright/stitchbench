@@ -102,6 +102,11 @@ export const BY_HAND = [
   "finishHostedOffer",
   "failHostedOffer",
   "repositoryDownloadInfo",
+  // Layaway money at the register (tax-machine-sales-layaway-design.md 4): a start refuses while lapsed, a payment and
+  // a pick-up go through completeSaleAs, which refuses a sale and lets a return through
+  "startLayaway",
+  "payLayaway",
+  "pickUpLayaway",
 ] as const;
 
 /**
@@ -123,6 +128,8 @@ export const HAND_ALLOWED = [
   "bookingsDue",
   "findStockedParts",
   "findFabricItems",
+  // The register's "Find a color" (shop-features-round-2-design.md 2.2): a lookup
+  "findColors",
   "readCatalogSheet",
   "previewCatalog",
   "openClassSeats",
@@ -133,6 +140,9 @@ export const HAND_ALLOWED = [
   "customerVacuums",
   "unitsForSale",
   "unitsToReturn",
+  // The register's layaway list and service plan choices: reads
+  "openLayaways",
+  "planChoices",
   "receiveWaits",
   "tellThenSendReady",
   "markBackAtCounter",
