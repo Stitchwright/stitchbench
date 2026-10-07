@@ -5,7 +5,7 @@ import { findCustomers, type CustomerHit } from "@/actions/register";
 import { NotifyByField } from "@/components/notify-by-field";
 
 /**
- * The "Existing customer" box on check-in: a search of the shop's own retail customers as you type (10 at most),
+ * The "Find the customer" box on check-in: a search of the shop's own retail customers as you type (10 at most),
  * instead of every customer on the shop being sent down for a <select>. Picking one fills the hidden customerId the
  * same way the old <select> did; leaving it blank means "new customer" (fill in the fields below), as before.
  * `prefix` names the fields `${prefix}customerId` / `${prefix}notifyBy`; with `notifyRequired`, a picked customer
@@ -15,12 +15,14 @@ export function CustomerPicker({ initial, prefix = "", notifyRequired = false }:
   const [customer, setCustomer] = useState<CustomerHit | null>(initial);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
+  // The search the hits answer, so "No customer matches" waits for the answer to what is typed.
+  const [searched, setSearched] = useState("");
   const notAsked = !!customer && !((customer as { notifyBy?: string }).notifyBy ?? "");
 
   return (
     <div className="field sm:col-span-2">
       <label htmlFor="customer-search" className="label">
-        Existing customer
+        Find the customer
       </label>
       <input type="hidden" name={`${prefix}customerId`} value={customer?.id ?? ""} />
       {customer ? (
@@ -48,8 +50,12 @@ export function CustomerPicker({ initial, prefix = "", notifyRequired = false }:
               const v = e.target.value;
               setQ(v);
               setHits(v.trim().length >= 2 ? await findCustomers(v) : []);
+              setSearched(v.trim().length >= 2 ? v.trim() : "");
             }}
           />
+          {searched && searched === q.trim() && hits.length === 0 && (
+            <p className="text-sm">No customer matches &lsquo;{searched}&rsquo;. For a new customer, type their name in the next box.</p>
+          )}
           {hits.length > 0 && (
             <ul className="divide-y divide-line rounded border border-line text-sm">
               {hits.map((c) => (

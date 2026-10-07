@@ -18,6 +18,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs, type SaleInput } from "@/lib/register-sale";
 import { refuseVoidOfOnlineSale } from "@/lib/shop/online-shop";
 import { exemptCertificate } from "@/lib/tax-exempt";
+import { customerIdsBySpelling } from "@/lib/customer-search";
 import type { BookingDue } from "@/lib/booking-types";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
@@ -241,7 +242,16 @@ export async function findCustomers(q: string): Promise<CustomerHit[]> {
     orderBy: { name: "asc" },
     take: 10,
   });
-  return rows.map(hitOf);
+  if (rows.length) return rows.map(hitOf);
+  // Nothing as typed: a near spelling ("dorthy" finds Dorothy).
+  const near = await customerIdsBySpelling(user.shopId, t, { retailOnly: true, take: 10 });
+  if (!near.length) return [];
+  const nearRows = await db.customer.findMany({
+    where: { shopId: user.shopId, id: { in: near } },
+    select: { id: true, name: true, phone: true, taxExemptId: true, taxExemptUntil: true },
+    orderBy: { name: "asc" },
+  });
+  return nearRows.map(hitOf);
 }
 
 /**
