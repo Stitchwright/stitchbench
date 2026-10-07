@@ -11,7 +11,7 @@ import { str } from "@/lib/format";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { ORDER_FIELDS, ORDER_SELECT, type OrderSettings } from "@/lib/fabric-orders-math";
-import { addItemsToDraftFor, addLineFor, addToDraftFor, cancelOrderFor, closeOrderFor, createOrderFor, orderOneFor, receiveOrderFor, saveConnectorFor, saveOrderFor, saveSupplierFor, sendOrderFor } from "@/lib/fabric-orders";
+import { addItemsToDraftFor, addLineFor, addToDraftFor, cancelOrderFor, closeOrderFor, createOrderFor, ensureSupplierFor, orderOneFor, receiveOrderFor, saveConnectorFor, saveOrderFor, saveSupplierFor, sendOrderFor } from "@/lib/fabric-orders";
 
 const refresh = (id?: string) => {
   revalidatePath("/fabric");
@@ -67,6 +67,15 @@ export const startOrder = safe(async function startOrder(formData: FormData) {
   const id = await createOrderFor(user, str(formData.get("supplier")) ?? "");
   refresh();
   redirect(`/parts/orders/${id}`);
+});
+
+/** Orders page: a supplier by name, ready for its list to be brought in (nothing else about an existing one changes). */
+export const addSupplier = safe(async function addSupplier(formData: FormData) {
+  const user = await requireAdmin();
+  const name = str(formData.get("name")) ?? "";
+  await ensureSupplierFor(user, name);
+  refresh();
+  return noted(`${name.trim()} is ready: open it below to bring in its list.`);
 });
 
 export const saveSupplier = safe(async function saveSupplier(formData: FormData) {

@@ -117,6 +117,11 @@ async function supplierNamed(tx: Prisma.TransactionClient, shopId: string, name:
   return (await find()) ?? (await tx.fabricSupplier.create({ data: { shopId, name: clean } }));
 }
 
+/** A supplier by name, made if it has no record yet (nothing else about it changes); its id. */
+export async function ensureSupplierFor(user: CurrentUser, name: string): Promise<string> {
+  return db.$transaction(async (tx) => (await supplierNamed(tx, user.shopId, name ?? "")).id);
+}
+
 /** Saves one supplier's figures (made if the name has no record yet): own lead time (blank = the shop's), minimum order, order email. */
 export async function saveSupplierFor(user: CurrentUser, fd: FormData): Promise<string> {
   const name = str(fd.get("name"));

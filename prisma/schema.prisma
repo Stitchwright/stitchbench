@@ -2441,6 +2441,9 @@ model FabricSupplier {
   accountNumber String?
   catalogAt     DateTime?
   catalogNote   String?
+  // What this supplier's list holds when a row doesn't say (shop-features-round-2-design.md 2.3): an item form's "What is
+  // it?" value (FABRIC, THREAD, NOTION, SUPPLY:filament...). Empty: fabric by the yard, as before.
+  defaultKind   String?
 
   orders PurchaseOrder[]
 

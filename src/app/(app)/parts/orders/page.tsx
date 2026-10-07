@@ -10,8 +10,10 @@ import { PO_STATUS_LABEL } from "@/lib/fabric-orders-math";
 import { KIND_LABEL } from "@/lib/parts";
 import { Empty, PageHeader } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
-import { addItemsToOrders } from "@/actions/fabric-orders";
+import { addItemsToOrders, addSupplier } from "@/actions/fabric-orders";
 import { NewOrderForm } from "@/components/fabric-orders-forms";
+import { CatalogImport } from "@/components/connector-forms";
+import { connectorFor } from "@/lib/connectors/registry";
 
 const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
 
@@ -145,6 +147,57 @@ export default async function SupplierOrdersPage() {
           </div>
         </details>
       </section>
+
+      {/* Distributor lists for any item (shop-features-round-2-design.md 2.3): thread, notions, supplies, fabric. */}
+      {user.role !== "TECH" && (
+        <section className="card card-pad space-y-3" aria-labelledby="lists-h">
+          <h2 id="lists-h" className="h2">
+            Suppliers&apos; lists
+          </h2>
+          <p className="muted text-sm">
+            Bring in a supplier&apos;s spreadsheet of thread colors, notions, supplies or fabric: new items are added with no stock, and new costs and prices update the items you have. Nothing changes until you press Bring them in.
+          </p>
+          {suppliers.length === 0 ? (
+            <Empty>No suppliers yet. Add one below, or give an item a supplier on its page.</Empty>
+          ) : (
+            <ul className="divide-y divide-line">
+              {suppliers.map((s) => (
+                <li key={s.name} className="py-2">
+                  <details>
+                    <summary className="cursor-pointer text-base">
+                      {s.name}
+                      <span className="muted text-sm">
+                        {" "}
+                        · {s.fabrics} {s.fabrics === 1 ? "item" : "items"}
+                        {s.catalogAt ? ` · list brought in ${fmtDate(s.catalogAt, shop.timeZone)}` : ""}
+                      </span>
+                    </summary>
+                    <div className="pt-3">
+                      {s.id ? (
+                        <CatalogImport supplierId={s.id} supplierName={s.name} placeholder={!!connectorFor(s.connector).placeholder} />
+                      ) : (
+                        <ActionForm action={addSupplier} success="Ready" className="flex flex-wrap items-center gap-2">
+                          <input type="hidden" name="name" value={s.name} />
+                          <Submit className="btn">Get {s.name} ready for its list</Submit>
+                        </ActionForm>
+                      )}
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          )}
+          <ActionForm action={addSupplier} reset success="Added" className="flex flex-wrap items-end gap-2">
+            <div className="field">
+              <label className="label" htmlFor="new-supplier">
+                Another supplier&apos;s name
+              </label>
+              <input id="new-supplier" name="name" className="input" autoComplete="off" required />
+            </div>
+            <Submit className="btn">Add supplier</Submit>
+          </ActionForm>
+        </section>
+      )}
     </div>
   );
 }
