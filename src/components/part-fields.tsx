@@ -10,6 +10,7 @@ type P = {
   origin?: string;
   kind?: string;
   altNumbers?: string[];
+  gtin?: string | null;
   description: string;
   brand: string | null;
   fits: string | null;
@@ -119,6 +120,12 @@ export function PartFields({ part, withQty = false, defaultNumber, lockMoney = f
           Other part numbers (other makers, generic)
         </label>
         <input id="altNumbers" name="altNumbers" defaultValue={part?.altNumbers?.join(", ") ?? ""} className="input mono" placeholder="XA1234-001, 822020503" />
+      </div>
+      <div className="field">
+        <label htmlFor="gtin" className="label">
+          Barcode (UPC or EAN, for Google and Facebook)
+        </label>
+        <input id="gtin" name="gtin" defaultValue={part?.gtin ?? ""} inputMode="numeric" className="input mono" placeholder="Scan or type the 12 or 13 digits" />
       </div>
       <div className="field">
         <label htmlFor="brand" className="label">

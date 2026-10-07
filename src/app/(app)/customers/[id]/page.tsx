@@ -77,9 +77,16 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         }
         actions={
           c.kind === "RETAIL" ? (
-            <Link href={`/tickets/new?customerId=${c.id}`} className="btn btn-primary">
-              Check in a machine
-            </Link>
+            <>
+              {shopRow.sellsRetail && (
+                <Link href={`/register/pay-links?customer=${c.id}`} className="btn">
+                  Send a pay link
+                </Link>
+              )}
+              <Link href={`/tickets/new?customerId=${c.id}`} className="btn btn-primary">
+                Check in a machine
+              </Link>
+            </>
           ) : undefined
         }
       />

@@ -102,6 +102,8 @@ export const BY_HAND = [
   "finishHostedOffer",
   "failHostedOffer",
   "repositoryDownloadInfo",
+  // Shop hops (shop-features-round-2-design.md 4.6): a passport stamp is new work, refused while lapsed
+  "stampPassport",
   // Layaway money at the register (tax-machine-sales-layaway-design.md 4): a start refuses while lapsed, a payment and
   // a pick-up go through completeSaleAs, which refuses a sale and lets a return through
   "startLayaway",
@@ -130,6 +132,8 @@ export const HAND_ALLOWED = [
   "findFabricItems",
   // The register's "Find a color" (shop-features-round-2-design.md 2.2): a lookup
   "findColors",
+  // Help switching (shop-features-round-2-design.md 4.7): "See what will come in" only reads the file
+  "previewSwitchFile",
   // What fits the customer's machines, and what goes with a machine being sold (2.4): lookups
   "fitsForCustomerNow",
   "fitsForUnitsNow",

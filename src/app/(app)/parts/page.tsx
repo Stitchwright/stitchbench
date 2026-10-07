@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fineCost, money } from "@/lib/format";
 import { PageHeader, Section, Empty } from "@/components/ui";
+import { MarginFloorNotice } from "@/components/margin-floor-notice";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
 import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
@@ -105,6 +106,9 @@ export default async function Parts({
                 Software licences
               </Link>
             )}
+            <Link href="/parts/raise-prices" className="btn">
+              Raise prices
+            </Link>
             <Link href="/parts/on-order" className="btn">
               On order
             </Link>
@@ -117,6 +121,7 @@ export default async function Parts({
           </>
         }
       />
+      {user.role !== "TECH" && <MarginFloorNotice shopId={user.shopId} />}
       <nav className="flex flex-wrap gap-2" aria-label="Type">
         {tabs.map((x) => (
           <Link

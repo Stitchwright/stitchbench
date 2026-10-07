@@ -106,6 +106,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "TaxHoliday", key: "id" }, // the shop's sales tax holidays
   { t: "Lender", key: "id" }, // the lenders the shop offers financing through
   { t: "Promotion", key: "id" }, // the shop's planned sales
+  { t: "PriceChange", key: "id" }, // "Raise prices" with the old prices kept for Undo (shop-features-round-2-design.md 4.4; part ids are plain)
   { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
   { t: "SoftwareLicense", key: "id" }, // -> Customer, Part (shop-features-round-2-design.md 2.5; its sale, line and machine ids are plain)
   { t: "SoftwareCode", key: "id" }, // -> Part: activation codes on hand
@@ -144,11 +145,17 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ShopClass", key: "id" },
   { t: "ClassMeeting", key: "id" }, // -> ShopClass
   { t: "Enrollment", key: "id" }, // -> ShopClass, Customer
+  { t: "EventPayment", key: "id" }, // -> Enrollment (events' deposits and balances, 4.5; sale and web order ids are plain)
+  { t: "EventDraw", key: "id" }, // -> ShopClass (door prize draws; the enrollment id is plain)
   { t: "AppointmentType", key: "id" },
   { t: "Appointment", key: "id" }, // -> AppointmentType, Customer, User
   { t: "Shift", key: "id" }, // -> User
   { t: "BookingLink", key: "id" },
   { t: "WebOrder", key: "id", leftOut: ["linkSealed"] },
+  { t: "LiveSale", key: "id" }, // live sales (shop-features-round-2-design.md 4.3)
+  { t: "LiveClaim", key: "id" }, // -> LiveSale (its customer, part and web order ids are plain)
+  { t: "ShopHop", key: "id" }, // the shop hops this company takes part in, as the hub last told it (4.6)
+  { t: "HopStampLocal", key: "id" }, // -> ShopHop (passports stamped here)
   { t: "AssistantSettings", key: '"shopId"' }, // the company's own Assistant switches and voice sample (one row per company)
   { t: "AssistantCall", key: "id" }, // the company's own log of what the Assistant was asked and said
   { t: "PatternNeed", key: "id" }, // a pattern's yardage per size and role (its pattern item by plain id)

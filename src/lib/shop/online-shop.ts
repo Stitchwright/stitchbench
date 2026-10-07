@@ -32,8 +32,8 @@ import type { CurrentUser } from "@/lib/session";
 import { createCheckoutSession, looksLikeSecretKey, looksLikeWebhookSecret, refundPayment, retrieveSession, TAX_CODE_SHIPPING, verifyWebhook, type StripeSession } from "@/lib/shop/stripe";
 
 type Db = Prisma.TransactionClient | typeof db;
-const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
-const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+export const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
+export const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 const ID_RE = /^[a-z0-9]{20,40}$/;
 /** The most of one item in a cart, and the most lines. */
 export const MAX_QTY = 99;
@@ -551,10 +551,26 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
 
 // ---------------------------------------------------------------- checkout
 
-export type OrderItem = { partId: string | null; partNumber: string | null; description: string; qty: number; unit: string | null; unitPriceCents: number; short?: number };
+/**
+ * One line of an order. A pay link made by staff (src/lib/pay-links.ts) also says whether the line is taxed and what it
+ * pays toward: a special order's deposit or balance (`specialOrderId`, money held for the customer, never taxed) or a
+ * rental's rent (`loanId`).
+ */
+export type OrderItem = {
+  partId: string | null;
+  partNumber: string | null;
+  description: string;
+  qty: number;
+  unit: string | null;
+  unitPriceCents: number;
+  short?: number;
+  taxable?: boolean;
+  specialOrderId?: string | null;
+  loanId?: string | null;
+};
 export type CheckoutInput = { slug: string; cart: Cart; customer: OnlineCustomer; fulfil: "pickup" | "ship"; address: string | null; note: string | null };
 
-function stripeKeyFor(shop: { id: string; shopPayVia: string; stripeKeySealed: string | null }): string {
+export function stripeKeyFor(shop: { id: string; shopPayVia: string; stripeKeySealed: string | null }): string {
   if (shop.shopPayVia === "platform") {
     const k = process.env.STRIPE_SECRET_KEY?.trim();
     if (!k) throw new UserError("Payments aren't set up on this server. Please call the shop.");
@@ -565,7 +581,7 @@ function stripeKeyFor(shop: { id: string; shopPayVia: string; stripeKeySealed: s
   return k.plain;
 }
 
-const orderUrl = (token: string) => `${publicBaseUrl() ?? ""}/shop/o/${token}`;
+export const orderUrl = (token: string) => `${publicBaseUrl() ?? ""}/shop/o/${token}`;
 const fmtNo = (n: number) => `#${n}`;
 
 /**
@@ -661,7 +677,7 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
 // ---------------------------------------------------------------- payment
 
 /** The user the books record online sales under: the shop's first owner (else admin). */
-async function booksUserFor(shopId: string): Promise<CurrentUser> {
+export async function booksUserFor(shopId: string): Promise<CurrentUser> {
   const u =
     (await db.user.findFirst({ where: { shopId, role: "OWNER", active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, email: true } })) ??
     (await db.user.findFirst({ where: { shopId, role: "ADMIN", active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, email: true } })) ??
@@ -670,10 +686,10 @@ async function booksUserFor(shopId: string): Promise<CurrentUser> {
   return { id: u.id, shopId, role: "OWNER", name: "Online shop", email: u.email };
 }
 
-type OrderRow = Prisma.WebOrderGetPayload<{
+export type OrderRow = Prisma.WebOrderGetPayload<{
   include: { shop: { select: { name: true; phone: true; timeZone: true; taxRatePct: true; shopPayVia: true; stripeKeySealed: true; shopPickupNote: true; bookingSlug: true } } };
 }>;
-const ORDER_INCLUDE = { shop: { select: { name: true, phone: true, timeZone: true, taxRatePct: true, shopPayVia: true, stripeKeySealed: true, shopPickupNote: true, bookingSlug: true } } } as const;
+export const ORDER_INCLUDE = { shop: { select: { name: true, phone: true, timeZone: true, taxRatePct: true, shopPayVia: true, stripeKeySealed: true, shopPickupNote: true, bookingSlug: true } } } as const;
 
 /**
  * Stripe says the session is paid: once. The order is claimed PENDING -> PAID; the sale goes in the books with what is
@@ -738,6 +754,7 @@ export const orderNeedsAttention = (o: { status: string; staffNote: string | nul
  * of an order that was paid). Any failure leaves the order PAID with "Needs attention" on it, and Try again runs this again.
  */
 async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolean; status: string }> {
+  if (order.source === "staff") return finishStaffPaid(order, now);
   try {
     const items = order.items as unknown as OrderItem[];
     const ids = items.map((i) => i.partId).filter(Boolean) as string[];
@@ -863,6 +880,57 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
   }
 }
 
+/**
+ * A pay link the shop sent (shop-features-round-2-design.md 1.3), paid: its lines as the shop filled them in, sold at the
+ * tax worked out when it was made (no stock check: the shop promised these), with tender "Paid online". Deposits and
+ * balances of special orders and rent go through the register's own rules (their lines carry the ids). A link of
+ * money only (nothing to hand over) is done at once; one with items waits to be picked up like any order.
+ */
+async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: boolean; status: string }> {
+  try {
+    const items = order.items as unknown as OrderItem[];
+    let saleId = order.saleId;
+    if (!saleId) {
+      const user = await booksUserFor(order.shopId);
+      const lines: SaleLineInput[] = items.map((i) => ({
+        partId: i.partId,
+        description: i.description,
+        qty: i.qty,
+        unitPriceCents: i.unitPriceCents,
+        taxable: i.specialOrderId || i.loanId ? false : i.taxable !== false,
+        ...(i.specialOrderId ? { specialOrderId: i.specialOrderId, depositKind: "DEPOSIT" as const } : {}),
+        ...(i.loanId ? { unitLoanId: i.loanId, rentKind: "RENT" as const } : {}),
+      }));
+      const r = await completeSaleAs(
+        user,
+        {
+          customerId: order.customerId,
+          lines,
+          tenders: [{ method: "ONLINE", amountCents: order.totalCents, note: `Pay link ${fmtNo(order.number)}` }],
+          note: `Pay link ${fmtNo(order.number)}`,
+          clientKey: `web-${order.id}`,
+          taxCents: order.taxCents,
+        },
+        { paidOnline: true, internal: true },
+      );
+      saleId = r.saleId;
+    }
+    const goods = items.some((i) => i.partId);
+    await db.webOrder.update({ where: { id: order.id }, data: { saleId, staffNote: null, ...(goods ? {} : { status: "DONE", doneAt: now }) } });
+    const fresh = (await db.webOrder.findUnique({ where: { id: order.id }, include: ORDER_INCLUDE }))!;
+    try {
+      await notifyOrder(fresh, "paid", now);
+    } catch (e) {
+      console.error("pay link notice:", e instanceof Error ? e.message : e);
+    }
+    return { applied: true, status: fresh.status };
+  } catch (e) {
+    await db.webOrder.update({ where: { id: order.id }, data: { staffNote: `${ORDER_ATTENTION}${e instanceof Error ? e.message.slice(0, 400) : "error"}` } });
+    console.error("pay link payment:", e instanceof Error ? e.message : e);
+    return { applied: true, status: "PAID" };
+  }
+}
+
 /** Try again on an order marked "Needs attention": the steps after the payment run again, none twice. Owners and admins. */
 export async function retryOrderFor(user: CurrentUser, id: string, now = new Date()): Promise<void> {
   if (user.role === "TECH") throw new UserError("Only an owner or admin can try an order again.");
@@ -944,17 +1012,25 @@ export async function handleWebhook(who: string, rawBody: string, signature: str
   const obj = ev.data.object;
   if (obj.object !== "checkout.session" || typeof obj.id !== "string") return { status: 200, body: "ignored" };
   const sessionId = obj.id;
-  const order = await db.webOrder.findUnique({ where: { stripeSessionId: sessionId }, select: { id: true, shopId: true, status: true, payVia: true } });
+  let order = await db.webOrder.findUnique({ where: { stripeSessionId: sessionId }, select: { id: true, shopId: true, status: true, payVia: true, source: true } });
+  // A pay link paid on an earlier payment page (a newer one was made since): the link is found by its id.
+  let earlierPage = false;
+  const meta = obj.metadata as Record<string, unknown> | undefined;
+  if (!order && typeof meta?.orderId === "string" && ID_RE.test(meta.orderId)) {
+    order = await db.webOrder.findFirst({ where: { id: meta.orderId, source: "staff" }, select: { id: true, shopId: true, status: true, payVia: true, source: true } });
+    earlierPage = !!order;
+  }
   if (!order) return { status: 200, body: "no order" };
   // The endpoint must be the order's own: a shop's secret can't confirm another shop's order, nor the platform's a shop's.
   if (shopId ? order.shopId !== shopId || order.payVia !== "own" : order.payVia !== "platform") return { status: 200, body: "not this endpoint" };
   if (ev.type === "checkout.session.completed" || ev.type === "checkout.session.async_payment_succeeded") {
     if (obj.payment_status === "paid" || obj.payment_status === "no_payment_required") {
       const intent = typeof obj.payment_intent === "string" ? obj.payment_intent : null;
-      await applyPayment(order.id, { sessionId, intent }, now);
+      await applyPayment(order.id, { sessionId: earlierPage ? null : sessionId, intent }, now);
     }
   } else if (ev.type === "checkout.session.expired" || ev.type === "checkout.session.async_payment_failed") {
-    await db.webOrder.updateMany({ where: { id: order.id, status: "PENDING" }, data: { status: "CANCELLED", cancelledAt: now, staffNote: "Never paid." } });
+    // A pay link the shop sent stays open for the customer: a fresh payment page is made when she comes back.
+    await db.webOrder.updateMany({ where: { id: order.id, status: "PENDING", source: "customer" }, data: { status: "CANCELLED", cancelledAt: now, staffNote: "Never paid." } });
   }
   return { status: 200, body: "ok" };
 }
@@ -985,7 +1061,7 @@ async function notifyOrder(o: OrderRow, stage: "paid" | "ready" | "shipped" | "c
       o.status !== "CANCELLED" && o.refundedCents > 0
         ? ` ${items.filter((i) => i.short).length === 1 ? "One item was" : "Some items were"} out of stock; ${money(o.refundedCents)} goes back to your card in a few days.`
         : "",
-    fulfil_line: o.fulfil === "ship" ? " We'll let you know when it ships." : " We'll let you know when it's ready to pick up.",
+    fulfil_line: !items.some((i) => i.partId) ? "" : o.fulfil === "ship" ? " We'll let you know when it ships." : " We'll let you know when it's ready to pick up.",
     pickup_line: o.shop.shopPickupNote?.trim() || "Come to the counter with your order number.",
     tracking_line: o.tracking ? ` Tracking: ${o.tracking}.` : "",
     refund_line: o.refundedCents > 0 ? ` ${money(o.refundedCents)} goes back to your card in a few days.` : "",
@@ -1037,6 +1113,11 @@ export type OrderView = {
   note: string | null;
   createdAt: Date;
   paidAt: Date | null;
+  /** A pay link the shop sent: the customer pays it from this page. */
+  payLink: boolean;
+  expiresAt: Date | null;
+  /** A pay link past its day. */
+  ranOut: boolean;
   shop: { name: string; phone: string | null; address: string | null; timeZone: string; slug: string | null; pickupNote: string | null };
 };
 
@@ -1064,6 +1145,9 @@ export async function orderByToken(token: string): Promise<OrderView | null> {
     note: o.note,
     createdAt: o.createdAt,
     paidAt: o.paidAt,
+    payLink: o.source === "staff",
+    expiresAt: o.expiresAt,
+    ranOut: !!o.expiresAt && o.expiresAt.getTime() < Date.now(),
     shop: { name: o.shop.name, phone: o.shop.phone, address: o.shop.address, timeZone: o.shop.timeZone, slug: o.shop.bookingSlug, pickupNote: o.shop.shopPickupNote },
   };
 }
@@ -1157,10 +1241,15 @@ export async function noteOrderFor(user: CurrentUser, id: string, note: string):
 /** A PENDING order left for two hours (the payment page abandoned without Stripe's expiry event) is cancelled. */
 export async function expireStaleOrders(now = new Date()): Promise<number> {
   const r = await db.webOrder.updateMany({
-    where: { status: "PENDING", createdAt: { lt: new Date(now.getTime() - 2 * 3_600_000) } },
+    where: { status: "PENDING", source: "customer", createdAt: { lt: new Date(now.getTime() - 2 * 3_600_000) } },
     data: { status: "CANCELLED", cancelledAt: now, staffNote: "Never paid." },
   });
-  return r.count;
+  // A pay link the shop sent lasts until its own day (14 days unless the shop chose).
+  const links = await db.webOrder.updateMany({
+    where: { status: "PENDING", source: "staff", expiresAt: { lt: now } },
+    data: { status: "CANCELLED", cancelledAt: now, staffNote: "The pay link ran out unpaid." },
+  });
+  return r.count + links.count;
 }
 
 export const decodeCartParam = (sp: Record<string, string | string[] | undefined>, key = "c") => parseCart(typeof sp[key] === "string" ? (sp[key] as string) : null);

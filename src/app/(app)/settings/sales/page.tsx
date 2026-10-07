@@ -28,6 +28,8 @@ import { layawaySettings } from "@/lib/layaway";
 import { EVERY_LABEL, LAYAWAY_EVERY } from "@/lib/layaway-math";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader, Section } from "@/components/ui";
+import { MarginFloorSettings } from "@/components/margin-floor-settings";
+import { HopSettings } from "@/components/hop-settings";
 
 /** A lender's fields, empty for a new one. */
 function LenderFields({ l, prefix }: { l?: Awaited<ReturnType<typeof listLenders>>[number]; prefix: string }) {
@@ -122,13 +124,17 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
     shopTimeZone(user.shopId),
     listLenders(user.shopId),
   ]);
-  const [promos, shop] = await Promise.all([listPromotions(user.shopId), db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { taxIncludedOn: true, softwareActivatedAtSale: true } })]);
+  const [promos, shop] = await Promise.all([listPromotions(user.shopId), db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { taxIncludedOn: true, softwareActivatedAtSale: true, hopOn: true } })]);
   const today = ymdOf(new Date(), tz);
   const year = Number(today.slice(0, 4));
   const preset = presetByKey(sp.preset);
   return (
     <div className="max-w-3xl space-y-6">
       <PageHeader title="Selling" sub="Sales tax holidays, how layaways work at your shop, what you sell with a machine, and the warranty each maker gives, in your own words." back={{ href: "/settings", label: "Settings" }} />
+
+      <MarginFloorSettings shopId={user.shopId} admin={admin} />
+
+      <HopSettings on={shop.hopOn} admin={admin} />
 
       <Section title="Sales (promotions)" id="sales">
         <p className="muted mb-3 text-sm">

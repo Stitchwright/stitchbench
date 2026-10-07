@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ActionResult } from "@/lib/action";
 import { ActionForm, Submit } from "@/components/action-form";
 import { DraftFill } from "@/components/assistant/marketing-drafts";
+import { EVENT_KINDS, choicesOf, optionsText } from "@/lib/events-math";
 
 export type ClassDraft = {
   title: string;
@@ -17,7 +18,68 @@ export type ClassDraft = {
   seats: number;
   waitlist: boolean;
   remind: string;
+  // Events (shop-features-round-2-design.md 4.5)
+  kind?: string;
+  earlyCents?: number | null;
+  earlyUntil?: string | null;
+  depositCents?: number | null;
+  depositRefundable?: boolean;
+  balanceDays?: number;
+  choices?: unknown;
+  doorCents?: number | null;
 };
+
+const dollars = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
+
+/** The rooms or meals choice's options as typed ("Single +120, Double"). */
+function optionsOf(choices: unknown, key: string): string {
+  const ch = choicesOf(choices).list.find((c) => c.key === key);
+  return ch ? optionsText(ch.options) : "";
+}
+
+/** A retreat's or event's extras (4.5), folded under More choices: early-bird, deposit and balance, rooms, meals, door. */
+function EventFields({ draft, kind }: { draft: ClassDraft | null; kind: string }) {
+  return (
+    <details className="rounded border border-line p-3" open={!draft}>
+      <summary className="link cursor-pointer text-base">More choices: early-bird price, deposit, rooms and meals, door price</summary>
+      <div className="mt-3 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field id="ev-early" label="Early-bird price (optional)">
+            <input id="ev-early" name="earlyFee" className="input num" inputMode="decimal" defaultValue={dollars(draft?.earlyCents)} placeholder="0.00" />
+          </Field>
+          <Field id="ev-early-until" label="Early-bird price until">
+            <input id="ev-early-until" name="earlyUntil" type="date" className="input" defaultValue={draft?.earlyUntil ?? ""} />
+          </Field>
+          <Field id="ev-deposit" label="Deposit each (optional)" hint="Taken at sign-up; the rest is the balance.">
+            <input id="ev-deposit" name="deposit" className="input num" inputMode="decimal" defaultValue={dollars(draft?.depositCents)} placeholder="150.00" />
+          </Field>
+          <Field id="ev-days" label="Balance due, days before the first day">
+            <input id="ev-days" name="balanceDays" className="input num" inputMode="numeric" defaultValue={String(draft?.balanceDays ?? 60)} />
+          </Field>
+        </div>
+        <label className="flex min-h-11 items-center gap-2 text-base">
+          <input type="checkbox" name="depositRefundable" className="check" defaultChecked={draft?.depositRefundable ?? false} /> The deposit can be refunded (otherwise the receipt says non-refundable)
+        </label>
+        {kind === "RETREAT" && (
+          <>
+            <Field id="ev-rooms" label="Rooms, with any extra price" hint='Like "Single +120, Double, Shared".'>
+              <input id="ev-rooms" name="rooms" className="input" defaultValue={optionsOf(draft?.choices, "room")} placeholder="Single +120, Double, Shared" />
+            </Field>
+            <Field id="ev-meals" label="Meals, with any extra price" hint='Like "None, Lunches +45, All meals +90".'>
+              <input id="ev-meals" name="meals" className="input" defaultValue={optionsOf(draft?.choices, "meals")} placeholder="None, Lunches +45, All meals +90" />
+            </Field>
+            <label className="flex min-h-11 items-center gap-2 text-base">
+              <input type="checkbox" name="askDietary" className="check" defaultChecked={choicesOf(draft?.choices).dietary} /> Ask about dietary needs
+            </label>
+          </>
+        )}
+        <Field id="ev-door" label="Price at the door (optional)" hint="For selling tickets on the day.">
+          <input id="ev-door" name="doorFee" className="input num" inputMode="decimal" defaultValue={dollars(draft?.doorCents)} placeholder="0.00" />
+        </Field>
+      </div>
+    </details>
+  );
+}
 
 const REPEATS = [
   { key: "once", label: "Once" },
@@ -74,22 +136,35 @@ export function MeetingFields({ prefix = "", defaults }: { prefix?: string; defa
 
 /**
  * `drafting`: the Assistant's "Draft it" for "About the class" (shop-features-round-2-design.md 5.2), when its marketing
- * drafts are on; the class's id for a saved class (its meetings go in too), null for a new one.
+ * drafts are on; the class's id for a saved class (its meetings go in too), null for a new one. `kind`: a new event's kind (4.5).
  */
 export function ClassForm({
   action,
   draft,
   isNew,
   drafting,
+  kind: startKind,
 }: {
   action: (fd: FormData) => Promise<ActionResult>;
   draft: ClassDraft | null;
   isNew: boolean;
   drafting?: { classId: string | null; unavailable?: string } | null;
+  kind?: string;
 }) {
+  const [kind, setKind] = useState<string>(draft?.kind ?? startKind ?? "CLASS");
+  const event = kind !== "CLASS";
   return (
     <ActionForm action={action} success={isNew ? undefined : "Saved"} className="space-y-4">
-      <Field id="cl-title" label="Class name">
+      <Field id="cl-kind" label="What is it?">
+        <select id="cl-kind" name="kind" className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
+          {Object.entries(EVENT_KINDS).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field id="cl-title" label={event ? "Name" : "Class name"}>
         <input id="cl-title" name="title" className="input" maxLength={120} required defaultValue={draft?.title ?? ""} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -99,7 +174,7 @@ export function ClassForm({
         <Field id="cl-location" label="Where">
           <input id="cl-location" name="location" className="input" maxLength={120} defaultValue={draft?.location ?? ""} placeholder="The shop classroom" />
         </Field>
-        <Field id="cl-fee" label="Fee" hint={draft ? "Changing it never re-prices people already signed up." : undefined}>
+        <Field id="cl-fee" label={event ? "Price" : "Fee"} hint={draft ? "Changing it never re-prices people already signed up." : undefined}>
           <input id="cl-fee" name="fee" className="input num" inputMode="decimal" defaultValue={draft ? (draft.feeCents / 100).toFixed(2) : "0.00"} />
         </Field>
         <Field id="cl-seats" label="Seats">
@@ -129,13 +204,14 @@ export function ClassForm({
       <Field id="cl-supplies" label="What to bring" hint="Goes in the sign-up message and the reminders.">
         <textarea id="cl-supplies" name="supplies" rows={2} maxLength={4000} className="input" defaultValue={draft?.supplies ?? ""} />
       </Field>
+      {event && <EventFields draft={draft} kind={kind} />}
       {isNew && (
         <fieldset className="space-y-2">
           <legend className="label">First meeting</legend>
           <MeetingFields />
         </fieldset>
       )}
-      <Submit>{isNew ? "Create the class" : "Save"}</Submit>
+      <Submit>{isNew ? (event ? "Create the event" : "Create the class") : "Save"}</Submit>
     </ActionForm>
   );
 }
