@@ -34,7 +34,7 @@ export default async function ModelParts({ params, searchParams }: { params: Pro
       />
       {!joined ? (
         <Empty>
-          Join the community hub (<Link href="/settings#hub" className="link">Settings</Link>) to get the cross-reference.
+          Join StitchHub (<Link href="/settings#hub" className="link">Settings</Link>) to get the cross-reference.
         </Empty>
       ) : (
         <>

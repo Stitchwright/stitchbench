@@ -50,7 +50,7 @@ test("check in, work, bill and review a machine", async ({ page }) => {
 
   // Intake
   await page.goto("/tickets/new");
-  await page.getByLabel("New customer name").fill("E2E Customer");
+  await page.getByLabel("new customer's name").fill("E2E Customer");
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
   await page.getByLabel("Serial number", { exact: true }).fill(serial);

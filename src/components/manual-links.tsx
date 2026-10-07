@@ -206,9 +206,9 @@ export async function ManualLinks({ shopId, brand, model, timeZone }: { shopId?:
     return (
       <Section title="Manual links">
         <Empty>
-          Join the community hub (
+          Join StitchHub (
           <Link href="/settings#hub" className="link">
-            Settings → Community hub
+            Settings → StitchHub
           </Link>
           ) to see where every shop has found manuals for the {model}, and to share links you find.
         </Empty>

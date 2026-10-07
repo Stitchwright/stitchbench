@@ -88,7 +88,7 @@ export default async function VacFinder({ searchParams }: { searchParams: Promis
       {!joined && (
         <p className="card card-pad text-sm">
           <Link href="/settings#hub" className="link">
-            Join the community hub
+            Join StitchHub
           </Link>{" "}
           (Settings) to see and share what fits. For now this shows your own parts that list this model in their Fits.
         </p>

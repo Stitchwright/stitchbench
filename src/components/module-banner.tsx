@@ -50,7 +50,7 @@ export function GraceBanner({ items, admin }: { items: GraceItem[]; admin: boole
             <>
               Paste your renewal key in{" "}
               <Link href={SETTINGS_MODULES_HREF} className="underline">
-                Settings → Modules
+                Settings → Add-ons
               </Link>
               .
               {g.renewHref && (

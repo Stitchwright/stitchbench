@@ -63,11 +63,11 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Manual links"
-        sub="Where manuals can be downloaded, shared by every shop on the community hub. Links only: nobody hosts the manuals. Anyone can fix a dead link, and every change can be rolled back."
+        sub="Where manuals can be downloaded, shared by every shop on StitchHub. Links only: nobody hosts the manuals. Anyone can fix a dead link, and every change can be rolled back."
       />
       {!joined ? (
         <p className="pill tone-wait inline-block">
-          Not connected to the community hub.{" "}
+          Not connected to StitchHub.{" "}
           <Link href="/settings#hub" className="link">
             Join it in Settings
           </Link>{" "}

@@ -112,7 +112,7 @@ test("labels, scanner and most-used parts", async ({ page }) => {
     }
     await page.goto("/settings");
     await expect(page.getByText(/Connected to/)).toBeVisible();
-    await page.getByRole("button", { name: "Sync now" }).click();
+    await page.getByRole("button", { name: "Update from StitchHub" }).click();
     await expect(page.getByText("Synced with the hub")).toBeVisible({ timeout: 180_000 });
     await page.goto("/parts/most-used?view=community");
     await expect(page.getByText(pn)).toBeVisible();

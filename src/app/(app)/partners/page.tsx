@@ -16,7 +16,7 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 86400_000);
 // ?error= carries one of these fixed codes, set only by this app's own redirects (sign-up's partner code step). It is
 // never echoed as free text, since anyone can put anything after "?error=" in a link they send someone.
 const PARTNER_ERROR_MESSAGES: Record<string, string> = {
-  "need-hub": "Your shop is set up. Enter the partner code here once this StitchBench's administrator has joined the community hub.",
+  "need-hub": "Your shop is set up. Enter the partner code here once this StitchBench's administrator has joined StitchHub.",
   "partner-code": "That partner code didn't work. Try it again below.",
 };
 const UNKNOWN_PARTNER_ERROR = "Something didn't go through. Try again below.";
@@ -61,7 +61,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
             ? "Sewing and quilt shops that take machines in for you, buy parts and notions from you and sell your stock on consignment."
             : "The repair shop you send machines to, order from, and whose stock you sell on consignment."
         }
-        actions={<ActionButton action={syncPartnersNow} success="Synced with partners">Sync now</ActionButton>}
+        actions={<ActionButton action={syncPartnersNow} success="Synced with partners">Update from StitchHub</ActionButton>}
       />
       {error && (
         <p className="pill tone-bad" role="alert">
@@ -177,7 +177,7 @@ export default async function Partners({ searchParams }: { searchParams: Promise
               </PartnerCodeForm>
             ) : (
               <p className="text-sm">
-                Making codes needs the community hub. Join it in{" "}
+                Making codes needs StitchHub. Join it in{" "}
                 <Link href="/settings#hub" className="link">
                   Settings
                 </Link>

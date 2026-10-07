@@ -36,7 +36,7 @@ test("start a club, mark a pay-at-pickup month paid and see it in taken today", 
   await expect(page.getByRole("heading", { level: 1, name: club })).toBeVisible();
 
   // Add the member, paying at pickup.
-  await page.getByLabel("Existing customer").fill(member);
+  await page.getByLabel("Find the customer").fill(member);
   await page.getByRole("button", { name: new RegExp(member) }).click();
   await page.getByLabel("Pays").selectOption("PAY_AT_PICKUP");
   await page.getByRole("button", { name: "Add the member" }).click();
@@ -62,7 +62,7 @@ test("a longarm order priced by the square inch, collected at the register", asy
   await signIn(page, OWNER);
 
   await page.goto("/longarm");
-  await page.getByLabel("Existing customer").fill(who);
+  await page.getByLabel("Find the customer").fill(who);
   await page.getByRole("button", { name: new RegExp(who) }).click();
   await page.getByLabel("Width (inches)").fill("60");
   await page.getByLabel("Length (inches)").fill("80");

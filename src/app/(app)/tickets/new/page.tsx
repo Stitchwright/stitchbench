@@ -91,7 +91,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
               <CustomerPicker initial={presetCustomer} notifyRequired={needNotify} />
               <div className="field">
                 <label htmlFor="customerName" className="label">
-                  New customer name
+                  Or a new customer&apos;s name
                 </label>
                 <input id="customerName" name="customerName" className="input" autoComplete="off" />
               </div>
@@ -202,9 +202,9 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
               <IntakeFields defs={kind.intakeFields} on="ticket" />
               <div className="field">
                 <label htmlFor="preApproved" className="label">
-                  Pre-approved over the service ($)
+                  OK to spend up to ($) without calling
                 </label>
-                <input id="preApproved" name="preApproved" inputMode="decimal" className="input num" placeholder="75.00" />
+                <input id="preApproved" name="preApproved" inputMode="decimal" className="input num" placeholder="for example 75" />
               </div>
               <div className="field">
                 <label htmlFor="number" className="label">

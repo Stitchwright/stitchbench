@@ -125,7 +125,7 @@ function storedHubUrl(url: string) {
   try {
     return checkHubUrl(url);
   } catch {
-    throw new UserError(`The stored hub address (${url}) isn't https. Join the hub again from Settings → Community hub.`);
+    throw new UserError(`The stored hub address (${url}) isn't https. Join the hub again from Settings → StitchHub.`);
   }
 }
 
@@ -303,7 +303,7 @@ export async function hubRequest<T>(base: string, path: string, o: { method?: st
  */
 export async function hubFetch(path: string, init: RequestInit & { json?: unknown; quick?: boolean; shopRef?: string | null } = {}) {
   const s = await hubState();
-  if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → Community hub).");
+  if (!s?.url || !s.installKey) throw new UserError("Join the community hub first (Settings → StitchHub).");
   // The install key goes with every request: only to an address the join rules allow (https, or http on this computer).
   const base = storedHubUrl(s.url);
   // Only API paths, and nothing in them that could climb out of the path (ids are checked by hubId too).
@@ -445,7 +445,7 @@ export function hubScope(s: unknown): "member" | "partner" | "pending" {
  */
 export async function adoptInstall(a: { url: string; hubName: string | null; installId: string; installKey: string; scope: "member" | "partner" | "pending" }) {
   const fresh = await hubState();
-  if (fresh?.installKey) throw new UserError("This program joined a hub a moment ago. Look at Settings → Community hub, then try again.");
+  if (fresh?.installKey) throw new UserError("This program joined a hub a moment ago. Look at Settings → StitchHub, then try again.");
   // An install that was never on any hub has no copies of a hub's to clear.
   const hadConnection = Boolean(fresh?.url || fresh?.formerUrl);
   const data = {

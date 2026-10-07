@@ -275,7 +275,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   </div>
                   <div className="field">
                     <label htmlFor="preApproved" className="label">
-                      Pre-approved over service ($)
+                      OK to spend up to ($) without calling
                     </label>
                     <input id="preApproved" name="preApproved" defaultValue={t.preApprovedCents != null ? (t.preApprovedCents / 100).toFixed(2) : ""} className="input num" />
                   </div>
@@ -301,7 +301,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                 <KV k="Service requested" v={t.serviceRequested} />
                 <KV k="Tech" v={t.tech?.name} />
-                <KV k="Pre-approved" v={t.preApprovedCents != null ? money(t.preApprovedCents) : null} />
+                <KV k="OK to spend up to" v={t.preApprovedCents != null ? money(t.preApprovedCents) : null} />
                 <KV k="Customer approved" v={t.approvedCents != null ? money(t.approvedCents) : null} />
                 <div className="col-span-2 sm:col-span-3">
                   <KV k="Problem reported" v={t.problem && <span className="whitespace-pre-wrap">{t.problem}</span>} />
@@ -476,11 +476,11 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             {canWork && (t.taxExemptId || (exemptNow && t.taxRatePct > 0)) && (
               <p className="no-print mb-3 text-right text-sm">
                 {t.taxExemptId ? (
-                  <ActionButton action={setTicketTax.bind(null, t.id, true)} className="link" confirm="Charge tax on this ticket after all?">
+                  <ActionButton action={setTicketTax.bind(null, t.id, true)} className="link link-target" confirm="Charge tax on this ticket after all?">
                     Charge tax on this ticket
                   </ActionButton>
                 ) : (
-                  <ActionButton action={setTicketTax.bind(null, t.id, false)} className="link" confirm="Take the tax off this ticket? The customer's exemption certificate is recorded on it.">
+                  <ActionButton action={setTicketTax.bind(null, t.id, false)} className="link link-target" confirm="Take the tax off this ticket? The customer's exemption certificate is recorded on it.">
                     Customer is tax exempt: take the tax off
                   </ActionButton>
                 )}
@@ -689,7 +689,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
           <ModelPanel shopId={user.shopId} brand={m.brand} model={m.model} kind={kind} />
           <p className="text-sm">
-            <Link href={modelHref(m.brand, m.model, kind.key)} className="link">
+            <Link href={modelHref(m.brand, m.model, kind.key)} className="link link-target">
               Everything about the {m.brand} {m.model}
             </Link>
           </p>
