@@ -82,11 +82,16 @@ type CartLine = {
   giftCard?: { mode: "new" | "printed" | "load" | "cashout"; number?: string };
   /** Software (shop-features-round-2-design.md 2.5): its code, "later", the machine, a renewal, a return's reason. */
   software?: SoftwareLineInput;
+  /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7), and whether the cashier ticked it taken down. */
+  listedOn?: string[];
+  delisted?: boolean;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
 const EMPTY_CUSTOMER: NewCustomer = { name: "", phone: "", email: "", address: "" };
 
+/** A machine, or the last of an item, also listed elsewhere: ticked "taken down" before the sale (9.7). */
+const mustDelist = (l: CartLine) => !!l.listedOn?.length && l.qty > 0 && (!!l.stockUnitId || (l.onHand ?? 0) - l.qty < 1);
 const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
 // Names a sale for the server, so one sent twice is made once. getRandomValues works on the shop's plain-http network.
@@ -115,6 +120,8 @@ export function Register({
   lenders = [],
   promotions = NO_PROMOS,
   preload,
+  sellers = [],
+  me = "",
 }: {
   taxRatePct: number;
   hasPartners: boolean;
@@ -131,9 +138,13 @@ export function Register({
   /** The promotions in force today (percent or amount off, the price including the tax). */
   promotions?: Promo[];
   preload?: BookingDue | null;
+  /** Who can be picked as the seller (commissions, 9.7), and the person signed in (the default). */
+  sellers?: { id: string; name: string }[];
+  me?: string;
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [soldBy, setSoldBy] = useState(me);
   const [returnMode, setReturnMode] = useState(false);
   // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the same).
   const [returnOf, setReturnOf] = useState<{ id: string; taxRatePct: number } | null>(null);
@@ -234,7 +245,7 @@ export function Register({
         return;
       }
       setDone(null);
-      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT", brand: it.brand ?? null }]);
+      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT", brand: it.brand ?? null, listedOn: it.listedOn }]);
       return;
     }
     setDone(null);
@@ -268,6 +279,7 @@ export function Register({
           consigned: it.consigned,
           disclosure: it.disclosure,
           machineId,
+          listedOn: it.listedOn,
         },
       ];
     });
@@ -663,7 +675,9 @@ export function Register({
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
         software: l.software ?? null,
+        delisted: l.delisted ?? false,
       })),
+      soldById: soldBy || null,
       orderDiscountCents,
       tenders,
     };
@@ -1057,6 +1071,11 @@ export function Register({
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                    {mustDelist(l) && (
+                      <label className="ml-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold">
+                        <input type="checkbox" className="check" checked={l.delisted === true} onChange={(e) => setLine(l.key, { delisted: e.target.checked })} /> Take it down on {l.listedOn!.join(", ")} first: done
+                      </label>
+                    )}
                     {l.kind === "SOFTWARE" && l.partId && (
                       <SoftwareLineFields partId={l.partId} customerId={customer?.id ?? null} value={l.software ?? {}} returning={l.qty < 0} canOverride={canSell} onChange={(v) => setLine(l.key, { software: v })} />
                     )}
@@ -1246,6 +1265,23 @@ export function Register({
           </div>
         </div>
 
+        {sellers.length > 1 && (
+          <div className="card card-pad">
+            <div className="field">
+              <label htmlFor="register-sold-by" className="label">
+                Sold by
+              </label>
+              <select id="register-sold-by" className="select" value={soldBy} onChange={(e) => setSoldBy(e.target.value)}>
+                {sellers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="card card-pad space-y-1 text-sm">
           <Row k="Subtotal" v={money(t.subtotal)} />
           <div className="flex items-center justify-between gap-2">
@@ -1364,7 +1400,7 @@ export function Register({
           <button
             type="button"
             className="btn btn-primary w-full"
-            disabled={busy || !lines.length || Boolean(problem)}
+            disabled={busy || !lines.length || Boolean(problem) || lines.some((l) => mustDelist(l) && !l.delisted)}
             onClick={finish}
           >
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}

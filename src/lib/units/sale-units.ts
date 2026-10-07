@@ -19,6 +19,7 @@ import type { RegisterItem } from "@/lib/register-item";
 import { lineNet } from "@/lib/register-math";
 import type { TradeInInput } from "@/lib/units/types";
 import { grantPlan } from "@/lib/units/plans";
+import { readListed } from "@/lib/listed-math";
 import { payoutOnReturn, payoutOnSale, payoutOnVoidReturn, payoutOnVoidSale } from "@/lib/consign-machines";
 import { DEFAULT_WARRANTY_MONTHS, isCondition, pushEvent, sellableMachines, unitDescription, unitDisclosure, warrantyByDefault, warrantyEnd, type UnitEvent } from "@/lib/units/units";
 
@@ -303,6 +304,7 @@ export async function registerUnitHits(a: { shopId: string; q: string; mode: "co
     kind: "UNIT",
     consigned: false,
     disclosure: unitDisclosure(u.condition),
+    listedOn: readListed(u.listedOn).map((x) => x.where),
     stockUnitId: u.id,
     brand: u.machine.brand,
   }));
