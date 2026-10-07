@@ -102,6 +102,11 @@ model Shop {
   nextCoopNumber          Int           @default(1)
   // Customers' machines on consignment (9.6): the shop's commission when none is typed, a percent of what it sells for
   consignDefaultPct       Float         @default(25)
+  // Quilt appraisals (9.8): the next certificate's number, the usual fee, and the appraiser's name and credential
+  nextAppraisalNumber     Int           @default(1)
+  appraisalFeeCents       Int           @default(7500)
+  appraiserName           String?
+  appraiserCredential     String?
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -260,6 +265,8 @@ model Shop {
   coopClaims        CoopClaim[]
   coopProofs        CoopProof[]
   consignPayouts    ConsignPayout[]
+  appraisals        Appraisal[]
+  appraisalPhotos   AppraisalPhoto[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -3500,4 +3507,47 @@ model ConsignPayout {
   @@index([shopId, customerId])
   @@index([shopId, paidAt])
   @@index([saleLineId])
+}
+
+// A quilt appraisal (shop-features-round-2-design.md 9.8, package appraisals): the customer, the quilt (details:
+// { title, widthIn, lengthIn, maker, made, techniques, materials, condition, description }), the value and its purpose
+// (insurance replacement | fair market | donation), the appraiser and her credential as on the certificate, the fee
+// rung up at the register (saleId, plain), and issuedAt once the certificate is final (it can't be changed after; a
+// new appraisal replaces it). customerId is plain.
+model Appraisal {
+  id          String           @id @default(cuid())
+  shopId      String
+  shop        Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number      Int
+  customerId  String?
+  name        String
+  details     Json             @default("{}")
+  valueCents  Int              @default(0)
+  purpose     String           @default("insurance")
+  appraiser   String?
+  credential  String?
+  feeCents    Int              @default(0)
+  saleId      String?
+  issuedAt    DateTime?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  photos      AppraisalPhoto[]
+
+  @@unique([shopId, number])
+  @@index([shopId, customerId])
+}
+
+// A photo of the appraised quilt (the first prints on the certificate), 5 MB at most.
+model AppraisalPhoto {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  appraisalId String
+  appraisal   Appraisal @relation(fields: [appraisalId], references: [id], onDelete: Cascade)
+  mime        String
+  data        Bytes
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([appraisalId])
 }
