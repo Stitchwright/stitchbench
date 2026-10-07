@@ -4,6 +4,7 @@ import "server-only";
 // trade-ins, service plans (tax-machine-sales-layaway-design.md section 3), and (scheduling-messaging-design.md 12.3)
 // class seats and appointments paid or refunded here.
 import { checkDelisted, clearUnitListings, sellerFor } from "@/lib/commissions";
+import { checkRegistryLines } from "@/lib/gift-registry";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -67,6 +68,8 @@ export type SaleLineInput = {
   software?: SoftwareLineInput | null;
   /** Listed elsewhere (shop-features-round-2-design.md 9.7): the cashier ticked "taken down on eBay" for this line. */
   delisted?: boolean;
+  /** Bought from a customer's gift list (9.9): the list item, ticked off by this line. */
+  registryItemId?: string | null;
 };
 
 export type SaleInput = {
@@ -151,6 +154,8 @@ export async function completeSaleAs(
     // Listed elsewhere (9.7): a machine, or the last of an item, also listed on eBay is ticked "taken down" first. Who sold it.
     const delistUnits = lay || opts.paidOnline ? [] : await checkDelisted(shopId, input.lines, parts);
     const soldById = opts.paidOnline ? null : await sellerFor(user, input.soldById);
+    // Gift list items (9.9): this shop's, the same item, bought.
+    if (!lay && !opts.paidOnline) await checkRegistryLines(shopId, input.lines);
     // Class seats and appointments: this shop's, each once per sale.
     const bookings = await loadBookings(shopId, input.lines);
     // A supply bought for a customer's vacuum names one of this shop's vacuums.
@@ -508,7 +513,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null, soldById } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null, soldById, registryItemId: lay || opts.paidOnline ? null : (input.lines[i].registryItemId ?? null) } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });

@@ -267,6 +267,8 @@ model Shop {
   consignPayouts    ConsignPayout[]
   appraisals        Appraisal[]
   appraisalPhotos   AppraisalPhoto[]
+  giftRegistries    GiftRegistry[]
+  registryItems     RegistryItem[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -1511,6 +1513,8 @@ model SaleLine {
   layawayId      String?
   // Who sold it (User id, plain; shop-features-round-2-design.md 9.7): picked at the register, the person signed in by default
   soldById       String?
+  // Bought from a customer's gift list (RegistryItem id, plain; shop-features-round-2-design.md 9.9): ticks it off
+  registryItemId String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1521,6 +1525,7 @@ model SaleLine {
   @@index([enrollmentId])
   @@index([appointmentId])
   @@index([layawayId])
+  @@index([registryItemId])
 }
 
 // A partnership with another shop, from this shop's side (the id is the hub's link id).
@@ -3550,4 +3555,39 @@ model AppraisalPhoto {
   createdAt   DateTime  @default(now())
 
   @@index([appraisalId])
+}
+
+// A customer's wish list or gift registry (shop-features-round-2-design.md 9.9, package gift-registry): what she would
+// like, shared by a link she sends to family (token, on the shop's public page). Bought at the counter it is ticked off
+// (SaleLine.registryItemId) without telling her. customerId is plain. closedAt: no longer shared.
+model GiftRegistry {
+  id         String         @id @default(cuid())
+  shopId     String
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String?
+  name       String
+  title      String
+  eventDate  String?
+  token      String         @unique
+  closedAt   DateTime?
+  createdAt  DateTime       @default(now())
+  items      RegistryItem[]
+
+  @@index([shopId, customerId])
+}
+
+// One thing on a gift list: an item from stock (partId, plain) or words, and how many she would like.
+model RegistryItem {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  registryId  String
+  registry    GiftRegistry @relation(fields: [registryId], references: [id], onDelete: Cascade)
+  partId      String?
+  description String
+  qtyWanted   Int          @default(1)
+  note        String?
+  createdAt   DateTime     @default(now())
+
+  @@index([registryId])
 }
