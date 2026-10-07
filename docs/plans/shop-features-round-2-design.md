@@ -1445,3 +1445,25 @@ Decisions made while building:
   refund; nothing refunds by itself.
 - Only a return scanned from its receipt refunds the card (the program needs the original sale to know the card);
   any other card refund is done on the shop's Stripe dashboard, as now.
+
+**`thread-photo` (9.10, built 7 Oct 2026 on the owner's "everything today"; the "shops ask" gate lifted).** No
+migration. Code: the feature `thread_photo` (`src/lib/assistant/features.ts`, class read, in the **Fabric and thread
+helpers** switch group, its blurb updated), `buildThreadPhoto` / `parseThreadColors` (`src/lib/assistant/prompts.ts`),
+`src/lib/thread-photo-math.ts` (pure: Lab color distance, ranking), `src/lib/thread-photo.ts` (`threadMatchFor`), the
+action `matchThreadPhoto` (`src/actions/assistant.ts`), and the register's **Match from a photo**
+(`src/components/thread-photo-match.tsx`: the camera or a picture, shrunk to 640 px; "Pull these and check them against
+the swatch card": each color read, the closest threads with their swatch, closeness, stock, bin and price, Add; how many
+threads have no swatch color). Check: `scripts/checks/thread-photo.check.ts` (2 groups, a stand-in hub); `assistant`,
+`fabric-ai`, `assistant-parts`, `base-license` still pass. Spec: `tests/thread-photo.spec.ts` (no button without the
+Assistant; the full flow is written and marked fixme until the hub change ships).
+**Hub change needed (StitchHub, `src/assistant.mjs`):** add `"thread_photo"` to `PHOTO_FEATURES` (today only
+`read_plate`, `read_label` and `tag_fabric` may carry a photo; the hub answers 400 "Only the plate, bolt-label and
+swatch readers take a photo" until then). Nothing else changes on the hub (class read, the same image limits, counted
+like the others).
+Decisions made while building:
+- The model only reads the photo's main colors (one to three, as #rrggbb with a plain name and where in the photo); it
+  is never sent the shop's items and never names a maker or number. The program ranks the shop's own threads that have a
+  swatch color (Part.colorHex, from item-details) by how close they look (CIE Lab), on the shelf first unless one out of
+  stock is much closer. Threads without a swatch can't be matched and are counted on the screen.
+- Offered as "pull these and check": photos are never exact, and the swatch card decides.
+- Listing photo clean-up and counting spools from a rack photo (9.11) stay unbuilt, as the design says.

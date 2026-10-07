@@ -17,6 +17,7 @@ export const FEATURES = {
   match_columns: { label: "Match the columns (inventory import)", cls: "read", group: "parts" },
   read_label: { label: "Read the bolt label", cls: "read", group: "fabric" },
   tag_fabric: { label: "Color and theme tags", cls: "read", group: "fabric" },
+  thread_photo: { label: "Thread match from a photo", cls: "read", group: "fabric" },
 } as const satisfies Record<string, { label: string; cls: ModelClass; group: FeatureGroup }>;
 
 export type FeatureId = keyof typeof FEATURES;
@@ -34,7 +35,7 @@ export const GROUP_LABEL: Record<FeatureGroup, { label: string; blurb: string }>
   causes: { label: "What's likely wrong", blurb: "On a ticket: likely causes and the checks to make, from this shop's past tickets, gotcha notes, community notes and the specs." },
   plate: { label: "Read the plate", blurb: "At check-in: a photo of the rating plate fills in make, model and serial." },
   parts: { label: "Parts helpers", blurb: "\"Looks like\" suggestions on a part, \"Parts this job usually needs\" on a ticket, and \"Match the columns\" on the inventory import. Part numbers, descriptions and column headings only; never a customer." },
-  fabric: { label: "Fabric helpers", blurb: "A photo of a bolt label fills in a new fabric (number, color, maker, width, content), and a fabric's swatch picture gets color and theme tags. Only the picture is sent; never a customer." },
+  fabric: { label: "Fabric and thread helpers", blurb: "A photo of a bolt label fills in a new fabric (number, color, maker, width, content), a fabric's swatch picture gets color and theme tags, and a photo of her thread or fabric finds the closest threads you stock (to pull and check against the swatch card). Only the picture is sent; never a customer." },
   manuals: { label: "Ask the manuals", blurb: "On a model page or ticket: answers a question from the text of your own indexed manuals, citing the pages. Only the few matching pages go to the model." },
 };
 

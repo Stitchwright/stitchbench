@@ -11,6 +11,7 @@ import { draftText, labelRead, likelyCauses, markCall, plateRead, saveSettings, 
 import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
+import { threadMatchFor } from "@/lib/thread-photo";
 
 /** "Draft it" on a ticket: the shorthand in the field (not yet saved) becomes plain sentences, or the message's text. */
 export const draftTicketText = safe(async (ticketId: string, kind: string, shorthand: string, instruction: string) => {
@@ -123,4 +124,10 @@ export const tagFabric = safe(async (partId: string, data: string, mediaType: st
   revalidatePath(`/parts/${partId}`);
   revalidatePath("/fabric");
   return shownOnce(JSON.stringify(r));
+});
+
+/** "Match from a photo" at the register (shop-features-round-2-design.md 9.10): the closest threads in stock to pull and check. */
+export const matchThreadPhoto = safe(async (data: string, mediaType: string) => {
+  const user = await requireUser();
+  return shownOnce(JSON.stringify(await threadMatchFor(user, data, mediaType)));
 });
