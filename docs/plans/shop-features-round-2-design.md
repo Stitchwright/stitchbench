@@ -1,6 +1,6 @@
 # Shop features round 2: everything in the shop research, selling thread, accessories and software, maker crafts, more than one store: design
 
-7 Oct 2026. **Owner, 7 Oct 2026: "I want it all"** (HANDOFF section 3 item 25): every recommendation in
+7 Oct 2026. **Owner, 7 Oct 2026: every owner question answered as recommended.** **Owner, 7 Oct 2026: "I want it all"** (HANDOFF section 3 item 25): every recommendation in
 `docs/research/shop-retail-features-and-ai.md` except the two it says not to build, plus the planned "selling thread,
 accessories and software" section; the same day the owner added **crafts beyond sewing** (cutters, lasers, 3D printers:
 section 6) and **one owner running two or more stores** (section 7). Nothing here is built. It ships after the test

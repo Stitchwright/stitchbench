@@ -1233,10 +1233,11 @@ accounts and billing: design first).
 
 25. **Everything in the shop research** (owner, 7 Oct 2026: "I want it all"): every recommendation in
    `docs/research/shop-retail-features-and-ai.md` except the two it says not to build, plus selling thread, accessories
-   and software. Design: `docs/plans/shop-features-round-2-design.md` (being written), built in phases on their own
-   branches after `sales-features`, after the test month for the test shops.
+   and software. Design: `docs/plans/shop-features-round-2-design.md` (done; every question answered as recommended, 7 Oct), built
+   in its phases on their own branches after `sales-features`, after the test month for the test shops.
 26. **Ease of use first** (owner, 7 Oct 2026): "like Apple, very intuitive"; most shop staff are older women. Principles
-   and an audit with ranked fixes: `docs/plans/ease-of-use.md`, `docs/plans/ease-of-use-audit.md` (being written).
+   and an audit with ranked fixes: `docs/plans/ease-of-use.md`, `docs/plans/ease-of-use-audit.md`. Owner, 7 Oct: fix the
+   top 10 before hub day (on `scheduling-features`); 11-15 during the test month.
    Every new screen follows them.
 
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
