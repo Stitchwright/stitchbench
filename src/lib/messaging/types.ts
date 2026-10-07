@@ -41,6 +41,16 @@ export const KIND_PURPOSE: Record<MessageKind, Purpose> = {
   bags_due: "marketing",
 };
 
+/**
+ * Kinds that go out without the Marketing module (pricing-review-2026-10.md, decided 7 Oct 2026: a repair tool's own
+ * notices are in the base): ready for pickup, parts in, the estimate, and what texting itself needs (the sign-up
+ * confirmation, the HELP reply, a settings test). Every other kind needs Marketing (or Scheduling's own gate).
+ */
+export const BASE_KINDS: MessageKind[] = ["ready", "parts_in", "estimate", "consent_confirm", "help_reply", "test"];
+
+/** The template kinds of BASE_KINDS (the estimate has a wording for installs without a public address too). */
+export const BASE_TEMPLATE_KINDS: string[] = [...BASE_KINDS, "estimate_nolink"];
+
 /** Texts of these kinds end with " Reply STOP to opt out." (marketing always; these notices are typed by staff). */
 export const STOP_LINE_KINDS: MessageKind[] = ["class_notice", "booking_notice"];
 

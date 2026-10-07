@@ -19,7 +19,6 @@ import { publicBaseUrl, type MessagingView } from "@/lib/messaging/settings";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { cleanText, firstName, renderKind, type Content } from "@/lib/messaging/templates";
 import type { Channel, SkipReason } from "@/lib/messaging/types";
-import { requireOn } from "@/lib/module-gate";
 import { hookContext } from "@/lib/notices/context";
 import type { JobEvent, JobLine } from "@/lib/partners";
 import { toE164, fmtPhone } from "@/lib/phone";
@@ -398,10 +397,9 @@ async function sendsToday(shopId: string, where: { ticketId?: string; repairJobI
 
 export type SendEstimateInput = { email: boolean; sms: boolean; note: string | null };
 
-/** Send the customer the estimate (the body of the `sendEstimate` action). Needs Marketing. */
+/** Send the customer the estimate (the body of the `sendEstimate` action). In the base: no module needed (7 Oct 2026). */
 export async function sendEstimateAs(user: CurrentUser, target: "ticket" | "job", id: string, input: SendEstimateInput): Promise<void> {
   const shopId = user.shopId;
-  await requireOn(user, "marketing");
   if (target === "ticket") {
     const g = await db.ticket.findFirst({ where: { id, shopId }, select: { intakeAt: true, status: true, machine: { select: { equipment: true } } } });
     if (g) await requireEquipment(user, g.machine.equipment, { ticket: g, closing: true });

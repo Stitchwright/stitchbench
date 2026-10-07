@@ -338,7 +338,8 @@ export type AutoWording = {
   addresses: { emails: string[]; phones: string[] };
 };
 
-type Block = { title: string; who: string; marketing: boolean; keys: string[]; vac?: boolean; controls?: (v: AutoValues, formId: string) => React.ReactNode; summary?: (v: AutoValues) => string };
+/** `base`: works without the Marketing module (pricing-review-2026-10.md, 7 Oct 2026); every other block needs it. */
+type Block = { title: string; who: string; marketing: boolean; base?: boolean; keys: string[]; vac?: boolean; controls?: (v: AutoValues, formId: string) => React.ReactNode; summary?: (v: AutoValues) => string };
 
 const num = (id: string, name: string, label: string, value: number, min: number, max: number, formId: string, hint?: string) => (
   <Field id={id} label={label} hint={hint}>
@@ -356,6 +357,7 @@ const BLOCKS: Block[] = [
     title: "Ready for pickup",
     who: "The customer, when their repair is marked ready (after a 2-minute undo window), the way they asked to be told. A notice about their own repair, not marketing.",
     marketing: false,
+    base: true,
     keys: ["ready"],
     controls: (v, f) => sw("readyNotice", "Send ready-for-pickup notices", v.readyNotice, f),
     summary: (v) => (v.readyNotice ? "On" : "Off"),
@@ -377,6 +379,7 @@ const BLOCKS: Block[] = [
     title: "Estimates",
     who: "Sent by staff from a ticket. The customer approves or declines through the link, or by calling. A notice.",
     marketing: false,
+    base: true,
     keys: ["estimate", "estimate_nolink"],
     controls: (v, f) => num("estimateLinkDays", "estimateLinkDays", "Estimate links stay open (days, 1-30)", v.estimateLinkDays, 1, 30, f),
     summary: (v) => `Links open ${v.estimateLinkDays} days`,
@@ -445,59 +448,64 @@ const BLOCKS: Block[] = [
     title: "Text sign-ups and HELP replies",
     who: "Sent by themselves: the confirmation when someone agrees to marketing texts, and the answer to a HELP reply. Required by the carriers.",
     marketing: false,
+    base: true,
     keys: ["consent_confirm", "help_reply"],
   },
 ];
 
 const PART_LABEL: Record<string, string> = { sms: "Text", subject: "Email subject", email: "Email" };
 
-export function AutoMessagesForm({ v, wording, hasVac, readOnly }: { v: AutoValues; wording: AutoWording; hasVac: boolean; readOnly: boolean }) {
+/** `marketing`: the module's gate. Without it the base blocks stay editable; the rest is read-only, or not shown when it was never on. */
+export function AutoMessagesForm({ v, wording, hasVac, readOnly: allReadOnly, marketing: gate }: { v: AutoValues; wording: AutoWording; hasVac: boolean; readOnly: boolean; marketing: "on" | "readonly" | "hidden" }) {
   const formId = "auto-messages";
   return (
     <div className="space-y-4">
-      {BLOCKS.filter((b) => !b.vac || hasVac).map((b) => (
-        <section key={b.title} className="card card-pad space-y-3">
-          <h2 className="h2">
-            {b.title} {b.marketing ? <span className="pill tone-wait ml-1">Marketing</span> : <span className="pill tone-neutral ml-1">Notice</span>}
-          </h2>
-          <p className="muted text-sm">{b.who}</p>
-          {b.controls && (readOnly ? <p className="text-sm">{b.summary?.(v)}</p> : <div className="space-y-2">{b.controls(v, formId)}</div>)}
-          <details>
-            <summary className="link cursor-pointer text-sm">Wording</summary>
-            <div className="mt-2 space-y-4">
-              {b.keys.flatMap((kind) => {
-                const marketing = KIND_PURPOSE[kind as MessageKind] === "marketing";
-                return ["sms", "subject", "email"]
-                  .map((part) => `${kind}.${part}`)
-                  .filter((key) => key in wording.templates)
-                  .map((key) => {
-                    const part = key.split(".")[1];
-                    return (
-                      <div key={key}>
-                        <div className="label mb-1">
-                          {b.keys.length > 1 ? `${kind.replace(/_/g, " ")}: ` : ""}
-                          {PART_LABEL[part]}
+      {BLOCKS.filter((b) => (!b.vac || hasVac) && (b.base || gate !== "hidden")).map((b) => {
+        const readOnly = allReadOnly || (!b.base && gate !== "on");
+        return (
+          <section key={b.title} className="card card-pad space-y-3">
+            <h2 className="h2">
+              {b.title} {b.marketing ? <span className="pill tone-wait ml-1">Marketing</span> : <span className="pill tone-neutral ml-1">Notice</span>}
+            </h2>
+            <p className="muted text-sm">{b.who}</p>
+            {b.controls && (readOnly ? <p className="text-sm">{b.summary?.(v)}</p> : <div className="space-y-2">{b.controls(v, formId)}</div>)}
+            <details>
+              <summary className="link cursor-pointer text-sm">Wording</summary>
+              <div className="mt-2 space-y-4">
+                {b.keys.flatMap((kind) => {
+                  const marketing = KIND_PURPOSE[kind as MessageKind] === "marketing";
+                  return ["sms", "subject", "email"]
+                    .map((part) => `${kind}.${part}`)
+                    .filter((key) => key in wording.templates)
+                    .map((key) => {
+                      const part = key.split(".")[1];
+                      return (
+                        <div key={key}>
+                          <div className="label mb-1">
+                            {b.keys.length > 1 ? `${kind.replace(/_/g, " ")}: ` : ""}
+                            {PART_LABEL[part]}
+                          </div>
+                          <TemplateEditor
+                            templateKey={key}
+                            value={wording.templates[key]}
+                            fields={wording.fields[kind] ?? []}
+                            sample={wording.sample}
+                            prefix={part === "sms" ? wording.smsPrefix : ""}
+                            suffix={part === "sms" ? (marketing ? " Reply STOP to opt out." : "") : part === "email" ? (marketing ? wording.marketingEmailFooter : wording.noticeEmailFooter) : ""}
+                            partMills={wording.partMills}
+                            addresses={wording.addresses}
+                            readOnly={readOnly}
+                          />
                         </div>
-                        <TemplateEditor
-                          templateKey={key}
-                          value={wording.templates[key]}
-                          fields={wording.fields[kind] ?? []}
-                          sample={wording.sample}
-                          prefix={part === "sms" ? wording.smsPrefix : ""}
-                          suffix={part === "sms" ? (marketing ? " Reply STOP to opt out." : "") : part === "email" ? (marketing ? wording.marketingEmailFooter : wording.noticeEmailFooter) : ""}
-                          partMills={wording.partMills}
-                          addresses={wording.addresses}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                    );
-                  });
-              })}
-            </div>
-          </details>
-        </section>
-      ))}
-      {!readOnly && (
+                      );
+                    });
+                })}
+              </div>
+            </details>
+          </section>
+        );
+      })}
+      {!allReadOnly && (
         <ActionForm id={formId} action={saveAutoMessages} success="Saved">
           <Submit>Save automatic messages</Submit>
         </ActionForm>

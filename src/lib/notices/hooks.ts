@@ -125,7 +125,7 @@ export async function onTicketStatus(tx: Tx, t: TicketForStatus, status: TicketS
     });
     return null;
   }
-  if (!ctx.marketing || !ctx.ms.readyNotice) return null;
+  if (!ctx.notices || !ctx.ms.readyNotice) return null;
   const v = await ticketVars(tx, t.id, t.shopId);
   if (!v || !v.direct || v.jobType === "SITE" || !v.customerId) return null;
   const ready = t.pickupReadyAt ?? at;
@@ -169,7 +169,7 @@ export async function onJobStatus(tx: Tx, job: JobForHook, status: string, at: D
  * person confirmed it is here, so the ready notice goes now. Returns the line for the toast, or null.
  */
 export async function onJobsBack(tx: Tx, shopId: string, jobIds: string[], at: Date, byUserId: string | null, ctx: HookCtx): Promise<string | null> {
-  if (!ctx.marketing || !ctx.ms.readyNotice || !jobIds.length) return null;
+  if (!ctx.notices || !ctx.ms.readyNotice || !jobIds.length) return null;
   const jobs = await tx.repairJob.findMany({
     where: { shopId, id: { in: jobIds }, side: "retail", customerId: { not: null }, pickedUpAt: null, backAt: { not: null } },
     select: { id: true, customerId: true, backAt: true },
@@ -357,7 +357,7 @@ export async function recordBack(user: CurrentUser, ids: string[], o: { single: 
       if (!done.length) throw new UserError("Already recorded.");
       const note = await onJobsBack(tx, shopId, done, at, user.id, ctx);
       if (note) return { note, callThem: /call them/.test(note) };
-      if (ctx.marketing) return { note: "Recorded.", callThem: false };
+      if (ctx.notices) return { note: "Recorded.", callThem: false };
       return { note: `Recorded. Messages are off: call the ${done.length === 1 ? "customer" : "customers"}.`, callThem: true };
     },
     { timeout: 60_000 },

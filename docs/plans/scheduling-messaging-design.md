@@ -1201,6 +1201,13 @@ calendar.
 S = Scheduling, M = Marketing. "requireOn" = the action calls `requireOn(user, key)`. "readonly UI" = page renders
 records with `<ModuleOff>` and no forms when the gate is not `on`.
 
+**Changed 7 Oct 2026 (pricing-review-2026-10.md):** the ready-for-pickup notice, the parts-in notice and the estimate
+link are in the base. `sendNoticeNow` "ready", `sendEstimate` and receiving a part need no module; they queue once email
+or texts are switched on (`noticesOn()` / `HookCtx.notices`), and the worker sends `BASE_KINDS` for shops without M while
+holding every other row. `/settings/messages` and `/settings/messages/rules` and the setup actions are requireAdmin()
+only; `/settings/messages/auto` keeps M's blocks (and their wording) read-only without M; `releaseHeld` and
+`releaseMarketingHold` keep M. Rows below that say otherwise for these are superseded.
+
 | Where | Kind | Gate | Behaviour when off / expired |
 |---|---|---|---|
 | `/calendar`, `/calendar/new`, `/calendar/appointments/[id]`, `/calendar/types`, `/shifts`, `/shifts/print` | pages | S (any company) | readonly UI (schedules still print); hidden gate -> notice only |

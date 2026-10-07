@@ -10,7 +10,7 @@ import { fmtPhone } from "@/lib/phone";
 import { addDays, dayStart, parseYmd } from "@/lib/zoned";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
-import { MESSAGE_KINDS } from "@/lib/messaging/types";
+import { BASE_KINDS, MESSAGE_KINDS } from "@/lib/messaging/types";
 import { CHANNEL_LABEL, MESSAGE_KIND_LABEL, MESSAGE_STATUS_LABEL, MESSAGE_STATUS_TONE, SKIP_REASON_LABEL } from "@/lib/constants";
 import { cancelHeld, cancelMessage, releaseHeld, releaseMarketingHold, releaseTextHold, retryMessage, runMessagesNow } from "@/actions/messaging";
 import { ModuleOff } from "@/components/module-off";
@@ -41,6 +41,8 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
   const admin = user.role !== "TECH";
   if (gate === "hidden") return <ModuleOff shopId={shopId} module="marketing" admin={admin} />;
   const on = gate === "on";
+  // Ready, parts-in and estimate messages are in the base (7 Oct 2026): they go, and can be retried, without Marketing.
+  const base = (kind: string) => (BASE_KINDS as string[]).includes(kind);
   const sp = firstValues(await searchParams);
   const [tz, ms] = await Promise.all([shopTimeZone(shopId), messagingView(shopId)]);
 
@@ -64,7 +66,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
   const now = new Date();
   const [rows, waiting, stale, unhandled, marketingMailRecently, users] = await Promise.all([
     db.outMessage.findMany({ where, include: { customer: { select: { id: true, name: true } }, campaign: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" }, take: 200 }),
-    on ? Promise.resolve(0) : db.outMessage.count({ where: { shopId, status: "QUEUED" } }),
+    on ? Promise.resolve(0) : db.outMessage.count({ where: { shopId, status: "QUEUED", kind: { notIn: BASE_KINDS } } }),
     db.outMessage.count({ where: { shopId, purpose: "marketing", status: "QUEUED", sendAfter: { lt: new Date(now.getTime() - STALE_MS) } } }),
     db.inboundText.count({ where: { shopId, keyword: null, handledAt: null } }),
     ms.replyTo && !ms.publicUrl ? db.outMessage.count({ where: { shopId, purpose: "marketing", channel: "email", status: "SENT", sentAt: { gte: new Date(now.getTime() - 30 * 86_400_000) } } }) : Promise.resolve(0),
@@ -307,7 +309,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
                                   Cancel
                                 </ActionButton>
                               )}
-                              {admin && on && m.status === "FAILED" && (
+                              {admin && (on || base(m.kind)) && m.status === "FAILED" && (
                                 <ActionForm action={retryMessage.bind(null, m.id)} success="Queued again" className="flex flex-wrap items-center gap-2">
                                   {/may have gone out/i.test(m.error ?? "") && (
                                     <label className="flex items-center gap-1">
@@ -354,12 +356,12 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
             </li>
           </ul>
           <p className="muted">Messages go out by themselves every few minutes. If one seems stuck, send now: waiting messages are sent, replies read and delivery results fetched.</p>
-          {admin && on ? (
+          {admin ? (
             <ActionButton action={runMessagesNow} success="Done: messages were sent and replies read" className="btn btn-sm btn-primary">
               Send now
             </ActionButton>
           ) : (
-            <p className="muted">{admin ? "Sending needs Marketing to be on." : "An owner or admin can press Send now."}</p>
+            <p className="muted">An owner or admin can press Send now.</p>
           )}
           {admin && (
             <p>

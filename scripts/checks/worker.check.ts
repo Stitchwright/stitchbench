@@ -84,8 +84,8 @@ async function customer(shopId: string, o: { name?: string; phone?: string | nul
 const content = (label: string) => (c: Channel) => ({ subject: `Subject ${label}`, body: `Body ${label} ${c}` });
 
 /** A notice ("ready") to the customer on the channels their notifyBy asks for. */
-async function notice(shopId: string, customerId: string, key: string, sendAfter: Date, channels: "preferred" | Channel[] = "preferred") {
-  const r = await queueToCustomer(db, { shopId, customerId, kind: "ready", channels, content: content(key), dedupeKey: key, sendAfter });
+async function notice(shopId: string, customerId: string, key: string, sendAfter: Date, channels: "preferred" | Channel[] = "preferred", kind: MessageKind = "ready") {
+  const r = await queueToCustomer(db, { shopId, customerId, kind, channels, content: content(key), dedupeKey: key, sendAfter });
   clearKick();
   return r;
 }
@@ -472,16 +472,23 @@ async function quietHoursAndCaps() {
 }
 
 async function held() {
-  // A company without Marketing: nothing is sent, rows stay QUEUED and are the held list.
+  // A company without Marketing: the base kinds (ready, parts in, estimate; pricing-review-2026-10.md, 7 Oct 2026) go
+  // out; every other row stays QUEUED and is the held list.
   reset();
   const s = await shopWith({ modules: [] });
   const c = await customer(s.shopId, { name: "Held", phone: "+12125550141", email: "held@c.test", notifyBy: "both" });
-  await notice(s.shopId, c, "held", new Date(NOON_ISH.getTime() - HOUR));
+  await notice(s.shopId, c, "held", new Date(NOON_ISH.getTime() - HOUR), "preferred", "class_notice");
+  await notice(s.shopId, c, "base-ready", new Date(NOON_ISH.getTime() - HOUR));
   assert.deepEqual(await shopsWith("marketing", [s.shopId]), [], "no Marketing module");
   const r = await run(s, NOON_ISH);
-  assert.deepEqual(r, { sent: 0, failed: 0, waiting: 0 });
+  assert.deepEqual(r, { sent: 2, failed: 0, waiting: 0 }, "the ready notice goes by email and text without Marketing");
+  assert.equal((await rowOf(s.shopId, "base-ready", "email")).status, "SENT");
+  assert.equal((await rowOf(s.shopId, "base-ready", "sms")).status, "SENT");
+  assert.equal(sink.messages.length, 1, "the ready email went");
+  assert.equal(mock.sent.length, 1, "the ready text went");
+  reset();
   const held = await db.outMessage.findMany({ where: { shopId: s.shopId, status: "QUEUED" } });
-  assert.equal(held.length, 2, "both rows are held");
+  assert.equal(held.length, 2, "both class-notice rows are held");
   for (const h of held) {
     assert.equal(h.tries, 0);
     assert.equal(h.error, null);
@@ -489,13 +496,13 @@ async function held() {
   }
   assert.equal(sink.messages.length, 0);
   assert.equal(mock.sent.length, 0);
-  ok("a company without Marketing: its rows stay QUEUED (held, untouched, listed by status QUEUED)");
+  ok("a company without Marketing: the ready notice goes (base); its other rows stay QUEUED (held, untouched, listed by status QUEUED)");
 
   // Switching the module on releases them.
   await grantDevLicense(s.shopId, ["marketing"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
   assert.deepEqual(await shopsWith("marketing", [s.shopId]), [s.shopId], "Marketing is on now");
   await run(s, NOON_ISH);
-  assert.equal(await db.outMessage.count({ where: { shopId: s.shopId, status: "SENT" } }), 2, "held rows go once the module is on");
+  assert.equal(await db.outMessage.count({ where: { shopId: s.shopId, status: "SENT", kind: "class_notice" } }), 2, "held rows go once the module is on");
   ok("held rows go out once Marketing is switched on");
 }
 
@@ -617,11 +624,12 @@ async function recovery() {
   const stale = new Date(now.getTime() - 5 * MIN);
   const base = { shopId: s.shopId, channel: "email", address: "recover@c.test", subject: "S", body: "B", status: "SENDING", claimedAt: stale, tries: 1 } as const;
   const make = (o: { purpose: string; kind: string; retryTries?: number }) => db.outMessage.create({ data: { ...base, retryTries: 0, ...o } });
-  const notice1 = await make({ purpose: "notice", kind: "ready" });
-  const notice2 = await make({ purpose: "notice", kind: "ready", retryTries: 1 });
+  // class_notice: a notice that needs Marketing, so the recovered row stays QUEUED here (a ready one would now go).
+  const notice1 = await make({ purpose: "notice", kind: "class_notice" });
+  const notice2 = await make({ purpose: "notice", kind: "class_notice", retryTries: 1 });
   const market = await make({ purpose: "marketing", kind: "campaign" });
   const test = await make({ purpose: "notice", kind: "test" });
-  const fresh = await db.outMessage.create({ data: { ...base, purpose: "notice", kind: "ready", claimedAt: new Date(now.getTime() - 30_000) } });
+  const fresh = await db.outMessage.create({ data: { ...base, purpose: "notice", kind: "class_notice", claimedAt: new Date(now.getTime() - 30_000) } });
   await run(s, now);
   const a = await rowById(notice1.id);
   assert.equal(a.status, "QUEUED", `${a.status} ${a.error}`);

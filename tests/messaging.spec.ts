@@ -181,15 +181,18 @@ test("check-in asks how to tell a new customer while email is ready", async ({ b
   await page.context().close();
 });
 
-test("with Marketing switched off the Messages item is locked and saving is refused", async ({ browser }) => {
+test("with Marketing switched off the Messages item is locked, campaigns are refused, and the setup stays (it is in the base)", async ({ browser }) => {
   await setModule(admin, company, "Marketing", false);
   const page = await login(browser, owner);
   await page.goto("/messages");
   const item = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /Messages/ });
   await expect(item).toBeVisible();
   await expect(item.getByLabel("Read only")).toBeVisible();
-  await page.goto("/settings/messages/rules");
+  await page.goto("/campaigns/new");
   await expect(page.getByText(/switched off/).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save rules" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Save/ })).toHaveCount(0);
+  // Ready notices and estimate links are in the base (pricing-review-2026-10.md, 7 Oct 2026): the rules stay editable.
+  await page.goto("/settings/messages/rules");
+  await expect(page.getByRole("button", { name: "Save rules" })).toBeVisible();
   await page.context().close();
 });

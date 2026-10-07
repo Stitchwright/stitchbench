@@ -38,8 +38,8 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
       : (kinds.usable.find((k) => k.key === shop.checkInKind) ?? SEWING_KIND);
   const usable = machine ? await canWorkOn(user.shopId, machine.equipment) : kinds.usable.some((k) => k.key === kind.key);
   const sewing = kind.key === "sewing";
-  // "How should we tell them": asked (required) while Marketing is on and email or texts are ready; offered as an
-  // optional choice while Marketing isn't hidden; not shown otherwise.
+  // "How should we tell them": asked (required) while email or texts are ready (ready notices are
+  // in the base); offered as an optional choice while Marketing isn't hidden (any messaging record); not shown otherwise.
   const [accounts, services, specBrands, presetCustomer, blocked, needNotify, marketingGate, plate] = await Promise.all([
     db.customer.findMany({ where: { shopId: user.shopId, kind: "TRADE" }, orderBy: { name: "asc" } }),
     servicesFor(user.shopId, kind.key),

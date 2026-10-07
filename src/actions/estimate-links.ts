@@ -12,7 +12,7 @@ function targetOf(t: unknown): "ticket" | "job" {
   return t;
 }
 
-/** Text and / or email the estimate, with a link to approve it when this install has a public address. Needs Marketing. */
+/** Text and / or email the estimate, with a link to approve it when this install has a public address. In the base. */
 export const sendEstimate = safe(async function sendEstimate(target: "ticket" | "job", id: string, formData: FormData) {
   const user = await requireUser();
   await sendEstimateAs(user, targetOf(target), String(id), { email: formData.get("email") != null, sms: formData.get("sms") != null, note: str(formData.get("note")) });

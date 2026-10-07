@@ -137,7 +137,7 @@ export const createTicket = safe(async function createTicket(formData: FormData)
     if (!brand || !model) throw new UserError(`Enter the ${kind.noun}'s brand and model.`);
   }
 
-  // Customer: pick an existing one or type a new name. With Marketing on and a channel ready, a customer who hasn't been
+  // Customer: pick an existing one or type a new name. With email or texts ready, a customer who hasn't been
   // asked how to be told (text, email or a call) must be asked now; a picked customer's answer is applied in the transaction.
   const pickedCustomerId = str(formData.get("customerId"));
   const newCustomer = str(formData.get("customerName"));

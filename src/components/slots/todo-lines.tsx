@@ -48,7 +48,7 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
               Tag {j.tag}: {partner.get(j.linkId) ?? "the repair shop"} marked it ready. Is it here?
             </Link>
             <ActionButton action={markBackAtCounter.bind(null, j.id)} className="btn btn-sm" success="Recorded">
-              {on ? "It's here: tell the customer" : "It's here"}
+              {(on || ms.emailOn || ms.smsOn) && ms.readyNotice ? "It's here: tell the customer" : "It's here"}
             </ActionButton>
           </span>
         ),
@@ -183,7 +183,7 @@ async function byHand(shopId: string, abandonedAfterDays: number, tz: string, ms
     if (latest.state === "past") reason = "past the notice window, decide by hand";
     else if (latest.state === "not_sent") reason = "it didn't go out";
     else if (latest.state === "undelivered") reason = "the text wasn't delivered";
-    else if (latest.state === "due" && !marketing) reason = "Messages is off";
+    else if (latest.state === "due" && !marketing) reason = "Marketing is off";
     if (!reason) return;
     out.push({ key, href, what, stage: ABANDON_STAGE_LABEL[latest.stage.key], due: fmtDay(latest.stage.due, tz), why: reason });
   };

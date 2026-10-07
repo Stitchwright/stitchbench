@@ -1,7 +1,9 @@
 // Customer notices end to end (scheduling-messaging-design.md 15.2 acceptance 4). Runs on a TEST BUILD with the SMTP sink
 // running, as messaging.spec.ts does; the server needs READY_NOTICE_DELAY_SECONDS=1 (or so) for the ready notice to be
-// due by the time "Send now" is pressed. It makes its own company (Marketing switched on from Companies) and removes it
-// at the end. The unsubscribe steps seed a marketing email with scripts/checks/seed-marketing.ts.
+// due by the time "Send now" is pressed. It makes its own company and removes it at the end. The company starts without
+// Marketing: the ready notice is in the base (pricing-review-2026-10.md, 7 Oct 2026) while campaigns stay refused;
+// Marketing is switched on from Companies for the unsubscribe steps, which seed a marketing email with
+// scripts/checks/seed-marketing.ts.
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
@@ -38,7 +40,7 @@ async function newTicket(page: Page, customer: { name: string; email: string }):
   await page.goto("/tickets/new");
   await page.getByLabel("new customer's name").fill(customer.name);
   await page.getByLabel("Email address").fill(customer.email);
-  const notify = page.getByRole("radio", { name: "Email", exact: true }); // not asked while Marketing is off
+  const notify = page.getByRole("radio", { name: "Email", exact: true }); // not asked while email isn't ready
   if (await notify.count()) await notify.check();
   await page.getByLabel("Brand", { exact: true }).fill("Janome");
   await page.getByLabel("Model", { exact: true }).fill("MC6700P");
@@ -59,7 +61,6 @@ test.beforeAll(async ({ browser }) => {
   await expect(admin.getByText("Company created")).toBeVisible();
   shopId = (await sql<{ id: string }>(`SELECT id FROM "Shop" WHERE name = $1`, [company]))[0].id;
   made.push(shopId);
-  await setModule(admin, company, "Marketing", true);
   await clearSink();
 });
 
@@ -69,7 +70,7 @@ test.afterAll(async () => {
   await admin.context().close();
 });
 
-test("email is set up for the company", async ({ browser }) => {
+test("email is set up for the company (no Marketing: the setup is in the base)", async ({ browser }) => {
   const page = await login(browser, owner);
   await page.goto("/settings/messages");
   await page.getByLabel("Send email", { exact: true }).check();
@@ -88,7 +89,15 @@ test("email is set up for the company", async ({ browser }) => {
   await page.context().close();
 });
 
-test("a ready ticket: the toast names the channel, Send now delivers it, the ticket shows it Sent, a notice by hand is proof, the letter prints", async ({ browser }) => {
+test("without Marketing, campaigns are refused", async ({ browser }) => {
+  const page = await login(browser, owner);
+  await page.goto("/campaigns/new");
+  await expect(page.getByText("Marketing isn't turned on for this company.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Save/ })).toHaveCount(0);
+  await page.context().close();
+});
+
+test("no Marketing: a ready ticket's toast names the channel, Send now delivers it, the ticket shows it Sent, a notice by hand is proof, the letter prints", async ({ browser }) => {
   const page = await login(browser, owner);
   const email = `rita-${RUN.toLowerCase()}@customer.test`;
   const ticketId = await newTicket(page, { name: `Rita Ready ${RUN}`, email });
@@ -141,6 +150,7 @@ test("a ready ticket: the toast names the channel, Send now delivers it, the tic
 });
 
 test("the unsubscribe link: opening changes nothing, the button opts out, Opt-outs shows it, one-click POST answers 200", async ({ browser }) => {
+  await setModule(admin, company, "Marketing", true);
   const email = `unsub-${RUN.toLowerCase()}@customer.test`;
   const token = seedMarketing(email);
   const ctx = await browser.newContext();
@@ -197,12 +207,16 @@ test("Marketing off: a due stage says send it by hand, and /repairs asks whether
   await sql(`UPDATE "Ticket" SET "pickupReadyAt" = now() - interval '8 days' WHERE id = $1`, [ticketId]);
   await page.reload();
   const messages = page.locator("section", { has: page.getByRole("heading", { name: "Messages" }) });
-  await expect(messages.getByText(/Due .*: send it by hand \(Messages is off\)/)).toBeVisible(); // the day-7 stage, due now
-  await expect(messages.getByText(/Due .* \(by hand: Messages is off\)/).first()).toBeVisible(); // the later stages
-  await expect(messages.getByRole("button", { name: "Send the ready notice again" })).toHaveCount(0);
+  await expect(messages.getByText(/Due .*: send it by hand \(Marketing is off\)/)).toBeVisible(); // the day-7 stage, due now
+  await expect(messages.getByText(/Due .* \(by hand: Marketing is off\)/).first()).toBeVisible(); // the later stages
+  // The ready notice is in the base: it can still be sent again; the uncollected-machine notice can't.
+  await expect(messages.getByRole("button", { name: "Send the ready notice again" })).toHaveCount(1);
+  await expect(messages.getByRole("button", { name: "Send the current notice now" })).toHaveCount(0);
 
   // A partner repair shop marked a retail job ready: /repairs asks whether it is here; "It's back" records it and,
-  // with Messages off, warns that the customer must be called (a warning, not an error: the record was saved).
+  // with email switched off too (nothing can tell them), warns that the customer must be called (a warning, not an
+  // error: the record was saved).
+  await sql(`UPDATE "MessagingSettings" SET "emailOn" = false WHERE "shopId" = $1`, [shopId]);
   const link = await insert<{ id: string }>("PartnerLink", { shopId, side: "retail", partnerName: `Repair Partner ${RUN}`, updatedAt: new Date() });
   const tag = `T${RUN.slice(-4)}`;
   const job = await insert<{ id: string }>("RepairJob", {

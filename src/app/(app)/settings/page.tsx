@@ -21,7 +21,6 @@ import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions
 import { setTechsOfferManuals } from "@/actions/manual-repository";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
-import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
 import { MoveSection } from "./move-section";
@@ -191,9 +190,9 @@ export default async function SettingsPage() {
   const otherKindsUsable = kinds.usable.some((k) => k.key !== "sewing");
   const kindsWithoutMenu = kinds.usable.filter((k) => k.key !== "sewing" && !usedKinds.has(k.key));
   const showVacExport = modules.states.vac.status !== "off" || stockUnits > 0;
-  // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins while Marketing isn't hidden.
-  const messagesGate = admin ? await gateFor(user.shopId, "marketing") : "hidden";
-  const messaging = messagesGate !== "hidden" ? await messagingView(user.shopId) : null;
+  // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins. In the base since 7 Oct 2026
+  // (pricing-review-2026-10.md): the ready, parts-in and estimate messages go out through this setup without Marketing.
+  const messaging = admin ? await messagingView(user.shopId) : null;
   // The Solo plan's two logins (src/lib/plan.ts): a notice for the people who manage People, never a lock.
   const logins = admin ? await loginNotice(user.shopId) : null;
 

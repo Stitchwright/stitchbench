@@ -93,7 +93,8 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
   marketing: {
     label: "Marketing",
     href: "/messages",
-    blurb: "Email and texts: reminders, ready-for-pickup notices, estimate links, service reminders, review requests and campaigns.",
+    // Ready-for-pickup and parts-in notices and estimate links are in the base since 7 Oct 2026 (pricing-review-2026-10.md).
+    blurb: "Email and text marketing: campaigns, service reminders, review requests, not-picked-up notices, class and appointment reminders, and customer import.",
   },
   assistant: {
     label: "Assistant",

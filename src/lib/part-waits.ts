@@ -11,7 +11,6 @@ import { requireEquipment } from "@/lib/equipment/gate";
 import { str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { renderKind } from "@/lib/messaging/templates";
-import { moduleOn } from "@/lib/module-gate";
 import { hookContext } from "@/lib/notices/context";
 import { ticketVars } from "@/lib/notices/vars";
 import type { CurrentUser } from "@/lib/session";
@@ -93,8 +92,8 @@ const fmtEta = (ymd: string) => {
 
 /**
  * Marks waits received (one person's click; several at once from the Parts on order page). Per ticket: one parts_in
- * message naming every part received together (Marketing on, the customer's own channel, consent and address
- * permitting), and, when asked and nothing else is still on order, the ticket goes back on the bench.
+ * message naming every part received together (in the base since 7 Oct 2026: once email or texts are on, the
+ * customer's own channel, consent and address permitting), and, when asked and nothing else is still on order, the ticket goes back on the bench.
  */
 export async function receiveWaitsFor(user: CurrentUser, waitIds: string[], fd?: FormData, now = new Date()): Promise<ReceiveResult> {
   const shopId = user.shopId;
@@ -107,8 +106,8 @@ export async function receiveWaitsFor(user: CurrentUser, waitIds: string[], fd?:
   const etaRaw = str(fd?.get("eta") ?? null);
   const eta = etaRaw ? parseYmd(etaRaw) : null;
   if (etaRaw && !eta) throw new UserError("Done by: pick a date, or leave it blank.");
-  const marketing = await moduleOn(shopId, "marketing");
   const ctx = await hookContext(shopId, user.name);
+  const tell = ctx.notices;
   const byTicket = new Map<string, WaitRow[]>();
   for (const w of waits) byTicket.set(w.ticketId, [...(byTicket.get(w.ticketId) ?? []), w]);
   let queued = 0;
@@ -121,7 +120,7 @@ export async function receiveWaitsFor(user: CurrentUser, waitIds: string[], fd?:
       const t = await tx.ticket.findFirst({ where: { id: ticketId, shopId }, include: { machine: { select: { equipment: true } }, shop: { select: { warrantyDays: true } } } });
       if (!t) continue;
       // Tell the customer (notice purpose: anyone who asked to be told by email or text; no marketing consent needed).
-      const v = marketing && t.customerId && !CLOSING_STATUSES.includes(t.status) ? await ticketVars(tx, t.id, shopId) : null;
+      const v = tell && t.customerId && !CLOSING_STATUSES.includes(t.status) ? await ticketVars(tx, t.id, shopId) : null;
       if (v?.customerId) {
         const vars = { ...v.vars, parts: partsWords(list.map((w) => w.description)), eta_line: eta ? ` We expect to have it done by ${fmtEta(eta)}.` : "" };
         const q = await queueToCustomer(tx, {
@@ -155,9 +154,9 @@ export async function receiveWaitsFor(user: CurrentUser, waitIds: string[], fd?:
   });
   const tickets = byTicket.size;
   const parts: string[] = [`Received ${waits.length === 1 ? "it" : `${waits.length} parts`}.`];
-  if (!marketing) parts.push(`Call ${tickets === 1 ? "the customer" : "the customers"}: Marketing is off, so nothing was sent.`);
+  if (!tell) parts.push(`Call ${tickets === 1 ? "the customer" : "the customers"}: email and texts aren't set up, so nothing was sent.`);
   else if (queued) parts.push(`${tickets === 1 ? "The customer hears" : `${queued} of ${tickets} customers hear`} the part is in.`);
-  if (marketing && noAddress) parts.push(`${noAddress === 1 ? "One customer has" : `${noAddress} customers have`} no email or mobile number on file: call them.`);
+  if (tell && noAddress) parts.push(`${noAddress === 1 ? "One customer has" : `${noAddress} customers have`} no email or mobile number on file: call them.`);
   if (notTold.length) parts.push(`Not sent to ${partsWords(notTold)} (see the ticket's Messages).`);
   return { received: waits.length, tickets, queued: queued > 0, words: parts.join(" ") };
 }
