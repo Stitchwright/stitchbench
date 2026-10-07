@@ -1189,3 +1189,26 @@ Decisions made while building:
 - From a pattern, the pattern itself is on the sale and in the kit.
 - Browser test needed: a pattern's yardage (save, a line it can't read), the planner from a pattern (yards, picks, the
   pull list's total, Make it a kit, Add all to the sale), a plain quilt's yards.
+
+**`quilt-from-stock` (5.3, AI, 7 Oct 2026).** Code: `src/lib/assistant/quilt-prompt.ts` (the request, `parseQuiltPicks`),
+`src/lib/assistant/quilt.ts` (`quiltPick`, `quiltCandidates`), `src/lib/quilt-thread.ts` (pure: swatch distance, color
+words, `bestThreads`), `threadMatchesFor` in `src/lib/quilt.ts`, the actions `suggestCoordinates` (assistant) and
+`threadsToMatch` (quilt), and `src/components/quilt-assist.tsx` (`SuggestCoordinates`, `ThreadToMatch`) in the planner.
+Check: `scripts/checks/quilt-from-stock.check.ts` (5 groups). Spec: `tests/quilt-from-stock.spec.ts`.
+Decisions made while building:
+- The focus fabric is the pick for the part she names ("Her focus fabric is the Focus"), or a photo of what she brought.
+  A photo is tagged first with the existing swatch tagger (`tag_fabric`, one call, the picture only), so the picks call
+  carries words, not the picture: **the hub needs no change** for this. A photo costs two calls; a shelf fabric one.
+- Candidates: this company's fabric by the yard in stock with at least the smallest empty part's yards, not consigned,
+  not the focus itself, at most 80, the same collection first, then shared color tags. Swatch thumbnails are not sent
+  (the hub takes one picture a call); names, tags, collection and yards are.
+- The program keeps a pick only if the part was asked for, the reference was on the list, and the bolt has the yards
+  (a fabric for two parts must cover both); each part once. The rest are dropped. Nothing is chosen for her: the picks
+  fill the empty parts' choices with the reason under each, and she changes any.
+- A focus fabric with no color tags and no collection is refused with the way to fix it (tag it on its page).
+- Thread to match needs no Assistant: threads on the shelf (2.1 thread fields or a THREAD item) whose swatch is within
+  reach of the fabric's or whose color words match its tags (navy finds blue, cream finds ivory), best three per fabric;
+  a ticked thread joins the pull list, the sale and the kit (one spool each).
+- `AssistantSettings.quiltOn` (on by default) hides Suggest coordinates.
+- Browser test needed: the planner with the Assistant (Suggest coordinates fills the empty part with its reason), a
+  photo of what she brought, Thread to match ticked into the pull list.

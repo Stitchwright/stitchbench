@@ -20,6 +20,11 @@ const answer = (rec) => {
   if (rec.system.includes("describing this class")) return "Learn to bind a quilt in one evening.";
   if (rec.system.includes("online store")) return "A soft quilting cotton in a deep navy.";
   if (rec.system.includes("social media post")) return "New in! Come see us. #quilting";
+  // Quilt from stock: the first fabric on the list for every part asked.
+  if (rec.system.startsWith("You help a quilt shop pick")) {
+    const roles = [...rec.userText.matchAll(/^- (.+): needs /gm)].map((m) => m[1]);
+    return JSON.stringify({ picks: roles.map((role) => ({ role, ref: "f1", why: "Calm and creamy beside the focus" })) });
+  }
   return "unexpected request";
 };
 

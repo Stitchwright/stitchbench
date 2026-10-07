@@ -5,6 +5,8 @@ import "server-only";
 // the company; a pattern or fabric of another company is "not found".
 import { db } from "@/lib/db";
 import { parsePatternNeeds, type PatternNeedLine } from "@/lib/fabric-math";
+import { detailsLine } from "@/lib/item-details";
+import { bestThreads, type ThreadHit } from "@/lib/quilt-thread";
 import type { CurrentUser } from "@/lib/session";
 import { UserError } from "@/lib/user-error";
 
@@ -90,4 +92,23 @@ export function pullListItems(raw: string | null | undefined): { id: string; qty
     if (qty > 0 && qty <= 200 && !out.some((o) => o.id === m[1])) out.push({ id: m[1], qty });
   }
   return out;
+}
+
+/**
+ * Thread to match each picked fabric (shop-features-round-2-design.md 5.3): threads on the shelf (2.1 thread fields or
+ * a THREAD item) whose swatch or color words match the fabric's. No model: src/lib/quilt-thread.ts scores them.
+ */
+export async function threadMatchesFor(shopId: string, fabricIds: string[]): Promise<Record<string, ThreadHit[]>> {
+  const ids = [...new Set(fabricIds.map(String))].slice(0, 20);
+  if (!ids.length) return {};
+  const [fabrics, threads] = await Promise.all([
+    db.part.findMany({ where: { shopId, id: { in: ids }, kind: "FABRIC" }, select: { id: true, colorTags: true, colorHex: true } }),
+    db.part.findMany({
+      where: { shopId, qtyOnHand: { gt: 0 }, consignLinkId: null, OR: [{ itemType: "thread" }, { kind: "THREAD" }] },
+      select: { id: true, description: true, brand: true, kind: true, itemType: true, colorNumber: true, colorName: true, colorHex: true, material: true, specs: true, qtyOnHand: true, priceCents: true },
+      take: 3000,
+    }),
+  ]);
+  const shelf = threads.map((t) => ({ id: t.id, name: detailsLine(t) || t.description, colorHex: t.colorHex, colorName: t.colorName, description: t.description, qty: t.qtyOnHand, priceCents: t.priceCents }));
+  return Object.fromEntries(fabrics.map((f) => [f.id, bestThreads({ tags: f.colorTags, colorHex: f.colorHex }, shelf)]));
 }
