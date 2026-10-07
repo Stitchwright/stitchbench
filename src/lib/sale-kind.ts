@@ -13,7 +13,8 @@ export const SALE_KIND_LABEL: Record<string, string> = {
   PATTERN: "Patterns and books",
   CLASS: "Classes",
   APPOINTMENT: "Appointments",
-  UNIT: "Vacuums sold",
+  UNIT: "Machines sold",
+  SERVICE_PLAN: "Service plans",
   REPAIR: "Partner repair bills",
   TRADE_IN: "Trade-ins",
   GIFT_CARD: "Gift cards",
@@ -26,6 +27,7 @@ export const NOT_SALE_KINDS = ["GIFT_CARD", "TRADE_IN", "REPAIR"];
 type KindInput = {
   kind?: string | null;
   giftCardId?: string | null;
+  machinePlanId?: string | null;
   tradeInUnitId?: string | null;
   stockUnitId?: string | null;
   repairJobId?: string | null;
@@ -38,6 +40,7 @@ type KindInput = {
 export function saleLineKind(l: KindInput): string {
   if (l.kind) return l.kind;
   if (l.giftCardId) return "GIFT_CARD";
+  if (l.machinePlanId) return "SERVICE_PLAN";
   if (l.tradeInUnitId) return "TRADE_IN";
   if (l.stockUnitId) return "UNIT";
   if (l.repairJobId) return "REPAIR";

@@ -171,3 +171,30 @@ About 9.5 days in all, each on its own branch off the release, each with checks 
 8. House accounts: leave out? **Recommended: leave out.**
 9. Service plans (free cleanings, extended warranty) as a shop-defined product? **Recommended: yes, with section 3.**
 10. Order of building (section 6)? **Recommended: as listed.**
+
+## Built
+
+**Section 3, machines for sale for every shop (7 Oct 2026, branch `sales-features`).** Migration
+`20261019000000_machine_sales`. The unit code moved from `src/lib/vac/` to `src/lib/units/` (`units.ts`,
+`sale-units.ts`, `plans.ts`, `types.ts`), `src/actions/units.ts`, `src/components/units/`; pages at `/units` and
+`/units/[id]` (old `/vac/units` links redirect, tab and search kept); "Machines for sale" in the menu for shops with a
+counter; Settings → "Plans and warranties" (`/settings/sales`). Check: `scripts/checks/machine-sales.check.ts` (7 groups);
+`vac-units`, `customer-merge`, `modules-tenant`, `move-export`, `audit-log` and `reports` checks still pass.
+Decisions made while building:
+- The gate is per kind, not per module: a sewing machine sells with no module (base price, answer 1); a vacuum or an
+  appliance sells and trades in only while its module allows new work (`requireEquipment`), returns always. The "Add"
+  form picks the kind (only the kinds the shop can take new work for); a trade-in at the register says its kind (older
+  registers that send none mean a vacuum).
+- Owner's classes are a count on the unit (`StockUnit.classCredits`), used by a class seat (`Enrollment.creditUnitId`,
+  the seat free); the customer's page and the class's sign-up list show what is left. A return of the machine takes the
+  unused ones away. No separate credit table, so no new customer column to merge.
+- Service plans (`ServicePlan`, copied to the machine as `MachinePlan` when sold): sold as a register line for a machine
+  on the same sale or one of the customer's machines, or included with a unit. A visit is a ticket with a covered line;
+  covering keeps the would-be price (`TicketLine.coveredCents`) and is audited (`ticket.covered`). A void or a return
+  ends the plans; voiding the return starts them again. A plan is not returned at the register: an owner ends it on the
+  machine's page and refunds by a misc line (said on the screen). Plans are untaxed by default (the shop ticks it).
+- Maker warranty terms are per brand (`MakerWarranty`), with the maker's registration page, shown on the unit, the
+  receipt and the ticket. The registration reminder is a to-do line (dashboard and register) after 7 days.
+- Browser test needed: `/units` add form (kind links, "More options"), the register's Machine for sale / Trade-in /
+  Service plan / Return a machine, a ticket's "Covered by ..." button, the class roster's "Use an owner's class",
+  `/settings/sales`; `tests/vac-shop.spec.ts` and `tests/modules-lapse.spec.ts` were updated for the new words.

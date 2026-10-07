@@ -567,6 +567,7 @@ async function main() {
     });
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
     await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
+    await db.machinePlan.create({ data: { shopId: A, machineId: md.id, name: "Free yearly cleaning", visits: 3, startsAt: new Date(2026, 0, 1), endsAt: new Date(2029, 0, 1) } });
     await db.vacCare.createMany({
       data: [
         { machineId: md.id, shopId: A, contactedAt: new Date(2026, 8, 20), contactedBy: "Ann", stopped: true },
@@ -592,8 +593,8 @@ async function main() {
     await expectError("different equipment", () => mergeMachinesFor(a.user, md.id, vac.id, "Janome HD 3000"), /aren't the same kind of thing/);
     const stockA = await db.machine.create({ data: { shopId: A, brand: "Miele", model: "C3", modelKey: modelKey("C3"), equipment: "VACUUM", kind: "vacuum", stock: { create: { shopId: A } } } });
     const stockB = await db.machine.create({ data: { shopId: A, brand: "Miele", model: "C3", modelKey: modelKey("C3"), equipment: "VACUUM", kind: "vacuum", stock: { create: { shopId: A } } } });
-    assert.match((await machineMergePlan(a.user, stockA.id, stockB.id)).blockers.join(" "), /Both are Vac Shop stock/);
-    await expectError("both for sale", () => mergeMachinesFor(a.user, stockA.id, stockB.id, "Miele C3"), /Both are Vac Shop stock/);
+    assert.match((await machineMergePlan(a.user, stockA.id, stockB.id)).blockers.join(" "), /Both are machines-for-sale stock/);
+    await expectError("both for sale", () => mergeMachinesFor(a.user, stockA.id, stockB.id, "Miele C3"), /Both are machines-for-sale stock/);
     await expectError("wrong name typed", () => mergeMachinesFor(a.user, md.id, mk.id, "Janome"), /Type Janome HD 3000 to confirm/);
     await expectError("a tech", () => mergeMachinesFor(tech, md.id, mk.id, "Janome HD 3000"), /Only the shop owner or an admin/);
     assert.deepEqual(await counts(MACHINE_REFS, md.id, A), mBeforeDup, "a refused merge moves nothing");
@@ -617,7 +618,7 @@ async function main() {
 
     // ---------- 5. machine delete ----------
     await expectError("has tickets", () => deleteMachineFor(a.user, mk.id, "Janome HD3000"), /It has 1 ticket:/);
-    await expectError("stock record", () => deleteMachineFor(a.user, stockA.id, "Miele C3"), /Vac Shop stock record/);
+    await expectError("stock record", () => deleteMachineFor(a.user, stockA.id, "Miele C3"), /machine-for-sale stock record/);
     const gone = await db.machine.create({ data: { shopId: A, customerId: owner.id, brand: "Eureka", model: "Mighty Mite", modelKey: modelKey("Mighty Mite"), equipment: "VACUUM", kind: "vacuum" } });
     const openJob = await db.repairJob.create({
       data: { id: `rj${token()}`, shopId: A, linkId: "l1", side: "retail", tag: "T4", customerName: "Mo O.", brand: "Eureka", model: "Mighty Mite", machineId: gone.id, status: "ON_BENCH" },

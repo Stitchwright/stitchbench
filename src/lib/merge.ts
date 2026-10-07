@@ -60,8 +60,9 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "MachinePhoto", field: "machineId", label: ["photo", "photos"] },
   { model: "RepairJob", field: "machineId", label: ["partner repair", "partner repairs"] },
   { model: "SaleLine", field: "machineId", via: "sale", label: ["sale line (supplies bought for it)", "sale lines (supplies bought for it)"] },
-  { model: "StockUnit", field: "machineId", one: true, label: ["Vac Shop stock record", "Vac Shop stock records"] },
+  { model: "StockUnit", field: "machineId", one: true, label: ["for-sale stock record", "for-sale stock records"] },
   { model: "VacCare", field: "machineId", one: true, label: ["bag reminder setting", "bag reminder settings"] },
+  { model: "MachinePlan", field: "machineId", label: ["service plan", "service plans"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
 ];
@@ -458,10 +459,10 @@ export async function machineMergeCandidates(user: CurrentUser, machineId: strin
 type MachineRow = Machine & { stock: { id: string } | null; vacCare: VacCare | null; customer: { name: string } | null };
 const MACHINE_INCLUDE = { stock: { select: { id: true } }, vacCare: true, customer: { select: { name: true } } } as const;
 
-/** Why two machines can't be merged (beyond not found): different equipment, or both are Vac Shop stock. */
+/** Why two machines can't be merged (beyond not found): different equipment, or both are machines-for-sale stock. */
 function machineMergeRefusal(from: MachineRow, into: MachineRow): string | null {
   if (from.equipment !== into.equipment) return "They aren't the same kind of thing (one is a vacuum or an appliance, the other isn't). Use 'It isn't ...' on the wrong one first.";
-  if (from.stock && into.stock) return "Both are Vac Shop stock records, which are kept for good. They can't be merged.";
+  if (from.stock && into.stock) return "Both are machines-for-sale stock records, which are kept for good. They can't be merged.";
   return null;
 }
 
@@ -547,12 +548,12 @@ export async function mergeMachinesFor(user: CurrentUser, fromId: string, intoId
   return intoId;
 }
 
-/** Why this machine can't be deleted: tickets (its history and their bills), a Vac Shop stock record, an open partner repair. */
+/** Why this machine can't be deleted: tickets (its history and their bills), a machines-for-sale stock record, an open partner repair. */
 async function machineBlockers(tx: Db, shopId: string, m: { id: string; stock: { id: string } | null }): Promise<string[]> {
   const out: string[] = [];
   const tickets = await tx.ticket.count({ where: { shopId, machineId: m.id } });
   if (tickets) out.push(`It has ${say(tickets, ["ticket", "tickets"])}: its service history and their bills stay. Merge it into the right machine instead.`);
-  if (m.stock) out.push("It is a Vac Shop stock record, and those are kept for good (take it off sale instead).");
+  if (m.stock) out.push("It is a machine-for-sale stock record, and those are kept for good (take it off sale instead).");
   for (const j of await tx.repairJob.findMany({ where: { shopId, machineId: m.id, pickedUpAt: null, status: { notIn: CLOSING_STATUSES } }, select: { tag: true } })) {
     out.push(`Partner repair tag ${j.tag} isn't picked up yet.`);
   }

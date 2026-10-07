@@ -297,6 +297,15 @@ export default async function SettingsPage() {
         </Section>
       )}
 
+      {admin && shop.sellsRetail && (
+        <Section title="Selling machines">
+          <p className="muted mb-2 text-sm">Your service plans (free cleanings, extended warranty) and each maker&apos;s warranty as you want it shown on receipts and tickets.</p>
+          <Link href="/settings/sales" className="btn btn-sm">
+            Plans and warranties
+          </Link>
+        </Section>
+      )}
+
       {admin && (
         <Section title="Bookkeeping">
           <p className="muted mb-2 text-sm">The account names your bookkeeper uses, for the daily journal export to QuickBooks (Reports, Bookkeeping).</p>
@@ -354,7 +363,7 @@ export default async function SettingsPage() {
             {showVacExport && (
               // eslint-disable-next-line @next/next/no-html-link-for-pages
               <a href="/api/export/vac-units" className="btn btn-sm">
-                Vacuums for sale
+                Machines for sale
               </a>
             )}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}

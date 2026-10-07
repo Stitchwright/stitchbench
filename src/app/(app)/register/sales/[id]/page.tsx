@@ -8,7 +8,7 @@ import { HistoryLink } from "@/components/history-link";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { ActionForm, Submit } from "@/components/action-form";
-import { SaleUnitNotes } from "@/components/vac/sale-unit-notes";
+import { SaleUnitNotes } from "@/components/units/sale-unit-notes";
 import { voidSale } from "@/actions/register";
 import { lastFour } from "@/lib/gift-card-number";
 

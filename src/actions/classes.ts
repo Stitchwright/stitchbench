@@ -19,6 +19,7 @@ import {
   saveMeetingAs,
   setClassStatusAs,
   setEnrollmentFeeAs,
+  applyClassCreditAs,
 } from "@/lib/class-actions";
 
 function refresh(classId?: string | null, customerId?: string | null) {
@@ -96,6 +97,13 @@ export const moveUp = safe(async function moveUp(enrollmentId: string, fd: FormD
 export const setEnrollmentFee = safe(async function setEnrollmentFee(enrollmentId: string, fd: FormData) {
   const user = await requireUser();
   const r = await setEnrollmentFeeAs(user, enrollmentId, fd);
+  refresh(r.classId, r.customerId);
+});
+
+/** A seat paid with an owner's class that came with a machine (unitId), or (null) back to the class's price. */
+export const applyClassCredit = safe(async function applyClassCredit(enrollmentId: string, unitId: string | null) {
+  const user = await requireUser();
+  const r = await applyClassCreditAs(user, enrollmentId, unitId);
   refresh(r.classId, r.customerId);
 });
 

@@ -1,7 +1,8 @@
 import "server-only";
 // The register's sale (completeSaleAs) and void (voidSaleAs), callable with a user so the check scripts can drive them;
-// src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, the Vac Shop's units
-// and trade-ins, and (scheduling-messaging-design.md 12.3) class seats and appointments paid or refunded here.
+// src/actions/register.ts wraps them. Notions, fabric by the yard, consigned stock, repair pickups, machines for sale and
+// trade-ins, service plans (tax-machine-sales-layaway-design.md section 3), and (scheduling-messaging-design.md 12.3)
+// class seats and appointments paid or refunded here.
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
@@ -11,8 +12,9 @@ import { withDisclosure } from "@/lib/part-labels";
 import { sendToPartner } from "@/lib/partners";
 import { normalizeTerms } from "@/lib/partner-terms";
 import { discountShares, inEighths, lineNet, orderDiscountShares, qtyText, roundCents, saleTotals, tenderProblem, ALL_TENDER_METHODS, type Tender } from "@/lib/register-math";
-import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/vac/sale-units";
-import type { TradeInInput } from "@/lib/vac/types";
+import { applyUnitLine, prepareUnitLines, voidUnitLines } from "@/lib/units/sale-units";
+import { applyPlanLine, endPlansOf, preparePlanLine, type PlanLineInput, type PreparedPlan } from "@/lib/units/plans";
+import type { TradeInInput } from "@/lib/units/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { classLine } from "@/lib/classes";
 import { actorOf, audit } from "@/lib/audit";
@@ -38,7 +40,7 @@ export type SaleLineInput = {
   unitPriceCents: number;
   discountCents?: number;
   taxable: boolean;
-  /** Vac Shop: the customer's vacuum this bag, belt or filter is for; a unit sold from stock; a trade-in taken as credit. */
+  /** Vac Shop: the customer's vacuum this bag, belt or filter is for. Any shop: a machine sold from stock; a trade-in taken as credit. */
   machineId?: string | null;
   stockUnitId?: string | null;
   tradeIn?: TradeInInput | null;
@@ -47,6 +49,8 @@ export type SaleLineInput = {
   appointmentId?: string | null;
   /** A gift card sold ("new" or a pre-printed "printed" blank), loaded, or its balance paid out (negative): later-round-1-design.md 2.3. */
   giftCard?: CardLine | null;
+  /** The shop's service plan sold for a machine on this sale or one of the customer's. */
+  servicePlan?: PlanLineInput | null;
 };
 
 export type SaleInput = {
@@ -126,7 +130,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       throw new UserError("That vacuum isn't one of this shop's.");
     }
     if (input.customerId && !(await db.customer.findFirst({ where: { id: input.customerId, shopId } }))) throw new UserError("Customer not found.");
-    // Vacuums sold from stock and trade-ins, checked and worded by the Vac Shop (by line index).
+    // Machines sold from stock and trade-ins, checked and worded by the unit hooks (by line index).
     const units = await prepareUnitLines({
       shopId,
       role: user.role,
@@ -140,11 +144,20 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
       })),
     });
 
+    // Service plans, checked and priced by the server (by line index): the machine is a unit on this sale or the customer's.
+    const planLines = new Map<number, PreparedPlan>();
+    const unitIdsOnSale = input.lines.filter((l) => l.stockUnitId && Number(l.qty) > 0).map((l) => l.stockUnitId!);
+    for (const [i, l] of input.lines.entries()) {
+      if (!l.servicePlan) continue;
+      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId, l.giftCard].some(Boolean)) throw new UserError("A line can only be one thing.");
+      planLines.set(i, await preparePlanLine({ shopId, role: user.role, customerId: input.customerId ?? null, unitIdsOnSale }, l.servicePlan, Number(l.qty), Number(l.unitPriceCents)));
+    }
+
     // Gift card lines (sold, loaded, paid out), checked and priced by the server (by line index).
     const giftLines = new Map<number, Awaited<ReturnType<typeof prepareCardLine>>>();
     for (const [i, l] of input.lines.entries()) {
       if (!l.giftCard) continue;
-      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId].some(Boolean)) throw new UserError("A line can only be one thing.");
+      if ([l.partId, l.repairJobId, l.stockUnitId, l.tradeIn, l.enrollmentId, l.appointmentId, l.servicePlan].some(Boolean)) throw new UserError("A line can only be one thing.");
       giftLines.set(i, await prepareCardLine(shopId, user.role, l.giftCard, Number(l.qty), Math.round(Number(l.unitPriceCents))));
     }
     if ([...giftLines.values()].some((g) => g.qty < 0) && rawTenders.some((t) => t?.method !== "CASH" && Number(t?.amountCents))) {
@@ -152,6 +165,34 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     }
 
     const lines = input.lines.map((l, i) => {
+      const plan = planLines.get(i);
+      if (plan) {
+        let disc = Math.max(0, Math.round(Number(l.discountCents ?? 0)));
+        if (user.role === "TECH" && disc) throw new UserError("Only an owner or admin can give a discount.");
+        disc = Math.min(disc, plan.unitPriceCents);
+        return {
+          partId: null,
+          repairJobId: null,
+          pickedUp: false,
+          description: plan.description,
+          partNumber: null,
+          qty: 1,
+          unit: null,
+          unitPriceCents: plan.unitPriceCents,
+          discountCents: disc,
+          taxable: plan.taxable,
+          discountable: true,
+          costCents: null,
+          costTenThou: null,
+          consignLinkId: null,
+          consignItemKey: null,
+          machineId: null,
+          stockUnitId: null,
+          tradeIn: null,
+          enrollmentId: null,
+          appointmentId: null,
+        };
+      }
       const gift = giftLines.get(i);
       if (gift) {
         // Selling or loading a card isn't a sale of goods: untaxed, never discounted (and the tax reports leave it out).
@@ -305,7 +346,7 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
     if (Math.abs(totals.subtotal) > MAX_MONEY) throw new UserError("A sale can't be more than $100,000. Check the prices and quantities.");
     const problem = tenderProblem(totals, tenders);
     if (problem) throw new UserError(problem);
-    // Each line's share of the whole-sale discount as the tax was worked out (what a vacuum really sold for).
+    // Each line's share of the whole-sale discount as the tax was worked out (what a machine really sold for).
     const shares = discountShares(lines, totals.orderDiscount);
 
     // The sewing shop's share of consigned sales, as the partnership stands today (kept with each sale).
@@ -346,10 +387,16 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           },
         });
         for (const [i, l] of lines.entries()) {
-          // tradeIn isn't a column: the Vac Shop makes the trade-in's own rows and sets tradeInUnitId on the line.
+          // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const kind = saleLineKind({ ...row, giftCardId: input.lines[i].giftCard ? "pending" : null, tradeInUnitId: tradeIn ? "pending" : null, partKind: row.partId ? parts.get(row.partId)?.kind : null });
+          const kind = saleLineKind({
+            ...row,
+            giftCardId: input.lines[i].giftCard ? "pending" : null,
+            tradeInUnitId: tradeIn ? "pending" : null,
+            machinePlanId: planLines.has(i) ? "pending" : null,
+            partKind: row.partId ? parts.get(row.partId)?.kind : null,
+          });
           const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind } });
           const gift = giftLines.get(i);
           if (gift) {
@@ -360,6 +407,8 @@ export async function completeSaleAs(user: CurrentUser, input: SaleInput, opts: 
           if (l.stockUnitId || tradeIn) {
             await applyUnitLine(tx, { shopId, saleNumber: number, customerId, at, timeZone: shop.timeZone, line, tradeIn, discountShareCents: shares[i] });
           }
+          const plan = planLines.get(i);
+          if (plan) await applyPlanLine(tx, { shopId, at, timeZone: shop.timeZone, line, prepared: plan });
           if (l.enrollmentId || l.appointmentId) await settleBooking(tx, shopId, l, line.id, at);
           if (l.partId) {
             await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
@@ -512,13 +561,15 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     // Gift cards and store credit the sale used come back; a card it sold goes void, unless it has been spent since
     // (then the void is refused and nothing changes).
     await reverseSale(tx, actorOf(user), sale.id, sale.number);
-    // Vacuums sold go back in stock; trade-ins taken come back out (Vac Shop).
-    await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at });
+    // Machines sold go back in stock (their plans end); trade-ins taken come back out.
+    await voidUnitLines(tx, { shopId, saleNumber: sale.number, customerId: sale.customerId, lines: sale.lines, at, saleAt: sale.createdAt });
     // A club month paid here: the payment is voided with the sale and the member's paid month goes back.
     await unpayClubSale(tx, shopId, sale.id, at);
     // A quilt collected on this sale is back on the shelf (ready, not collected).
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
     for (const l of sale.lines) {
+      // A service plan sold here ends (lines it already covered stay covered).
+      if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);
       if (l.enrollmentId || l.appointmentId) await unsettleBooking(tx, shopId, l);
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
