@@ -294,6 +294,24 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.patternNeed.create({ data: { shopId, patternPartId: part.id, size: "Throw", role: "background", yards: 2.25 } });
   await db.careTip.create({ data: { shopId, kind: "sewing", text: "Change the needle every 8 hours of sewing." } });
   await db.customerQuestion.create({ data: { shopId, name: "Pat", contact: "pat@example.com", text: "Do you sell Bernina feet?" } });
+  // Selling (tax-machine-sales-layaway-design.md): service plans, maker warranties, tax holidays, financing, promotions, layaway.
+  const plan = await db.servicePlan.create({ data: { shopId, name: "Two cleanings", visits: 2, months: 24, priceCents: 9900 } });
+  await db.machinePlan.create({ data: { shopId, machineId: machine.id, planId: plan.id, name: "Two cleanings", visits: 2, startsAt: new Date(now), endsAt: new Date(now + 730 * day) } });
+  await db.makerWarranty.create({ data: { shopId, brand: "Bernina", brandKey: "bernina", partsYears: 5, laborYears: 1 } });
+  await db.taxHoliday.create({ data: { shopId, name: "Back to school", firstDay: "2026-08-07", lastDay: "2026-08-09", maxUnitCents: 10000 } });
+  const lender = await db.lender.create({ data: { shopId, name: "Check Credit", applyUrl: "https://lender.example.test/apply" } });
+  await db.financedSale.create({ data: { shopId, saleId: "sale_check_plain_id", lenderId: lender.id, amountCents: 29900, approval: "APP-1" } });
+  await db.promotion.create({ data: { shopId, name: "Fall sale", firstDay: "2026-10-01", lastDay: "2026-10-31", scope: { kinds: ["NOTION"] }, effect: "PERCENT", value: 10 } });
+  const layaway = await db.layaway.create({ data: { shopId, number: 1, customerId: cust.id, dueBy: "2026-12-31", depositMinCents: 1000, terms: "Pay by the date." } });
+  await db.layawayLine.create({ data: { layawayId: layaway.id, partId: part.id, description: "Hook", qty: 1, unitPriceCents: 4500 } });
+  // Phase 2 (shop-features-round-2-design.md 2.4 to 6.5): fit groups, software, starter bundles, certifications, supplies, jobs.
+  await db.fitGroup.create({ data: { shopId, name: "Bernina B9 hooks", models: ["Bernina 770 QE"], modelKeys: ["770qe"] } });
+  await db.softwareLicense.create({ data: { shopId, partId: part.id, description: "Embroidery software", customerId: cust.id, code: "SW-1", startsOn: new Date(now) } });
+  await db.softwareCode.create({ data: { shopId, partId: part.id, code: "SW-2" } });
+  await db.starterBundle.create({ data: { shopId, kind: "sewing", name: "First machine", lines: [{ partId: part.id, qty: 1 }] } });
+  await db.certification.create({ data: { shopId, customerId: cust.id, equipment: "Laser cutter" } });
+  await db.suppliesCare.create({ data: { shopId, machineId: machine.id, callNote: "Filament low" } });
+  await db.makeJob.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover", title: "Name tag", fileName: "tag.svg", fileMime: "image/svg+xml", fileData: crypto.randomBytes(800), machineMinutes: 12, quoteCents: 1500 } });
   await db.shop.update({
     where: { id: shopId },
     data: {
