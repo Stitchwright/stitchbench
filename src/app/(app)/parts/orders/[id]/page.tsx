@@ -11,6 +11,8 @@ import { fmtDate } from "@/lib/format";
 import { connectorFor } from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/ui";
 import { AddLineForm, CancelOrderButton, OrderEditForm, ReceiveForm, SendButton } from "@/components/fabric-orders-forms";
+import { entryFor } from "@/lib/assistant/ui";
+import { SlipReader } from "@/components/slip-reader";
 
 const TONE = { DRAFT: "tone-neutral", SENT: "tone-work", PARTLY_RECEIVED: "tone-wait", RECEIVED: "tone-ready", CANCELLED: "tone-bad" } as const;
 
@@ -25,6 +27,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const sendLabel = conn.channel === "file" ? "Send order (prepare the upload file)" : o.supplier.orderEmail ? `Send order by email to ${o.supplier.orderEmail}` : "Send order";
   const under = o.supplier.minOrderCents > 0 && o.totalCents > 0 && o.totalCents < o.supplier.minOrderCents;
   const tech = user.role === "TECH";
+  // "Receive from a photo" (shop-features-round-2-design.md 1.10): with the Assistant's Stock helpers on.
+  const slip = receiving ? await entryFor(user.shopId, "stock") : { show: false as const };
   return (
     <div className="space-y-4">
       <PageHeader
@@ -157,6 +161,14 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           />
           {o.status === "SENT" && <CancelOrderButton orderId={o.id} />}
         </div>
+      )}
+      {receiving && slip.show && (
+        <details className="card card-pad">
+          <summary className="link cursor-pointer text-base">Receive from a photo of the packing slip</summary>
+          <div className="mt-3">
+            <SlipReader orderId={o.id} unavailable={slip.unavailable} canCost={!tech} />
+          </div>
+        </details>
       )}
     </div>
   );

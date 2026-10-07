@@ -2920,6 +2920,8 @@ model AssistantSettings {
   manualsOn       Boolean  @default(true)
   partsOn         Boolean  @default(true)
   fabricOn        Boolean  @default(true)
+  // Stock helpers (shop-features-round-2-design.md 1.10): a photo of the packing slip or invoice fills in receiving
+  stockOn         Boolean  @default(true)
   offerFirstNames Boolean  @default(false)
   voice           String?
   updatedAt       DateTime @updatedAt
@@ -2935,6 +2937,7 @@ model AssistantCall {
   repairJobId    String?
   machineId      String?
   partId         String?
+  purchaseOrderId String? // a packing slip or invoice read for this purchase order (1.10)
   byUserId       String?
   model          String // the model id the hub used
   request        Json // the redacted request exactly as sent: { system, messages, maxTokens } (a photo as its size and hash)

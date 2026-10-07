@@ -103,6 +103,9 @@ export default async function Parts({
             <Link href="/parts/on-order" className="btn">
               On order
             </Link>
+            <Link href="/parts/receive" className="btn">
+              Receive without an order
+            </Link>
             <Link href="/xref" className="btn">
               Cross-reference
             </Link>

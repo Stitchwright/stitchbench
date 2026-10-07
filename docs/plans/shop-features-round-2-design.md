@@ -1294,3 +1294,24 @@ Decisions made while building:
   machine for sale, and only for that customer. A tech can use it (the shop's own offer).
 - The trade-in rule only fills the starting number; staff change it freely. The AI helper's notes (5.4) come later.
 - Browser test needed: `tests/trade-up.spec.ts`.
+
+**`invoice-reader` (1.10, AI, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021080000_invoice_reader`
+(`AssistantSettings.stockOn`, `AssistantCall.purchaseOrderId`). Feature `read_invoice` (class read) in a new group
+**Stock helpers** (Settings → Assistant). Code: `src/lib/invoice-reader-math.ts` (pure: the request, reading the answer,
+matching by item number, cost changes), `src/lib/invoice-reader.ts`, `src/actions/invoice-reader.ts`,
+`src/components/slip-reader.tsx`; a sent order's page has **Receive from a photo of the packing slip**; Inventory has
+**Receive without an order** (`/parts/receive`). Check: `scripts/checks/invoice-reader.check.ts` (6 groups, a stand-in hub);
+`assistant`, `fabric-ai`, `fabric-orders`, `po-any-item`, `base-license`, `move-export` and the unit tests pass.
+Decisions made while building:
+- Up to five pictures, shrunk in the browser, one Assistant call per page (each logged with the order's id, counted
+  against the allowance). Only pictures: a supplier's PDF is printed or photographed page by page for now (the hub's
+  Assistant takes images; a PDF page renderer is left for later).
+- Lines match by item number only (the order line's own number or its item's numbers, then the shop's items' numbers),
+  never by name. "On the order" is ticked, "Not on the order" unticked, "New to us" ticked to make the item (its number,
+  description, cost, the order's supplier, kind from the supplier's list type else Notion; no price: the shop sets it).
+- "Receive these" receives order lines through the order's own receipt (so lead times, special orders and want lists
+  follow), others as stock received. A changed cost shows "Cost up 12% ($4.10 to $4.60)", ticked to update the item's
+  cost to the ten-thousandth and the order line's; a tech can receive but not change costs. The margin floor and Raise
+  prices list (4.4) aren't built yet: nothing is sent there.
+- Browser test needed: `tests/invoice-reader.spec.ts` (needs the stand-in hub and the Assistant module, as the assistant
+  spec sets up).
