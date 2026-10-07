@@ -12,6 +12,7 @@ import { fmtWhen } from "@/lib/zoned";
 import { orderCancel, orderDone, orderNote, orderReady, orderRetry } from "@/actions/online-shop";
 import { ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader } from "@/components/ui";
+import { pirateShipFile } from "@/lib/ship-orders";
 
 const TONE: Record<OrderStatus, string> = { PENDING: "tone-wait", PAID: "tone-warn", READY: "tone-ok", DONE: "", CANCELLED: "tone-bad" };
 
@@ -22,6 +23,9 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true, shopOn: true, sellsRetail: true } }),
     ordersFor(user.shopId, { all: !!all }),
   ]);
+  // Shipping labels (shop-features-round-2-design.md 9.5): the paid orders to post, as a Pirate Ship spreadsheet.
+  const ship = await pirateShipFile(user.shopId);
+  const toShip = ship.rows.length - 1;
   const admin = user.role !== "TECH";
   return (
     <div className="space-y-6">
@@ -50,6 +54,17 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
             </Link>
           )}
         </p>
+      )}
+      {toShip > 0 && (
+        <div className="card card-pad space-y-2 text-base">
+          <p>
+            {toShip === 1 ? "1 order" : `${toShip} orders`} to post. Make the labels at Pirate Ship: download the spreadsheet, then on pirateship.com choose Import a spreadsheet. Paste each tracking number back here with Shipped.
+          </p>
+          {ship.unsure.length > 0 && <p className="text-sm">Check the address of order {ship.unsure.map((n) => `#${n}`).join(", ")} in Pirate Ship: it couldn&apos;t be split into street, city, state and ZIP for sure.</p>}
+          <a href="/api/shop-orders/pirate-ship" className="btn btn-primary" download>
+            Export for Pirate Ship
+          </a>
+        </div>
       )}
       {orders.length === 0 ? (
         <Empty>{all ? "No online orders yet." : "Nothing to pack. Orders show here as soon as they're paid."}</Empty>

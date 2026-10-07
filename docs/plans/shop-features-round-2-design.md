@@ -1300,3 +1300,17 @@ Decisions made while building:
 - Machines for sale aren't in the online shop yet; their minimum shows on the machine's page and in the list. The
   Google and Meta feeds (4.1, 4.2, phase 3) should leave out, or show at the minimum, anything `belowMap`.
 - Fabric by the yard gets no minimum box (makers don't set MAP on fabric).
+
+**`ship-export` (9.5, 7 Oct 2026).** No migration. Code: `src/lib/ship-export.ts` (pure: `splitAddress`,
+`pirateShipRows` in Pirate Ship's spreadsheet layout: Name, Company, Address, Address Line 2, City, State, Zipcode,
+Country, Email, Phone, Order ID, Order Items, then weight and size left blank), `src/lib/ship-orders.ts`
+(`ordersToShip`: paid, to post, no tracking yet), the download `/api/shop-orders/pirate-ship`, and on Online orders a
+box "3 orders to post" with **Export for Pirate Ship** (and the orders whose address was split by guesswork). The
+tracking number is pasted back with Shipped, as before. Check: `scripts/checks/ship-export.check.ts` (3 groups). Spec:
+`tests/ship-export.spec.ts`.
+Decisions made while building:
+- The online shop takes the address as one box of text, so the export splits it (lines or commas, the name on the
+  first line dropped, "State ZIP" at the end, ZIP+4, "USA"); anything else goes in Address whole and is named on the
+  page so it is checked in Pirate Ship, which validates every address on import anyway. Splitting the checkout's box
+  into fields would make this exact; left as it is so the checkout doesn't change.
+- Items carry no weight, so Pirate Ship asks for the weight (or uses the shop's saved package there).
