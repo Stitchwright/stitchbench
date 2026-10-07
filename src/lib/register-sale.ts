@@ -76,9 +76,12 @@ export type SaleLineInput = {
   depositUsed?: boolean;
   /** The cashier took the customer's price rule (her group, lifetime, yard break, birthday) off this line. */
   noRule?: boolean;
-  /** Rentals (1.8), from the program only: rent paid on a machine out on rental (RENT, income). */
+  /**
+   * Loaners and rentals (1.7, 1.8), from the program only: a loaner's deposit is a DEPOSIT line naming the loan; a kept
+   * deposit is LOAN_FEE ("Loaner charges"); rent on a machine out on rental is RENT ("Rentals").
+   */
   unitLoanId?: string | null;
-  rentKind?: "RENT" | null;
+  rentKind?: "RENT" | "LOAN_FEE" | null;
 };
 
 export type SaleInput = {
@@ -144,6 +147,9 @@ export async function completeSaleAs(
     // Special orders picked up on this sale: priced from the order, the deposits paid taken off (worked out here).
     const so = await prepareSpecialOrderLines(shopId, input.customerId ?? null, Array.isArray(input.lines) ? input.lines : []);
     input = { ...input, lines: so.lines };
+    // A loaner's or rental's money names one of this shop's loans.
+    const loanIds = [...new Set(input.lines.map((l) => l.unitLoanId).filter((x): x is string => !!x))];
+    if (loanIds.length && (await db.unitLoan.count({ where: { shopId: user.shopId, id: { in: loanIds } } })) !== loanIds.length) throw new UserError("That loan isn't one of this shop's.");
     const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } });
     if (!input.lines.length) throw new UserError("Nothing to sell yet. Scan or search for an item.");
     if (input.lines.length > 300) throw new UserError("That's too many lines for one sale.");
@@ -541,7 +547,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], priceGroupId: groupIds[i], priceNote: priceNotes[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], priceGroupId: groupIds[i], priceNote: priceNotes[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null, unitLoanId: input.lines[i].unitLoanId ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });

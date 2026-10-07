@@ -52,6 +52,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
   { model: "SpecialOrder", field: "customerId", label: ["special order", "special orders"] },
   { model: "WantItem", field: "customerId", label: ["want list line", "want list lines"] },
+  { model: "UnitLoan", field: "customerId", label: ["loaner, demo or rental", "loaners, demos and rentals"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -308,6 +309,7 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const o of await tx.specialOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["WAITING", "ORDERED", "HERE"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Special order ${o.number} is still open. Finish or cancel it first.`);
   }
+  if (await tx.unitLoan.count({ where: { shopId, customerId: c.id, backAt: null } })) out.push("She still has one of the shop's machines (a loaner, demo or rental). Mark it back first.");
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -386,6 +388,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
   add(n["WantItem.customerId"], ["want list line", "want list lines"], "deleted");
+  add(n["UnitLoan.customerId"], ["finished loan", "finished loans"], "kept, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }

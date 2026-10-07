@@ -534,7 +534,7 @@ export async function sellableEquipment(shopId: string): Promise<string[]> {
 export async function unitsForSaleFor(shopId: string, q: string | null): Promise<UnitForSale[]> {
   const equipment = await sellableEquipment(shopId);
   const rows = await db.stockUnit.findMany({
-    where: { shopId, status: "IN_STOCK", machine: { AND: [machineMatch(q) ?? {}, { equipment: { in: equipment } }] } },
+    where: { shopId, status: "IN_STOCK", use: "SALE", machine: { AND: [machineMatch(q) ?? {}, { equipment: { in: equipment } }] } },
     include: { machine: true },
     orderBy: { createdAt: "desc" },
     take: 20,

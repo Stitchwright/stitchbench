@@ -111,6 +111,8 @@ export const BY_HAND = [
   // goes through completeSaleAs
   "takeSpecialOrder",
   "paySpecialOrder",
+  // Lending a loaner or demo (1.7) is new work; its deposit goes through completeSaleAs
+  "lendMachine",
 ] as const;
 
 /**

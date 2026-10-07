@@ -221,7 +221,7 @@ export async function waitingForCustomer(shopId: string, customerId: string): Pr
 
 /** Money held for customers on open special orders (the deposits report beside layaway's). */
 export async function specialOrderDepositsHeld(shopId: string): Promise<number> {
-  const rows = await db.saleLine.findMany({ where: { kind: "DEPOSIT", sale: { shopId, status: "COMPLETED" } }, select: { qty: true, unitPriceCents: true, discountCents: true } });
+  const rows = await db.saleLine.findMany({ where: { kind: "DEPOSIT", specialOrderId: { not: null }, sale: { shopId, status: "COMPLETED" } }, select: { qty: true, unitPriceCents: true, discountCents: true } });
   return rows.reduce((a, r) => a + Math.round(r.qty * r.unitPriceCents) - (r.qty < 0 ? -1 : 1) * r.discountCents, 0);
 }
 

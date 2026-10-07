@@ -122,6 +122,11 @@ async function main() {
       commissionPct: null,
       routeDay: null,
       notes: null,
+      priceGroupId: null,
+      priceGroupUntil: null,
+      birthMonth: null,
+      birthDay: null,
+      birthdayUsedYear: null,
       notifyBy: "",
       smsConsentAt: null,
       smsConsentPhone: null,
@@ -266,6 +271,7 @@ async function main() {
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     await db.specialOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "DONE", description: "Charm pack", priceCents: 3000 } });
     await db.wantItem.create({ data: { shopId: A, customerId: dup.id, words: "Tula Pink" } });
+    await db.unitLoan.create({ data: { shopId: A, unitId: "x", customerId: dup.id, backAt: new Date() } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -444,6 +450,7 @@ async function main() {
     await db.longarmOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
     const delLayaway = await db.layaway.create({ data: { shopId: A, number: 2, customerId: del.id, status: "OPEN", dueBy: "2026-12-31", terms: "Terms" } });
     await db.wantItem.create({ data: { shopId: A, customerId: del.id, words: "Kaffe" } });
+    await db.unitLoan.create({ data: { shopId: A, unitId: "x", customerId: del.id, backAt: new Date() } });
     const delSo = await db.specialOrder.create({ data: { shopId: A, number: 2, customerId: del.id, status: "HERE", description: "Charm pack", priceCents: 3000 } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
