@@ -64,6 +64,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "OffsiteObject", key: "id" }, // the company's index of its off-site store: photos are not sent again after a move
   { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
   { t: "PriceGroup", key: "id" }, // customer price groups (1.5): before the customers that name one
+  { t: "YardBreak", key: "id" }, // per-yard price breaks (1.6)
   { t: "Customer", key: "id" },
   { t: "GiftCard", key: "id" }, // -> Customer
   { t: "Machine", key: "id" }, // -> Customer

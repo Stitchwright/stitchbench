@@ -13,6 +13,7 @@ import { RULE_KINDS } from "@/lib/price-rules";
 import { saveLifetimeDefault } from "@/actions/price-groups";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PriceGroupForm } from "@/components/settings/price-group-form";
+import { BirthdayYardSettings } from "@/components/settings/birthday-yard-settings";
 import { Empty, PageHeader, Section } from "@/components/ui";
 
 export default async function PricesSettings() {
@@ -24,7 +25,7 @@ export default async function PricesSettings() {
   const kindLabel = (k: string) => RULE_KINDS.find((x) => x.key === k)?.label ?? k;
   return (
     <div className="max-w-3xl space-y-6">
-      <PageHeader title="Prices and members" sub="Discounts for groups of customers (the guild, teachers, a paid club card, wholesale), and the lifetime discount on a machine's supplies." back={{ href: "/settings", label: "Settings" }} />
+      <PageHeader title="Prices and members" sub="Discounts for groups of customers (the guild, teachers, a paid club card, wholesale), the birthday offer, lower prices for more yards, and the lifetime discount on a machine's supplies." back={{ href: "/settings", label: "Settings" }} />
 
       <Section title="Price groups">
         {report.groups.length === 0 ? (
@@ -101,6 +102,8 @@ export default async function PricesSettings() {
           </ul>
         )}
       </Section>
+
+      <BirthdayYardSettings shopId={user.shopId} admin={admin} />
 
       <Section title="Lifetime discount on a machine's supplies">
         <ActionForm action={saveLifetimeDefault} success="Saved" className="space-y-3 text-base">
