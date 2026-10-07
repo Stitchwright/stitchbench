@@ -106,6 +106,8 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Lender", key: "id" }, // the lenders the shop offers financing through
   { t: "Promotion", key: "id" }, // the shop's planned sales
   { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
+  { t: "SoftwareLicense", key: "id" }, // -> Customer, Part (shop-features-round-2-design.md 2.5; its sale, line and machine ids are plain)
+  { t: "SoftwareCode", key: "id" }, // -> Part: activation codes on hand
   { t: "FinancedSale", key: "id" }, // -> Lender (its sale id is plain)
   { t: "MachinePlan", key: "id" }, // -> Machine (its sale line and unit ids are plain)
   { t: "Layaway", key: "id" }, // -> Customer (its sale id is plain)

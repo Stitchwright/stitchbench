@@ -1117,3 +1117,37 @@ Decisions made while building:
 - The free-text `fits` stays, labelled "Fits (notes)".
 - Browser test needed: an item's Fits these machines (add, take off, groups), /parts/fit-groups, a customer's page, the
   register with a customer who owns a machine and with a machine for sale on the sale, the online shop's picker.
+
+**`software-codes` (2.5, 7 Oct 2026).** Migrations `20261020600000_software_codes` (`PartKind` gains `SOFTWARE`;
+`Part.licenseKind`, `licenseMonths`, `noReturnText`; `SoftwareLicense`, `SoftwareCode`; `Shop.softwareActivatedAtSale`)
+and `20261020610000_software_renewals` (`SoftwareLicense.renewedFromId`, `returnLineId`). Code: `src/lib/software.ts`,
+`src/actions/software.ts`; the register's software line (`src/components/software-line.tsx`: scan or type the code,
+"Add the code later", the machine from the customer's own, "Renew their subscription"; a return's reason for an owner or
+admin), `register-sale.ts` (prepare, apply, void), the receipt's licence notes (`src/components/sale-software-notes.tsx`:
+product, code in full, customer, machine, renewal date, no-returns words), Parts → **Software licences**
+(`/parts/software`: codes to fill in, renewals in the next 30 days, sold lately), the item's **Software licence** box
+(once or subscription, words, codes on hand and loading them), **Software** on the customer's and the machine's pages
+(codes masked, "Show the code"), Settings → Selling → Software (activated at sale), dashboard and register to-do lines,
+and the new message kind `software_renew` (marketing; one friendly reminder per renewal date, sent by the notices
+scheduler for shops with Marketing on, cancelled if the licence is renewed, ended or its date moves). Licences are in
+the company file and the customer and machine merges. Check: `scripts/checks/software-codes.check.ts` (7 groups);
+`customer-merge` (licences seeded), `messaging-core`, `notices`, `move-export`, `base-license`, `promotions`, `layaway`,
+`machine-sales` still pass.
+Decisions made while building:
+- One licence a line (each has its own code); scanning the same software twice makes two lines.
+- No code typed: the next code on hand (first loaded, first used); none on hand and "later" not ticked is refused in
+  words. A typed code that is one of the codes on hand comes out of the drawer.
+- Renewing makes a new licence carrying the same code from the old renewal date (or today, when that has passed); the
+  old one is RENEWED. Voiding the renewal brings the old one back; a sale whose licence was renewed or returned since
+  can't be voided until that sale is.
+- Returns find the licence on the receipt's sale, else the customer's latest active one of that item. Not activated: it
+  comes back and its drawer code goes back on hand. Activated: refused with the item's words; an owner or admin types a
+  reason on the line and it is taken back, audited as `software.return`. Voiding the return makes it active again.
+  A return scanned from a receipt shows no reason box (its lines don't say they are software): for activated software,
+  ring the return up by the item instead.
+- "Mark activated" is on each licence; un-marking and "Not renewing" (ENDED) are owner or admin.
+- Codes are printed in full on the receipt (the customer's record) and masked everywhere else; they are in the company
+  file (the shop's record) and never in anything sent to the hub or the Assistant.
+- Browser test needed: an item set to Software (licence box, codes), the register's software line (code, later, machine,
+  renew, a return with and without a reason), the receipt, /parts/software, the customer and machine pages, Settings →
+  Selling → Software, the dashboard lines; the renewal reminder through the message worker with Marketing on.

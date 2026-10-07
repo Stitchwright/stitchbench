@@ -24,6 +24,7 @@ export const AUDIT_ACTIONS = {
   "sale.return": { category: "money", label: "Return or refund at the register" },
   "sale.discount": { category: "money", label: "Discount given at the register" },
   "sale.price_override": { category: "money", label: "Register price different from the item's" },
+  "software.return": { category: "money", label: "Activated software taken back (owner or admin, with a reason)" },
   "giftcard.sell": { category: "money", label: "Gift card sold" },
   "giftcard.load": { category: "money", label: "Gift card loaded" },
   "giftcard.opening": { category: "money", label: "Existing gift card added" },

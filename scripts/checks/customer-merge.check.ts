@@ -264,6 +264,7 @@ async function main() {
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
+    await db.softwareLicense.create({ data: { shopId: A, customerId: dup.id, description: "PE-Design 11", code: "ABC-123", startsOn: new Date() } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -441,6 +442,7 @@ async function main() {
     });
     await db.longarmOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
     const delLayaway = await db.layaway.create({ data: { shopId: A, number: 2, customerId: del.id, status: "OPEN", dueBy: "2026-12-31", terms: "Terms" } });
+    await db.softwareLicense.create({ data: { shopId: A, customerId: del.id, description: "PE-Design 11", code: "DEL-1", startsOn: new Date() } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -571,6 +573,7 @@ async function main() {
     });
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
     await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
+    await db.softwareLicense.create({ data: { shopId: A, machineId: md.id, description: "Hatch", startsOn: new Date() } });
     await db.machinePlan.create({ data: { shopId: A, machineId: md.id, name: "Free yearly cleaning", visits: 3, startsAt: new Date(2026, 0, 1), endsAt: new Date(2029, 0, 1) } });
     await db.vacCare.createMany({
       data: [
