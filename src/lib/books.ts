@@ -184,6 +184,31 @@ export async function buildBooks(shopId: string, tz: string, start: Date, end: D
     }
   }
 
+  // ----- customers' machines on consignment (9.6): her share of the sale isn't the shop's income; it is owed to her
+  // from the sale (taken back if the sale is voided or the machine returned unpaid) until she is paid -----
+  const payouts = await db.consignPayout.findMany({
+    where: { shopId, OR: [{ createdAt: { gte: start, lt: end } }, { voidedAt: { gte: start, lt: end } }, { paidAt: { gte: start, lt: end } }] },
+    select: { amountCents: true, createdAt: true, voidedAt: true, paidAt: true, method: true },
+  });
+  for (const p of payouts) {
+    if (inRange(p.createdAt)) {
+      const led = dayLedger(p.createdAt);
+      post(led, salesAccount("UNIT"), p.amountCents);
+      post(led, acct("consignorLiability"), -p.amountCents);
+    }
+    if (p.voidedAt && inRange(p.voidedAt)) {
+      const led = dayLedger(p.voidedAt);
+      post(led, salesAccount("UNIT"), -p.amountCents);
+      post(led, acct("consignorLiability"), p.amountCents);
+    }
+    if (p.paidAt && inRange(p.paidAt)) {
+      const led = dayLedger(p.paidAt);
+      post(led, acct("consignorLiability"), p.amountCents);
+      // Store credit was put on her card (booked above as a card loaded outside a sale, against the adjustments account).
+      post(led, p.method === "CREDIT" ? acct("giftAdjust") : acct("undeposited"), -p.amountCents);
+    }
+  }
+
   // ----- co-op advertising and rebates (9.2): booked when the money comes in -----
   const coop = await db.coopClaim.findMany({ where: { shopId, status: { in: ["PAID", "SHORT"] }, receivedAt: { gte: start, lt: end } }, select: { receivedCents: true, receivedAt: true } });
   for (const c of coop) {

@@ -198,7 +198,7 @@ async function main() {
     ok("customerFill fills blanks, carries text consent only for the same number, notes the rest; machineFill and vacCombine");
 
     // ---------- 1. the reference lists against the schema ----------
-    const custSchema = schemaRefs("Customer", ["customerId", "accountId"]);
+    const custSchema = schemaRefs("Customer", ["customerId", "accountId", "consignorId"]);
     assert.deepEqual(custSchema, CUSTOMER_REFS.map(key).sort(), "CUSTOMER_REFS is every column that points at a customer");
     const machSchema = schemaRefs("Machine", ["machineId"]);
     assert.deepEqual(
@@ -267,6 +267,9 @@ async function main() {
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     await db.softwareLicense.create({ data: { shopId: A, customerId: dup.id, description: "PE-Design 11", code: "ABC-123", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: dup.id, equipment: "Laser" } });
+    const consM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "830", modelKey: modelKey("830") } });
+    const consU = await db.stockUnit.create({ data: { shopId: A, machineId: consM.id, status: "SOLD", consignorId: dup.id } });
+    await db.consignPayout.create({ data: { shopId: A, unitId: consU.id, customerId: dup.id, saleLineId: "x", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -447,6 +450,9 @@ async function main() {
     await db.softwareLicense.create({ data: { shopId: A, customerId: del.id, description: "PE-Design 11", code: "DEL-1", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: del.id, equipment: "Longarm" } });
     await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
+    const delConsM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "740", modelKey: modelKey("740") } });
+    const delConsU = await db.stockUnit.create({ data: { shopId: A, machineId: delConsM.id, status: "SOLD", consignorId: del.id } });
+    await db.consignPayout.create({ data: { shopId: A, unitId: delConsU.id, customerId: del.id, saleLineId: "y", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -578,6 +584,7 @@ async function main() {
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
     await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
     await db.softwareLicense.create({ data: { shopId: A, machineId: md.id, description: "Hatch", startsOn: new Date() } });
+    await db.warrantyClaim.create({ data: { shopId: A, number: 1, machineId: md.id, maker: "Janome" } });
     await db.suppliesCare.create({ data: { shopId: A, machineId: md.id, calledAt: new Date(), calledBy: "Ann" } });
     await db.machinePlan.create({ data: { shopId: A, machineId: md.id, name: "Free yearly cleaning", visits: 3, startsAt: new Date(2026, 0, 1), endsAt: new Date(2029, 0, 1) } });
     await db.vacCare.createMany({
