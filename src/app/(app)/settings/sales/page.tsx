@@ -23,6 +23,7 @@ import { listMakerTerms, termsText } from "@/lib/units/units";
 import { deleteMakerTerms, saveMakerTerms, savePlan } from "@/actions/units";
 import { saveLayawaySettings } from "@/actions/layaway";
 import { SpecialOrderSettings } from "@/components/settings/special-order-settings";
+import { TradeUpSettings } from "@/components/settings/trade-up-settings";
 import { layawaySettings } from "@/lib/layaway";
 import { EVERY_LABEL, LAYAWAY_EVERY } from "@/lib/layaway-math";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
@@ -321,6 +322,8 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
       </Section>
 
       <SpecialOrderSettings shopId={user.shopId} admin={admin} />
+
+      <TradeUpSettings shopId={user.shopId} admin={admin} />
 
       <Section title="Financing">
         <p className="muted mb-3 text-sm">

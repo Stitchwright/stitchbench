@@ -1278,3 +1278,19 @@ Decisions made while building:
   back by then for a full refund" on the receipt; the return is the existing Return a machine (it refunds what she paid).
   After the window the shop's own rule applies (nothing enforced).
 - Browser test needed: `tests/rentals-trials.spec.ts`.
+
+**`trade-up` (1.9, 7 Oct 2026, branch `phase1-rest`).** Migrations `20261021070000_trade_up` (`TradeUpOffer`, carried by
+the company file; `Shop.tradeUpDays`, `tradeInLessPct`) and `20261021070100_trade_up_customer` (its customer link, kept
+on a merge and cleared on a delete). Code: `src/lib/trade-up.ts`, `src/actions/trade-up.ts`, Settings → Selling →
+**Trade-up credit and trade-ins**, the invoice's line, the register's "Repair credit $89 ... Use it" (on a machine for sale on
+the sale), the trade-in step's "You expect to sell it for" with "Start from $X (less 30%)". Check:
+`scripts/checks/trade-up.check.ts` (4 groups); `birthdays-yard-breaks`, `price-groups`, `machine-sales`, `vac-units`,
+`rentals-trials`, `move-export`, `customer-merge` pass.
+Decisions made while building:
+- Off by default (answer: setting, default off); turned on, 30 days. The credit is the ticket's charges before tax (a
+  collected or ready repair with a customer), until the days after the day it was ready (else closed). Tickets carry no
+  separate "offer" record: the row is written when the credit is used (once per ticket; a void deletes it).
+- The credit is a discount on the machine line ("Trade-up credit"), not money owed; it can't come off anything but a
+  machine for sale, and only for that customer. A tech can use it (the shop's own offer).
+- The trade-in rule only fills the starting number; staff change it freely. The AI helper's notes (5.4) come later.
+- Browser test needed: `tests/trade-up.spec.ts`.

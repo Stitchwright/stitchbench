@@ -53,6 +53,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "SpecialOrder", field: "customerId", label: ["special order", "special orders"] },
   { model: "WantItem", field: "customerId", label: ["want list line", "want list lines"] },
   { model: "UnitLoan", field: "customerId", label: ["loaner, demo or rental", "loaners, demos and rentals"] },
+  { model: "TradeUpOffer", field: "customerId", label: ["repair credit used", "repair credits used"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -389,6 +390,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
   add(n["WantItem.customerId"], ["want list line", "want list lines"], "deleted");
   add(n["UnitLoan.customerId"], ["finished loan", "finished loans"], "kept, without the customer");
+  add(n["TradeUpOffer.customerId"], ["repair credit used", "repair credits used"], "kept in the books, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
