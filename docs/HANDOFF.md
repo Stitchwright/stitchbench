@@ -1200,6 +1200,10 @@ accounts and billing: design first).
    `test/billing.mjs` sections 10 and 10b; program check `scripts/checks/partnership-rule.check.ts`. Weak spot: partner messages aren't signed
    (L134), so a quilt shop could fake `job.new`; review partnered shops' support hours and add-on uptake after six months.
 
+24. **Tax holidays, shop-pays-the-tax sales, machine sales with warranty for every shop, layaway, financing** (owner
+   request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
+   ten owner questions in its section 7 (not yet answered).
+
 23. **The plan from Wednesday 7 Oct 2026 (owner, 4 Oct):** use each week's Claude allowance, spread over the week (two
    or three agents at a time, not eight). (1) Pre-launch, on `scheduling-features`: wave 2 (W1 email unique per
    company, W2 signed partner invites: short designs first), the real-partnership rule (item 22) if the owner says
