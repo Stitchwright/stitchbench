@@ -16,6 +16,8 @@ import { ymdOf } from "@/lib/zoned";
 import { recordRegistration, setUnitOffSale, updateUnit } from "@/actions/units";
 import { ActionForm, Submit } from "@/components/action-form";
 import { IntakeFields } from "@/components/equipment/intake-fields";
+import { UnitLifetime } from "@/components/units/unit-lifetime";
+import { UnitUse } from "@/components/units/unit-use";
 import { Empty, KV, PageHeader, Section } from "@/components/ui";
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
@@ -154,6 +156,9 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
               </ActionForm>
             </Section>
           )}
+
+          <UnitUse shopId={user.shopId} unitId={u.id} admin={admin} />
+          <UnitLifetime shopId={user.shopId} unitId={u.id} admin={admin} />
 
           <Section title="History">
             {u.events.length === 0 ? (

@@ -109,6 +109,16 @@ export const BY_HAND = [
   "startLayaway",
   "payLayaway",
   "pickUpLayaway",
+  // Special orders at the register (shop-features-round-2-design.md 1.2): taking one refuses while lapsed; a payment
+  // goes through completeSaleAs
+  "takeSpecialOrder",
+  "paySpecialOrder",
+  // Lending a loaner or demo (1.7) is new work; its deposit goes through completeSaleAs
+  "lendMachine",
+  // Rentals (1.8): renting one out is new work; rent and a buy-out go through completeSaleAs
+  "rentOut",
+  "payRent",
+  "buyRental",
 ] as const;
 
 /**
@@ -154,6 +164,10 @@ export const HAND_ALLOWED = [
   // The register's layaway list and service plan choices: reads
   "openLayaways",
   "planChoices",
+  // A customer's special orders waiting at the counter: a read
+  "waitingSpecialOrders",
+  // The register's quiet lines for a chosen customer (special orders waiting, her price group...): a read
+  "customerExtras",
   "receiveWaits",
   "tellThenSendReady",
   "markBackAtCounter",

@@ -7,6 +7,7 @@ import type { OnlineCustomer } from "@/lib/online-booking";
 import { allow, allowPublic } from "@/lib/rate-limit";
 import { formUpTo } from "@/lib/read-body";
 import { cartWith, encodeCart, fulfilOf, parseCart, startCheckout } from "@/lib/shop/online-shop";
+import { startPreorder } from "@/lib/special-orders";
 
 const HEADERS = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex" };
 const MIN_FILL_MS = 5_000;
@@ -30,6 +31,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       const qty = Number(text(fd, "qty", 10) || "1");
       const next = cartWith(cart, partId, action === "add" ? (cart.get(partId) ?? 0) + qty : qty);
       return see(cartHref(encodeCart(next), action === "add" ? "&added=1" : ""));
+    }
+    if (action === "preorder") {
+      // A coming-soon item's pre-order (shop-features-round-2-design.md 1.2): the deposit is paid on Stripe's page.
+      const partId = text(fd, "partId", 40);
+      if (!allowPublic(req, "shop-checkout", 10, 10 * 60_000, "shop")) return new Response("Too many requests. Please try again in a few minutes, or call the shop.", { status: 429, headers: HEADERS });
+      const t0 = Number(text(fd, "t0", 20));
+      if (text(fd, "website") || !Number.isFinite(t0) || Date.now() - t0 < MIN_FILL_MS) return see(home);
+      try {
+        return see(await startPreorder({ slug, partId, customer: { name: text(fd, "name", 120), phone: text(fd, "phone", 40) || null, email: text(fd, "email", 120) || null, notify: text(fd, "notify", 10) } }));
+      } catch (e) {
+        const msg = isUserError(e) ? e.message : "Something went wrong on our side. Please try again, or call the shop.";
+        if (!isUserError(e)) console.error("online pre-order:", e instanceof Error ? e.message : e);
+        return see(`${home}/i/${encodeURIComponent(partId)}?err=${encodeURIComponent(msg)}`);
+      }
     }
     if (action !== "checkout") return see(home);
     if (!allowPublic(req, "shop-checkout", 10, 10 * 60_000, "shop") || !allow(`shop-checkout:${slug}`, 100, 60 * 60_000)) {

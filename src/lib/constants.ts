@@ -195,6 +195,7 @@ export const MESSAGE_KIND_LABEL: Record<string, string> = {
   software_renew: "Software renewal reminder",
   supplies_due: "Supplies running low reminder",
   parts_in: "Parts arrived",
+  order_in: "Special order or want list arrived",
   order_notice: "Online order",
   test: "Test",
 };

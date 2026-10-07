@@ -34,6 +34,8 @@ export async function SaleUnitNotes({ saleId, shopId }: { saleId: string; shopId
       const through = mine && u.warrantyUntil ? fmtYmdLong(warrantyThrough(u.warrantyUntil, tz)) : null;
       notes.push(`${unitDescription(u)}: ${through ? `warranty through ${through}${u.warrantyBy ? ` from ${u.warrantyBy}` : ""}` : "sold here"}. Keep this receipt.`);
       if (!mine) continue;
+      // A trial purchase (shop-features-round-2-design.md 1.8).
+      if (u.trialUntil) notes.push(`Try it until ${fmtYmdLong(warrantyThrough(u.trialUntil, tz))}: bring it back by then for a full refund.`);
       const maker = termsOf(terms, u.machine.brand);
       if (maker && termsText(maker)) notes.push(`${maker.brand} warranty: ${termsText(maker)}.`);
       const items = bundleItems(u.bundle);

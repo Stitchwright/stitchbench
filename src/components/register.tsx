@@ -34,10 +34,14 @@ import { SoftwareLineFields } from "@/components/software-line";
 import type { SoftwareLineInput } from "@/lib/software";
 import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
 import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
+import { SpecialOrderPanel, type SpecialOrderDefaults } from "@/components/special-order-panel";
+import { CustomerExtrasLines, useCustomerExtras, type ExtraLine } from "@/components/register-extras";
+import { bestRule, type RuleCtx, type YardBreak } from "@/lib/price-rules";
 import { holidayCovers, holidayDays, type Holiday } from "@/lib/tax-holiday-math";
 import { bestDiscount, includedPromo, priceBeforeTax, type Promo } from "@/lib/promo-math";
 
 const NO_PROMOS: Promo[] = [];
+const NO_BREAKS: YardBreak[] = [];
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { receiptStands } from "@/lib/sale-return";
@@ -86,6 +90,17 @@ type CartLine = {
   fromSale?: string;
   /** Software (shop-features-round-2-design.md 2.5): its code, "later", the machine, a renewal, a return's reason. */
   software?: SoftwareLineInput;
+  /** A special order picked up (shop-features-round-2-design.md 1.2): its item at the order's price, and what was paid coming off. */
+  specialOrderId?: string;
+  depositUsed?: boolean;
+  /** The item's wholesale price (a Wholesale group sells at it), and the cashier took the customer's price rule off this line. */
+  wholesaleCents?: number | null;
+  noRule?: boolean;
+  /** The item's own per-yard break (1.6). */
+  breakMinQty?: number | null;
+  breakPriceCents?: number | null;
+  /** A machine bought with a repair's trade-up credit (1.9): the ticket. */
+  tradeUpTicketId?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -130,6 +145,9 @@ export function Register({
   holiday,
   lenders = [],
   promotions = NO_PROMOS,
+  specialOrders = null,
+  yardBreaks = NO_BREAKS,
+  tradeInLessPct = 30,
   preload,
   preloadItems,
   tradeNote,
@@ -148,6 +166,12 @@ export function Register({
   lenders?: { id: string; name: string }[];
   /** The promotions in force today (percent or amount off, the price including the tax). */
   promotions?: Promo[];
+  /** Special orders (shop-features-round-2-design.md 1.2): the shop's default deposit; absent for a shop without a counter. */
+  specialOrders?: SpecialOrderDefaults | null;
+  /** The shop's per-yard breaks (shop-features-round-2-design.md 1.6). */
+  yardBreaks?: YardBreak[];
+  /** The trade-in rule (1.9): what the shop expects to sell it for, less this percent. */
+  tradeInLessPct?: number;
   preload?: BookingDue | null;
   /** Opened from the quilt planner's "Add all to the sale": each item with its quantity (yards for fabric). */
   preloadItems?: { item: RegisterItem; qty: number }[];
@@ -211,6 +235,8 @@ export function Register({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ id: string; number: number; change: number; cards: Issued[] } | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
+  // A "Coming soon" item picked in the search: the special order panel opens on it (a pre-order).
+  const [preorderItem, setPreorderItem] = useState<RegisterItem | null>(null);
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
   // The sale as last sent and the key it went with: sent again unchanged (after a lost answer), it keeps the key.
@@ -220,20 +246,39 @@ export function Register({
   // A promotion in force today gives an item its best percent or amount off, a tax holiday takes the tax off the lines
   // it covers, and a "price includes the tax" promotion backs the tax out of the price (the server applies the same rules
   // when the sale is saved; only the discount typed here is sent).
+  // The chosen customer's extras (shop-features-round-2-design.md section 1): special orders waiting, her price group,
+  // lifetime discounts; the rules price the lines as the server will (src/lib/price-rules.ts).
+  const extras = useCustomerExtras(customer?.id ?? null);
+  // Her birthday offer, used on this sale (a percent off): one tap on her quiet line.
+  const [birthdayFor, setBirthdayFor] = useState<string | null>(null);
+  const birthdayOn = !!customer && birthdayFor === customer.id && extras?.birthday?.kind === "pct";
+  const ruleCtx = useMemo<RuleCtx>(
+    () => ({ group: extras?.group?.inForce ? extras.group : null, lifetime: extras?.lifetime ?? [], yardBreaks, birthdayPct: birthdayOn ? (extras?.birthday?.value ?? null) : null }),
+    [extras, yardBreaks, birthdayOn],
+  );
   const lines = useMemo(
     () =>
       cart.map((l) => {
         const manual = discountOf(l);
-        const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard };
-        const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf;
+        const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard && !l.depositUsed };
+        const item = start.qty > 0 && Boolean(start.partId || start.stockUnitId) && !returnOf && !start.specialOrderId;
         const best = item ? bestDiscount(promotions, start) : null;
-        const line = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
+        const promoLine = best && best.cents > manual ? { ...start, discountCents: best.cents } : start;
+        // The customer's price rule (her group, a lifetime discount, a yard break, the birthday offer): the bigger wins.
+        const hit = item && !l.noRule && l.kind !== "MEMBERSHIP" ? bestRule(ruleCtx, { ...promoLine, onPromo: !!best }) : null;
+        const ruledHit = !!hit && hit.cents > promoLine.discountCents;
+        const ruledLine = ruledHit ? { ...promoLine, discountCents: hit.cents } : promoLine;
+        // A repair's trade-up credit on a machine (the server works out the same).
+        const credit = l.tradeUpTicketId ? Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), extras?.tradeUps.find((t) => t.ticketId === l.tradeUpTicketId)?.amountCents ?? 0) : 0;
+        const tradeUp = credit > ruledLine.discountCents;
+        const line = tradeUp ? { ...ruledLine, discountCents: credit } : ruledLine;
+        const ruled = ruledHit || tradeUp;
         const covered = !!holiday && line.qty > 0 && holidayCovers(holiday, { ...line, kind: line.kind ?? "MISC" });
         const taxable = line.taxable && !(covered && !line.taxAnyway);
         const included = item && taxable && !covered && !line.discountCents && ratePct > 0 ? includedPromo(promotions, line) : null;
-        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (best && best.cents > manual ? best.promo.name : null), taxIncluded: !!included, holidayCovered: covered, taxable };
+        return { ...line, manualDiscountCents: manual, promo: included?.name ?? (!ruled && best && best.cents > manual ? best.promo.name : null), rule: tradeUp ? "Trade-up credit" : ruled ? hit!.label : null, taxIncluded: !!included, holidayCovered: covered, taxable };
       }),
-    [cart, holiday, promotions, returnOf, ratePct],
+    [cart, holiday, promotions, returnOf, ratePct, ruleCtx, extras],
   );
   // The totals count a tax-included line at its price before tax (the tax is added back on top).
   const priced = lines.map((l) => (l.taxIncluded ? { ...l, unitPriceCents: priceBeforeTax(l.unitPriceCents, ratePct) } : l));
@@ -303,14 +348,24 @@ export function Register({
           priced: it.priceCents != null,
           onHand: it.qtyOnHand,
           discountPct: 0,
-          taxable: true,
+          // A membership isn't taxed (the server does the same).
+          taxable: it.kind !== "MEMBERSHIP",
           consigned: it.consigned,
           disclosure: it.disclosure,
+          wholesaleCents: it.wholesaleCents ?? null,
+          breakMinQty: it.breakMinQty ?? null,
+          breakPriceCents: it.breakPriceCents ?? null,
           machineId,
         },
       ];
     });
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
+  }
+
+  /** Lines from the customer's quiet lines (a special order waiting): added as they come, priced already. */
+  function addExtraLines(more: ExtraLine[]) {
+    setDone(null);
+    setCart((c) => [...c, ...more.map((x) => ({ key: newKey(), discountPct: 0, priced: true, ...x }))]);
   }
 
   /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
@@ -727,6 +782,7 @@ export function Register({
     setDone(null);
     const sale = {
       customerId: customer?.id ?? null,
+      birthday: birthdayOn,
       chargeTax: Boolean(exemptCert) && chargeTax,
       returnOfSaleId: receiptOf?.id ?? null,
       lines: lines.map((l) => ({
@@ -747,6 +803,10 @@ export function Register({
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
         software: l.software ?? null,
+        specialOrderId: l.specialOrderId ?? null,
+        depositUsed: l.depositUsed ?? false,
+        noRule: l.noRule ?? false,
+        tradeUpTicketId: l.tradeUpTicketId ?? null,
       })),
       orderDiscountCents,
       tenders,
@@ -844,7 +904,23 @@ export function Register({
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
-          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} tradeNote={tradeNote} />}
+          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} tradeNote={tradeNote} tradeInLessPct={tradeInLessPct} />}
+          {specialOrders && !returnMode && (
+            <SpecialOrderPanel
+              customerId={customer?.id ?? null}
+              customerName={customer?.name ?? null}
+              defaults={specialOrders}
+              item={preorderItem}
+              canPrice={canSell}
+              onNeedCustomer={() => setNewCustomer(true)}
+              onClose={() => setPreorderItem(null)}
+              onDone={(r, o) => {
+                setPreorderItem(null);
+                if (r) setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+                toast.message(`Print the slip for special order ${o.number} from its page.`, { action: { label: "Open it", onClick: () => window.open(`/special-orders/${o.id}`, "_blank") } });
+              }}
+            />
+          )}
           {layaway && !returnMode && (
             <LayawayPanel
               customerId={customer?.id ?? null}
@@ -952,6 +1028,23 @@ export function Register({
         )}
         {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
         {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
+        {!returnMode && (
+          <CustomerExtrasLines
+            extras={customer ? extras : null}
+            customerId={customer?.id ?? null}
+            birthdayOn={birthdayOn}
+            onBirthday={(on) => setBirthdayFor(on && customer ? customer.id : null)}
+            machineOnSale={cart.some((l) => l.stockUnitId && l.qty > 0 && !l.tradeUpTicketId)}
+            onTradeUp={(ticketId) =>
+              setCart((c) => {
+                const i = c.findIndex((l) => l.stockUnitId && l.qty > 0 && !l.tradeUpTicketId);
+                return i < 0 ? c : c.map((l, j) => (j === i ? { ...l, tradeUpTicketId: ticketId } : l));
+              })
+            }
+            inCart={cart.flatMap((l) => [l.specialOrderId, l.kind === "MEMBERSHIP" && l.partId ? `member:${l.partId}` : null, l.tradeUpTicketId ? `tradeup:${l.tradeUpTicketId}` : null]).filter((x): x is string => !!x)}
+            onAdd={addExtraLines}
+          />
+        )}
         {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
         {!returnMode && <StarterBundles unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
 
@@ -964,7 +1057,9 @@ export function Register({
                     type="button"
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2"
                     onClick={() => {
-                      addItem(it);
+                      // Coming soon and none on the shelf: a pre-order (the special order panel opens on it).
+                      if (it.comingSoonOn && it.qtyOnHand <= 0 && specialOrders && !returnMode) setPreorderItem(it);
+                      else addItem(it);
                       setResults([]);
                       code.current?.focus();
                     }}
@@ -982,6 +1077,7 @@ export function Register({
                       <span className="mono">{it.partNumber}</span> {it.description}
                       {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                      {it.comingSoonOn && it.qtyOnHand <= 0 && <span className="pill tone-wait ml-1">Coming soon ({it.comingSoonText}): take a pre-order</span>}
                       {it.details && <span className="block text-sm">{it.details}</span>}
                       </span>
                     </span>
@@ -1176,6 +1272,11 @@ export function Register({
                     {l.description}
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
                     {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
+                    {l.rule && (
+                      <button type="button" className="pill tone-ready ml-1" title="Tap to take it off this line" aria-label={`${l.rule}: take it off this line`} onClick={() => setLine(l.key, l.tradeUpTicketId ? { tradeUpTicketId: undefined } : { noRule: true })}>
+                        {l.rule} ×
+                      </button>
+                    )}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
                     {l.kind === "SOFTWARE" && l.partId && (
                       <SoftwareLineFields partId={l.partId} customerId={customer?.id ?? null} value={l.software ?? {}} returning={l.qty < 0} canOverride={canSell} onChange={(v) => setLine(l.key, { software: v })} />
@@ -1210,7 +1311,7 @@ export function Register({
                       className="input num min-w-[4.5rem]"
                       step={l.unit === "yd" ? 0.125 : 1}
                       // A repair is paid as one line; a machine from stock, a trade-in or a plan is one; a class seat or appointment is one each.
-                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.servicePlan || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.servicePlan || l.enrollmentId || l.appointmentId || l.giftCard || l.specialOrderId)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}
@@ -1230,7 +1331,7 @@ export function Register({
                       className="input num min-w-[4.5rem]"
                       // A tech can type the price of an item that has none, not change one that has. A booking is priced by
                       // the server; an owner or admin may lower a refund (a cancellation fee).
-                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
+                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId || l.specialOrderId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => {
                         const cents = toCents(e.target.value);
@@ -1249,7 +1350,7 @@ export function Register({
                       className="input num min-w-14"
                       min={0}
                       max={100}
-                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard || l.depositUsed)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                       onKeyDown={backToScan}
@@ -1257,7 +1358,7 @@ export function Register({
                   </td>
                   <td className="num text-right">{money(lineNet(l))}</td>
                   <td>
-                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key))}>
+                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key && !(l.specialOrderId && x.specialOrderId === l.specialOrderId)))}>
                       <Trash2 size={14} aria-hidden />
                     </button>
                   </td>

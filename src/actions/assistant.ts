@@ -58,6 +58,7 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
     askOn: fd.get("askOn") === "on",
     marketingOn: fd.get("marketingOn") === "on",
     quiltOn: fd.get("quiltOn") === "on",
+    stockOn: fd.get("stockOn") === "on",
     offerFirstNames: fd.get("offerFirstNames") === "on",
     voice: String(fd.get("voice") ?? "").trim() || null,
   });

@@ -54,6 +54,10 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
   { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
   { model: "LiveClaim", field: "customerId", label: ["live-sale claim", "live-sale claims"] },
+  { model: "SpecialOrder", field: "customerId", label: ["special order", "special orders"] },
+  { model: "WantItem", field: "customerId", label: ["want list line", "want list lines"] },
+  { model: "UnitLoan", field: "customerId", label: ["loaner, demo or rental", "loaners, demos and rentals"] },
+  { model: "TradeUpOffer", field: "customerId", label: ["repair credit used", "repair credits used"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -313,6 +317,10 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const l of await tx.layaway.findMany({ where: { shopId, customerId: c.id, status: "OPEN" }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Layaway #${l.number} is still being paid for. Finish or cancel it first.`);
   }
+  for (const o of await tx.specialOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["WAITING", "ORDERED", "HERE"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Special order ${o.number} is still open. Finish or cancel it first.`);
+  }
+  if (await tx.unitLoan.count({ where: { shopId, customerId: c.id, backAt: null } })) out.push("She still has one of the shop's machines (a loaner, demo or rental). Mark it back first.");
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -398,6 +406,10 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
   add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
+  add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
+  add(n["WantItem.customerId"], ["want list line", "want list lines"], "deleted");
+  add(n["UnitLoan.customerId"], ["finished loan", "finished loans"], "kept, without the customer");
+  add(n["TradeUpOffer.customerId"], ["repair credit used", "repair credits used"], "kept in the books, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }

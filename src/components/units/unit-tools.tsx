@@ -29,6 +29,7 @@ export function UnitTools({
   onAdd,
   onNeedCustomer,
   tradeNote,
+  tradeInLessPct = 30,
 }: {
   /** Kinds the shop may sell and take in trade now; empty: returns only. */
   kinds: TradeKind[];
@@ -39,7 +40,10 @@ export function UnitTools({
   onNeedCustomer: () => void;
   /** The Assistant's "Draft a condition note" on the trade-in (shop-features-round-2-design.md 5.4), when it can be used. */
   tradeNote?: { unavailable?: string } | null;
+  /** The trade-in rule (shop-features-round-2-design.md 1.9): what you expect to sell it for, less this percent. */
+  tradeInLessPct?: number;
 }) {
+  const [expect, setExpect] = useState("");
   const [panel, setPanel] = useState<Panel>(null);
   const [q, setQ] = useState("");
   const [forSale, setForSale] = useState<UnitForSale[] | null>(null);
@@ -294,6 +298,21 @@ export function UnitTools({
                   onCredit={(credit) => setTrade((t) => ({ ...t, credit }))}
                   noteEntry={tradeNote}
                 />
+                <div className="field">
+                  <label htmlFor="ti-expect" className="label">
+                    You expect to sell it for ($)
+                  </label>
+                  <input id="ti-expect" value={expect} onChange={(e) => setExpect(e.target.value)} className="input num" inputMode="decimal" placeholder="0.00" />
+                  {(toCents(expect) ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      className="link mt-1 text-left text-sm"
+                      onClick={() => setTrade({ ...trade, credit: (Math.round(((toCents(expect) ?? 0) * (100 - tradeInLessPct)) / 100) / 100).toFixed(2) })}
+                    >
+                      Start from {money(Math.round(((toCents(expect) ?? 0) * (100 - tradeInLessPct)) / 100))} (less {tradeInLessPct}%)
+                    </button>
+                  )}
+                </div>
                 <div className="field">
                   <label htmlFor="ti-credit" className="label">
                     Credit ($)

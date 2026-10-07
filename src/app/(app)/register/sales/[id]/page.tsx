@@ -82,6 +82,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
             <li key={l.id}>
               <div>{l.description}</div>
               {l.promotionId && promos.get(l.promotionId) && <div className="text-xs">{promos.get(l.promotionId)}</div>}
+              {l.priceNote && !l.priceNote.startsWith("member:") && <div className="text-xs">{l.priceNote}</div>}
               {l.taxNote === "included" && <div className="text-xs">Price includes {money(includedTax(lineNet(l), sale.taxRatePct))} sales tax</div>}
               <div className="flex justify-between">
                 <span>

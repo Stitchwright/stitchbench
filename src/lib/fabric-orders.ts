@@ -640,8 +640,18 @@ export async function receiveOrderFor(user: CurrentUser, orderId: string, fd: Fo
   // first (the machines-for-sale code checks each serial); if the receipt then fails, they are taken off again.
   const made = await machinesFromOrder(user, orderId, fd);
   try {
-    const text = await receiveLines(user, orderId, fd, shop.timeZone, new Set(made.lines));
-    return made.units.length ? `${text} ${made.units.length} ${made.units.length === 1 ? "machine is" : "machines are"} now in Machines for sale.` : text;
+    const received = await receiveLines(user, orderId, fd, shop.timeZone, new Set(made.lines));
+    const text = made.units.length ? `${received} ${made.units.length} ${made.units.length === 1 ? "machine is" : "machines are"} now in Machines for sale.` : received;
+    // Special orders and want lists waiting for what came (shop-features-round-2-design.md 1.2, 1.4). Loaded when needed:
+    // the special orders put items on draft orders through this file.
+    const lines = await db.purchaseOrderLine.findMany({ where: { shopId: user.shopId, orderId, partId: { not: null } }, select: { id: true, partId: true, unit: true, part: { select: { kind: true } } } });
+    const arrivals = lines
+      .filter((l) => l.part?.kind !== "MACHINE")
+      .map((l) => ({ partId: l.partId!, qty: Number(str(fd.get(`yards.${l.id}`)) ?? "0") || 0 }))
+      .filter((a) => a.qty > 0);
+    const { afterArrival } = await import("@/lib/arrivals");
+    const more = arrivals.length ? await afterArrival(user, arrivals) : "";
+    return more ? `${text} ${more}` : text;
   } catch (e) {
     if (made.units.length) {
       const units = await db.stockUnit.findMany({ where: { shopId: user.shopId, id: { in: made.units } }, select: { machineId: true } });

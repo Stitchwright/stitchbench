@@ -31,6 +31,7 @@ import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
 import { PickupSheetSlot } from "@/components/slots/pickup-sheet";
+import { TicketLoanerSlot } from "@/components/slots/ticket-loaner";
 import { ManualsAsk } from "@/components/assistant/manuals-ask";
 import { UnitBadge } from "@/components/units/unit-badge";
 import { coverLine } from "@/actions/units";
@@ -211,6 +212,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
           <TicketEstimateSlot ticketId={t.id} user={user} />
           <TicketWaitsSlot ticketId={t.id} user={user} canWork={canWork} />
+          <TicketLoanerSlot ticketId={t.id} user={user} />
           <Section title="Status and work">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <StatusSelect

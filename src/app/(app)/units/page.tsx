@@ -38,7 +38,15 @@ export default async function Units({ searchParams }: { searchParams: Promise<{ 
   const here = (more: string) => `/units?tab=${tab}${q ? `&q=${encodeURIComponent(q)}` : ""}${more}`;
   return (
     <div className="space-y-4">
-      <PageHeader title="Machines for sale" sub="New, used and trade-in machines with serials and warranties, sold at the register." />
+      <PageHeader
+        title="Machines for sale"
+        sub="New, used and trade-in machines with serials and warranties, sold at the register."
+        actions={
+          <Link href="/units/loans" className="btn min-h-11">
+            Loaners, demos and rentals
+          </Link>
+        }
+      />
       {!shop.sellsRetail && (
         <p className="card card-pad text-sm">
           Selling machines and trade-ins happens at the Register.{" "}
