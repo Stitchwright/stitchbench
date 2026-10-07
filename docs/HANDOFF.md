@@ -946,6 +946,26 @@ Switched off until the owner turns them on: the manual repository (`REPO_UPLOADS
 merged both mains on 7 Oct; the hub Assistant takes a photo for `read_label` and `tag_fabric` too (b8770ec). Still to
 rerun in daytime: `calendar`, `scheduling-messaging`, `account` (the 7 Oct morning run stopped for low memory). Next: hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
 
+## 2ak. 7 Oct 2026: review of the merged release, fixes (pushed to the branches, NOT yet on main)
+
+Four read-only reviews of main (program d2ce61f..50ca9af, hub 724ce37..60283c6). No cross-shop leak found. Fixed on
+`scheduling-features` (5aa4855 through 9d599ea, 13 commits): club checkout paid after cancelling/twice stopped at
+Stripe; techs can't set kit/club prices or take back a club payment; longarm collect honours tax exemption; receipt
+returns leave gift card lines out and give tax back as sold; gift card liability counts moved/void cards; voids never
+refund onto a void card; books journal owner-given store credit and credit payouts; fabric double receive and cut
+rounding; sign-in limits per login (another login with the same email can't reset them); no folder backup target on
+hosted, bucket address resolved public-only; partner messages only from the other side; "Delete my copy" owner/admin
+only; offer retries re-check; move routes trust X-Forwarded-* only with TRUST_PROXY. Fixed on `hub-accounts`
+(through 2484cc2, migration 029_review_fixes): free plate reads limited (read class + photo, claimed shopRef,
+ASSISTANT_FREE_READS_PER_INSTALL, ASSISTANT_FREE_DAILY); PDF check bounded and in a worker (REPO_CHECK_MS,
+REPO_CHECK_HEAP_MB; the OCR render is still on the main thread: do before REPO_UPLOADS=on); signup never sets an
+existing account's password; Assistant keys bound to their install; Assistant/top-up refunds and disputes handled;
+takedown form notices one strike per notice, more than 5 manuals wait for the owner; backup PUTs signed for size,
+unconfirmed swept, BACKUP_INSTALL_QUOTA_GB; plan-switch refunds don't cancel; sign-in lock per typed address. Hub
+tests all pass on scratch DBs. Program: not yet compiled or run (PC out of memory): after the restart run the full
+checks, tsc, build and the whole Playwright suite, then the owner merges both branches to main again.
+Open choice: a cart mixing scanned returns with new items still taxes all at today's rate (one rate per sale).
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
