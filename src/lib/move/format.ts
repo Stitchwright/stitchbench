@@ -92,6 +92,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ClubPick", key: "id" }, // -> Club, ClubMember
   { t: "LongarmOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale)
   { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
+  { t: "MakeJob", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> Customer: print and cut jobs with the customer's file (6.5)
   { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part

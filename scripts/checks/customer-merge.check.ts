@@ -263,6 +263,7 @@ async function main() {
     await db.estimateLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), maskedUrl: "https://x/e/•••abcd", totalCents: 4500, lines: [], expiresAt: new Date(Date.now() + DAY) } });
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    await db.makeJob.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", title: "Name tags" } });
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
     await db.softwareLicense.create({ data: { shopId: A, customerId: dup.id, description: "PE-Design 11", code: "ABC-123", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: dup.id, equipment: "Laser" } });
@@ -445,6 +446,7 @@ async function main() {
     const delLayaway = await db.layaway.create({ data: { shopId: A, number: 2, customerId: del.id, status: "OPEN", dueBy: "2026-12-31", terms: "Terms" } });
     await db.softwareLicense.create({ data: { shopId: A, customerId: del.id, description: "PE-Design 11", code: "DEL-1", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: del.id, equipment: "Longarm" } });
+    await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });

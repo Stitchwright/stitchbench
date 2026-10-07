@@ -52,6 +52,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
+  { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -321,6 +322,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const q of await tx.longarmOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["RECEIVED", "ON_FRAME", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Quilting work order #${q.number} isn't collected yet. Finish or cancel it first.`);
   }
+  for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
+  }
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
     select: { shopClass: { select: { title: true } } },
@@ -389,6 +393,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
   add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
   add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
@@ -427,6 +432,7 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.enrollment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, attendee: null, note: null } });
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
+    await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });

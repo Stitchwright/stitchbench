@@ -90,6 +90,12 @@ model Shop {
   sellsRetail             Boolean       @default(false)
   nextSaleNumber          Int           @default(1001)
   nextLongarmNumber       Int           @default(1)
+  // Print and cut jobs (shop-features-round-2-design.md 6.5, Maker Shop): the next job number, the machine's hourly rate,
+  // the set-up fee, and the materials the laser never cuts (PVC and vinyl give off chlorine gas when laser cut).
+  nextMakeJobNumber       Int           @default(1)
+  makeRateCents           Int           @default(2000)
+  makeSetupCents          Int           @default(500)
+  makeNeverCut            String        @default("PVC, vinyl")
   nextTagNumber           Int           @default(101)
   nextOrderNumber         Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
@@ -243,6 +249,7 @@ model Shop {
   starterBundles    StarterBundle[]
   suppliesCare      SuppliesCare[]
   certifications    Certification[]
+  makeJobs          MakeJob[]
   financedSales     FinancedSale[]
   servicePlans      ServicePlan[]
   machinePlans      MachinePlan[]
@@ -407,6 +414,7 @@ model Customer {
   appointments     Appointment[]
   softwareLicenses SoftwareLicense[]
   certifications   Certification[]
+  makeJobs         MakeJob[]
 
   @@index([shopId, name])
 }
@@ -2045,6 +2053,54 @@ model StockUnit {
 // A customer certified to use one of the shop's machines on her own (shop-features-round-2-design.md 6.4): "Longarm",
 // "Laser", "3D printer", after the safety class. Customer.longarmCertifiedAt is copied in as "Longarm" by the migration
 // and kept in step until it is removed. byUserId: who certified her (plain id).
+// A print or cut job (shop-features-round-2-design.md 6.5, package make-jobs, Maker Shop): the longarm work order's
+// pattern for the shop's 3D printer, resin printer, laser or cutter. kind: PRINT | RESIN | LASER | CUT; status: QUOTED |
+// APPROVED | WORKING | READY | COLLECTED | CANCELLED | TURNED_DOWN. The price: machine time x the rate + material used x
+// its price + the set-up fee (all kept as worked out). The customer's file is kept until 30 days after pickup
+// (fileDeleteAfter), then deleted. estimateLinkId and saleId are plain ids.
+model MakeJob {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number          Int
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name            String
+  kind            String    @default("PRINT")
+  status          String    @default("QUOTED")
+  title           String
+  fileName        String?
+  fileMime        String?
+  fileData        Bytes?
+  fileDeleteAfter DateTime?
+  machineMinutes  Int       @default(0)
+  materialPartId  String?
+  materialName    String?
+  materialQty     Float     @default(0)
+  materialUnit    String? // g | ml | sheet
+  materialCents   Int       @default(0)
+  setupCents      Int       @default(0)
+  rateCents       Int       @default(0)
+  quoteCents      Int       @default(0)
+  taxable         Boolean   @default(true)
+  estimateLinkId  String?
+  dueAt           DateTime?
+  turnedDownWhy   String?
+  saleId          String?
+  note            String?
+  approvedAt      DateTime?
+  startedAt       DateTime?
+  readyAt         DateTime?
+  collectedAt     DateTime?
+  closedAt        DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, customerId])
+}
+
 model Certification {
   id          String   @id @default(cuid())
   shopId      String
@@ -2352,6 +2408,7 @@ model EstimateLink {
   maskedUrl   String // how the link appears in stored message bodies, e.g. https://.../e/•••Xk3q
   ticketId    String? // a StitchBench ticket (plain id, always checked with shopId)
   repairJobId String? // or a partner repair job, the sewing shop's side
+  makeJobId   String? // or a print or cut job (shop-features-round-2-design.md 6.5; plain id)
   customerId  String?
   totalCents  Int // the estimate as shown; a changed bill needs a new link
   lines       Json // [{ description, amountCents }] as shown

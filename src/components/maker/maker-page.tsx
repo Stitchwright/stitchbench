@@ -12,6 +12,7 @@ export type MakerTab = "home" | "supplies" | "jobs" | "space";
 
 const TABS: { key: MakerTab; href: string; label: string }[] = [
   { key: "home", href: "/maker", label: "Maker Shop" },
+  { key: "jobs", href: "/maker/jobs", label: "Print and cut jobs" },
   { key: "space", href: "/maker/space", label: "Maker-space time" },
   { key: "supplies", href: "/maker/supplies", label: "Supplies due" },
 ];

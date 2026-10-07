@@ -682,6 +682,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     const layawayVoid = sale.lines.some((l) => l.layawayId);
     // A quilt collected on this sale is back on the shelf (ready, not collected).
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
+    // A print or cut job collected on it likewise (shop-features-round-2-design.md 6.5), its file kept again.
+    await tx.makeJob.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, closedAt: null, saleId: null, fileDeleteAfter: null } });
     for (const l of sale.lines) {
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);
