@@ -34,6 +34,8 @@ export const AUDIT_ACTIONS = {
   "ticket.covered": { category: "money", label: "Ticket line covered by a service plan, or charged again" },
   "customer.taxexempt": { category: "money", label: "Customer's tax-exempt certificate changed" },
   "order.cancel": { category: "money", label: "Online order cancelled" },
+  "paylink.make": { category: "money", label: "Pay link sent to a customer" },
+  "paylink.cancel": { category: "money", label: "Pay link taken back" },
   "estimate.answer": { category: "money", label: "Estimate answered by staff (phone or text)" },
   "credit.issue": { category: "money", label: "Store credit given" },
   // Prices

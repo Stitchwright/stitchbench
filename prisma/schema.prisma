@@ -1867,6 +1867,13 @@ model WebOrder {
   readyAt         DateTime?
   doneAt          DateTime?
   cancelledAt     DateTime?
+  // Pay links sent by staff (shop-features-round-2-design.md 1.3): "customer" (built in the online shop) or "staff" (the
+  // lines filled in by the shop and the link texted or emailed); the special orders it pays toward (plain ids), who
+  // made it, and the day the link stops working (a staff link waits for the customer; Stripe's page is opened on demand).
+  source          String    @default("customer")
+  specialOrderIds String[]  @default([])
+  createdById     String?
+  expiresAt       DateTime?
 
   @@unique([shopId, number])
   @@index([shopId, status, createdAt])

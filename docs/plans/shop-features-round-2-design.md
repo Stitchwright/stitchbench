@@ -1117,3 +1117,27 @@ Decisions made while building:
 - The free-text `fits` stays, labelled "Fits (notes)".
 - Browser test needed: an item's Fits these machines (add, take off, groups), /parts/fit-groups, a customer's page, the
   register with a customer who owns a machine and with a machine for sale on the sale, the online shop's picker.
+
+**`pay-links` (1.3, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021000000_pay_links` (`WebOrder.source`,
+`specialOrderIds`, `createdById`, `expiresAt`). Code: `src/lib/pay-links.ts` (`makePayLinkFor`, `openPayLink`,
+`resendPayLinkFor`, `cancelPayLinkFor`, `payLinksFor`, `payLinkProblem`), `src/actions/pay-links.ts`, the staff page
+**Register → Pay links** (`/register/pay-links`, `src/components/pay-link-form.tsx`; "Send a pay link" on a customer's page
+and on Online orders), the customer's link page (`/shop/o/<token>` shows **Pay $X**; `POST /shop/o/<token>/pay` opens
+Stripe), `finishStaffPaid` in `src/lib/shop/online-shop.ts`, message wording `pay_link`. Check:
+`scripts/checks/pay-links.check.ts` (6 groups); `online-shop`, `base-license`, `move-export` still pass.
+Decisions made while building:
+- A link is a web order with `source = "staff"` and no Stripe page until the customer presses Pay; the page is made then
+  (open for 24 hours) and made again if she comes back after it ran out, so the link itself lasts 14 days (the shop can
+  pass 1 to 60). The online shop's two-hour "never paid" rule leaves links alone; a link past its day is cancelled.
+  A payment on an earlier Stripe page still finds its link (by the order id Stripe carries).
+- Paid, the sale is written as the shop filled it in, at the tax worked out when the link was made (the customer's
+  exemption counted), tender "Paid online", no stock check (the shop promised the items). A link of money only (a balance,
+  a deposit, rent) is done at once; one with stock items waits to be picked up like any online order.
+- Owners and admins type amounts; a tech can send only stock items at their own price. Special orders and rentals send
+  their own links with their own prices (`trusted`). Sending asks once ("Tap again to send $34.95"); "Take it back"
+  works until she pays.
+- Sent the customer's usual way (text or email) when Marketing is on, else the shop copies the link ("Copy the link").
+- Needs the program's public address and the shop's Stripe key (Settings → Online shop); the page says so otherwise. The
+  online shop itself doesn't have to be switched on.
+- Browser test needed: `tests/pay-links.spec.ts` (the page before and after the Stripe key, the customer page's link,
+  sending with two taps, Copy the link, the customer paying on the Stripe mock, the link shown paid).
