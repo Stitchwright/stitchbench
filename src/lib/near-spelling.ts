@@ -55,3 +55,13 @@ export function nameNear(name: string, typed: string): boolean {
 export function searchPrefixes(typed: string): string[] {
   return [...new Set(words(typed).filter((w) => w.length >= 3).map((w) => w.slice(0, 2)))];
 }
+
+/** A name as the database narrows on it: a space, then its words with a space between ("O'Brien, Ruth" / " obrien ruth"). */
+export function spacedWords(name: string): string {
+  return ` ${words(name).join(" ")}`;
+}
+
+/** The LIKE patterns for the database: some word of the name starts with one of the typed words' two-letter starts. */
+export function prefixPatterns(typed: string): string[] {
+  return searchPrefixes(typed).map((p) => `% ${p}%`);
+}
