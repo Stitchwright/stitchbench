@@ -22,6 +22,7 @@ export const SALE_KIND_LABEL: Record<string, string> = {
   LAYAWAY_FEE: "Layaway cancel fees",
   DEPOSIT: "Special order deposits (held for customers)",
   DEPOSIT_KEPT: "Kept deposits",
+  MEMBERSHIP: "Memberships",
   MISC: "Other",
 };
 

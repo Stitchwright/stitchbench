@@ -1194,3 +1194,27 @@ Decisions made while building:
   item; with no way to reach her (no messages, no address, Marketing off) it says to call her. Nothing goes by itself.
 - Browser test needed: `tests/want-lists.spec.ts` (add in words on the customer page, receive on the item page, "1 customer
   wants this", Here now, the Want lists page, Done).
+
+**`price-groups` (1.5, 7 Oct 2026, branch `phase1-rest`).** Migration `20261021030000_price_groups` (`PriceGroup`, carried
+by the company file; `Customer.priceGroupId`, `priceGroupUntil`; `Part.membershipGroupId`, `membershipMonths`;
+`StockUnit.lifetimePctOff`; `SaleLine.priceGroupId`, `priceNote`; `Shop.lifetimePctDefault`). Code:
+`src/lib/price-rules.ts` (pure: the rules the register and the server share, 1.6's yard breaks and birthday too),
+`src/lib/price-groups.ts`, `src/actions/price-groups.ts`, **Settings → Prices and members** (`/settings/prices`: the groups
+with members and discounts given, memberships ending, the lifetime default), a customer's **Price group**, an item's
+**Sells a membership**, a machine for sale's **Lifetime discount on its supplies**, the register (the group's pill and
+"Renew", each line's label "Guild 10%" with a tap to take it off). Check: `scripts/checks/price-groups.check.ts`
+(7 groups); `promotions`, `vac-units`, `machine-sales`, `sales-tax`, `register-bookings`, `move-export`,
+`customer-merge`, `audit-log`, `tax-holidays`, `special-orders` pass.
+Decisions made while building:
+- The server prices the rules (as promotions): on items being bought, the biggest of a promotion and the customer's rules
+  wins, never both (answer 9); a bigger discount an owner typed stands; a tech rings them up. A group set not to apply to
+  items on sale stands aside when a promotion covers the line. "Bigger wins" is the rule, not a setting (no shop asked
+  for stacking). Not for returns, layaways, special orders' pick-ups, the online shop or a given tax amount.
+- A membership item is reported as "Memberships", untaxed, and isn't stock; selling it needs the customer; a renewal of
+  the same group adds the months to the day it ends; a void puts her back in the group she had (kept on the line). A
+  return changes nothing (end it on her page).
+- The lifetime discount is ticked per machine for sale (the shop's default percent filled in) and given on a supply line
+  bought for that machine (the Vac Shop's supply picker names the machine).
+- Changing a customer's group is an owner's or admin's step, audited (`customer.pricegroup`).
+- Browser test needed: `tests/price-groups.spec.ts` (Settings → Prices and members, a customer's group, the register's
+  label and taking it off, a membership item sold).

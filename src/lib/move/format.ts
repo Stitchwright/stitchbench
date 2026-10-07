@@ -63,6 +63,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "OffsiteSettings", key: '"shopId"', leftOut: ["bucket"] }, // off-site backup: on or off, target, the public key; the own-bucket settings (a secret sealed under the install's key) are left out
   { t: "OffsiteObject", key: "id" }, // the company's index of its off-site store: photos are not sent again after a move
   { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
+  { t: "PriceGroup", key: "id" }, // customer price groups (1.5): before the customers that name one
   { t: "Customer", key: "id" },
   { t: "GiftCard", key: "id" }, // -> Customer
   { t: "Machine", key: "id" }, // -> Customer

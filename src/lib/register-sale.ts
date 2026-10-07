@@ -29,6 +29,8 @@ import { prepareFinanced, recordFinanced, voidFinanced } from "@/lib/financing";
 import { promotionsOn } from "@/lib/promotions";
 import { bestDiscount, includedPromo, priceBeforeTax } from "@/lib/promo-math";
 import { holidayCovers } from "@/lib/tax-holiday-math";
+import { applyMembership, ruleCtxFor, undoMembership } from "@/lib/price-groups";
+import { bestRule, type RuleCtx } from "@/lib/price-rules";
 
 /** A repair the customer can take home: the repair shop has sent it back. */
 export const BACK_FROM_REPAIR = ["READY_IN_TRUCK", "READY_FOR_PICKUP", "RETURNED_UNREPAIRED"];
@@ -71,6 +73,8 @@ export type SaleLineInput = {
   depositKind?: "DEPOSIT" | "DEPOSIT_KEPT" | null;
   /** The register's "deposit used" line for a special order picked up on this sale (the server works out the amount). */
   depositUsed?: boolean;
+  /** The cashier took the customer's price rule (her group, lifetime, yard break, birthday) off this line. */
+  noRule?: boolean;
   /** Rentals (1.8), from the program only: rent paid on a machine out on rental (RENT, income). */
   unitLoanId?: string | null;
   rentKind?: "RENT" | null;
@@ -340,7 +344,7 @@ export async function completeSaleAs(
         discountCents: disc,
         // The server has no tax setting per item, so stocked items are always taxed; the browser's flag counts for a misc
         // line only. Layaway money is never taxed nor discounted (it isn't a sale).
-        taxable: job || l.layawayKind || l.depositKind || l.rentKind ? false : part || so.priced.has(i) ? true : Boolean(l.taxable),
+        taxable: job || l.layawayKind || l.depositKind || l.rentKind || part?.membershipGroupId ? false : part || so.priced.has(i) ? true : Boolean(l.taxable),
         discountable: !job && !l.layawayKind && !l.depositKind && !l.rentKind,
         costCents: part?.costCents ?? null,
         costTenThou: part ? fineCost(part.costCents, part.costTenThou) : null,
@@ -397,6 +401,8 @@ export async function completeSaleAs(
         partKind: l.partId ? parts.get(l.partId)?.kind : null,
       }),
     );
+    // A membership item (shop-features-round-2-design.md 1.5) is reported as Memberships.
+    for (const [i, l] of lines.entries()) if (l.partId && parts.get(l.partId)?.membershipGroupId) lineKinds[i] = "MEMBERSHIP";
     const taxNotes: (string | null)[] = lines.map(() => null);
     // Promotions in force today (tax-machine-sales-layaway-design.md section 2): the best percent or amount off that
     // covers an item being bought becomes its own discount (a bigger one an owner typed stands). Not for a return, a
@@ -417,6 +423,25 @@ export async function completeSaleAs(
         promoIds[i] = best.promo.id;
       }
     }
+    // The customer's price rules (shop-features-round-2-design.md 1.5, 1.6): her group, a lifetime discount on her
+    // machine's supplies, a per-yard break, the birthday offer. The biggest of these and a promotion wins, not both; a
+    // bigger discount an owner typed stands. Not for a return, a layaway, the online shop or a given tax amount.
+    const groupIds: (string | null)[] = lines.map(() => null);
+    const priceNotes: (string | null)[] = lines.map(() => null);
+    const ruleCtx: RuleCtx = lay || original || givenTax != null || opts.paidOnline ? {} : await ruleCtxFor(shopId, customerId, ymdOf(new Date(), shop.timeZone));
+    for (const [i, l] of lines.entries()) {
+      if (l.qty <= 0 || !(l.partId || l.stockUnitId) || input.lines[i].layawayKind || input.lines[i].specialOrderId || input.lines[i].noRule || lineKinds[i] === "MEMBERSHIP") continue;
+      const part = l.partId ? parts.get(l.partId) : null;
+      const hit = bestRule(ruleCtx, { ...l, kind: lineKinds[i], wholesaleCents: part?.wholesaleCents ?? null, onPromo: !!promoIds[i] || !!(promos.length && bestDiscount(promos, promoLine(l, i))) });
+      if (hit && hit.cents > l.discountCents) {
+        l.discountCents = hit.cents;
+        promoIds[i] = null;
+        groupIds[i] = hit.groupId ?? null;
+        priceNotes[i] = hit.label;
+      }
+    }
+    // A membership sold names its buyer (she joins its group).
+    if (lines.some((l, i) => lineKinds[i] === "MEMBERSHIP" && l.qty > 0) && !customerId) throw new UserError("Pick the customer first: a membership is for someone.");
     if (original) {
       // A return from a receipt gives each item back as it was taxed: one bought on a tax holiday comes back tax free.
       for (const [i, l] of lines.entries()) {
@@ -509,7 +534,7 @@ export async function completeSaleAs(
           // tradeIn isn't a column: the unit hooks make the trade-in's own rows and sets tradeInUnitId on the line.
           const { pickedUp, discountable, tradeIn, ...row } = l;
           void discountable;
-          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null } });
+          const line = await tx.saleLine.create({ data: { saleId: sale.id, ...row, kind: lineKinds[i], taxNote: taxNotes[i], promotionId: promoIds[i], priceGroupId: groupIds[i], priceNote: priceNotes[i], layawayId: lay?.id ?? null, specialOrderId: input.lines[i].specialOrderId ?? null } });
           const gift = giftLines.get(i);
           if (gift) {
             const issued = await applyCardLine(tx, actor, input.lines[i].giftCard!, gift.unitPriceCents, { saleId: sale.id, saleLineId: line.id, saleLabel: `Sale #${number}` });
@@ -522,7 +547,14 @@ export async function completeSaleAs(
           const plan = planLines.get(i);
           if (plan) await applyPlanLine(tx, { shopId, at, timeZone: shop.timeZone, line, prepared: plan });
           if (l.enrollmentId || l.appointmentId) await settleBooking(tx, shopId, l, line.id, at);
-          if (l.partId) {
+          const member = l.partId ? parts.get(l.partId) : null;
+          if (lineKinds[i] === "MEMBERSHIP" && member?.membershipGroupId) {
+            // A membership isn't stock: the buyer joins its group (a return of one changes nothing here: end it on her page).
+            if (l.qty > 0 && customerId) {
+              const note = await applyMembership(tx, { shopId, customerId, groupId: member.membershipGroupId, months: (member.membershipMonths ?? 12) * l.qty, today: ymdOf(at, shop.timeZone) });
+              await tx.saleLine.update({ where: { id: line.id }, data: { priceNote: note } });
+            }
+          } else if (l.partId) {
             await tx.part.update({ where: { id: l.partId }, data: { qtyOnHand: { decrement: l.qty } } });
             await tx.stockMove.create({
               data: { shopId, partId: l.partId, qty: -l.qty, reason: "SOLD", userId: user.id, note: `Sale #${number}`, createdAt: at },
@@ -692,6 +724,11 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
       // A service plan sold here ends (lines it already covered stay covered).
       if (l.machinePlanId) await endPlansOf(tx, shopId, l.id, at);
       if (l.enrollmentId || l.appointmentId) await unsettleBooking(tx, shopId, l);
+      if (l.kind === "MEMBERSHIP") {
+        // A membership's sale voided: she goes back to the group she had.
+        if (l.qty > 0) await undoMembership(tx, { shopId, customerId: sale.customerId, note: l.priceNote });
+        continue;
+      }
       if (l.partId) {
         const part = await tx.part.findFirst({ where: { id: l.partId, shopId } });
         if (part) {

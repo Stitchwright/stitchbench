@@ -150,6 +150,8 @@ model Shop {
   checkInKind          String        @default("sewing")
   // Vac Shop "bags due": days between bag purchases
   bagReminderDays      Int           @default(180)
+  // The lifetime discount a vacuum sold here gives on its supplies, by default (1.5)
+  lifetimePctDefault   Int           @default(25)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
   hubWritesOff         Boolean       @default(false)
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
@@ -241,6 +243,7 @@ model Shop {
   layaways          Layaway[]
   specialOrders     SpecialOrder[]
   wantItems         WantItem[]
+  priceGroups       PriceGroup[]
   taxHolidays       TaxHoliday[]
   lenders           Lender[]
   promotions        Promotion[]
@@ -395,6 +398,11 @@ model Customer {
   // Tax exempt (a resale or exemption certificate): sales and tickets for them charge no tax, with the number recorded
   taxExemptId        String?
   taxExemptUntil     DateTime?
+  // Price group or membership (shop-features-round-2-design.md 1.5): the group whose discount the register gives her,
+  // and the last day of a paid membership (YYYY-MM-DD; null: no end)
+  priceGroupId       String?
+  priceGroup         PriceGroup?       @relation(fields: [priceGroupId], references: [id], onDelete: SetNull)
+  priceGroupUntil    String?
 
   machines      Machine[]
   tickets       Ticket[]       @relation("TicketCustomer")
@@ -793,6 +801,9 @@ model Part {
   // shop take pre-orders for it. A special order's deposit for this item is kept if she cancels (kit pre-registrations).
   comingSoonOn    String?
   depositKept     Boolean       @default(false)
+  // An item that sells a membership (1.5): selling it puts the buyer in this price group for this many months
+  membershipGroupId String?
+  membershipMonths  Int?
   onlineTitle     String?
   onlineText      String?
   // Fabric smarts (fabric-smarts-design.md section 6): the collection and designer, color tags, the yards on a full
@@ -1400,6 +1411,10 @@ model SaleLine {
   taxNote        String?
   // The promotion that priced this line (percent or amount off, or the price including the tax), plain id
   promotionId    String?
+  // The price group whose discount priced this line (1.5, plain id), and what the receipt says about the line's price
+  // rule: "Guild 10%", "Lifetime 25%", "10+ yd price", "Birthday 15%"; a membership line: "member:<prev group>|<prev until>"
+  priceGroupId   String?
+  priceNote      String?
   // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
   // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
   layawayId      String?
@@ -1970,6 +1985,8 @@ model StockUnit {
   classCredits    Int       @default(0)
   // A service plan included in the price (ServicePlan id, plain): put on the machine when it sells
   includedPlanId  String?
+  // A lifetime discount on its supplies for the buyer (1.5, the vacuum's bags, belts and filters), percent
+  lifetimePctOff  Int?
   events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -3273,4 +3290,23 @@ model WantItem {
 
   @@index([shopId, doneAt])
   @@index([customerId])
+}
+
+// Customer price groups and memberships (shop-features-round-2-design.md 1.5): "Guild", "Teachers", "Club card",
+// "Wholesale". What it gives: a percent off, or the item's wholesale price; on which kinds of items (none listed: all);
+// and whether it also applies to items already on sale (a promotion on the same line: the bigger one wins, not both).
+model PriceGroup {
+  id          String     @id @default(cuid())
+  shopId      String
+  shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  pctOff      Int        @default(0)
+  useWholesale Boolean   @default(false)
+  kinds       String[]   @default([])
+  onSaleItems Boolean    @default(false)
+  active      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  customers   Customer[]
+
+  @@index([shopId])
 }
