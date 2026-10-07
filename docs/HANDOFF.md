@@ -942,8 +942,9 @@ the move import may clear the audit log; a non-UTF-8 byte that broke the build. 
 `calendar` and `scheduling-messaging` after about 8 pm Eastern and `base-license` when the UTC date is ahead
 (test-clock artifacts: rerun in daytime). No Playwright specs yet for fabric, assistant or gift cards (checks only).
 Switched off until the owner turns them on: the manual repository (`REPO_UPLOADS`), the Assistant (module + hub
-`ANTHROPIC_API_KEY`, `STRIPE_PRICE_ASSISTANT_*`), off-site backup (per shop; hub `BACKUP_S3_*`). Next: the owner
-merges main (commands in chat), then hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
+`ANTHROPIC_API_KEY`, `STRIPE_PRICE_ASSISTANT_*`), off-site backup (per shop; hub `BACKUP_S3_*`). The owner
+merged both mains on 7 Oct; the hub Assistant takes a photo for `read_label` and `tag_fabric` too (b8770ec). Still to
+rerun in daytime: `calendar`, `scheduling-messaging`, `account` (the 7 Oct morning run stopped for low memory). Next: hub day (docs/HUB_DAY.md, now with these extra env vars), Stripe day.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
