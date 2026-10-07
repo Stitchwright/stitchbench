@@ -538,6 +538,8 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
     : [];
   // What the online shop's store has (7.2).
   const byId = new Map((await withStoreQty(store.id, parts, await onlineStore(store.id))).map((p) => [p.id, p]));
+  // Less what is claimed for live-sale buyers there (held for them until they pay or are let go).
+  const claimed = ids.length ? await (await import("@/lib/live-sales")).liveHeld(store.id, ids, await onlineStore(store.id)) : new Map<string, number>();
   // A sales tax holiday in force today (by the order's date, as at the counter) takes the tax off what it covers.
   const holidays = await holidaysOn(store.id, [ymdOf(new Date(), store.timeZone)], (await onlineStore(store.id))?.id ?? null);
   const lines: CartLine[] = [];
@@ -553,7 +555,7 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
     if (p.unit === "yd") {
       if (!inEighths(qty)) qty = Math.round(qty * 8) / 8;
     } else if (!Number.isInteger(qty)) qty = Math.max(1, Math.round(qty));
-    const available = Math.max(0, p.qtyOnHand);
+    const available = Math.max(0, p.qtyOnHand - (claimed.get(p.id) ?? 0));
     if (available <= 0) problem = "Out of stock";
     else if (qty > available) problem = `Only ${qtyText(available, p.unit)} left`;
     const unitPriceCents = p.priceCents!;
@@ -791,10 +793,13 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
       kept = items;
     } else {
       // What the order's store has (7.2).
-      const parts = new Map((await withStoreQty(order.shopId, await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } }), await storeOfRow(order.shopId, order.locationId))).map((p) => [p.id, p]));
+      const orderStore = await storeOfRow(order.shopId, order.locationId);
+      const parts = new Map((await withStoreQty(order.shopId, await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } }), orderStore)).map((p) => [p.id, p]));
+      // Live-sale claims there are held for their buyers: not this order's to take.
+      const claimed = ids.length ? await (await import("@/lib/live-sales")).liveHeld(order.shopId, ids, orderStore) : new Map<string, number>();
       for (const it of items) {
         const p = it.partId ? parts.get(it.partId) : null;
-        const onHand = p ? Math.max(0, p.qtyOnHand) : 0;
+        const onHand = p ? Math.max(0, p.qtyOnHand - (it.partId ? (claimed.get(it.partId) ?? 0) : 0)) : 0;
         let have = Math.min(it.qty, onHand);
         if (p?.unit === "yd") have = Math.floor(have * 8) / 8;
         else have = Math.floor(have);

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import { claimFor, dropClaimFor, letGoFor, liveHeld, liveSalesFor, liveView, resendBuyerFor, sendLinksFor, setPickFor, startLiveSaleFor, undropClaimFor } from "@/lib/live-sales";
-import { handleWebhook, saveShopSettingsFor } from "@/lib/shop/online-shop";
+import { handleWebhook, priceCart, publicStore, saveShopSettingsFor } from "@/lib/shop/online-shop";
 import { openPayLink } from "@/lib/pay-links";
 import { signWebhook } from "@/lib/shop/stripe";
 import { checkShop, cleanup, clearKick, messagingFor, withSink } from "./lib";
@@ -79,6 +79,14 @@ async function main() {
     );
     assert.equal(v.buyers.length, 3);
     assert.equal((await db.part.findUniqueOrThrow({ where: { id: charm.id } })).qtyOnHand, 3, "held, not moved");
+    // The online shop doesn't sell what is claimed (review fix): all 3 charm packs claimed, out of stock online; 2.5 yd left.
+    await db.part.updateMany({ where: { id: { in: [charm.id, yard.id] } }, data: { online: true } });
+    const web = (await publicStore(`check-${RUN}-ls`))!;
+    const cartView = await priceCart(web, new Map([[charm.id, 1], [yard.id, 3]]), "pickup");
+    assert.deepEqual(cartView.lines.map((l) => [l.partNumber, l.available]), [["LS-1", 0], ["LS-2", 2.5]]);
+    assert.equal(cartView.lines[0].problem, "Out of stock");
+    assert.ok(cartView.lines[1].problem?.startsWith("Only"));
+    await db.part.updateMany({ where: { id: { in: [charm.id, yard.id] } }, data: { online: false } });
     ok("a live sale started; claims hold stock (what's left, all claimed), fabric in eighths, a tech at the item's price, a show price by the owner");
 
     // 2. Take off and undo.
