@@ -68,7 +68,7 @@ test("the owner scans a barcode, switches the feeds on and reads the links; swit
   await expect(page.getByText("Switched on. Your links are below.")).toBeVisible();
   await expect(page.getByText("Google: products")).toBeVisible();
   await expect(page.getByText(/Google asks for at least 50 items/)).toBeVisible();
-  await expect(page.getByText("No barcode")).toBeVisible();
+  await expect(page.getByText("No barcode", { exact: true })).toBeVisible();
   await expect(page.getByText("No photo (Facebook needs one)")).toBeVisible();
 
   const url = (await page.locator("code").first().textContent())!.trim();

@@ -37,10 +37,17 @@ export async function mockInbound(from: string, body: string, to = process.env.T
   });
 }
 
-/** The Messages page's "Send now" (under Troubleshooting; admins), then waits for the worker's answer toast. */
+/**
+ * The Messages page's "Send now" (under Troubleshooting; admins), then waits for the worker's answer toast. Without
+ * Marketing there is no Messages page (the ready notices are in the base and the worker still sends them every few
+ * seconds on the test server), so there is nothing to tap.
+ */
 export async function sendNow(page: Page): Promise<void> {
   await page.goto("/messages");
   const details = page.locator("details", { hasText: "Troubleshooting" });
+  const off = page.getByText(/isn't turned on for this company/);
+  await expect(details.or(off).first()).toBeVisible();
+  if (await off.count()) return;
   await details.locator("summary").click();
   await details.getByRole("button", { name: "Send now" }).click();
   await expect(page.locator("[data-sonner-toast]").first()).toBeVisible();
