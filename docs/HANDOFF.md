@@ -992,6 +992,21 @@ bugs fixed on the way (missing spaces before JSX entities in 42 places with a sc
 back-order form; check-in blocked when messaging was set up without Marketing). Left: calendar's 4th test (after 9 pm
 Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in daytime before the merge.
 
+## 2am. 8 Oct 2026: hub morning done (StitchBench main 66f5d65, StitchHub main 704b8a8, all deployed)
+
+- Hub live at https://hub.stitchbench.app (Cloudflare CNAME + `_railway-verify.hub` TXT, DNS only); email through
+  Resend as noreply@stitchbench.app (`MAIL_FROM` is the bare address: the hub refuses "Name <address>").
+- hub1 was re-made on 8 Oct (the first private half was exposed in chat before going live): public x `sMNky...` in
+  license-keys.ts (8624736); the hub's log says "signing as kid hub1 (public x sMNky...)". Files in Documents.
+- All three Railway services now deploy from GitHub `main` (push = deploy); the `railway` CLI is silently blocked on
+  this PC, so variables and redeploys go through the website. Programs' built-in hub address is hub.stitchbench.app
+  (66f5d65); the `HUB_URL` variables set on the two program services do nothing and can be deleted.
+- Checked end to end: owner's hub account made by email, hosted StitchShop claimed ("Free trial through 2026-11-07").
+- This PC's StitchBench updated to 1.7.0 (backup in Documents\StitchBench Backups, 2026-10-08-11-25). 1.7.0
+  installers built by the GitHub run of 8 Oct (workflow_dispatch, artifacts).
+- Left: comp the existing hub shops (/admin); the L6 marketplace count (needs `railway ssh`; find another way);
+  Railway config before 1 Dec; Stripe day.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)

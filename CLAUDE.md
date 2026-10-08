@@ -13,7 +13,7 @@
    StitchBench https://stitchbench-production-e554.up.railway.app (project `stitchbench`). Since 8 Oct all three
    Railway services deploy from GitHub `main` (each repo connected, branch main): a push to main is a deploy. The
    `railway` CLI won't run on this PC (Windows blocks it silently), so changes to variables and redeploys go through
-   the Railway website. StitchBench 1.6.1 installed on this PC
+   the Railway website. StitchBench 1.7.0 installed on this PC
    (`%LOCALAPPDATA%\Programs\StitchBench`, port 3100), updated in place with
    `scripts/local-test/update_installed.ps1 -Version <v>` after `npm run prepare-app` in `desktop/` (back up first:
    `node desktop/backup-now.mjs`). Deploys and merges must be run by the owner; when giving `!` commands, use
