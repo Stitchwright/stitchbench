@@ -42,7 +42,7 @@ test.afterAll(async () => {
 });
 
 async function pickCustomer(page: Page) {
-  await page.getByLabel("Customer", { exact: true }).fill(customerName.slice(0, 12));
+  await page.locator("#register-customer").fill(customerName.slice(0, 12));
   await page.getByRole("button", { name: new RegExp(customerName) }).click();
 }
 
@@ -72,7 +72,7 @@ test("the register takes a special order with a cash deposit; it's ordered and a
   await page.goto("/special-orders");
   await expect(page.getByText("1 not ordered yet.")).toBeVisible();
   await page.getByRole("link", { name: "Special order 1001" }).click();
-  await expect(page.getByText("Not ordered yet")).toBeVisible();
+  await expect(page.getByText("Not ordered yet", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Print the slip" }).click();
   await expect(page.getByText("Deposit $10.00, balance $50.00 when it arrives.")).toBeVisible();
   await expect(page.getByText("If you cancel, the deposit comes back as store credit.")).toBeVisible();
@@ -98,7 +98,7 @@ test("picked up at the register: one tap adds it, the deposit comes off", async 
   await expect(page.getByText("Special order 1001: paid before")).toBeVisible();
   await page.getByRole("button", { name: "Cash", exact: true }).click();
   await page.getByRole("button", { name: /^Complete sale/ }).click();
-  await expect(page.getByText(/Sale #\d+ done/)).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /Sale #\d+ done/ })).toBeVisible();
   const so = await sql<{ status: string }>(`SELECT status FROM "SpecialOrder" WHERE "shopId" = $1 AND number = 1001`, [shopId]);
   expect(so[0].status).toBe("DONE");
   await page.context().close();
@@ -124,8 +124,9 @@ test("cancelled into store credit, then undone; coming soon shows in the registe
 
   await page.goto(`/parts/${partId}`);
   await page.getByText("Coming soon and deposits").click();
-  await page.getByLabel("Coming soon: expected on").fill("2030-11-01");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const soon = page.locator("form", { has: page.getByLabel("Coming soon: expected on") });
+  await soon.getByLabel("Coming soon: expected on").fill("2030-11-01");
+  await soon.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
   await page.goto("/register");
   await page.getByLabel("Scan a barcode or search").fill("charm pack");

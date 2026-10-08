@@ -15,10 +15,11 @@ test("consign a machine, sell it, pay her", async ({ page }) => {
   try {
     await signIn(page, OWNER);
     await page.goto(`/units/${unit.id}`);
-    await page.getByLabel("Existing customer").fill(`Connie ${RUN}`);
+    await page.getByLabel("Find the customer").fill(`Connie ${RUN}`);
     await page.getByRole("button", { name: new RegExp(`Connie ${RUN}`) }).click();
-    await page.getByLabel("The shop keeps (%)").fill("25");
-    await page.getByRole("button", { name: "Save" }).first().click();
+    const consign = page.locator("form", { has: page.getByLabel("The shop keeps (%)") });
+    await consign.getByLabel("The shop keeps (%)").fill("25");
+    await consign.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(/she gets \$300.00 if it sells at \$400.00/)).toBeVisible();
 
     await page.goto("/register");

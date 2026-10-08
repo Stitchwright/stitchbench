@@ -56,7 +56,7 @@ test("a want list line in words; the item comes in; Here now; Done", async ({ br
   await expect(page.getByText("1 customer wants this")).toBeVisible();
 
   await page.goto(`/customers/${customerId}`);
-  await expect(page.getByText("Here now")).toBeVisible();
+  await expect(page.getByText("Here now", { exact: true })).toBeVisible();
   await page.goto("/want-lists");
   await expect(page.getByRole("link", { name: `Jane Wants ${RUN}` })).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();

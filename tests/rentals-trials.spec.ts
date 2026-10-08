@@ -42,7 +42,7 @@ test("rent it out, take rent, buy it with the rent credit", async ({ browser }) 
   const page = await login(browser, owner);
   await page.goto("/units/loans");
   await page.getByText("Rent one out").click();
-  await page.getByLabel("Existing customer").fill(customerName.slice(0, 10));
+  await page.getByLabel("Find the customer").fill(customerName.slice(0, 10));
   await page.getByRole("button", { name: new RegExp(customerName) }).click();
   await page.getByLabel("Rent", { exact: true }).fill("40");
   await page.getByRole("radio", { name: "Card" }).first().click();

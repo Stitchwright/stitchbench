@@ -44,7 +44,7 @@ test("a retreat: early-bird, deposit, a single room, the room list", async ({ br
   await page.getByRole("link", { name: "New retreat or event" }).click();
   await expect(page.getByRole("heading", { name: "New event" })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill(`Fall Retreat ${RUN}`);
-  await page.getByLabel("Price").fill("395");
+  await page.getByLabel("Price", { exact: true }).fill("395");
   await page.getByLabel("Seats").fill("20");
   await page.getByLabel("Early-bird price (optional)").fill("350");
   await page.getByLabel("Early-bird price until").fill(inDays(10));
@@ -56,9 +56,9 @@ test("a retreat: early-bird, deposit, a single room, the room list", async ({ br
   await expect(page.getByRole("heading", { name: `Fall Retreat ${RUN}` })).toBeVisible();
   await expect(page.getByText(/Early-bird price \$350\.00/)).toBeVisible();
 
-  await page.getByLabel("Existing customer").fill(`Jane Ev`);
+  await page.getByLabel("Find the customer").fill(`Jane Ev`);
   await page.getByRole("button", { name: new RegExp(`Jane Ev ${RUN}`) }).click();
-  await page.getByLabel("Room").selectOption("Single");
+  await page.getByLabel("Room", { exact: true }).selectOption("Single");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   await expect(page.getByText("Signed up")).toBeVisible();
   await expect(page.getByText(/Owes \$470\.00 of \$470\.00/).first()).toBeVisible();
@@ -75,7 +75,7 @@ test("a trunk show at the door: a ticket, check-in, the drawing", async ({ brows
   const page = await login(browser, owner);
   await page.goto("/classes/new?kind=EVENT");
   await page.getByLabel("Name", { exact: true }).fill(`Trunk Show ${RUN}`);
-  await page.getByLabel("Price").fill("10");
+  await page.getByLabel("Price", { exact: true }).fill("10");
   await page.getByLabel("Seats").fill("50");
   await page.getByLabel("Price at the door (optional)").fill("15");
   await page.getByLabel("Date").fill(inDays(3));

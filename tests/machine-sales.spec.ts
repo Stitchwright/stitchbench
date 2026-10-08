@@ -106,7 +106,8 @@ test("add a machine on /units with More options: warranty, what comes with it, o
   await page.locator("#ru-bundle").fill("Extension table\nWalking foot");
   await page.locator("#ru-classes").fill("2");
   await page.getByRole("button", { name: "Add to stock", exact: true }).click();
-  await expect(page.getByRole("link", { name: `${brand} ${model}`, exact: true })).toBeVisible();
+  // One machine added opens its page.
+  await expect(page.getByRole("heading", { name: `${brand} ${model}`, exact: true })).toBeVisible();
   const u = await one<{ priceCents: number; classCredits: number; bundle: string; status: string }>(
     `SELECT u."priceCents", u."classCredits", u.bundle, u.status FROM "StockUnit" u JOIN "Machine" m ON m.id = u."machineId" WHERE u."shopId" = $1 AND m.serial = $2`,
     [shopId, serial],

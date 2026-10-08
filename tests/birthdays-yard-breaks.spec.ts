@@ -49,16 +49,17 @@ test("settings: 15% birthday offer and a 10-yard break; her birthday on her page
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
   await page.getByText("Add a yard break").click();
   await page.getByLabel("From how many yards").fill("10");
-  await page.getByLabel("Percent off", { exact: true }).fill("10");
+  await page.locator("details", { hasText: "Add a yard break" }).getByLabel("Percent off", { exact: true }).fill("10");
   await page.getByRole("button", { name: "Add the break" }).click();
   await expect(page.getByText("10 yards or more of one item: 10% off")).toBeVisible();
 
   await page.goto(`/customers/${customerId}`);
   await page.getByText(/Add her birthday/).click();
   const month = new Date().toLocaleString("en-US", { timeZone: "America/New_York", month: "numeric" });
-  await page.getByLabel("Month").selectOption(month);
-  await page.getByLabel("Day").fill("12");
-  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  const birthday = page.locator("form", { has: page.getByLabel("Month") });
+  await birthday.getByLabel("Month").selectOption(month);
+  await birthday.getByLabel("Day", { exact: true }).fill("12");
+  await birthday.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(`${MONTHS[Number(month) - 1]} 12`)).toBeVisible();
   await page.context().close();
 });
@@ -75,7 +76,7 @@ test("the register: Use it gives 15% labelled; 12 yards get the 10+ yd price; th
   await expect(page.getByRole("button", { name: /Birthday 15%: take it off this line/ })).toBeVisible();
   await page.getByLabel(/^Qty for Kona cotton/).fill("12");
   await expect(page.getByRole("button", { name: /Birthday 15%/ })).toBeVisible();
-  await page.getByRole("button", { name: "Take it off" }).click();
+  await page.getByRole("button", { name: "Take it off", exact: true }).click();
   await expect(page.getByRole("button", { name: /10\+ yd price/ })).toBeVisible();
   await page.goto("/customers/birthdays");
   await expect(page.getByRole("link", { name: customerName })).toBeVisible();

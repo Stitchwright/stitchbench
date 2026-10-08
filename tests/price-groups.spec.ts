@@ -46,21 +46,25 @@ test("the owner adds Guild 10% and puts a customer in it", async ({ browser }) =
   await page.goto("/settings/prices");
   await expect(page.getByText("No price groups yet.")).toBeVisible();
   await page.getByText("Add a price group").click();
-  await page.getByLabel("Name").fill("Guild");
-  await page.getByLabel("Percent off").fill("10");
+  // Settings → Prices has other "Percent off" fields (yard breaks, the lifetime discount): the add form's own.
+  const addGroup = page.locator("details", { hasText: "Add a price group" });
+  await addGroup.getByLabel("Name").fill("Guild");
+  await addGroup.getByLabel("Percent off").fill("10");
   await page.getByRole("button", { name: "Add the group" }).click();
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
+  await page.reload();
   await page.getByText("Add a price group").click();
-  await page.getByLabel("Name").last().fill("Club card");
-  await page.getByLabel("Percent off").last().fill("15");
+  await addGroup.getByLabel("Name").fill("Club card");
+  await addGroup.getByLabel("Percent off").fill("15");
   await page.getByRole("button", { name: "Add the group" }).click();
   await page.reload();
   await expect(page.getByText("Guild", { exact: true })).toBeVisible();
 
   await page.goto(`/customers/${customerId}`);
   await page.getByText("Put her in a group").click();
-  await page.getByLabel("Group").selectOption({ label: "Guild" });
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const putIn = page.locator("form", { has: page.getByLabel("Group") });
+  await putIn.getByLabel("Group").selectOption({ label: "Guild" });
+  await putIn.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
   await page.context().close();
 });
@@ -84,9 +88,10 @@ test("an item that sells the Club card membership puts the buyer in its group", 
   const page = await login(browser, owner);
   await page.goto(`/parts/${cardId}`);
   await page.getByText(/^Sells a membership/).click();
-  await page.getByLabel("Puts the buyer in").selectOption({ label: "Club card" });
-  await page.getByLabel("For (months)").fill("12");
-  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  const sells = page.locator("form", { has: page.getByLabel("Puts the buyer in") });
+  await sells.getByLabel("Puts the buyer in").selectOption({ label: "Club card" });
+  await sells.getByLabel("For (months)").fill("12");
+  await sells.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
 
   await page.goto("/register");
@@ -96,7 +101,7 @@ test("an item that sells the Club card membership puts the buyer in its group", 
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await page.getByRole("button", { name: "Cash", exact: true }).click();
   await page.getByRole("button", { name: /^Complete sale/ }).click();
-  await expect(page.getByText(/Sale #\d+ done/)).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /Sale #\d+ done/ })).toBeVisible();
   const row = await sql<{ name: string }>(`SELECT g.name FROM "Customer" c JOIN "PriceGroup" g ON g.id = c."priceGroupId" WHERE c.id = $1`, [customerId]);
   expect(row[0].name).toBe("Club card");
   await page.context().close();

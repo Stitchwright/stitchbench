@@ -17,12 +17,12 @@ test("add a co-op claim, see the reminder, send it and record the money", async 
     const soon = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
     await page.getByLabel("Send it by").fill(soon);
     await page.getByRole("button", { name: "Add the claim" }).click();
-    await expect(page.getByRole("heading", { name: new RegExp(`Claim #\d+: ${maker}`) })).toBeVisible();
+    await expect(page.getByRole("heading", { name: new RegExp(`Claim #\\d+: ${maker}`) })).toBeVisible();
     await expect(page.getByText("claim $200.00 of $400.00 spent")).toBeVisible();
 
     await page.goto("/");
-    await expect(page.getByRole("link", { name: new RegExp(`Send co-op claim #\d+ to ${maker}`) })).toBeVisible();
-    await page.getByRole("link", { name: new RegExp(`Send co-op claim #\d+ to ${maker}`) }).click();
+    await expect(page.getByRole("link", { name: new RegExp(`Send co-op claim #\\d+ to ${maker}`) })).toBeVisible();
+    await page.getByRole("link", { name: new RegExp(`Send co-op claim #\\d+ to ${maker}`) }).click();
 
     await page.getByRole("button", { name: `I sent it to ${maker}` }).click();
     await expect(page.getByText("Sent, waiting")).toBeVisible();

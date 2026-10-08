@@ -111,7 +111,7 @@ test("the finder lists the shop's own bag for the model, and the register's pick
   await page.goto("/parts");
   await page.getByLabel("Part number", { exact: true }).fill(pn);
   await page.getByLabel("Description", { exact: true }).fill("Hoover Type Y bags (3)");
-  await page.getByLabel("Fits models").fill("Hoover, UH70120");
+  await page.getByLabel("Fits (notes)").fill("Hoover, UH70120");
   await page.getByLabel("Cost each ($)").fill("4.00");
   await page.getByLabel("Price each ($, blank = cost + markup)").fill("12.99");
   await page.getByLabel("Quantity on hand").fill("6");

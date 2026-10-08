@@ -28,7 +28,7 @@ test("claim a line from the maker, send the claim, record a short payment", asyn
     await expect(page.getByText("$5.00 short")).toBeVisible();
 
     await page.goto("/paperwork/warranty");
-    await expect(page.getByRole("link", { name: `Claimco${RUN}` })).toBeVisible();
+    await expect(page.getByRole("link", { name: `Claimco${RUN}`, exact: true })).toBeVisible();
   } finally {
     await sql(`DELETE FROM "WarrantyClaim" WHERE "shopId" = $1 AND maker = $2`, [owner.shopId, `Claimco${RUN}`]);
     await sql(`DELETE FROM "Ticket" WHERE id = $1`, [ticket.id]);

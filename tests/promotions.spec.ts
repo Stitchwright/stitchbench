@@ -133,7 +133,8 @@ test("price includes the tax, behind its warning: a $1,000 machine at 7% is $934
   await page.locator("#ru-serials").fill(serial);
   await page.locator("#ru-price").fill("1000.00");
   await page.getByRole("button", { name: "Add to stock", exact: true }).click();
-  await expect(page.getByRole("link", { name: `${brand} ${model}`, exact: true })).toBeVisible();
+  // One machine added opens its page.
+  await expect(page.getByRole("heading", { name: `${brand} ${model}`, exact: true })).toBeVisible();
 
   await page.goto("/register");
   await page.locator("#register-customer").fill(buyer);
