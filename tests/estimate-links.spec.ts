@@ -1,10 +1,10 @@
 // Estimate approval by link, end to end (scheduling-messaging-design.md 15.3 acceptance 3). Runs on a TEST BUILD with the
 // SMTP sink and the Twilio mock running, as messaging.spec.ts does, and is run twice: once with PUBLIC_URL set on the
 // server (the same value in this process: the link tests) and once without it (the "they call or reply" tests).
-// It makes its own company (Marketing switched on from Companies) and removes it at the end.
+// It makes its own company and removes it at the end. The company has no Marketing: the estimate link is in the base
+// (pricing-review-2026-10.md, 7 Oct 2026).
 import { test, expect, type Page } from "@playwright/test";
 import { OWNER, RUN, disconnect, login, sql } from "./helpers";
-import { setModule } from "./helpers/modules";
 import { clearMockSent, clearSink, eventually, mockInbound, mockSent, sendNow, sinkMessages } from "./helpers/messaging";
 
 test.describe.configure({ mode: "serial" });
@@ -58,7 +58,6 @@ test.beforeAll(async ({ browser }) => {
     return h >= 10 && h <= 18;
   })!;
   await sql(`UPDATE "Shop" SET "timeZone" = $1 WHERE id = $2`, [zone, shopId]);
-  await setModule(admin, company, "Marketing", true);
   await clearSink();
   await clearMockSent();
 });

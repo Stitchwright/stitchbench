@@ -4,15 +4,20 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { ABANDON_STAGE_LABEL } from "@/lib/constants";
-import { ticketNo } from "@/lib/format";
+import { money, ticketNo } from "@/lib/format";
 import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { shopTimeZone } from "@/lib/shop-zone";
-import { fmtDay } from "@/lib/zoned";
+import { fmtDay, ymdOf } from "@/lib/zoned";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
 import { scheduleFor } from "@/lib/notices/vars";
 import { markBackAtCounter } from "@/actions/notices";
 import { ActionButton } from "@/components/action-form";
+import { REGISTER_AFTER_DAYS } from "@/lib/units/units";
+import { listLayaways } from "@/lib/layaway";
+import { presetReminders } from "@/lib/tax-holidays";
+import { shopTodos } from "@/lib/shop-todos";
+import { coopDue, dayWords } from "@/lib/coop-claims";
 
 const WEEK = 7 * 86_400_000;
 const SHOWN = 5;
@@ -48,7 +53,7 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
               Tag {j.tag}: {partner.get(j.linkId) ?? "the repair shop"} marked it ready. Is it here?
             </Link>
             <ActionButton action={markBackAtCounter.bind(null, j.id)} className="btn btn-sm" success="Recorded">
-              {on ? "It's here: tell the customer" : "It's here"}
+              {(on || ms.emailOn || ms.smsOn) && ms.readyNotice ? "It's here: tell the customer" : "It's here"}
             </ActionButton>
           </span>
         ),
@@ -64,6 +69,112 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         ),
       });
     }
+  }
+
+  // New machines sold here more than a week ago that nobody has registered with the maker (machines for sale).
+  const toRegister = await db.stockUnit.count({
+    where: { shopId, status: "SOLD", condition: { in: ["NEW", "OPEN_BOX"] }, registeredAt: null, soldAt: { lt: new Date(now.getTime() - REGISTER_AFTER_DAYS * 86_400_000) } },
+  });
+  if (toRegister) {
+    lines.push({
+      key: "register",
+      node: (
+        <Link href="/units?tab=register" className="link">
+          Register {toRegister === 1 ? "this machine" : `these ${toRegister} machines`} with the maker: sold over a week ago, not registered yet
+        </Link>
+      ),
+    });
+  }
+
+  // Co-op and rebate claims not sent with the deadline two weeks off or less (shop-features-round-2-design.md 9.2).
+  if (admin) {
+    for (const c of await coopDue(shopId, now)) {
+      lines.push({
+        key: `coop-${c.id}`,
+        node: (
+          <Link href={`/paperwork/coop/${c.id}`} className="link">
+            Send co-op claim #{c.number} to {c.maker}: due {dayWords(c.deadline!)}
+          </Link>
+        ),
+      });
+    }
+  }
+
+  // A state's tax holiday the shop used before: confirm this year's dates (they are set by law each year).
+  if (admin) {
+    for (const r of await presetReminders(shopId, ymdOf(now, tz))) {
+      lines.push({
+        key: `holiday-${r.key}`,
+        node: (
+          <Link href={`/settings/sales?preset=${r.key}#holidays`} className="link">
+            Is {r.state}&apos; tax-free weekend on this year? Confirm the dates.
+          </Link>
+        ),
+      });
+    }
+  }
+
+  // Software (shop-features-round-2-design.md 2.5): codes sold "later" still to give, and subscriptions renewing soon.
+  const [toFill, renewing] = await Promise.all([
+    db.softwareLicense.count({ where: { shopId, status: "ACTIVE", code: null } }),
+    db.softwareLicense.count({ where: { shopId, status: "ACTIVE", kind: "SUBSCRIPTION", renewsOn: { lte: new Date(now.getTime() + 30 * 86_400_000) } } }),
+  ]);
+  if (toFill) {
+    lines.push({
+      key: "software-codes",
+      node: (
+        <Link href="/parts/software" className="link">
+          {toFill} software {toFill === 1 ? "code" : "codes"} still to give a customer
+        </Link>
+      ),
+    });
+  }
+  if (renewing) {
+    lines.push({
+      key: "software-renew",
+      node: (
+        <Link href="/parts/software" className="link">
+          {renewing} software {renewing === 1 ? "subscription renews" : "subscriptions renew"} in the next 30 days
+        </Link>
+      ),
+    });
+  }
+
+  // Layaways behind on their payments (or past the last day).
+  if (await db.layaway.count({ where: { shopId, status: "OPEN" } })) {
+    const late = (await listLayaways(shopId, "OPEN")).filter((l) => l.behindCents > 0);
+    for (const l of late.slice(0, SHOWN)) {
+      lines.push({
+        key: `layaway-${l.id}`,
+        node: (
+          <Link href={`/layaways/${l.id}`} className="link">
+            Layaway #{l.number}{l.customer ? ` for ${l.customer.name}` : ""} is {money(l.behindCents)} behind on payments
+          </Link>
+        ),
+      });
+    }
+    if (late.length > SHOWN) {
+      lines.push({
+        key: "layaway-more",
+        node: (
+          <Link href="/layaways" className="link">
+            and {late.length - SHOWN} more layaways behind
+          </Link>
+        ),
+      });
+    }
+  }
+
+  // Special orders, loaners, rentals, memberships, birthdays (shop-features-round-2-design.md section 1).
+  for (const t of await shopTodos(shopId, now)) {
+    lines.push({
+      key: t.key,
+      node: (
+        <Link href={t.href} className="link">
+          {t.text}
+        </Link>
+      ),
+    });
   }
 
   if (gate !== "hidden") {
@@ -86,7 +197,7 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         key: "failed",
         node: (
           <Link href="/messages?status=FAILED" className="link">
-            {failed} {failed === 1 ? "message" : "messages"} didn&apos;t go out this week
+            {failed} {failed === 1 ? "message" : "messages"}{" "}didn&apos;t go out this week
           </Link>
         ),
       });
@@ -183,7 +294,7 @@ async function byHand(shopId: string, abandonedAfterDays: number, tz: string, ms
     if (latest.state === "past") reason = "past the notice window, decide by hand";
     else if (latest.state === "not_sent") reason = "it didn't go out";
     else if (latest.state === "undelivered") reason = "the text wasn't delivered";
-    else if (latest.state === "due" && !marketing) reason = "Messages is off";
+    else if (latest.state === "due" && !marketing) reason = "Marketing is off";
     if (!reason) return;
     out.push({ key, href, what, stage: ABANDON_STAGE_LABEL[latest.stage.key], due: fmtDay(latest.stage.due, tz), why: reason });
   };

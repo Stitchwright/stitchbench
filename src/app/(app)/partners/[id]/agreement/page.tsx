@@ -116,7 +116,7 @@ function AcceptForm({ linkId, label, version, termsKey }: { linkId: string; labe
         <input id="accept-name" name="name" required className="input" />
       </div>
       <label className="flex items-center gap-2 pb-2 text-sm">
-        <input type="checkbox" name="agree" className="check" /> I&apos;ve read these terms and agree to them for my shop
+        <input type="checkbox" name="agree" className="check" />{" "}I&apos;ve read these terms and agree to them for my shop
       </label>
       <Submit>{label}</Submit>
     </ActionForm>
@@ -127,12 +127,12 @@ function AgreementText({ repairName, sewingName, terms: t }: { repairName: strin
   return (
     <>
       <p>
-        This agreement is between <strong>{repairName}</strong> (&quot;the repair shop&quot;) and <strong>{sewingName}</strong> (&quot;the sewing
+        This agreement is between <strong>{repairName}</strong> (&quot;the repair shop&quot;) and <strong>{sewingName}</strong>{" "}(&quot;the sewing
         shop&quot;).
       </p>
       <ol className="list-decimal space-y-2 pl-5">
         <li>
-          <strong>Taking machines in.</strong> The sewing shop takes customers&apos; machines in for repair on the repair shop&apos;s behalf. For each
+          <strong>Taking machines in.</strong>{" "}The sewing shop takes customers&apos; machines in for repair on the repair shop&apos;s behalf. For each
           machine it records the customer, the machine&apos;s make, model and serial number, the problem in the customer&apos;s words, the accessories that
           came with it and photos of its condition, and gives the customer a claim tag. It does not promise a diagnosis or a price beyond the repair
           shop&apos;s posted price list.
@@ -143,7 +143,7 @@ function AgreementText({ repairName, sewingName, terms: t }: { repairName: strin
           that shop&apos;s care.
         </li>
         <li>
-          <strong>Estimates.</strong> Work beyond the service the customer asked for, or beyond the amount the customer approved in advance, needs the
+          <strong>Estimates.</strong>{" "}Work beyond the service the customer asked for, or beyond the amount the customer approved in advance, needs the
           customer&apos;s OK. The repair shop sends the estimate through StitchBench; the sewing shop asks the customer and passes on the answer.
         </li>
         <li>
@@ -161,7 +161,7 @@ function AgreementText({ repairName, sewingName, terms: t }: { repairName: strin
           catalog. Delivered orders are added to the monthly statement.
         </li>
         <li>
-          <strong>Consignment stock.</strong> Items the repair shop places on the sewing shop&apos;s shelf remain the repair shop&apos;s property until sold.
+          <strong>Consignment stock.</strong>{" "}Items the repair shop places on the sewing shop&apos;s shelf remain the repair shop&apos;s property until sold.
           The sewing shop sells them at the agreed shelf price, records each sale in StitchBench, and keeps <strong>{t.consignSharePct}%</strong> of
           what each item sells for; the rest is owed to the repair shop.{" "}
           {t.shopCoversLoss
@@ -175,18 +175,18 @@ function AgreementText({ repairName, sewingName, terms: t }: { repairName: strin
         </li>
         {t.softwareByRepairShop && (
           <li>
-            <strong>Shop software.</strong> In return for the repair work and shelf space above, the repair shop sets up StitchShop (register,
+            <strong>Shop software.</strong>{" "}In return for the repair work and shelf space above, the repair shop sets up StitchShop (register,
             inventory, repair tracking) for the sewing shop, shows its staff how to use it and keeps it running, at no charge while this agreement
             lasts. The sewing shop&apos;s sales and customer records are its own: the repair shop won&apos;t use them for anything else, and gives the
             sewing shop a copy of them when it asks or when the partnership ends.
           </li>
         )}
         <li>
-          <strong>Customer information.</strong> Each shop keeps the other&apos;s customer information private and uses it only to complete the
+          <strong>Customer information.</strong>{" "}Each shop keeps the other&apos;s customer information private and uses it only to complete the
           customer&apos;s repair. The sewing shop shares only what the repair needs (the customer&apos;s first name and last initial, and the tag number).
         </li>
         <li>
-          <strong>Ending the partnership.</strong> Either shop can end this agreement with {t.noticeDays} days&apos; written notice (StitchBench counts).
+          <strong>Ending the partnership.</strong> Either shop can end this agreement with {t.noticeDays}{" "}days&apos; written notice (StitchBench counts).
           Machines already taken in are finished and returned, the consignment shelf is counted and unsold items returned, and the last statement is
           settled.
         </li>

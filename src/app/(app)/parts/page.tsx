@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fineCost, money } from "@/lib/format";
 import { PageHeader, Section, Empty } from "@/components/ui";
+import { MarginFloorNotice } from "@/components/margin-floor-notice";
 import { ActionForm, Submit } from "@/components/action-form";
 import { PartFields } from "@/components/part-fields";
 import { BarcodeLookupButton } from "@/components/barcode-lookup-button";
@@ -13,8 +14,12 @@ import { KIND_LABEL } from "@/lib/parts";
 import { CONDITIONS, CONDITION_NAME, ORIGINS, ORIGIN_NAME, partTags } from "@/lib/part-labels";
 import { qtyText } from "@/lib/register-math";
 import { FIRST_PHOTO } from "@/lib/register-item";
+import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
+import { ColorDot } from "@/components/color-dot";
 import type { PartCondition, PartKind, PartOrigin } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
+import { currentStore } from "@/lib/stores";
+import { storeStockFor } from "@/lib/stock";
 
 const KINDS = [
   { key: "", label: "All" },
@@ -65,6 +70,10 @@ export default async function Parts({
             { fits: { contains: term, mode: "insensitive" } },
             { brand: { contains: term, mode: "insensitive" } },
             { altNumbers: { has: term } },
+            // Item details (shop-features-round-2-design.md 2.1): "0015", "navy", "PETG".
+            { colorNumber: { contains: term, mode: "insensitive" } },
+            { colorName: { contains: term, mode: "insensitive" } },
+            { material: { contains: term, mode: "insensitive" } },
           ],
         }
       : {}),
@@ -75,6 +84,8 @@ export default async function Parts({
     db.part.findMany({ where, orderBy: { partNumber: "asc" }, take: SHOWN, include: FIRST_PHOTO }),
     db.part.findMany({ where, select: { costCents: true, costTenThou: true, qtyOnHand: true } }),
   ]);
+  // More than one store (7.2): the column is this store's shelf, the other stores' in small text.
+  const stock = await storeStockFor(user.shopId, parts, await currentStore(user));
   // At the fine cost (ten-thousandths), rounded once for the whole shelf, not per unit.
   const value = Math.round(all.reduce((s, p) => s + (fineCost(p.costCents, p.costTenThou) ?? 0) * Math.max(0, p.qtyOnHand), 0) / 100);
 
@@ -91,8 +102,22 @@ export default async function Parts({
             <Link href="/parts/most-used" className="btn">
               Most used
             </Link>
+            <Link href="/parts/orders" className="btn">
+              Orders to suppliers
+            </Link>
+            {shop.sellsRetail && (
+              <Link href="/parts/software" className="btn">
+                Software licences
+              </Link>
+            )}
+            <Link href="/parts/raise-prices" className="btn">
+              Raise prices
+            </Link>
             <Link href="/parts/on-order" className="btn">
               On order
+            </Link>
+            <Link href="/parts/receive" className="btn">
+              Receive without an order
             </Link>
             <Link href="/xref" className="btn">
               Other part numbers
@@ -103,6 +128,7 @@ export default async function Parts({
           </>
         }
       />
+      {user.role !== "TECH" && <MarginFloorNotice shopId={user.shopId} />}
       <nav className="flex flex-wrap gap-2" aria-label="Type">
         {tabs.map((x) => (
           <Link
@@ -222,7 +248,7 @@ export default async function Parts({
                   <th>Description</th>
                   <th>Fits</th>
                   <th>Bin</th>
-                  <th className="text-right">On hand</th>
+                  <th className="text-right">{stock ? "In this store" : "On hand"}</th>
                   <th className="text-right">Price</th>
                 </tr>
               </thead>
@@ -258,9 +284,15 @@ export default async function Parts({
                           {t}
                         </span>
                       ))}
+                      {detailsLine(p) && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <ColorDot hex={p.colorHex} />
+                          {detailsLine(p)}
+                        </div>
+                      )}
                       <div className="muted text-xs">
                         {[
-                          p.kind !== "PART" ? KIND_LABEL[p.kind] : null,
+                          p.kind !== "PART" ? (typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]) : null,
                           p.brand,
                           p.altNumbers.length
                             ? `also ${p.altNumbers.join(", ")}`
@@ -280,8 +312,9 @@ export default async function Parts({
                             : ""
                         }
                       >
-                        {qtyText(p.qtyOnHand, p.unit)}
+                        {qtyText(stock?.get(p.id)?.here ?? p.qtyOnHand, p.unit)}
                       </span>
+                      {stock?.get(p.id)?.others.length ? <div className="muted text-xs">{stock.get(p.id)!.others.map((o) => `${o.name}: ${qtyText(o.qty, p.unit)}`).join(" · ")}</div> : null}
                       {p.consignLinkId && <div className="muted text-xs">consigned</div>}
                     </td>
                     <td className="num text-right">

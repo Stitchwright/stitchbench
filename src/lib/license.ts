@@ -2,7 +2,9 @@
 import crypto from "node:crypto";
 
 // "base" is the program itself (hub-accounts-billing-design.md 3.5): off means fully working, lapsed means read-only.
-export const MODULE_IDS = ["base", "vac", "appliance", "scheduling", "marketing", "assistant"] as const;
+// maker: the Maker Shop module (shop-features-round-2-design.md section 6): supplies-due reminders, maker-space time and
+// print and cut jobs; selling printers, cutters and their supplies is in the base.
+export const MODULE_IDS = ["base", "vac", "appliance", "scheduling", "marketing", "assistant", "maker"] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 export type KeyScope = "any" | "hosted" | "dev" | "hub";
 /** A retired signing key: its keys count only up to `lastDay`, and (after a leak) only the genuine ones listed in `allow`. */

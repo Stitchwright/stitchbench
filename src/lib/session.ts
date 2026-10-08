@@ -5,7 +5,18 @@ import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { isPlatformAdmin } from "@/lib/shops";
 
-export type CurrentUser = { id: string; shopId: string; role: "OWNER" | "ADMIN" | "TECH"; name: string; email: string };
+export type CurrentUser = {
+  id: string;
+  shopId: string;
+  role: "OWNER" | "ADMIN" | "TECH";
+  name: string;
+  email: string;
+  /**
+   * The store this work is decided to happen at (more than one store, shop-features-round-2-design.md 7.1): set by code
+   * that acts for a store (a live sale's pay links, a check); never by sign-in. Absent: the device's or person's store.
+   */
+  locationId?: string | null;
+};
 
 /**
  * The signed-in user as the database has them now, or null. The sign-in cookie only says who signed in; access that

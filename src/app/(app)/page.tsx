@@ -5,6 +5,7 @@ import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/con
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
 import { MarketTodo } from "@/components/market-todo";
+import { MarginFloorNotice } from "@/components/margin-floor-notice";
 import { PAID_ELSEWHERE } from "@/lib/sales";
 import { monthRange, startOfToday } from "@/lib/time-zone";
 import { registerTakenCents } from "@/lib/register-day";
@@ -87,6 +88,7 @@ export default async function Dashboard() {
           )
         }
       />
+      {user.role !== "TECH" && <MarginFloorNotice shopId={shopId} />}
 
       <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {STATUS_ORDER.filter((s) => OPEN_STATUSES.includes(s)).map((s) => (

@@ -123,7 +123,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               </label>
             ))}
             <Submit className="btn btn-sm btn-primary">{recordTitle}</Submit>
-            <p className="muted text-xs">{side === "repair" ? "Their tickets go to In truck." : "They're back at the counter; the ready notice goes out when Marketing is on."}</p>
+            <p className="muted text-xs">{side === "repair" ? "Their tickets go to In truck." : "They're back at the counter; the ready notice goes out once email or texts are set up."}</p>
           </ActionForm>
         </Section>
       )}

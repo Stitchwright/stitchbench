@@ -5,7 +5,7 @@ export type VacTab = "repairs" | "finder" | "units" | "bags-due" | "installs";
 const TABS: { key: VacTab; label: string; href: string }[] = [
   { key: "repairs", label: "Repairs", href: "/tickets?kind=vacuum" },
   { key: "finder", label: "Finder", href: "/vac/finder" },
-  { key: "units", label: "For sale", href: "/vac/units" },
+  { key: "units", label: "For sale", href: "/units" },
   { key: "bags-due", label: "Bags due", href: "/vac/bags-due" },
   { key: "installs", label: "Installs", href: "/vac/installs" },
 ];

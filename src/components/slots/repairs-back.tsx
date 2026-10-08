@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
-import { gateFor } from "@/lib/module-gate";
+import { noticesOn } from "@/lib/module-gate";
 import { READY_JOB_STATUSES } from "@/lib/notices/hooks";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { markManyBack } from "@/actions/notices";
@@ -19,13 +19,12 @@ export async function RepairsBackSlot({ user }: { user: CurrentUser }) {
     select: { id: true, tag: true, customerName: true, brand: true, model: true, linkId: true, updatedAt: true, customer: { select: { name: true } } },
   });
   if (!jobs.length) return null;
-  const [gate, tz, links] = await Promise.all([
-    gateFor(shopId, "marketing"),
+  const [tell, tz, links] = await Promise.all([
+    noticesOn(shopId),
     shopTimeZone(shopId),
     db.partnerLink.findMany({ where: { shopId, id: { in: [...new Set(jobs.map((j) => j.linkId))] } }, select: { id: true, partnerName: true } }),
   ]);
   const partner = new Map(links.map((l) => [l.id, l.partnerName]));
-  const on = gate === "on";
 
   return (
     <Section title="Marked ready by the repair shop. Are they here?">
@@ -62,7 +61,7 @@ export async function RepairsBackSlot({ user }: { user: CurrentUser }) {
             </tbody>
           </table>
         </div>
-        <Submit className="btn btn-primary">{on ? "These are back: tell the customers" : "These are back"}</Submit>
+        <Submit className="btn btn-primary">{tell ? "These are back: tell the customers" : "These are back"}</Submit>
       </ActionForm>
     </Section>
   );

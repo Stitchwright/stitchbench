@@ -11,12 +11,15 @@ import { moduleOn, requireOn } from "@/lib/module-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { hoursFromForm, hoursOf, hoursText, overlapCount, poolKey, withinHours } from "@/lib/appointments";
 import { rentalFeeCents } from "@/lib/longarm-math";
+import { LONGARM, certNeeded, equipmentName, isCertified } from "@/lib/certifications";
+import { moduleState } from "@/lib/modules";
 import { lockKeys } from "@/lib/lock";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { messagingView } from "@/lib/messaging/settings";
 import { plainText, renderKind } from "@/lib/messaging/templates";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { fmtWhen, parseHm, parseYmd, ymdOf, zonedTime } from "@/lib/zoned";
+import { currentStoreId } from "@/lib/stores";
 
 type Tx = Prisma.TransactionClient;
 const DAY = 86_400_000;
@@ -88,7 +91,11 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
   const hourlyRaw = str(fd.get("hourly"))?.trim() ?? "";
   const hourly = hourlyRaw ? toCents(hourlyRaw) : null;
   if (hourlyRaw && (hourly == null || hourly <= 0 || hourly > 1_000_000)) throw new UserError("Check the hourly rate (dollars an hour).");
-  const needsCert = fd.get("needsCert") === "on";
+  // Certified customers only, on which machine (6.4): blank or "Longarm" is the longarm as before; any other needs Maker Shop.
+  const certName = equipmentName(str(fd.get("certFor")));
+  const needsCert = fd.get("needsCert") === "on" || (!!certName && certName !== LONGARM);
+  const certFor = needsCert && certName && certName !== LONGARM ? certName : null;
+  if (certFor && !(await moduleState(shopId, "maker")).active) throw new UserError("Booking your own laser or printer by the hour (maker-space time) is part of the Maker Shop module.");
   const sortOrder = Number(str(fd.get("sortOrder")) ?? "0");
   const data = {
     name,
@@ -96,6 +103,7 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
     feeCents: fee,
     hourlyCents: hourly,
     needsCert,
+    certFor,
     taxable: fd.get("taxable") === "on",
     capacity,
     resource,
@@ -118,7 +126,8 @@ export async function saveApptTypeAs(user: CurrentUser, typeId: string | null, f
     await db.appointmentType.updateMany({ where: { id: t.id, shopId }, data });
     return t.id;
   }
-  const made = await db.appointmentType.create({ data: { shopId, ...data }, select: { id: true } });
+  // Booked at the store that set it up (7.1).
+  const made = await db.appointmentType.create({ data: { shopId, ...data, locationId: await currentStoreId(user) }, select: { id: true } });
   return made.id;
 }
 
@@ -209,10 +218,11 @@ export async function bookAs(user: CurrentUser, fd: FormData, now = new Date()):
       if (e instanceof UserError && /name and a phone/.test(e.message)) throw new UserError("Pick or add the customer.");
       throw e;
     });
-    // A type for certified customers only (the longarm): the customer's flag is checked here, in the booking's own transaction.
-    if (!block && type.needsCert) {
-      const cert = await tx.customer.findFirst({ where: { id: customer!.id, shopId }, select: { longarmCertifiedAt: true } });
-      if (!cert?.longarmCertifiedAt) throw new UserError(`${customer!.name} isn't certified to rent the ${type.resource?.trim() || type.name}. Certify them on their customer page first.`);
+    // A type for certified customers only (the longarm, or the shop's own laser or printer: 6.4), checked here in the
+    // booking's own transaction.
+    const certOn = block ? null : certNeeded(type);
+    if (certOn && !(await isCertified(tx, shopId, customer!.id, certOn))) {
+      throw new UserError(`${customer!.name} isn't certified on the ${certOn}. Certify them on their customer page first (after the safety class).`);
     }
     await checkRoom(tx, { shopId, type, startsAt, endsAt, staffId, outsideHours, tz });
     const a = await tx.appointment.create({

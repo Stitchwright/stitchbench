@@ -97,11 +97,30 @@ export const BY_HAND = [
   "importItems",
   "sendCampaignTest",
   "sendBagReminders",
+  // The card reader at the register (shop-features-round-2-design.md 4.8): sending an amount to the reader is new money
+  "startReaderPayment",
   // The manual repository on a hosted install (the browser reads, hashes and sends the file): an offer or a download is new work
   "startHostedOffer",
   "finishHostedOffer",
   "failHostedOffer",
   "repositoryDownloadInfo",
+  // Shop hops (shop-features-round-2-design.md 4.6): a passport stamp is new work, refused while lapsed
+  "stampPassport",
+  // Layaway money at the register (tax-machine-sales-layaway-design.md 4): a start refuses while lapsed, a payment and
+  // a pick-up go through completeSaleAs, which refuses a sale and lets a return through
+  "startLayaway",
+  "payLayaway",
+  "pickUpLayaway",
+  // Special orders at the register (shop-features-round-2-design.md 1.2): taking one refuses while lapsed; a payment
+  // goes through completeSaleAs
+  "takeSpecialOrder",
+  "paySpecialOrder",
+  // Lending a loaner or demo (1.7) is new work; its deposit goes through completeSaleAs
+  "lendMachine",
+  // Rentals (1.8): renting one out is new work; rent and a buy-out go through completeSaleAs
+  "rentOut",
+  "payRent",
+  "buyRental",
 ] as const;
 
 /**
@@ -123,6 +142,23 @@ export const HAND_ALLOWED = [
   "bookingsDue",
   "findStockedParts",
   "findFabricItems",
+  // The register's "Find a color" (shop-features-round-2-design.md 2.2): a lookup
+  "findColors",
+  // Help switching (shop-features-round-2-design.md 4.7): "See what will come in" only reads the file
+  "previewSwitchFile",
+  // What fits the customer's machines, and what goes with a machine being sold (2.4): lookups
+  "fitsForCustomerNow",
+  "fitsForUnitsNow",
+  // The register's software line: the customer's machines, what she can renew, codes on hand (2.5)
+  "softwareChoices",
+  // The register's starter bundles for a machine being sold (6.1): a lookup
+  "starterBundlesNow",
+  // The register's gift lists (shop-features-round-2-design.md 9.9): a lookup
+  "findGiftLists",
+  // The card reader (4.8): how a payment on the reader stands, stopping it, and test mode's simulated tap
+  "readerPaymentStatus",
+  "cancelReaderPayment",
+  "simulateReaderTap",
   "readCatalogSheet",
   "previewCatalog",
   "openClassSeats",
@@ -133,6 +169,13 @@ export const HAND_ALLOWED = [
   "customerVacuums",
   "unitsForSale",
   "unitsToReturn",
+  // The register's layaway list and service plan choices: reads
+  "openLayaways",
+  "planChoices",
+  // A customer's special orders waiting at the counter: a read
+  "waitingSpecialOrders",
+  // The register's quiet lines for a chosen customer (special orders waiting, her price group...): a read
+  "customerExtras",
   "receiveWaits",
   "tellThenSendReady",
   "markBackAtCounter",

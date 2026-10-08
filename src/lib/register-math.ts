@@ -1,16 +1,22 @@
 // Register totals, the same in the browser (while ringing up) and on the server (when the sale is saved). Cents.
 
-export type TenderMethod = "CASH" | "CARD" | "CHECK" | "GIFT" | "CREDIT" | "OTHER" | "ONLINE";
+export type TenderMethod = "CASH" | "CARD" | "CHECK" | "GIFT" | "CREDIT" | "OTHER" | "ONLINE" | "FINANCED" | "ACCOUNT";
 /**
  * GIFT and CREDIT (store credit) name a card: the register sends `cardNumber` (typed or scanned; store credit may leave it
  * blank for the customer's own), and the server keeps `cardId`, `last4` and `leftCents` (what the card held afterwards,
  * printed on the receipt) with the sale. The full number is never kept in the sale.
  */
-export type Tender = { method: TenderMethod; amountCents: number; note?: string | null; cardNumber?: string | null; cardId?: string; last4?: string; leftCents?: number };
+/**
+ * FINANCED (tax-machine-sales-layaway-design.md section 5): a lender pays the shop (`lenderId`, its name kept as
+ * `lender`, the approval number as `note`); the register offers it once the shop lists a lender in Settings.
+ */
+/** stripeIntent: a Card payment taken on the shop's card reader (shop-features-round-2-design.md 4.8), checked with Stripe when the sale is saved. */
+export type Tender = { method: TenderMethod; amountCents: number; note?: string | null; cardNumber?: string | null; cardId?: string; last4?: string; leftCents?: number; lenderId?: string; lender?: string; stripeIntent?: string };
 /** What the counter takes. ONLINE is only ever written by the online shop at payment (online-and-parts-design.md section 3). */
 export const TENDER_METHODS: TenderMethod[] = ["CASH", "CARD", "CHECK", "GIFT", "CREDIT", "OTHER"];
-export const ALL_TENDER_METHODS: TenderMethod[] = [...TENDER_METHODS, "ONLINE"];
-export const TENDER_LABEL: Record<TenderMethod, string> = { CASH: "Cash", CARD: "Card", CHECK: "Check", GIFT: "Gift card", CREDIT: "Store credit", OTHER: "Other", ONLINE: "Paid online" };
+/** ACCOUNT: on the customer's house charge account (shop-features-round-2-design.md 9.4), offered while house accounts are on. */
+export const ALL_TENDER_METHODS: TenderMethod[] = [...TENDER_METHODS, "FINANCED", "ONLINE", "ACCOUNT"];
+export const TENDER_LABEL: Record<TenderMethod, string> = { CASH: "Cash", CARD: "Card", CHECK: "Check", GIFT: "Gift card", CREDIT: "Store credit", OTHER: "Other", ONLINE: "Paid online", FINANCED: "Financing", ACCOUNT: "On account" };
 
 type Line = { qty: number; unitPriceCents: number; discountCents?: number; taxable: boolean; discountable?: boolean };
 
@@ -89,7 +95,7 @@ export function tenderProblem(totals: { total: number; paid: number }, tenders: 
   }
   if (tenders.some((t) => (refund ? t.amountCents > 0 : t.amountCents < 0))) return refund ? "A refund is paid out as negative amounts." : "Payments are positive amounts on a sale.";
   const cash = tenders.filter((t) => t.method === "CASH").reduce((a, t) => a + t.amountCents, 0);
-  if (!refund && totals.paid - cash > totals.total) return "Card, check and gift amounts can't be more than the total. Only cash gives change.";
+  if (!refund && totals.paid - cash > totals.total) return "Card, check, gift and financing amounts can't be more than the total. Only cash gives change.";
   return null;
 }
 

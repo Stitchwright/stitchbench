@@ -12,7 +12,8 @@ import { sameText } from "@/lib/input";
 import { lineNet, type Tender } from "@/lib/register-math";
 import type { Issued } from "@/lib/gift-card-number";
 import { returnSkip, splitForReturn } from "@/lib/sale-return";
-import { registerUnitHits } from "@/lib/vac/sale-units";
+import { registerUnitHits } from "@/lib/units/sale-units";
+import { liveHeld } from "@/lib/live-sales";
 import { FIRST_PHOTO, viewItem, type RegisterItem } from "@/lib/register-item";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { BACK_FROM_REPAIR, bookingsDueFor, completeSaleAs, repairDue, voidSaleAs, type SaleInput } from "@/lib/register-sale";
@@ -20,10 +21,29 @@ import { refuseVoidOfOnlineSale } from "@/lib/shop/online-shop";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { customerIdsBySpelling } from "@/lib/customer-search";
 import type { BookingDue } from "@/lib/booking-types";
+import { findColorsFor } from "@/lib/colors";
+import { currentStore, type Store } from "@/lib/stores";
+import { storeStockFor } from "@/lib/stock";
 
 // RegisterItem and the Part -> item mapping live in src/lib/register-item.ts: a "use server" file may export only async
-// functions (even a type re-export trips the bundler), and the Vac Shop unit hooks (src/lib/vac/sale-units.ts) build items too.
+// functions (even a type re-export trips the bundler), and the machines-for-sale hooks (src/lib/units/sale-units.ts) build items too.
 const view = viewItem;
+
+/**
+ * What is on the shelf for anyone else: a special order's hold already comes off qtyOnHand (a HELD stock move, phase 1),
+ * a live-sale claim holds stock without moving it (liveHeld, phase 3), so the register takes those off too. The live
+ * sale's own "left" (qtyOnHand less liveHeld) likewise already counts the special orders' holds.
+ */
+async function lessLiveHeld(shopId: string, items: RegisterItem[], here: Store | null = null): Promise<RegisterItem[]> {
+  if (!items.length) return items;
+  // More than one store (7.2): the stock is this store's shelf, and the other stores that have some are named
+  // ("At Florida: 5"); live-sale claims held are this store's own.
+  const parts = items.filter((it) => !it.stockUnitId);
+  const stock = await storeStockFor(shopId, parts, here);
+  const local = stock ? items.map((it) => (stock.get(it.id) ? { ...it, qtyOnHand: stock.get(it.id)!.here, elsewhere: stock.get(it.id)!.others } : it)) : items;
+  const held = await liveHeld(shopId, local.map((it) => it.id), stock ? here : null);
+  return held.size ? local.map((it) => (held.get(it.id) ? { ...it, qtyOnHand: Math.round((it.qtyOnHand - held.get(it.id)!) * 1000) / 1000 } : it)) : local;
+}
 
 /**
  * A scanned barcode or typed number: the item, or null. The item with that number comes first, then items that only
@@ -37,7 +57,7 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   // Its barcode form too: a scanner's 12-digit UPC finds the item imported with its 13-digit EAN.
   const keys = codeKeys(c);
   const matches = await db.part.findMany({
-    where: { shopId: user.shopId, OR: [{ partNumber: sameText(c) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
+    where: { shopId: user.shopId, kind: { not: "MACHINE" }, OR: [{ partNumber: sameText(c) }, ...(keys.length ? [{ numberKeys: { hasSome: keys } }] : [])] },
     take: 20,
     include: FIRST_PHOTO,
   });
@@ -51,27 +71,38 @@ export async function itemByCode(code: string): Promise<RegisterItem | null> {
   };
   const rank = (p: (typeof matches)[number]) => (exact(p) || twin(p) ? 0 : 8) + (p.qtyOnHand > 0 ? 0 : 4) + (p.consignLinkId ? 2 : 0) + (exact(p) ? 0 : 1);
   matches.sort((a, b) => rank(a) - rank(b));
-  // No part by that number: a vacuum in stock whose serial it is (Vac Shop).
-  return matches[0] ? view(matches[0]) : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code" }))[0] ?? null);
+  // No part by that number: a machine for sale whose serial it is.
+  return matches[0] ? (await lessLiveHeld(user.shopId, [view(matches[0])], await currentStore(user)))[0] : ((await registerUnitHits({ shopId: user.shopId, q: c, mode: "code", here: await currentStore(user) }))[0] ?? null);
 }
 
-/** Items whose number or description matches, for the search box. */
+/**
+ * Items whose number or description matches, for the search box. A maker and color number in any shape ("isa 15",
+ * "Aurifil 2024"), a color name or a supply in words ("PLA black 1.75") finds items by their details too
+ * (shop-features-round-2-design.md 2.2): those come first.
+ */
 export async function findItems(q: string): Promise<RegisterItem[]> {
   const user = await requireUser();
   const t = q.trim();
   if (t.length < 2) return [];
   const words = t.split(/\s+/).slice(0, 5);
-  const parts = await db.part.findMany({
-    where: {
-      shopId: user.shopId,
-      OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
-    },
-    orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
-    take: 25,
-    include: FIRST_PHOTO,
-  });
-  // Vacuums in stock whose brand or model matches come after the parts (Vac Shop).
-  return [...parts.map(view), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search" }))];
+  const [parts, colors] = await Promise.all([
+    db.part.findMany({
+      where: {
+        shopId: user.shopId,
+        kind: { not: "MACHINE" },
+        OR: [{ partNumber: { contains: t, mode: "insensitive" } }, { numberKeys: { has: numberKey(t) } }, { AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }],
+      },
+      orderBy: [{ qtyOnHand: "desc" }, { description: "asc" }],
+      take: 25,
+      include: FIRST_PHOTO,
+    }),
+    findColorsFor(user.shopId, t, 15),
+  ]);
+  const seen = new Set<string>();
+  const items = [...colors.map(({ location, sameAs, boughtAt, boughtText, ...it }) => (void location, void sameAs, void boughtAt, void boughtText, it)), ...parts.map(view)].filter((it) => !seen.has(it.id) && seen.add(it.id)).slice(0, 30);
+  // Machines for sale whose brand or model matches come after the parts.
+  const here = await currentStore(user);
+  return [...(await lessLiveHeld(user.shopId, items, here)), ...(await registerUnitHits({ shopId: user.shopId, q: t, mode: "search", here }))];
 }
 
 export type PickupJob = {
@@ -174,9 +205,13 @@ export type SaleForReturn = {
   /** Class seats and appointments, left out: refund them through "Return an item" > Classes & appointments, which
    * settles the booking with the money. */
   skippedBookingLines: number;
-  /** Vacuums sold from stock and trade-ins, left out: through "Return an item" > Machines for sale, which takes the unit
-   * back with the money. */
+  /** Machines sold from stock, their service plans and trade-ins, left out: through "Return an item" > Return a machine,
+   * which takes the unit back (and ends its plans) with the money. */
   skippedUnitLines: number;
+  /** Layaway payments and cancel fees, left out: settled on the layaway itself. */
+  skippedLayawayLines: number;
+  /** Special-order and loaner deposits, kept deposits, rent and loaner charges, left out: settled on the order, loaner or rental. */
+  skippedHeldLines: number;
   /** Gift cards and store credit the sale was paid with: the default way back is onto the same card. */
   cardsPaid: { number: string; kind: "gift" | "credit"; amountCents: number }[];
 };
@@ -194,7 +229,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
   });
   if (!sale) return null;
   const lines: SaleReturnLine[] = [];
-  const skipped = { repair: 0, card: 0, booking: 0, unit: 0 };
+  const skipped = { repair: 0, card: 0, booking: 0, unit: 0, layaway: 0, held: 0 };
   for (const l of sale.lines) {
     const skip = returnSkip(l);
     if (skip) {
@@ -205,7 +240,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     // exactly that amount: one line, or two when the charge doesn't divide evenly among the units (splitForReturn).
     const net = lineNet({ qty: l.qty, unitPriceCents: l.unitPriceCents, discountCents: l.discountCents, taxable: l.taxable });
     for (const part of splitForReturn(l.qty, net)) {
-      lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable });
+      lines.push({ partId: l.partId, description: l.description, partNumber: l.partNumber, unit: l.unit, qty: part.qty, unitPriceCents: part.unitPriceCents, taxable: l.taxable && sale.taxRatePct > 0 && !sale.taxExemptId });
     }
   }
   const paid = (sale.tenders as Tender[]).filter((t) => t.cardId && t.amountCents > 0);
@@ -214,7 +249,7 @@ export async function saleForReturn(number: number): Promise<SaleForReturn | nul
     const c = cards.find((x) => x.id === t.cardId);
     return c ? [{ number: c.number, kind: c.kind as "gift" | "credit", amountCents: t.amountCents }] : [];
   });
-  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines: skipped.repair, skippedCardLines: skipped.card, skippedBookingLines: skipped.booking, skippedUnitLines: skipped.unit, cardsPaid };
+  return { id: sale.id, number: sale.number, taxRatePct: sale.taxRatePct, customer: sale.customer ? hitOf(sale.customer) : null, lines, skippedRepairLines: skipped.repair, skippedCardLines: skipped.card, skippedBookingLines: skipped.booking, skippedUnitLines: skipped.unit, skippedLayawayLines: skipped.layaway, skippedHeldLines: skipped.held, cardsPaid };
 }
 
 /** `taxExemptId`: the certificate number when the customer is tax exempt now (null: not; absent: not looked up yet). */

@@ -30,8 +30,14 @@ import { TicketEstimateSlot } from "@/components/slots/ticket-estimate";
 import { TicketWaitsSlot } from "@/components/slots/ticket-waits";
 import { TicketNoticesSlot } from "@/components/slots/ticket-notices";
 import { TicketAssistantSlot } from "@/components/slots/ticket-assistant";
+import { PickupSheetSlot } from "@/components/slots/pickup-sheet";
+import { TicketLoanerSlot } from "@/components/slots/ticket-loaner";
 import { ManualsAsk } from "@/components/assistant/manuals-ask";
-import { UnitBadge } from "@/components/vac/unit-badge";
+import { UnitBadge } from "@/components/units/unit-badge";
+import { coverLine } from "@/actions/units";
+import { claimLine } from "@/actions/warranty-claims";
+import { CLAIM_LABEL, ticketClaims } from "@/lib/warranty-claims";
+import { machinePlansFor } from "@/lib/units/plans";
 import { exemptCertificate } from "@/lib/tax-exempt";
 import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
@@ -83,6 +89,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   // that came in before the module ended can be finished; otherwise only closing it out is left).
   const kind = await kindOf(user.shopId, m);
   const canWork = await canWorkOn(user.shopId, m.equipment, { intakeAt: t.intakeAt, status: t.status });
+  // Service plans on the machine the day it came in: a line can be marked covered by one (tax-machine-sales-layaway-design.md section 3).
+  const allPlans = await machinePlansFor(user.shopId, m.id, tz, t.intakeAt);
+  const plans = allPlans.filter((p) => p.current);
+  const planName = new Map(allPlans.map((p) => [p.id, p.name]));
+  // Warranty claims to the maker (shop-features-round-2-design.md 9.1): a claimed line charges nothing.
+  const claims = new Map((await ticketClaims(user.shopId, t.id)).map((c) => [c.id, c]));
   const isSite = t.jobType === "SITE";
   const exemptNow = Boolean(exemptCertificate(t.customer) ?? exemptCertificate(t.viaAccount));
   // Came in through a partner sewing shop (StitchShop)?
@@ -160,7 +172,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </>
         }
       />
-      {m.equipment === "VACUUM" && <UnitBadge machineId={m.id} user={user} />}
+      <UnitBadge machineId={m.id} user={user} at={t.intakeAt} />
 
       {!canWork &&
         (blocked ? (
@@ -189,7 +201,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <ActionForm action={saveNoteForShop.bind(null, t.id)} className="flex flex-wrap items-end gap-2" success="The shop will see it">
             <div className="field min-w-64 flex-1">
               <label htmlFor="repairNote" className="label">
-                Note for {jobLink?.partnerName ?? "the shop"} (what it needs, what it&apos;ll cost, when it&apos;s back)
+                Note for {jobLink?.partnerName ?? "the shop"}{" "}(what it needs, what it&apos;ll cost, when it&apos;s back)
               </label>
               <input id="repairNote" name="repairNote" defaultValue={job.repairNote ?? ""} className="input" />
             </div>
@@ -204,6 +216,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
           <TicketEstimateSlot ticketId={t.id} user={user} />
           <TicketWaitsSlot ticketId={t.id} user={user} canWork={canWork} />
+          <TicketLoanerSlot ticketId={t.id} user={user} />
           <Section title="Status and work">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <StatusSelect
@@ -320,6 +333,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </Section>
 
           <TicketAssistantSlot ticketId={t.id} user={user} canWork={canWork} partnerJob={job?.side === "repair"} />
+          <PickupSheetSlot ticketId={t.id} user={user} canWork={canWork} noun={kind.noun} />
           <ManualsAsk user={user} brand={m.brand} model={m.model} ticketId={t.id} />
 
           <Section title={isSite ? "Install checklist" : "Service checklist"}>
@@ -437,6 +451,41 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                         <td>
                           <span className="label mr-2">{LINE_LABEL[l.kind]}</span>
                           {l.description}
+                          {l.coveredPlanId && (
+                            <span className="muted block text-xs">
+                              Covered by {planName.get(l.coveredPlanId) ?? "the service plan"} (would have been {money(l.coveredCents ?? 0)} each)
+                              {canWork && (
+                                <ActionButton action={coverLine.bind(null, l.id, null)} className="link ml-2 text-xs">
+                                  Charge it instead
+                                </ActionButton>
+                              )}
+                            </span>
+                          )}
+                          {l.claimId && (
+                            <span className="muted block text-xs">
+                              Claimed from the maker:{" "}
+                              <Link href={`/paperwork/warranty/${l.claimId}`} className="link">
+                                claim #{claims.get(l.claimId)?.number} to {claims.get(l.claimId)?.maker} ({(CLAIM_LABEL[claims.get(l.claimId)?.status ?? ""] ?? "").toLowerCase()})
+                              </Link>{" "}
+                              (would have been {money(l.coveredCents ?? 0)} each)
+                              {canWork && claims.get(l.claimId)?.status === "OPEN" && (
+                                <ActionButton action={claimLine.bind(null, t.id, l.id, false)} className="link ml-2 text-xs">
+                                  Charge it instead
+                                </ActionButton>
+                              )}
+                            </span>
+                          )}
+                          {!l.coveredPlanId && !l.claimId && canWork && l.kind !== "DISCOUNT" && l.kind !== "FEE" && l.unitPriceCents > 0 && (
+                            <ActionButton action={claimLine.bind(null, t.id, l.id, true)} className="btn btn-sm no-print ml-2">
+                              Claim it from the maker
+                            </ActionButton>
+                          )}
+                          {!l.coveredPlanId && !l.claimId && canWork && l.kind !== "DISCOUNT" && l.kind !== "FEE" && l.unitPriceCents > 0 &&
+                            plans.map((p) => (
+                              <ActionButton key={p.id} action={coverLine.bind(null, l.id, p.id)} className="btn btn-sm no-print ml-2">
+                                Covered by {p.name}
+                              </ActionButton>
+                            ))}
                         </td>
                         <td className="num text-right">{l.qty}</td>
                         <td className="num text-right">{money(l.unitPriceCents)}</td>

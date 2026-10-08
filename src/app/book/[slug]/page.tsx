@@ -8,6 +8,9 @@ import { publicClasses, publicShop, publicTypes } from "@/lib/online-booking";
 import { allowPublic } from "@/lib/rate-limit";
 import { fmtWhen } from "@/lib/zoned";
 import { BookShell } from "@/components/book/shell";
+import { CustomerAnswers } from "@/components/book/customer-answers";
+import { assistantAvailable } from "@/lib/assistant/client";
+import { answersShop, typedToday } from "@/lib/customer-answers";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Book online", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -17,10 +20,15 @@ export default async function BookHome({ params }: { params: Promise<{ slug: str
   if (!allowPublic(await headers(), "book-page", 120, 60_000)) return <main className="p-6">Too many requests. Please wait a minute.</main>;
   const shop = await publicShop(slug);
   if (!shop) return <main className="mx-auto max-w-xl p-6 text-base">There&apos;s no booking page at this address.</main>;
+  // Customer answers (shop-features-round-2-design.md 5.6): when the shop turned them on; typed questions while the
+  // Assistant can take them and today's cap isn't reached.
+  const answers = await answersShop(slug);
+  const typed = !!answers?.on && (await assistantAvailable(answers.id, { group: "customers" })).ok && (await typedToday(answers)) < answers.cap;
   if (!shop.open) {
     return (
       <BookShell shop={shop}>
         <p className="card card-pad">Online booking isn&apos;t available right now. {shop.phone ? `Call us at ${shop.phone}.` : "Please call the shop."}</p>
+        {answers?.on && <CustomerAnswers slug={shop.slug} typed={typed} bookAnchor={null} />}
       </BookShell>
     );
   }
@@ -28,8 +36,9 @@ export default async function BookHome({ params }: { params: Promise<{ slug: str
   return (
     <BookShell shop={shop} slug={shop.slug}>
       {shop.welcome && <p className="whitespace-pre-wrap">{shop.welcome}</p>}
+      {answers?.on && <CustomerAnswers slug={shop.slug} typed={typed} bookAnchor={types.length ? "#book-a-time" : null} />}
       {types.length > 0 && (
-        <section className="space-y-2">
+        <section className="space-y-2" id="book-a-time">
           <h1 className="h2">Book a time</h1>
           <ul className="space-y-2">
             {types.map((t) => (

@@ -111,7 +111,7 @@ test("the finder lists the shop's own bag for the model, and the register's pick
   await page.goto("/parts");
   await page.getByLabel("Part number", { exact: true }).fill(pn);
   await page.getByLabel("Description", { exact: true }).fill("Hoover Type Y bags (3)");
-  await page.getByLabel("Fits models").fill("Hoover, UH70120");
+  await page.getByLabel("Fits (notes)").fill("Hoover, UH70120");
   await page.getByLabel("Cost each ($)").fill("4.00");
   await page.getByLabel("Price each ($, blank = cost + markup)").fill("12.99");
   await page.getByLabel("Quantity on hand").fill("6");
@@ -140,7 +140,7 @@ test("the finder lists the shop's own bag for the model, and the register's pick
 
 test("a unit is received, sold with a warranty, a trade-in taken, and the trade-in's sale voided", async ({ browser }) => {
   const page = await login(browser, owner);
-  await page.goto("/vac/units");
+  await page.goto("/units?kind=vacuum");
   await page.getByLabel("Brand", { exact: true }).fill("Miele");
   await page.getByLabel("Model", { exact: true }).fill("C3");
   await page.getByLabel("Type", { exact: true }).selectOption("Canister");
@@ -156,22 +156,23 @@ test("a unit is received, sold with a warranty, a trade-in taken, and the trade-
 
   // Sold to the customer: the receipt carries the warranty line.
   await pickCustomer(page, customerName);
-  await page.getByRole("button", { name: "Vacuum for sale" }).click();
+  await page.getByRole("button", { name: "Machine for sale" }).click();
   await page.getByRole("button", { name: "Look up" }).click();
   await page.getByRole("button", { name: "Add $499.00" }).click();
   await expect(page.getByRole("table", { name: "Sale" })).toContainText(`Miele C3 (New) S/N ${unitSerial}`);
   await completeSale(page);
   await page.getByRole("link", { name: "Print receipt" }).click();
   await expect(page.getByText(/warranty through .* from Miele\. Keep this receipt\./)).toBeVisible();
-  await page.goto("/vac/units?tab=sold");
+  await page.goto("/units?tab=sold");
   await expect(page.getByRole("row", { name: new RegExp(unitSerial) })).toContainText("Sold");
-  await page.goto("/vac/units?tab=register");
+  await page.goto("/units?tab=register");
   await expect(page.getByRole("row", { name: new RegExp(unitSerial) })).toContainText("to register");
 
   // A trade-in: credit, no tax, the vacuum in stock with no price; then its sale voided -> off sale.
   await pickCustomer(page, customerName);
   await page.getByRole("button", { name: "Trade-in" }).click();
   const trade = page.getByLabel("Trade-in", { exact: true });
+  await trade.getByLabel("What kind").selectOption("vacuum");
   await trade.getByLabel("Brand").fill("Kirby");
   await trade.getByLabel("Model").fill("G4");
   await trade.getByLabel("Serial").fill(`VT${RUN}`);
@@ -180,7 +181,7 @@ test("a unit is received, sold with a warranty, a trade-in taken, and the trade-
   await trade.getByRole("button", { name: "Add trade-in" }).click();
   await expect(page.getByRole("table", { name: "Sale" })).toContainText("Trade-in: Kirby G4");
   await completeSale(page, true);
-  await page.goto("/vac/units?tab=stock");
+  await page.goto("/units?tab=stock");
   const kirby = page.getByRole("row", { name: /Kirby G4/ });
   await expect(kirby).toContainText("none");
   await page.getByRole("link", { name: "Kirby G4" }).click();
@@ -188,6 +189,7 @@ test("a unit is received, sold with a warranty, a trade-in taken, and the trade-
   await page.getByLabel("Void this sale (rung up by mistake)").fill("test");
   await page.getByRole("button", { name: "Void sale" }).click();
   await expect(page.getByText("Sale voided")).toBeVisible();
+  // The old Vac Shop address still lands on the list (moved to /units).
   await page.goto("/vac/units?tab=off");
   await expect(page.getByRole("row", { name: /Kirby G4/ })).toContainText("Off sale");
   await page.context().close();

@@ -9,7 +9,7 @@ import { IntakeForm } from "@/components/intake-form";
 
 export default async function NewRepair() {
   const user = await requireUser();
-  // "How should we tell them": required while Marketing is on and a channel is ready; hidden while Marketing is hidden.
+  // "How should we tell them": required while a channel is ready; hidden while Marketing is hidden (no messaging record).
   const [partners, needNotify, marketingGate, plate] = await Promise.all([
     db.partnerLink.findMany({ where: { shopId: user.shopId, side: "retail", status: "ACTIVE" }, orderBy: { partnerName: "asc" } }),
     needNotifyBy(user.shopId),

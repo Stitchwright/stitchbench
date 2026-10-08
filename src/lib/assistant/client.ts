@@ -17,7 +17,16 @@ import type { Built, Source } from "./prompts";
 /** ASSISTANT=off on a server stops every call (the MESSAGES=off pattern); the check scripts point the hub address at a stand-in instead. */
 export const assistantSwitchedOff = () => (process.env.ASSISTANT ?? "").toLowerCase() === "off";
 
-export type Availability = { ok: true } | { ok: false; why: "off" | "no-hub" | "offline" | "module" | "feature"; message: string };
+type GroupSwitches = { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn: boolean; partsOn: boolean; fabricOn: boolean; askOn: boolean; marketingOn: boolean; quiltOn: boolean; customerOn: boolean; stockOn: boolean };
+
+/** A group's switch; no settings row: every group on except customer answers (off until the shop turns it on). */
+export function groupOn(s: GroupSwitches | null, g: FeatureGroup): boolean {
+  if (!s) return g !== "customers";
+  const map: Record<FeatureGroup, boolean> = { draft: s.draftOn, causes: s.causesOn, plate: s.plateOn, manuals: s.manualsOn, parts: s.partsOn, fabric: s.fabricOn, ask: s.askOn, marketing: s.marketingOn, quilt: s.quiltOn, customers: s.customerOn, stock: s.stockOn };
+  return map[g];
+}
+
+export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "offline" | "module" | "feature"; message: string };
 
 /**
  * Whether an "Ask" button works now: the hub is joined and was reachable at the last call (the layout's offline pill
@@ -29,7 +38,7 @@ export async function assistantAvailable(shopId: string, o: { module?: boolean; 
   if (o.module !== false && !(await hasModule(shopId, "assistant"))) return { ok: false, why: "module", message: "The Assistant isn't turned on for this company." };
   if (o.group) {
     const s = await db.assistantSettings.findUnique({ where: { shopId } });
-    const on = !s ? true : o.group === "draft" ? s.draftOn : o.group === "causes" ? s.causesOn : o.group === "manuals" ? s.manualsOn : o.group === "parts" ? s.partsOn : o.group === "fabric" ? s.fabricOn : s.plateOn;
+    const on = groupOn(s, o.group);
     if (!on) return { ok: false, why: "feature", message: "This part of the Assistant is switched off in Settings → Assistant." };
   }
   if (!(await hubJoined())) return { ok: false, why: "no-hub", message: OFFLINE_MESSAGE };
@@ -44,7 +53,7 @@ export async function assistantKeyText(shopId: string): Promise<string | null> {
   return (await db.license.findUnique({ where: { shopId_keyId: { shopId, keyId: s.keyId } }, select: { key: true } }))?.key ?? null;
 }
 
-export type CallTarget = { ticketId?: string; repairJobId?: string; machineId?: string; partId?: string };
+export type CallTarget = { ticketId?: string; repairJobId?: string; machineId?: string; partId?: string; purchaseOrderId?: string };
 export type Photo = { mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string }; // data: base64
 
 type HubAnswer = {
@@ -159,7 +168,7 @@ export async function runAssistant(o: {
   if (answer.month && typeof answer.calls === "number") {
     await db.shop.update({ where: { id: shopId }, data: { assistantMonth: answer.month, assistantCalls: answer.calls, ...(typeof answer.limit === "number" ? { assistantLimit: answer.limit } : {}) } }).catch(() => {});
   }
-  return { row, text: answer.text, free: answer.free === true };
+  return { row, text: answer.text, free: answer.free === true, stopReason: answer.stopReason ?? null };
 }
 
 /** A refusal for the month's allowance: the local count follows the hub's (the Settings page shows it offline). */

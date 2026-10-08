@@ -118,6 +118,15 @@ export function addMonths(ymd: string, n: number): string | null {
   return ymdText(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
 }
 
+/** The same day n months on, or the last day of that month when it is shorter (Jan 31 + 1 month = Feb 28). */
+export function monthsOn(ymd: string, n: number): string {
+  const exact = addMonths(ymd, n);
+  if (exact) return exact;
+  const { y, m } = ymdParts(ymd);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0));
+  return ymdText(last.getUTCFullYear(), last.getUTCMonth() + 1, last.getUTCDate());
+}
+
 /** Which weekday of the month a date is ("3rd Saturday"); `last` when the next such weekday falls in another month. */
 export function nthWeekdayOf(ymd: string): { n: number; weekday: number; last: boolean } {
   const { y, m, d } = ymdParts(ymd);

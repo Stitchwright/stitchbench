@@ -21,10 +21,10 @@ import { joinCommunityHub, leaveCommunityHub, syncCommunityHub } from "@/actions
 import { setTechsOfferManuals } from "@/actions/manual-repository";
 import { InviteInput } from "@/components/invite-input";
 import { saveCompanyMode } from "@/actions/partners";
-import { gateFor } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
 import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
 import { MoveSection } from "./move-section";
+import { activeStores } from "@/lib/stores";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -170,6 +170,7 @@ export default async function SettingsPage() {
     db.stockUnit.count({ where: { shopId: user.shopId } }),
   ]);
   const checklist = shop.checklistItems?.length ? shop.checklistItems : DEFAULT_CHECKLIST;
+  const openStores = await activeStores(user.shopId);
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
   // The paid modules; the program's own key is Settings → Account's.
   const moduleLines = PAID_MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
@@ -191,9 +192,9 @@ export default async function SettingsPage() {
   const otherKindsUsable = kinds.usable.some((k) => k.key !== "sewing");
   const kindsWithoutMenu = kinds.usable.filter((k) => k.key !== "sewing" && !usedKinds.has(k.key));
   const showVacExport = modules.states.vac.status !== "off" || stockUnits > 0;
-  // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins while Marketing isn't hidden.
-  const messagesGate = admin ? await gateFor(user.shopId, "marketing") : "hidden";
-  const messaging = messagesGate !== "hidden" ? await messagingView(user.shopId) : null;
+  // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins. In the base since 7 Oct 2026
+  // (pricing-review-2026-10.md): the ready, parts-in and estimate messages go out through this setup without Marketing.
+  const messaging = admin ? await messagingView(user.shopId) : null;
   // The Solo plan's two logins (src/lib/plan.ts): a notice for the people who manage People, never a lock.
   const logins = admin ? await loginNotice(user.shopId) : null;
 
@@ -235,6 +236,16 @@ export default async function SettingsPage() {
             </ActionForm>
           </Section>
           <div className="mt-6">
+            <Section title="Stores" id="stores">
+              <p className="text-sm">
+                {openStores.length > 1 ? `${openStores.length} stores: ${openStores.map((s) => s.name).join(", ")}.` : "One store."}{" "}
+                <Link href="/settings/stores" className="link">
+                  {openStores.length > 1 ? "Stores, who works where, limits" : "Opening another store? Add it here"}
+                </Link>
+              </p>
+            </Section>
+          </div>
+          <div className="mt-6">
             <MoveSection user={user} timeZone={shop.timeZone} />
           </div>
         </div>
@@ -259,6 +270,15 @@ export default async function SettingsPage() {
               Online booking (Scheduling)
             </Link>
           </div>
+          <div>
+            <Link href="/settings/customer-questions" className="link">
+              Customer questions on your booking page
+            </Link>{" "}
+            ·{" "}
+            <Link href="/customer-questions" className="link">
+              Questions waiting
+            </Link>
+          </div>
           {modules.states.assistant.status !== "off" && (
             <div>
               <Link href="/settings/assistant" className="link">
@@ -266,10 +286,29 @@ export default async function SettingsPage() {
               </Link>
             </div>
           )}
+          <div>
+            <Link href="/settings/care-tips" className="link">
+              Care tips for the pickup sheet
+            </Link>
+          </div>
           {shop.sellsRetail && (
             <div>
               <Link href="/settings/shop" className="link">
                 Online shop (hosted)
+              </Link>
+            </div>
+          )}
+          {shop.sellsRetail && admin && (
+            <div>
+              <Link href="/settings/card-reader" className="link">
+                Card reader at the counter (Stripe)
+              </Link>
+            </div>
+          )}
+          {shop.sellsRetail && admin && (
+            <div>
+              <Link href="/settings/shipping" className="link">
+                Shipping labels (Shippo)
               </Link>
             </div>
           )}
@@ -297,6 +336,18 @@ export default async function SettingsPage() {
         </Section>
       )}
 
+      {admin && shop.sellsRetail && (
+        <Section title="Selling">
+          <p className="muted mb-2 text-sm">Sales tax holidays, layaway (deposit, payments, cancelling), your service plans (free cleanings, extended warranty) and each maker&apos;s warranty as you want it shown.</p>
+          <Link href="/settings/sales" className="btn btn-sm">
+            Tax holidays, layaway, plans and warranties
+          </Link>{" "}
+          <Link href="/settings/prices" className="btn btn-sm">
+            Prices and members
+          </Link>
+        </Section>
+      )}
+
       {admin && (
         <Section title="Bookkeeping">
           <p className="muted mb-2 text-sm">The account names your bookkeeper uses, for the daily journal export to QuickBooks (Reports, Bookkeeping).</p>
@@ -320,6 +371,15 @@ export default async function SettingsPage() {
           <p className="muted mb-2 text-sm">Who changed money, prices, stock and people, and when. It can&apos;t be edited or deleted.</p>
           <Link href="/settings/audit" className="btn btn-sm">
             Open the audit log
+          </Link>
+        </Section>
+      )}
+
+      {admin && (
+        <Section title="Switching from another system">
+          <p className="muted mb-2 text-sm">Bring your items, customers and gift card balances from Square, Rain or Like Sew, or QuickBooks Point of Sale.</p>
+          <Link href="/settings/switch" className="btn btn-sm">
+            Bring them in
           </Link>
         </Section>
       )}
@@ -354,7 +414,7 @@ export default async function SettingsPage() {
             {showVacExport && (
               // eslint-disable-next-line @next/next/no-html-link-for-pages
               <a href="/api/export/vac-units" className="btn btn-sm">
-                Vacuums for sale
+                Machines for sale
               </a>
             )}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}

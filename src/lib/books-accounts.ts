@@ -16,6 +16,12 @@ export const ACCOUNT_KEYS = [
   { key: "dueFromPartners", label: "Collected for us by a partner shop", def: "Due from Partner Shops" },
   { key: "dueToPartners", label: "Partner repair bills taken at the counter", def: "Due to Partner Shops" },
   { key: "tradeIns", label: "Trade-in credit given", def: "Trade-in Purchases" },
+  { key: "customerDeposits", label: "Money held for customers (layaway payments, special order deposits)", def: "Customer Deposits" },
+  { key: "lenderReceivable", label: "Owed by lenders (financed sales not paid yet)", def: "Due from Lenders" },
+  { key: "makerReceivable", label: "Owed by makers (warranty claims sent, not paid yet)", def: "Due from Manufacturers" },
+  { key: "warrantyIncome", label: "Warranty work the makers pay for", def: "Warranty Claims Income" },
+  { key: "consignorLiability", label: "Owed to consignors (their machines sold, not paid out yet)", def: "Due to Consignors" },
+  { key: "coopIncome", label: "Co-op advertising and rebates paid by makers", def: "Co-op and Rebates Received" },
 ] as const;
 
 export type AccountKey = (typeof ACCOUNT_KEYS)[number]["key"];

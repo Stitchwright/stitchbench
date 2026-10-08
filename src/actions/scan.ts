@@ -12,6 +12,8 @@ import { blockedMessage } from "@/lib/module-info";
 import { MAX_STOCK, codeKeys, countStock, numberKey } from "@/lib/parts";
 import { withDisclosure } from "@/lib/part-labels";
 import { assertId, sameText } from "@/lib/input";
+import { currentStore } from "@/lib/stores";
+import { moveStock, storeQty } from "@/lib/stock";
 
 export type ScannedPart = {
   id: string;
@@ -75,11 +77,13 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
       throw e;
     }
   }
+  // Received or used at this device's store (7.2); "now" counts that store's shelf.
+  const here = await currentStore(user);
   if (mode === "receive") {
-    const [p] = await db.$transaction([
-      db.part.update({ where: { id: part.id }, data: { qtyOnHand: { increment: n } } }),
-      db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: n, reason: "RECEIVED", userId: user.id, note: "Scanned in" } }),
-    ]);
+    const p = await db.$transaction(async (tx) => {
+      await moveStock(tx, { shopId: user.shopId, partId: part.id, locationId: here?.id ?? null, qty: n, reason: "RECEIVED", userId: user.id, note: "Scanned in" });
+      return { ...(await tx.part.findUniqueOrThrow({ where: { id: part.id } })), qtyOnHand: await storeQty(tx, user.shopId, part.id, here?.id ?? null) };
+    });
     revalidatePath("/parts", "layout");
     return { ok: true, part: view(p), message: `+${n} received: ${part.partNumber} (now ${p.qtyOnHand})` };
   }
@@ -98,16 +102,18 @@ export async function scanCode(code: string, mode: "lookup" | "receive" | "ticke
     }
     // Never below 0, even for an item saved before prices were checked: a line can't lower the ticket's total.
     const unit = Math.max(0, part.priceCents ?? Math.round((part.costCents ?? 0) * (1 + t.shop.partsMarkupPct / 100)));
-    const [, p] = await db.$transaction([
-      db.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty: n, unitPriceCents: unit, partId: part.id } }),
-      db.part.update({ where: { id: part.id }, data: { qtyOnHand: { decrement: n } } }),
-      db.stockMove.create({ data: { shopId: user.shopId, partId: part.id, qty: -n, reason: "USED", ticketId: t.id, userId: user.id } }),
-    ]);
+    const p = await db.$transaction(async (tx) => {
+      await tx.ticketLine.create({ data: { ticketId: t.id, kind: "PART", description: withDisclosure(`${part.partNumber} ${part.description}`, part), qty: n, unitPriceCents: unit, partId: part.id } });
+      // Off the shelf of the ticket's store.
+      await moveStock(tx, { shopId: user.shopId, partId: part.id, locationId: t.locationId, qty: -n, reason: "USED", ticketId: t.id, userId: user.id });
+      return { ...(await tx.part.findUniqueOrThrow({ where: { id: part.id } })), qtyOnHand: await storeQty(tx, user.shopId, part.id, t.locationId) };
+    });
     revalidatePath(`/tickets/${t.id}`);
     revalidatePath("/parts", "layout");
     return { ok: true, part: view(p), message: `${n} × ${part.partNumber} added to ticket #${String(t.number).padStart(4, "0")} (${p.qtyOnHand} left)` };
   }
-  return { ok: true, part: view(part), message: `${part.partNumber}: ${part.qtyOnHand} on hand${part.location ? `, bin ${part.location}` : ""}` };
+  const hereQty = await storeQty(db, user.shopId, part.id, here?.id ?? null);
+  return { ok: true, part: view({ ...part, qtyOnHand: hereQty }), message: `${part.partNumber}: ${hereQty} on hand${part.location ? `, bin ${part.location}` : ""}` };
 }
 
 /** A shelf count done by scanning: set each counted part to what was scanned. */
@@ -126,12 +132,14 @@ export async function saveCounts(counts: { partId: string; qty: number }[]): Pro
     return { error: `A count is out of range (0 to ${MAX_STOCK.toLocaleString("en-US")}): nothing was saved.` };
   }
   let saved = 0;
+  // The shelf counted is this device's store's (7.2).
+  const here = await currentStore(user);
   for (const c of list) {
     if (typeof c?.partId !== "string" || !c.partId) continue;
     const p = await db.part.findFirst({ where: { id: c.partId, shopId: user.shopId }, select: { id: true, unit: true, consignLinkId: true } });
     // Fabric isn't counted by scanning bolts, and a partner's consigned stock is counted by the partner.
     if (!p || p.unit === "yd" || p.consignLinkId) continue;
-    if (await countStock(user.shopId, p.id, Math.round(c.qty), user.id, "Scanned shelf count")) saved++;
+    if (await countStock(user.shopId, p.id, Math.round(c.qty), user.id, "Scanned shelf count", here?.id ?? null)) saved++;
   }
   revalidatePath("/parts", "layout");
   return { saved };

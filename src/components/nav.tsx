@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Stamp,
   LayoutDashboard,
   ClipboardList,
   Cog,
@@ -33,14 +34,22 @@ import {
   type LucideIcon,
   Scissors,
   Ruler,
+  Tag,
+  Printer,
+  FileCheck,
+  Sun,
+  ArrowLeftRight,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
 // module: a paid module's item, shown while the module is on (or read-only with a lock once it has ended), hidden otherwise.
-type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean };
+// stores: only with more than one store (shop-features-round-2-design.md section 7).
+type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean; hop?: boolean; stores?: boolean };
 
 // repair: shown to repair benches; retail: to shops with a counter; partners: to shops with partner shops. Unmarked: everyone.
 const items: Item[] = [
+  // Every store's day on one page, made for the owner's phone (7.5).
+  { href: "/today", label: "Today", icon: Sun, stores: true },
   { href: "/register", label: "Register", icon: ShoppingCart, retail: true },
   { href: "/", label: "Dashboard", icon: LayoutDashboard, repair: true },
   { href: "/tickets", label: "Tickets", icon: ClipboardList, repair: true },
@@ -48,7 +57,11 @@ const items: Item[] = [
   { href: "/invoices", label: "Invoices", icon: FileText, repair: true },
   { href: "/machines", label: "Machines", icon: Cog, repair: true },
   // Vac Shop: whatever doesRepair and sellsRetail say (a StitchShop counter can sell vacuums too).
+  // Machines for sale (tax-machine-sales-layaway-design.md section 3): every shop with a counter.
+  { href: "/units", label: "Machines for sale", icon: Tag, retail: true },
   { href: "/vac", label: "Vac Shop", icon: Fan, module: "vac" },
+  // Maker Shop (shop-features-round-2-design.md section 6): supplies due, maker-space time, print and cut jobs.
+  { href: "/maker", label: "Maker Shop", icon: Printer, module: "maker" },
   { href: "/customers", label: "Customers", icon: Users },
   // Scheduling: the calendar (its Staff tab is the staff schedule) for every company; classes need a counter.
   { href: "/calendar", label: "Calendar", icon: CalendarDays, module: "scheduling" },
@@ -56,6 +69,8 @@ const items: Item[] = [
   // Marketing: the outbox (Campaigns is its tab), with a badge of customer replies nobody has looked at.
   { href: "/messages", label: "Messages", icon: Send, module: "marketing" },
   { href: "/parts", label: "Parts", icon: Package },
+  // Stock sent between stores and asked for (7.2, 7.7).
+  { href: "/parts/transfers", label: "Between stores", icon: ArrowLeftRight, stores: true },
   { href: "/fabric", label: "Fabric", icon: Scissors, retail: true },
   { href: "/longarm", label: "Longarm", icon: Ruler, retail: true },
   { href: "/partners", label: "Partner shops", icon: Handshake },
@@ -69,6 +84,10 @@ const items: Item[] = [
   { href: "/sales", label: "Sales log", icon: Receipt, repair: true },
   { href: "/register/sales", label: "Register sales", icon: Receipt, retail: true },
   { href: "/register/online", label: "Online orders", icon: Globe, retail: true },
+  // Shop hops (shop-features-round-2-design.md 4.6): only once the shop turns them on.
+  { href: "/hops", label: "Shop hop", icon: Stamp, retail: true, hop: true },
+  { href: "/special-orders", label: "Special orders", icon: ClipboardList, retail: true },
+  { href: "/paperwork", label: "Paperwork", icon: FileCheck },
   { href: "/reports", label: "Reports", icon: BarChart3, admin: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -84,6 +103,8 @@ export function Nav({
   gates,
   badges,
   pausePill,
+  hopOn = false,
+  multiStore = false,
 }: {
   platformAdmin?: boolean;
   chatUrl?: string | null;
@@ -97,11 +118,17 @@ export function Nav({
   badges?: Partial<Record<string, number>>;
   /** A warning under the items ("Texts paused: fix in Settings"), or nothing. */
   pausePill?: string | null;
+  /** Shop hops are on (Settings, Selling). */
+  hopOn?: boolean;
+  /** The company has more than one open store. */
+  multiStore?: boolean;
 }) {
   const path = usePathname();
   const shown = items
     .filter((i) => (!i.repair && !i.retail) || (i.repair && doesRepair) || (i.retail && sellsRetail && (!i.partners || retailPartners)))
     .filter((i) => !i.admin || showReports)
+    .filter((i) => !i.hop || hopOn)
+    .filter((i) => !i.stores || multiStore)
     .filter((i) => !i.module || (gates?.[i.module] ?? "hidden") !== "hidden")
     // A shop that sells (retail, or retail and repair) calls its stock Inventory; a repair-only shop calls it Parts.
     .map((i) => (i.href === "/parts" && sellsRetail ? { ...i, label: "Inventory" } : i));

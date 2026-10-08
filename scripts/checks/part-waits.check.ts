@@ -1,7 +1,8 @@
 // Parts a ticket is waiting for (online-and-parts-design.md section 1, package parts-in): recording a wait (a stocked
 // part by number or a description) moves the ticket to Waiting on parts; receiving queues one parts_in message per
 // ticket naming every part received together, marks only queued waits as noticed, and puts the ticket back on the
-// bench when asked and nothing else is on order; without Marketing nothing is sent; reopen within the hour cancels
+// bench when asked and nothing else is on order; without Marketing it is still sent once email or texts are on (in
+// the base since 7 Oct 2026), and nothing is sent while neither is; reopen within the hour cancels
 // the queued message; cancel; the worker's still-wanted reasons; the tenant section.
 //   npm run check scripts/checks/part-waits.check.ts
 import "dotenv/config";
@@ -150,17 +151,24 @@ async function main() {
     assert.equal(await status(t2.id), "ON_BENCH");
     ok("a customer with no address: the wait is received, only a SKIPPED row is left, the words say to call, the ticket still goes back on the bench");
 
-    // 5. Without Marketing: recorded and received, nothing sent, "call them".
+    // 5. Without Marketing and nothing set up: recorded and received, nothing sent, "call them".
     const pc = await db.customer.create({ data: { shopId: plain.shopId, name: "Plain Pat", email: "pat@example.test", notifyBy: "email" } });
     const t3 = await ticket(plain.shopId, pc.id);
     const w4 = await addWaitFor(user(plain), t3.id, form({ description: "Motor brushes", markWaiting: "on" }));
     assert.equal(await status(t3.id), "WAITING_PARTS");
     const r4 = await receiveWaitsFor(user(plain), [w4], form({ backOnBench: "on" }));
     assert.equal(r4.queued, false);
-    assert.match(r4.words, /Marketing is off, so nothing was sent/);
+    assert.match(r4.words, /email and texts aren't set up, so nothing was sent/);
     assert.equal(await db.outMessage.count({ where: { shopId: plain.shopId } }), 0);
     assert.equal(await status(t3.id), "ON_BENCH");
-    ok("without Marketing: the wait list works, nothing is sent, the words say to call");
+    // ... and once email is set up, the parts-in notice goes without Marketing (base).
+    await messagingFor(plain.shopId, { email: true });
+    const t3b = await ticket(plain.shopId, pc.id);
+    const w4b = await addWaitFor(user(plain), t3b.id, form({ description: "Feed dogs", markWaiting: "on" }));
+    const r4b = await receiveWaitsFor(user(plain), [w4b], form({}));
+    assert.equal(r4b.queued, true, r4b.words);
+    assert.equal((await messages(plain.shopId, t3b.id)).length, 1, "one parts_in row without Marketing");
+    ok("without Marketing: the wait list works; nothing set up -> nothing is sent and the words say to call; email set up -> the parts-in notice goes");
 
     // 6. Cancel: closed with the reason; the status is left alone.
     const t4 = await ticket(a.shopId, cust.id, "WAITING_PARTS");

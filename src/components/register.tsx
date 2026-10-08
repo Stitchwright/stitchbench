@@ -28,13 +28,33 @@ import { GIFT_MAX_CENTS, GIFT_MIN_CENTS, looksLikeGiftCard, type Issued } from "
 import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
 import { InsecureNotice } from "@/components/secure-page";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
-import { VacUnitTools } from "@/components/vac/unit-tools";
+import { ColorFinder } from "@/components/color-finder";
+import { RegisterGiftLists, type GiftListPick } from "@/components/register-gift-lists";
+import { RegisterCardReader, type ReaderSetup } from "@/components/register-card-reader";
+import { ThreadPhotoMatch } from "@/components/thread-photo-match";
+import { CustomerFits, GoesWith, StarterBundles } from "@/components/register-fits";
+import { SoftwareLineFields } from "@/components/software-line";
+import type { SoftwareLineInput } from "@/lib/software";
+import { UnitTools, type TradeKind } from "@/components/units/unit-tools";
+import { LayawayPanel, type LayawayDefaults } from "@/components/layaway-panel";
+import { SpecialOrderPanel, type SpecialOrderDefaults } from "@/components/special-order-panel";
+import { CustomerExtrasLines, useCustomerExtras, type ExtraLine } from "@/components/register-extras";
+import type { RuleCtx, YardBreak } from "@/lib/price-rules";
+import { priceLine, type PricingCtx } from "@/lib/line-pricing";
+import { holidayDays, type Holiday } from "@/lib/tax-holiday-math";
+import { priceBeforeTax, type Promo } from "@/lib/promo-math";
+import { RegisterApproval, overLimit, type ApprovalDraft, type ApprovalNeed } from "@/components/register-approval";
+import { bringItHere } from "@/actions/transfers";
+import { runAction } from "@/components/action-form";
+
+const NO_PROMOS: Promo[] = [];
+const NO_BREAKS: YardBreak[] = [];
 import { money, toCents } from "@/lib/format";
 import { parseScanCode } from "@/lib/scan-codes";
 import { receiptStands } from "@/lib/sale-return";
 import { nameOrPhone } from "@/lib/phone";
 import { discountBase, inEighths, lineNet, qtyText, roundCents, saleTotals, tenderProblem, TENDER_LABEL, TENDER_METHODS, type Tender, type TenderMethod } from "@/lib/register-math";
-import type { TradeInInput, VacCartLine } from "@/lib/vac/types";
+import type { PlanCart, TradeInInput, UnitCartLine } from "@/lib/units/types";
 
 type CartLine = {
   key: string;
@@ -57,10 +77,17 @@ type CartLine = {
   consigned?: boolean;
   /** "used", "compatible, not genuine Brother"...: the receipt says it after the description. */
   disclosure?: string;
-  /** Vac Shop: the customer's vacuum this supply is for; a vacuum sold from stock; a trade-in taken as credit. */
+  /** Vac Shop: the customer's vacuum this supply is for. Any shop: a machine sold from stock; a trade-in taken as credit; a service plan. */
   machineId?: string | null;
   stockUnitId?: string;
   tradeIn?: TradeInInput;
+  servicePlan?: PlanCart;
+  /** What the line is reported under (a part's kind, UNIT, CLASS...): a tax holiday covers some kinds only. */
+  kind?: string;
+  /** A tax holiday covers it but the cashier charges the tax anyway. */
+  taxAnyway?: boolean;
+  /** The item's or machine's brand: a promotion may cover a brand. */
+  brand?: string | null;
   /** A class seat or an appointment paid or refunded here (design 12.3): one each, priced by the server. */
   enrollmentId?: string;
   appointmentId?: string;
@@ -68,6 +95,28 @@ type CartLine = {
   giftCard?: { mode: "new" | "printed" | "load" | "cashout"; number?: string };
   /** The sale a scanned receipt brought this return line back from. */
   fromSale?: string;
+  /** Software (shop-features-round-2-design.md 2.5): its code, "later", the machine, a renewal, a return's reason. */
+  software?: SoftwareLineInput;
+  /** A special order picked up (shop-features-round-2-design.md 1.2): its item at the order's price, and what was paid coming off. */
+  specialOrderId?: string;
+  depositUsed?: boolean;
+  /** The item's wholesale price (a Wholesale group sells at it), and the cashier took the customer's price rule off this line. */
+  wholesaleCents?: number | null;
+  noRule?: boolean;
+  /** The item's own per-yard break (1.6). */
+  breakMinQty?: number | null;
+  breakPriceCents?: number | null;
+  /** A machine bought with a repair's trade-up credit (1.9): the ticket. */
+  tradeUpTicketId?: string;
+  /** Also listed on eBay, Etsy... (shop-features-round-2-design.md 9.7), and whether the cashier ticked it taken down. */
+  listedOn?: string[];
+  delisted?: boolean;
+  /** From a customer's gift list (9.9): the list item it ticks off, and the list's name for the line. */
+  registryItemId?: string;
+  listName?: string;
+  /** "Ship it to her from there" (7.3): the other store it ships from. */
+  shipFromId?: string;
+  shipFromName?: string;
 };
 
 type NewCustomer = { name: string; phone: string; email: string; address: string };
@@ -76,10 +125,14 @@ const EMPTY_CUSTOMER: NewCustomer = { name: "", phone: "", email: "", address: "
 /** What a scanned receipt left out because it has its own way back (which settles the booking or the vacuum too). */
 function leftOut(s: SaleForReturn): string {
   const booking = s.skippedBookingLines ? " A class or appointment on it was left out: refund it with Classes & appointments while returning." : "";
-  const unit = s.skippedUnitLines ? " A vacuum or trade-in on it was left out: take a vacuum back with Return a vacuum; void the sale to undo a trade-in." : "";
-  return booking + unit;
+  const unit = s.skippedUnitLines ? " A machine, service plan or trade-in on it was left out: take a machine back with Return a machine; void the sale to undo a trade-in." : "";
+  const layaway = s.skippedLayawayLines ? " A layaway payment on it was left out: settle it on the layaway's page." : "";
+  const held = s.skippedHeldLines ? " A deposit, rent or loaner charge on it was left out: give it back on the special order, loaner or rental." : "";
+  return booking + unit + layaway + held;
 }
 
+/** A machine, or the last of an item, also listed elsewhere: ticked "taken down" before the sale (9.7). */
+const mustDelist = (l: CartLine) => !!l.listedOn?.length && l.qty > 0 && (!!l.stockUnitId || (l.onHand ?? 0) - l.qty < 1);
 const discountOf = (l: CartLine) => Math.round((Math.abs(roundCents(l.qty * l.unitPriceCents)) * l.discountPct) / 100);
 const newKey = () => Math.random().toString(36).slice(2);
 // Names a sale for the server, so one sent twice is made once. getRandomValues works on the shop's plain-http network.
@@ -101,9 +154,73 @@ function setFieldText(el: HTMLInputElement | HTMLTextAreaElement, text: string) 
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { taxRatePct: number; hasPartners: boolean; canSell: boolean; vac?: "on" | "readonly" | "off"; preload?: BookingDue | null }) {
+export function Register({
+  taxRatePct,
+  hasPartners,
+  canSell,
+  vac,
+  unitKinds,
+  layaway,
+  holiday,
+  lenders = [],
+  promotions = NO_PROMOS,
+  specialOrders = null,
+  yardBreaks = NO_BREAKS,
+  tradeInLessPct = 30,
+  preload,
+  preloadItems,
+  tradeNote,
+  sellers = [],
+  me = "",
+  houseAccounts = false,
+  cardReader = null,
+  threadPhoto = null,
+  store = null,
+}: {
+  taxRatePct: number;
+  hasPartners: boolean;
+  canSell: boolean;
+  vac?: "on" | "readonly" | "off";
+  /** Machines for sale: the kinds the shop may sell and take in trade now (empty: returns only); absent while it has no machines for sale or plans. */
+  unitKinds?: TradeKind[] | null;
+  /** The shop's layaway defaults and today (in its zone), for the Layaway button. */
+  layaway?: LayawayDefaults;
+  /** The sales tax holiday in force today, if any: the lines it covers carry no tax. */
+  holiday?: Holiday | null;
+  /** The lenders the shop offers financing through: the Financing payment button shows when there are any. */
+  lenders?: { id: string; name: string }[];
+  /** The promotions in force today (percent or amount off, the price including the tax). */
+  promotions?: Promo[];
+  /** Special orders (shop-features-round-2-design.md 1.2): the shop's default deposit; absent for a shop without a counter. */
+  specialOrders?: SpecialOrderDefaults | null;
+  /** The shop's per-yard breaks (shop-features-round-2-design.md 1.6). */
+  yardBreaks?: YardBreak[];
+  /** The trade-in rule (1.9): what the shop expects to sell it for, less this percent. */
+  tradeInLessPct?: number;
+  preload?: BookingDue | null;
+  /** Opened from the quilt planner's "Add all to the sale": each item with its quantity (yards for fabric). */
+  preloadItems?: { item: RegisterItem; qty: number }[];
+  /** The Assistant's trade-in condition note (shop-features-round-2-design.md 5.4), when it can be used here. */
+  tradeNote?: { unavailable?: string } | null;
+  /** Who can be picked as the seller (commissions, 9.7), and the person signed in (the default). */
+  sellers?: { id: string; name: string }[];
+  me?: string;
+  /** House accounts are on (9.4): "On account" is offered once a customer is picked (the server checks her account). */
+  houseAccounts?: boolean;
+  /** The shop's card readers (4.8), when the card reader is on: Card reader sends the amount to one. */
+  cardReader?: ReaderSetup | null;
+  /** The Assistant's thread match from a photo (9.10): shown with the Fabric and thread helpers on; unavailable says why it can't run now. */
+  threadPhoto?: { unavailable?: string } | null;
+  /**
+   * More than one store (shop-features-round-2-design.md 7.2, 7.3, 7.5): this store's name, its refund and discount
+   * limits, and whether special orders can be brought over. Null with one store: nothing about stores shows.
+   */
+  store?: { name: string; limits: { refundCents: number | null; discountPct: number | null } } | null;
+}) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [soldBy, setSoldBy] = useState(me);
+
   const [returnMode, setReturnMode] = useState(false);
   // The sale a scanned receipt brought back: a return-only cart gives the tax back at that sale's rate (the server does the
   // same), while every return line on it came from that receipt (receiptOf below).
@@ -147,6 +264,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const donePanel = useRef<HTMLDivElement>(null);
   // The gift card or store credit number for the next Gift card / Store credit payment, and the card last scanned.
   const [tenderCard, setTenderCard] = useState("");
+  // The Financing payment's lender and approval number, while it is being filled in.
+  const [fin, setFin] = useState<{ lenderId: string; approval: string } | null>(null);
   const [gcInfo, setGcInfo] = useState<GiftCardInfo | null>(null);
   const [gcPanel, setGcPanel] = useState<{ mode: "new" | "printed" | "load" | "cashout"; number: string; amount: string } | null>(null);
   const [misc, setMisc] = useState<{ description: string; price: string; taxable: boolean } | null>(null);
@@ -157,19 +276,64 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ id: string; number: number; change: number; cards: Issued[] } | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
+  // A "Coming soon" item picked in the search: the special order panel opens on it (a pre-order).
+  const [preorderItem, setPreorderItem] = useState<RegisterItem | null>(null);
+  // More than one store (7.3, 7.5): an item none here but at another store; bringing it over for her; where shipped
+  // lines go; a refund or discount waiting for its OK (and the OK it got).
+  const [elsewhereItem, setElsewhereItem] = useState<RegisterItem | null>(null);
+  const [bringFrom, setBringFrom] = useState<{ id: string; name: string } | null>(null);
+  const [shipTo, setShipTo] = useState("");
+  const [approvalAsk, setApprovalAsk] = useState<{ need: ApprovalNeed; draft: ApprovalDraft } | null>(null);
+  const approvalId = useRef<string | null>(null);
   const code = useRef<HTMLInputElement>(null);
   const last = useRef({ code: "", at: 0 });
   // The sale as last sent and the key it went with: sent again unchanged (after a lost answer), it keeps the key.
   const pending = useRef<{ key: string; sent: string } | null>(null);
 
   // A partner's repair bill is paid as billed, and a trade-in is credit: a whole-sale discount doesn't come off them.
-  const lines = useMemo(() => cart.map((l) => ({ ...l, discountCents: discountOf(l), discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard })), [cart]);
-  const base = discountBase(lines);
+  // A promotion in force today gives an item its best percent or amount off, a tax holiday takes the tax off the lines
+  // it covers, and a "price includes the tax" promotion backs the tax out of the price (the server applies the same rules
+  // when the sale is saved; only the discount typed here is sent).
+  // The chosen customer's extras (shop-features-round-2-design.md section 1): special orders waiting, her price group,
+  // lifetime discounts; the rules price the lines as the server will (src/lib/price-rules.ts).
+  const extras = useCustomerExtras(customer?.id ?? null);
+  // Her birthday offer, used on this sale (a percent off): one tap on her quiet line.
+  const [birthdayFor, setBirthdayFor] = useState<string | null>(null);
+  const birthdayOn = !!customer && birthdayFor === customer.id && extras?.birthday?.kind === "pct";
+  const ruleCtx = useMemo<RuleCtx>(
+    () => ({ group: extras?.group?.inForce ? extras.group : null, lifetime: extras?.lifetime ?? [], yardBreaks, birthdayPct: birthdayOn ? (extras?.birthday?.value ?? null) : null }),
+    [extras, yardBreaks, birthdayOn],
+  );
+  // Every line is a return from the scanned receipt: nothing is repriced (an exchange prices what is bought as usual).
+  const wholeReturn = !!returnOf && receiptStands(returnOf.id, cart) && cart.every((l) => l.qty < 0);
+  // Each line priced and taxed by the rules the server applies when the sale is saved (src/lib/line-pricing.ts).
+  const pricingCtx = useMemo<PricingCtx>(
+    () => ({ promos: wholeReturn ? [] : promotions, rules: wholeReturn ? null : ruleCtx, holidays: holiday ? [holiday] : [], ratePct, exempt: exemptOn, wholeReturn }),
+    [wholeReturn, promotions, ruleCtx, holiday, ratePct, exemptOn],
+  );
+  const lines = useMemo(
+    () =>
+      cart.map((l) => {
+        const manual = discountOf(l);
+        const start = { ...l, discountCents: manual, discountable: !l.repairJobId && !l.tradeIn && !l.enrollmentId && !l.appointmentId && !l.giftCard && !l.depositUsed };
+        // A repair's trade-up credit on a machine (the server works out the same).
+        const credit = l.tradeUpTicketId ? Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), extras?.tradeUps.find((t) => t.ticketId === l.tradeUpTicketId)?.amountCents ?? 0) : null;
+        // A return line from the scanned receipt comes back taxed as it was sold.
+        const p = priceLine(pricingCtx, { ...start, tradeUpCents: credit, asSold: start.qty < 0 && start.fromSale ? { taxable: start.taxable, taxNote: null } : null });
+        return { ...start, discountCents: p.discountCents, taxable: p.taxable, manualDiscountCents: manual, promo: p.promo?.name ?? null, rule: p.ruleLabel, taxIncluded: p.taxIncluded, holidayCovered: !!p.holidayId || p.holidayWaived };
+      }),
+    [cart, pricingCtx, extras],
+  );
+  // The totals count a tax-included line at its price before tax (the tax is added back on top).
+  const priced = lines.map((l) => (l.taxIncluded ? { ...l, unitPriceCents: priceBeforeTax(l.unitPriceCents, ratePct) } : l));
+  const base = discountBase(priced);
   const orderDiscountCents =
     orderDisc.value === "" ? 0 : orderDisc.kind === "%" ? Math.round((base * Math.min(100, Number(orderDisc.value) || 0)) / 100) : Math.min(base, toCents(orderDisc.value) ?? 0);
+  // The release keeps "tax as sold" only while every return line came from the scanned receipt (receiptOf); sales-features
+  // totals the tax-included lines at their price before tax (priced). Both: the receipt's rate over the priced lines.
   const receiptOf = returnOf && receiptStands(returnOf.id, cart) ? returnOf : null;
   const receiptRate = receiptOf && lines.every((l) => l.qty < 0) ? receiptOf.taxRatePct : null;
-  const t = saleTotals(lines, orderDiscountCents, receiptRate ?? ratePct, tenders);
+  const t = saleTotals(priced, orderDiscountCents, receiptRate ?? ratePct, tenders);
   const refund = t.total < 0;
   // Why the payments so far can't settle the sale (the server checks the same); it can't be completed until there is none.
   const problem = tenderProblem(t, tenders);
@@ -189,23 +353,29 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
   };
 
   /** An item scanned or picked, with the customer's vacuum it was bought for when the Vac Shop's picker found it. */
-  function addItem(it: RegisterItem, machineId: string | null = null) {
+  function addItem(it: RegisterItem, machineId: string | null = null, qtyIn?: number) {
     const sign = returnMode ? -1 : 1;
-    // A vacuum in stock is sold once, as one line of 1.
+    // A machine for sale is sold once, as one line of 1.
     if (it.stockUnitId) {
       if (cart.some((l) => l.stockUnitId === it.stockUnitId)) {
-        toast.warning("That vacuum is already on this sale.");
+        toast.warning("That machine is already on this sale.");
         return;
       }
       setDone(null);
-      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true }]);
+      setCart((c) => [...c, { key: newKey(), stockUnitId: it.stockUnitId!, description: it.description, unit: null, qty: 1, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, discountPct: 0, taxable: true, kind: "UNIT", brand: it.brand ?? null, listedOn: it.listedOn }]);
       return;
     }
     setDone(null);
+    // Software is one licence a line, each with its own code.
+    if (it.kind === "SOFTWARE") {
+      setCart((c) => [...c, { key: newKey(), partId: it.id, description: it.description, partNumber: it.partNumber, unit: null, kind: it.kind, brand: it.brand ?? null, qty: sign, unitPriceCents: it.priceCents ?? 0, priced: it.priceCents != null, onHand: it.qtyOnHand, discountPct: 0, taxable: true, software: {} }]);
+      if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
+      return;
+    }
     setCart((c) => {
       // The same item scanned again adds one more (not for fabric: each cut is its own line; not across vacuums: a
       // supply bought for another vacuum is its own line).
-      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId);
+      const i = c.findIndex((l) => l.partId === it.id && it.unit !== "yd" && Math.sign(l.qty) === sign && (l.machineId ?? null) === machineId && !l.registryItemId);
       if (i >= 0) return c.map((l, j) => (j === i ? { ...l, qty: l.qty + sign } : l));
       return [
         ...c,
@@ -215,25 +385,66 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           description: it.description,
           partNumber: it.partNumber,
           unit: it.unit,
-          qty: sign * (it.unit === "yd" ? 1 : 1),
+          kind: it.kind,
+          brand: it.brand ?? null,
+          qty: sign * (qtyIn ?? 1),
           unitPriceCents: it.priceCents ?? 0,
           priced: it.priceCents != null,
           onHand: it.qtyOnHand,
           discountPct: 0,
-          taxable: true,
+          // A membership isn't taxed (the server does the same).
+          taxable: it.kind !== "MEMBERSHIP",
           consigned: it.consigned,
           disclosure: it.disclosure,
+          wholesaleCents: it.wholesaleCents ?? null,
+          breakMinQty: it.breakMinQty ?? null,
+          breakPriceCents: it.breakPriceCents ?? null,
           machineId,
+          listedOn: it.listedOn,
         },
       ];
     });
     if (it.priceCents == null) toast.warning(`${it.partNumber} has no price. Type the price on the line.`);
   }
 
-  /** A unit, trade-in or return line the Vac Shop tools made: added as it comes. */
-  function addLine(line: VacCartLine) {
+  /** Lines from the customer's quiet lines (a special order waiting): added as they come, priced already. */
+  function addExtraLines(more: ExtraLine[]) {
     setDone(null);
-    setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line }]);
+    setCart((c) => [...c, ...more.map((x) => ({ key: newKey(), discountPct: 0, priced: true, ...x }))]);
+  }
+
+  /** A gift bought from a customer's list (9.9): its own line, naming the list item. */
+  function addGiftListLine(p: GiftListPick) {
+    if (cart.some((l) => l.registryItemId === p.registryItemId)) {
+      toast.warning("That one is already on this sale. Change its quantity on the line.");
+      return;
+    }
+    setDone(null);
+    setCart((c) => [...c, { key: newKey(), partId: p.partId, registryItemId: p.registryItemId, listName: p.listName, description: p.description, partNumber: p.partNumber ?? undefined, unit: null, qty: 1, unitPriceCents: p.priceCents ?? 0, priced: p.priceCents != null, onHand: p.inStock, discountPct: 0, taxable: true }]);
+  }
+
+  /** A unit, trade-in, plan or return line the machines-for-sale tools made: added as it comes. */
+  function addLine(line: UnitCartLine) {
+    setDone(null);
+    setCart((c) => [...c, { key: newKey(), discountPct: 0, ...line, kind: line.servicePlan ? "SERVICE_PLAN" : line.stockUnitId ? "UNIT" : undefined }]);
+  }
+
+  /** A layaway's deposit, payment or pick-up rang up its own sale: show its receipt link and start the next one fresh. */
+  function rungUp(r: { saleId: string; number: number }) {
+    pending.current = null;
+    setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+    setCart([]);
+    setTenders([]);
+    // The release's amount box may be editing a payment pressed first; the payments are gone with the sale.
+    setEditing(null);
+    setTenderAmt("");
+    setFin(null);
+    setOrderDisc({ kind: "%", value: "" });
+    setCustomer(null);
+    setChargeTax(false);
+    setReturnMode(false);
+    setReturnOf(null);
+    code.current?.focus();
   }
 
   /** A class seat or appointment: one line, the booking's price and tax; a refund in return mode. */
@@ -244,7 +455,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
       return;
     }
     setDone(null);
-    setCart((c) => [...c, { key: newKey(), ...id, description: b.description, unit: null, qty: refund ? -1 : 1, unitPriceCents: b.dueCents, priced: true, discountPct: 0, taxable: b.taxable }]);
+    setCart((c) => [...c, { key: newKey(), ...id, description: b.description, unit: null, qty: refund ? -1 : 1, unitPriceCents: b.dueCents, priced: true, discountPct: 0, taxable: b.taxable, kind: b.kind === "enrollment" ? "CLASS" : "APPOINTMENT" }]);
     if (!customer && b.customerId) setCustomer({ id: b.customerId, name: b.customerName, phone: null });
   }
 
@@ -292,6 +503,20 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     preloaded.current = true;
     addBooking(preload, false);
     router.replace("/register");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
+  // Opened from the quilt planner's "Add all to the sale": its items go on the sale once, the same way.
+  const itemsLoaded = useRef(false);
+  useEffect(() => {
+    if (!preloadItems?.length || itemsLoaded.current) return;
+    // After the first paint (and once only, however often the effect runs in development).
+    const t = setTimeout(() => {
+      if (itemsLoaded.current) return;
+      itemsLoaded.current = true;
+      for (const p of preloadItems) addItem(p.item, null, p.qty);
+      router.replace("/register");
+    }, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
@@ -354,7 +579,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           ? `Sale #${sale.number} only paid a repair bill. Sort that out with the repair shop.`
           : sale.skippedCardLines
             ? `Sale #${sale.number} only sold or paid out a gift card. Void the sale to take a card sale back.`
-            : sale.skippedBookingLines || sale.skippedUnitLines
+            : sale.skippedBookingLines || sale.skippedUnitLines || sale.skippedLayawayLines || sale.skippedHeldLines
               ? `Sale #${sale.number} has nothing to return from the receipt.${leftOut(sale)}`
               : `Sale #${sale.number} has nothing to return.`,
       );
@@ -555,6 +780,25 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     if (amount != null) setTenders((ts) => ts.map((x, i) => (i === editing.index ? { ...x, amountCents: amount } : x)));
   }
 
+  /** A Financing payment: the lender pays the shop; the approval number is kept with it. */
+  function addFinanced() {
+    if (!fin) return;
+    const lender = lenders.find((l) => l.id === fin.lenderId);
+    if (!lender) return toast.error("Pick the lender.");
+    if (!fin.approval.trim()) return toast.error(`Type ${lender.name}'s approval number.`);
+    // Like addTender: while the amount box is editing a payment pressed first (Cash, then the amount), it isn't this one's.
+    const typedText = editing ? "" : tenderAmt;
+    if (editing) setEditing(null);
+    const typed = toCents(typedText);
+    if (typedText.trim() && typed == null) return toast.error("Type the amount like 12.50, or leave it blank.");
+    const amount = typed != null ? (refund ? -Math.abs(typed) : typed) : refund ? -refundLeft : t.due;
+    if (!amount) return;
+    setTenders((x) => [...x, { method: "FINANCED", amountCents: amount, lenderId: lender.id, lender: lender.name, note: fin.approval.trim() }]);
+    setTenderAmt("");
+    setFin(null);
+    code.current?.focus();
+  }
+
   /** The gift card panel's "Add to sale": a card sold, loaded or paid out becomes a line (the server decides a payout's amount). */
   async function addGiftLine(e: React.FormEvent) {
     e.preventDefault();
@@ -588,11 +832,33 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
     code.current?.focus();
   }
 
-  async function finish() {
+  /** The card reader approved a payment (4.8): on the sale, which finishes itself once nothing is left to pay. */
+  function readerApproved(p: { amountCents: number; stripeIntent: string; last4: string | null }) {
+    const next: Tender[] = [...tenders, { method: "CARD", amountCents: p.amountCents, stripeIntent: p.stripeIntent, ...(p.last4 ? { last4: p.last4 } : {}) }];
+    setTenders(next);
+    setTenderAmt("");
+    setEditing(null);
+    if (!tenderProblem(saleTotals(priced, orderDiscountCents, receiptRate ?? ratePct, next), next) && !busy) finish(next);
+  }
+
+  async function finish(withTenders?: Tender[]) {
+    // Over this store's limit (7.5): the OK first (a manager's code or the owner's), then the sale goes through.
+    const need = store
+      ? overLimit(store.limits, {
+          refundCents: t.total < 0 ? -t.total : 0,
+          discountCents: lines.reduce((a, l) => a + (l.qty > 0 ? Math.max(0, l.manualDiscountCents) : 0), 0) + orderDiscountCents,
+          grossCents: lines.reduce((a, l) => a + (l.qty > 0 ? Math.round(l.qty * l.unitPriceCents) : 0), 0),
+        })
+      : null;
+    if (need && !approvalId.current) {
+      setApprovalAsk({ need, draft: { lines: lines.map((l) => ({ description: l.description, qty: l.qty, unitPriceCents: l.unitPriceCents, discountCents: l.manualDiscountCents })), customer: customer?.name ?? null, totalCents: t.total } });
+      return;
+    }
     setBusy(true);
     setDone(null);
     const sale = {
       customerId: customer?.id ?? null,
+      birthday: birthdayOn,
       chargeTax: Boolean(exemptCert) && chargeTax,
       returnOfSaleId: receiptOf?.id ?? null,
       lines: lines.map((l) => ({
@@ -603,16 +869,29 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         description: l.description,
         qty: l.qty,
         unitPriceCents: l.unitPriceCents,
-        discountCents: l.discountCents,
+        discountCents: l.manualDiscountCents,
         taxable: l.taxable,
         machineId: l.machineId ?? null,
         stockUnitId: l.stockUnitId ?? null,
         tradeIn: l.tradeIn ?? null,
+        servicePlan: l.servicePlan ?? null,
+        taxAnyway: l.taxAnyway ?? false,
         enrollmentId: l.enrollmentId ?? null,
         appointmentId: l.appointmentId ?? null,
+        software: l.software ?? null,
+        specialOrderId: l.specialOrderId ?? null,
+        depositUsed: l.depositUsed ?? false,
+        noRule: l.noRule ?? false,
+        tradeUpTicketId: l.tradeUpTicketId ?? null,
+        delisted: l.delisted ?? false,
+        registryItemId: l.registryItemId ?? null,
+        shipFromId: l.shipFromId ?? null,
       })),
+      soldById: soldBy || null,
+      shipTo: lines.some((l) => l.shipFromId) ? shipTo : null,
+      approvalId: approvalId.current,
       orderDiscountCents,
-      tenders,
+      tenders: withTenders ?? tenders,
     };
     const sent = JSON.stringify(sale);
     if (pending.current?.sent !== sent) pending.current = { key: saleKey(), sent };
@@ -623,6 +902,9 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         return;
       }
       pending.current = null;
+      approvalId.current = null;
+      setApprovalAsk(null);
+      setShipTo("");
       setDone({ id: r.saleId, number: r.number, change: r.changeCents, cards: r.cards ?? [] });
       toast.success(`Sale #${r.number} done${r.changeCents ? `. Change: ${money(r.changeCents)}` : ""}`);
       setCart([]);
@@ -674,6 +956,12 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         <InsecureNotice what="The camera" instead={CAMERA_INSTEAD} page={camPage} />
         <video ref={camVideo} className={camOn ? "w-full max-w-sm rounded border border-line" : "hidden"} muted playsInline aria-label="Camera" />
 
+        {holiday && (
+          <p className="card card-pad text-sm" role="status">
+            <span className="pill tone-ready mr-2">Tax holiday today</span>
+            {holiday.name} ({holidayDays(holiday)}): the items it covers{holiday.maxUnitCents != null ? `, ${money(holiday.maxUnitCents)} or less each,` : ""} carry no sales tax.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setMisc({ description: "", price: "", taxable: true })}>
             <Plus size={14} aria-hidden /> Other item (type a price)
@@ -697,11 +985,51 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
             </button>
           )}
           <button type="button" className="btn btn-sm" onClick={openBookings}>
-            <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
+            <CalendarDays size={14} aria-hidden />{" "}Classes &amp; appointments
           </button>
+          <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
+          <RegisterGiftLists returnMode={returnMode} onAdd={addGiftListLine} />
+          {threadPhoto && <ThreadPhotoMatch unavailable={threadPhoto.unavailable} returnMode={returnMode} onAdd={(it) => addItem(it)} />}
           {vac === "on" && <VacSupplyPicker customerId={customer?.id ?? null} returnMode={returnMode} onAdd={(it, m) => addItem(it, m)} />}
-          {vac && vac !== "off" && (
-            <VacUnitTools vac={vac} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} />
+          {unitKinds && <UnitTools kinds={unitKinds} returnMode={returnMode} customerId={customer?.id ?? null} inCart={cart} onAdd={addLine} onNeedCustomer={() => setNewCustomer(true)} tradeNote={tradeNote} tradeInLessPct={tradeInLessPct} />}
+          {specialOrders && !returnMode && (
+            <SpecialOrderPanel
+              customerId={customer?.id ?? null}
+              customerName={customer?.name ?? null}
+              defaults={specialOrders}
+              item={preorderItem}
+              canPrice={canSell}
+              onNeedCustomer={() => setNewCustomer(true)}
+              onClose={() => {
+                setPreorderItem(null);
+                setBringFrom(null);
+              }}
+              onDone={async (r, o) => {
+                setPreorderItem(null);
+                if (r) setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+                // Brought over from another store (7.3): that store is asked to send it, holding it for her.
+                if (bringFrom) {
+                  const from = bringFrom;
+                  setBringFrom(null);
+                  const b = await runAction(() => bringItHere(o.id, from.id));
+                  if (b.error) toast.error(b.error);
+                  else if (b.note) toast.success(b.note, { duration: 10000 });
+                }
+                toast.message(`Print the slip for special order ${o.number} from its page.`, { action: { label: "Open it", onClick: () => window.open(`/special-orders/${o.id}`, "_blank") } });
+              }}
+            />
+          )}
+          {layaway && !returnMode && (
+            <LayawayPanel
+              customerId={customer?.id ?? null}
+              customerName={customer?.name ?? null}
+              cart={lines}
+              priceCents={t.subtotal - t.orderDiscount}
+              totalCents={t.total}
+              defaults={layaway}
+              onNeedCustomer={() => setNewCustomer(true)}
+              onDone={rungUp}
+            />
           )}
           <button
             type="button"
@@ -723,12 +1051,12 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               Add it to inventory
             </Link>{" "}
             (a store barcode can be looked up online there), or ring it up with &quot;Other item&quot;.
-            {vac === "on" && (
+            {unitKinds && unitKinds.length > 0 && (
               <>
                 {" "}
-                A vacuum for sale? Add it under{" "}
-                <Link href="/vac/units" className="link" target="_blank">
-                  Vac Shop → For sale
+                A machine for sale? Add it under{" "}
+                <Link href="/units" className="link" target="_blank">
+                  Machines for sale
                 </Link>
                 .
               </>
@@ -796,6 +1124,81 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
         {returnMode && (
           <p className="tone-wait rounded px-3 py-2 font-semibold">Returning: scan what comes back. It comes off the sale and goes back on the shelf.</p>
         )}
+        {/* What fits her machines, and what goes with a machine being sold (shop-features-round-2-design.md 2.4). */}
+        {!returnMode && <CustomerFits customerId={customer?.id ?? null} customerName={customer?.name ?? null} onAdd={(it) => addItem(it)} />}
+        {!returnMode && (
+          <CustomerExtrasLines
+            extras={customer ? extras : null}
+            customerId={customer?.id ?? null}
+            birthdayOn={birthdayOn}
+            onBirthday={(on) => setBirthdayFor(on && customer ? customer.id : null)}
+            machineOnSale={cart.some((l) => l.stockUnitId && l.qty > 0 && !l.tradeUpTicketId)}
+            onTradeUp={(ticketId) =>
+              setCart((c) => {
+                const i = c.findIndex((l) => l.stockUnitId && l.qty > 0 && !l.tradeUpTicketId);
+                return i < 0 ? c : c.map((l, j) => (j === i ? { ...l, tradeUpTicketId: ticketId } : l));
+              })
+            }
+            inCart={cart.flatMap((l) => [l.specialOrderId, l.kind === "MEMBERSHIP" && l.partId ? `member:${l.partId}` : null, l.tradeUpTicketId ? `tradeup:${l.tradeUpTicketId}` : null]).filter((x): x is string => !!x)}
+            onAdd={addExtraLines}
+          />
+        )}
+        {!returnMode && <GoesWith unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
+        {!returnMode && <StarterBundles unitIds={cart.filter((l) => l.stockUnitId && l.qty > 0).map((l) => l.stockUnitId!)} onAdd={(it) => addItem(it)} />}
+
+        {elsewhereItem && (
+          <div className="card card-pad space-y-3 text-base" role="region" aria-label="At another store" data-testid="elsewhere-panel">
+            <h2 className="h2">
+              <span className="mono">{elsewhereItem.partNumber}</span> {elsewhereItem.description}
+            </h2>
+            <p>
+              None here. {elsewhereItem.elsewhere!.map((o) => `At ${o.name}: ${qtyText(o.qty, elsewhereItem.unit)}`).join(" · ")}.
+            </p>
+            {elsewhereItem.elsewhere!.map((o) => (
+              <div key={o.id} className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-primary min-h-11"
+                  disabled={!specialOrders}
+                  onClick={() => {
+                    // A special order for her here (she pays now or leaves a deposit), and the other store sends it over.
+                    setBringFrom({ id: o.id, name: o.name });
+                    setPreorderItem(elsewhereItem);
+                    setElsewhereItem(null);
+                  }}
+                >
+                  Bring it here for her from {o.name}
+                </button>
+                <button
+                  type="button"
+                  className="btn min-h-11"
+                  onClick={() => {
+                    addItem(elsewhereItem);
+                    setCart((c) => c.map((l, i) => (i === c.length - 1 && l.partId === elsewhereItem.id ? { ...l, shipFromId: o.id, shipFromName: o.name, onHand: o.qty } : l)));
+                    setElsewhereItem(null);
+                  }}
+                >
+                  Ship it to her from {o.name}
+                </button>
+              </div>
+            ))}
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  addItem(elsewhereItem);
+                  setElsewhereItem(null);
+                }}
+              >
+                It&apos;s here after all: sell it
+              </button>
+              <button type="button" className="link" onClick={() => setElsewhereItem(null)}>
+                Never mind
+              </button>
+            </div>
+          </div>
+        )}
 
         {results.length > 0 && (
           <div className="card">
@@ -806,25 +1209,36 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                     type="button"
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2"
                     onClick={() => {
-                      addItem(it);
+                      // Coming soon and none on the shelf: a pre-order (the special order panel opens on it).
+                      if (it.comingSoonOn && it.qtyOnHand <= 0 && specialOrders && !returnMode) setPreorderItem(it);
+                      // None here, some at another store (7.3): bring it here for her, or ship it to her from there.
+                      else if (store && !returnMode && !it.stockUnitId && it.qtyOnHand <= 0 && it.elsewhere?.length) setElsewhereItem(it);
+                      else addItem(it);
                       setResults([]);
                       code.current?.focus();
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      {it.photoId && (
-                        // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
-                        <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                      {it.colorHex ? (
+                        <span aria-hidden="true" className="h-10 w-10 shrink-0 rounded border border-line" style={{ backgroundColor: it.colorHex }} />
+                      ) : (
+                        it.photoId && (
+                          // eslint-disable-next-line @next/next/no-img-element -- authenticated route, not a static asset
+                          <img src={`/api/parts/photo/${it.photoId}`} alt="" className="h-10 w-10 shrink-0 rounded border border-line object-cover" loading="lazy" />
+                        )
                       )}
                       <span className="min-w-0">
                       <span className="mono">{it.partNumber}</span> {it.description}
                       {it.disclosure && <span className="pill tone-wait ml-1">{it.disclosure}</span>}
                       {it.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                      {it.comingSoonOn && it.qtyOnHand <= 0 && <span className="pill tone-wait ml-1">Coming soon ({it.comingSoonText}): take a pre-order</span>}
+                      {it.details && <span className="block text-sm">{it.details}</span>}
                       </span>
                     </span>
                     <span className="num">
                       {money(it.priceCents)}
-                      {it.unit === "yd" ? "/yd" : ""} · {qtyText(it.qtyOnHand, it.unit)} on hand
+                      {it.unit === "yd" ? "/yd" : ""} · {it.stockUnitId ? (it.elsewhere?.length ? `at ${it.elsewhere[0].name}` : "in stock") : `${qtyText(it.qtyOnHand, it.unit)} ${store ? "in this store" : "on hand"}`}
+                      {store && !it.stockUnitId && it.elsewhere?.length ? <span className="muted block text-xs">{it.elsewhere.map((o) => `At ${o.name}: ${qtyText(o.qty, it.unit)}`).join(" · ")}</span> : null}
                     </span>
                   </button>
                 </li>
@@ -1012,13 +1426,45 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                     {l.partNumber && <span className="mono mr-1">{l.partNumber}</span>}
                     {l.description}
                     {l.disclosure && <span className="pill tone-wait ml-1">{l.disclosure}</span>}
+                    {l.promo && <span className="pill tone-ready ml-1">{l.taxIncluded ? `${l.promo}: price includes tax` : l.promo}</span>}
+                    {l.rule && (
+                      <button type="button" className="pill tone-ready ml-1" title="Tap to take it off this line" aria-label={`${l.rule}: take it off this line`} onClick={() => setLine(l.key, l.tradeUpTicketId ? { tradeUpTicketId: undefined } : { noRule: true })}>
+                        {l.rule} ×
+                      </button>
+                    )}
                     {l.consigned && <span className="pill tone-neutral ml-1">consigned</span>}
+                    {l.listName && <span className="pill tone-ready ml-1">gift: {l.listName}</span>}
+                    {l.shipFromName && <span className="pill tone-wait ml-1">ships from {l.shipFromName}</span>}
+                    {mustDelist(l) && (
+                      <label className="ml-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold">
+                        <input type="checkbox" className="check" checked={l.delisted === true} onChange={(e) => setLine(l.key, { delisted: e.target.checked })} /> Take it down on {l.listedOn!.join(", ")} first: done
+                      </label>
+                    )}
+                    {l.kind === "SOFTWARE" && l.partId && (
+                      <SoftwareLineFields partId={l.partId} customerId={customer?.id ?? null} value={l.software ?? {}} returning={l.qty < 0} canOverride={canSell} onChange={(v) => setLine(l.key, { software: v })} />
+                    )}
                     {l.repairJobId && !l.handedOver && (
                       <label className="ml-2 inline-flex items-center gap-1 text-xs">
                         <input type="checkbox" checked={l.pickedUp !== false} onChange={(e) => setLine(l.key, { pickedUp: e.target.checked })} /> taking the machine home
                       </label>
                     )}
-                    {!l.taxable && <span className="muted ml-1 text-xs">(no tax)</span>}
+                    {l.holidayCovered && !l.taxAnyway ? (
+                      <span className="ml-1 inline-flex items-center gap-1 text-xs">
+                        <span className="pill tone-ready">Tax holiday</span>
+                        <button type="button" className="link" onClick={() => setLine(l.key, { taxAnyway: true })}>
+                          Charge tax anyway
+                        </button>
+                      </span>
+                    ) : l.holidayCovered ? (
+                      <span className="ml-1 inline-flex items-center gap-1 text-xs">
+                        <span className="muted">tax charged</span>
+                        <button type="button" className="link" onClick={() => setLine(l.key, { taxAnyway: false })}>
+                          Undo
+                        </button>
+                      </span>
+                    ) : (
+                      !l.taxable && <span className="muted ml-1 text-xs">(no tax)</span>
+                    )}
                   </td>
                   <td>
                     <input
@@ -1026,8 +1472,8 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       aria-label={`Qty for ${l.description}`}
                       className="input num min-w-[4.5rem]"
                       step={l.unit === "yd" ? 0.125 : 1}
-                      // A repair is paid as one line; a vacuum from stock or a trade-in is one machine; a class seat or appointment is one each.
-                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      // A repair is paid as one line; a machine from stock, a trade-in or a plan is one; a class seat or appointment is one each.
+                      disabled={Boolean(l.repairJobId || l.stockUnitId || l.tradeIn || l.servicePlan || l.enrollmentId || l.appointmentId || l.giftCard || l.specialOrderId)}
                       value={l.qty}
                       onChange={(e) => setLine(l.key, { qty: Number(e.target.value) })}
                       onKeyDown={backToScan}
@@ -1047,7 +1493,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       className="input num min-w-[4.5rem]"
                       // A tech can type the price of an item that has none, not change one that has. A booking is priced by
                       // the server; an owner or admin may lower a refund (a cancellation fee).
-                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
+                      disabled={(!canSell && l.priced) || Boolean(l.repairJobId || l.specialOrderId) || l.giftCard?.mode === "cashout" || ((Boolean(l.enrollmentId) || Boolean(l.appointmentId)) && (l.qty > 0 || !canSell))}
                       defaultValue={(l.unitPriceCents / 100).toFixed(2)}
                       onBlur={(e) => {
                         const cents = toCents(e.target.value);
@@ -1066,7 +1512,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                       className="input num min-w-14"
                       min={0}
                       max={100}
-                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard)}
+                      disabled={!canSell || Boolean(l.repairJobId || l.enrollmentId || l.appointmentId || l.giftCard || l.depositUsed)}
                       value={l.discountPct || ""}
                       onChange={(e) => setLine(l.key, { discountPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                       onKeyDown={backToScan}
@@ -1074,7 +1520,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                   </td>
                   <td className="num text-right">{money(lineNet(l))}</td>
                   <td>
-                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key))}>
+                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key && !(l.specialOrderId && x.specialOrderId === l.specialOrderId)))}>
                       <Trash2 size={14} aria-hidden />
                     </button>
                   </td>
@@ -1237,6 +1683,23 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
           </div>
         </div>
 
+        {sellers.length > 1 && (
+          <div className="card card-pad">
+            <div className="field">
+              <label htmlFor="register-sold-by" className="label">
+                Sold by
+              </label>
+              <select id="register-sold-by" className="select" value={soldBy} onChange={(e) => setSoldBy(e.target.value)}>
+                {sellers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="card card-pad space-y-1">
           <Row k="Subtotal" v={money(t.subtotal)} />
           <div className="flex items-center justify-between gap-2">
@@ -1281,7 +1744,51 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                 {TENDER_LABEL[m]}
               </button>
             ))}
+            {cardReader && !refund && (
+              <RegisterCardReader
+                setup={cardReader}
+                amountCents={(editing ? null : toCents(tenderAmt)) ?? t.due}
+                disabled={!lines.length}
+                onApproved={readerApproved}
+              />
+            )}
+            {houseAccounts && customer && (
+              <button type="button" className="btn btn-sm" disabled={!lines.length} onClick={() => addTender("ACCOUNT")}>
+                {TENDER_LABEL.ACCOUNT}
+              </button>
+            )}
+            {lenders.length > 0 && (
+              <button type="button" className={`btn btn-sm ${fin ? "btn-primary" : ""}`} disabled={!lines.length} aria-expanded={!!fin} onClick={() => setFin(fin ? null : { lenderId: lenders.length === 1 ? lenders[0].id : "", approval: "" })}>
+                {TENDER_LABEL.FINANCED}
+              </button>
+            )}
           </div>
+          {fin && (
+            <div className="flex flex-wrap items-end gap-2 rounded border border-line p-2" aria-label="Financing">
+              <div className="field">
+                <label htmlFor="fin-lender" className="label">
+                  Lender
+                </label>
+                <select id="fin-lender" className="select" value={fin.lenderId} onChange={(e) => setFin({ ...fin, lenderId: e.target.value })}>
+                  <option value="">-</option>
+                  {lenders.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="fin-approval" className="label">
+                  Approval number
+                </label>
+                <input id="fin-approval" className="input mono" autoComplete="off" value={fin.approval} onChange={(e) => setFin({ ...fin, approval: e.target.value })} />
+              </div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={addFinanced}>
+                Add {money(Math.abs((editing ? null : toCents(tenderAmt)) ?? (refund ? refundLeft : t.due)))}
+              </button>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="tender-amount" className="label">
               {editingTender
@@ -1308,6 +1815,7 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
                 <li key={i} className="flex items-center justify-between gap-2">
                   <span>
                     {TENDER_LABEL[x.method]}
+                    {x.lender ? ` (${x.lender})` : ""}
                     {x.last4 ? ` ending ${x.last4}` : ""}{" "}
                     <button
                       type="button"
@@ -1334,7 +1842,28 @@ export function Register({ taxRatePct, hasPartners, canSell, vac, preload }: { t
               {problem}
             </p>
           )}
-          <button type="button" className="btn btn-primary btn-lg w-full" disabled={busy || !lines.length || Boolean(problem)} onClick={finish}>
+          {lines.some((l) => l.shipFromId) && (
+            <div className="field">
+              <label htmlFor="ship-to" className="label">
+                Ship to (her address)
+              </label>
+              <textarea id="ship-to" rows={2} className="textarea" value={shipTo} onChange={(e) => setShipTo(e.target.value)} placeholder="12 Main St, Naples FL 34102" />
+              <p className="muted text-sm">{[...new Set(lines.filter((l) => l.shipFromId).map((l) => l.shipFromName))].join(" and ")} gets a Ship this job with the tracking number to fill in.</p>
+            </div>
+          )}
+          {approvalAsk && (
+            <RegisterApproval
+              need={approvalAsk.need}
+              draft={approvalAsk.draft}
+              onCancel={() => setApprovalAsk(null)}
+              onApproved={(id) => {
+                approvalId.current = id;
+                setApprovalAsk(null);
+                finish();
+              }}
+            />
+          )}
+          <button type="button" className="btn btn-primary btn-lg w-full" disabled={busy || !lines.length || Boolean(problem) || lines.some((l) => mustDelist(l) && !l.delisted)} onClick={() => finish()}>
             {busy ? "Saving..." : t.total < 0 ? "Complete refund" : "Complete sale"}
           </button>
           <div className="space-y-2 border-t border-line pt-3">

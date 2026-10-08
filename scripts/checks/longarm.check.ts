@@ -199,7 +199,7 @@ async function main() {
     const renter = await mk(a.shopId, "Rae Renter");
     const day = ymdOf(new Date(Date.now() + 2 * DAY), TZ);
     const book = (customerId: string, start: string, end: string) => bookAs(user(a), fd({ typeId, date: day, start, end, customerId }));
-    await expectError("not certified", () => book(renter.id, "10:00", "11:30"), /Rae Renter isn't certified to rent the Longarm/);
+    await expectError("not certified", () => book(renter.id, "10:00", "11:30"), /Rae Renter isn't certified on the Longarm/);
     assert.equal(await db.appointment.count({ where: { shopId: a.shopId, typeId } }), 0, "nothing booked");
     await expectError("tech certifies", () => setCertifiedFor(tech(a), renter.id, true), /owner or an admin/);
     assert.match(await setCertifiedFor(user(a), renter.id, true), /certified to rent/);

@@ -4,6 +4,17 @@ import assert from "node:assert/strict";
 import { linesOfSale, receiptStands, returnSkip, splitForReturn } from "./sale-return";
 import { roundCents } from "./register-math";
 
+test("a service plan comes back with its machine; layaway money is settled on the layaway", () => {
+  assert.equal(returnSkip({ machinePlanId: "mp1" }), "unit");
+  assert.equal(returnSkip({ kind: "LAYAWAY" }), "layaway");
+  assert.equal(returnSkip({ kind: "LAYAWAY_FEE" }), "layaway");
+  assert.equal(returnSkip({ kind: "NOTION" }), null, "an item a layaway held, sold on pick-up, returns like any other");
+});
+
+test("special-order and loaner deposits, kept deposits, rent and loaner charges are settled where they were taken", () => {
+  for (const kind of ["DEPOSIT", "DEPOSIT_KEPT", "RENT", "LOAN_FEE"]) assert.equal(returnSkip({ kind }), "held", kind);
+});
+
 test("a charge that divides evenly among its units returns one line", () => {
   assert.deepEqual(splitForReturn(3, 3000), [{ qty: -3, unitPriceCents: 1000 }]);
   assert.deepEqual(splitForReturn(1, 999), [{ qty: -1, unitPriceCents: 999 }]);

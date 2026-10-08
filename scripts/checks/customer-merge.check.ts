@@ -66,6 +66,8 @@ function schemaRefs(target: string, names: string[]): string[] {
   const text = fs.readFileSync(path.join(process.cwd(), "prisma", "schema.prisma"), "utf8").replace(/\r\n/g, "\n");
   const out = new Set<string>();
   for (const m of text.matchAll(/^model (\w+) \{\n([\s\S]*?)\n\}/gm)) {
+    // A column that is the key of a relation to another model (AccountEntry.accountId -> HouseAccount) isn't a plain customer id.
+    const keyed = new Set([...m[2].matchAll(/@relation\([^)]*fields:\s*\[(\w+)\]/g)].map((x) => x[1]));
     for (const line of m[2].split("\n")) {
       const f = /^\s+(\w+)\s+(\w+)(\[\]|\?)?\s*(.*)$/.exec(line);
       if (!f) continue;
@@ -73,7 +75,7 @@ function schemaRefs(target: string, names: string[]): string[] {
       if (type === target) {
         const fields = /@relation\([^)]*fields:\s*\[(\w+)\]/.exec(rest);
         if (fields) out.add(`${m[1]}.${fields[1]}`);
-      } else if (type === "String" && names.includes(name) && m[1] !== target) {
+      } else if (type === "String" && names.includes(name) && m[1] !== target && !keyed.has(name)) {
         out.add(`${m[1]}.${name}`);
       }
     }
@@ -122,6 +124,11 @@ async function main() {
       commissionPct: null,
       routeDay: null,
       notes: null,
+      priceGroupId: null,
+      priceGroupUntil: null,
+      birthMonth: null,
+      birthDay: null,
+      birthdayUsedYear: null,
       notifyBy: "",
       smsConsentAt: null,
       smsConsentPhone: null,
@@ -198,7 +205,7 @@ async function main() {
     ok("customerFill fills blanks, carries text consent only for the same number, notes the rest; machineFill and vacCombine");
 
     // ---------- 1. the reference lists against the schema ----------
-    const custSchema = schemaRefs("Customer", ["customerId", "accountId"]);
+    const custSchema = schemaRefs("Customer", ["customerId", "accountId", "consignorId", "forCustomerId"]);
     assert.deepEqual(custSchema, CUSTOMER_REFS.map(key).sort(), "CUSTOMER_REFS is every column that points at a customer");
     const machSchema = schemaRefs("Machine", ["machineId"]);
     assert.deepEqual(
@@ -263,6 +270,24 @@ async function main() {
     await db.estimateLink.create({ data: { shopId: A, customerId: dup.id, tokenHash: token(), maskedUrl: "https://x/e/•••abcd", totalCents: 4500, lines: [], expiresAt: new Date(Date.now() + DAY) } });
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    await db.makeJob.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", title: "Name tags" } });
+    const live = await db.liveSale.create({ data: { shopId: A, name: "Merge live" } });
+    await db.liveClaim.create({ data: { shopId: A, liveSaleId: live.id, customerId: dup.id, name: "Jane Doe", description: "Charm pack", qty: 1, priceCents: 1200, status: "PAID" } });
+    await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
+    await db.softwareLicense.create({ data: { shopId: A, customerId: dup.id, description: "PE-Design 11", code: "ABC-123", startsOn: new Date() } });
+    await db.certification.create({ data: { shopId: A, customerId: dup.id, equipment: "Laser" } });
+    await db.specialOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "DONE", description: "Charm pack", priceCents: 3000 } });
+    await db.wantItem.create({ data: { shopId: A, customerId: dup.id, words: "Tula Pink" } });
+    await db.unitLoan.create({ data: { shopId: A, unitId: "x", customerId: dup.id, backAt: new Date() } });
+    await db.tradeUpOffer.create({ data: { shopId: A, customerId: dup.id, ticketId: "t-dup", amountCents: 100, until: "2026-12-01", usedLineId: "l" } });
+    await db.appraisal.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe" } });
+    await db.giftRegistry.create({ data: { shopId: A, customerId: dup.id, name: "Jane Doe", title: "Jane's list", token: `t${token()}`.slice(0, 30) } });
+    await db.houseAccount.create({ data: { shopId: A, customerId: dup.id } });
+    const consM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "830", modelKey: modelKey("830") } });
+    const consU = await db.stockUnit.create({ data: { shopId: A, machineId: consM.id, status: "SOLD", consignorId: dup.id } });
+    await db.consignPayout.create({ data: { shopId: A, unitId: consU.id, customerId: dup.id, saleLineId: "x", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
+    // An item brought over from another store for her (phase 5, 7.3).
+    await db.stockTransfer.create({ data: { shopId: A, number: 9001, fromId: "loc-a", toId: "loc-b", status: "ARRIVED", forCustomerId: dup.id } });
     const srdup = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM dup", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdup.id, customerId: dup.id } });
     const cldup = await db.club.create({ data: { shopId: A, name: "Merge club dup", monthlyCents: 1000 } });
@@ -439,6 +464,23 @@ async function main() {
       },
     });
     await db.longarmOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
+    const delLayaway = await db.layaway.create({ data: { shopId: A, number: 2, customerId: del.id, status: "OPEN", dueBy: "2026-12-31", terms: "Terms" } });
+    await db.softwareLicense.create({ data: { shopId: A, customerId: del.id, description: "PE-Design 11", code: "DEL-1", startsOn: new Date() } });
+    await db.certification.create({ data: { shopId: A, customerId: del.id, equipment: "Longarm" } });
+    await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
+    const dLive = await db.liveSale.create({ data: { shopId: A, name: "Delete live" } });
+    const dClaim = await db.liveClaim.create({ data: { shopId: A, liveSaleId: dLive.id, customerId: del.id, name: "Del Person", phone: "555-0177", description: "Jelly roll", qty: 1, priceCents: 3000, status: "PAID" } });
+    await db.wantItem.create({ data: { shopId: A, customerId: del.id, words: "Kaffe" } });
+    await db.unitLoan.create({ data: { shopId: A, unitId: "x", customerId: del.id, backAt: new Date() } });
+    await db.tradeUpOffer.create({ data: { shopId: A, customerId: del.id, ticketId: "t-del", amountCents: 100, until: "2026-12-01", usedLineId: "l" } });
+    const delSo = await db.specialOrder.create({ data: { shopId: A, number: 2, customerId: del.id, status: "HERE", description: "Charm pack", priceCents: 3000 } });
+    await db.appraisal.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person" } });
+    await db.giftRegistry.create({ data: { shopId: A, customerId: del.id, name: "Del Person", title: "Del's list", token: `d${token()}`.slice(0, 30) } });
+    await db.houseAccount.create({ data: { shopId: A, customerId: del.id } });
+    const delConsM = await db.machine.create({ data: { shopId: A, brand: "Bernina", model: "740", modelKey: modelKey("740") } });
+    const delConsU = await db.stockUnit.create({ data: { shopId: A, machineId: delConsM.id, status: "SOLD", consignorId: del.id } });
+    await db.consignPayout.create({ data: { shopId: A, unitId: delConsU.id, customerId: del.id, saleLineId: "y", soldCents: 1000, pct: 25, amountCents: 750, paidAt: new Date(), method: "CASH" } });
+    await db.stockTransfer.create({ data: { shopId: A, number: 9002, fromId: "loc-a", toId: "loc-b", status: "ARRIVED", forCustomerId: del.id } });
     const srdel = await db.kitSeries.create({ data: { shopId: A, name: "Merge BOM del", months: 3 } });
     await db.kitSeriesMember.create({ data: { shopId: A, seriesId: srdel.id, customerId: del.id } });
     const cldel = await db.club.create({ data: { shopId: A, name: "Merge club del", monthlyCents: 1000 } });
@@ -458,11 +500,15 @@ async function main() {
       /seat in Free-motion quilting/,
       /Partner repair tag T9/,
       /partnership with Old partner/,
+      /Layaway #2 is still being paid for/,
+      /Special order 2 is still open/,
     ]) {
       assert.match(why, re);
     }
-    assert.equal(dplan.blockers.length, 6);
-    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 3 more\)/);
+    assert.equal(dplan.blockers.length, 8);
+    await expectError("delete while open", () => deleteCustomerFor(a.user, del.id, del.name), /Del Person can't be deleted yet\. Ticket #\d+ is still open\..*\(and 5 more\)/);
+    await db.layaway.update({ where: { id: delLayaway.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    await db.specialOrder.update({ where: { id: delSo.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
     // Close each: the ticket collected but unpaid is still refused (money owed).
     await db.ticket.update({ where: { id: dt.id }, data: { status: "COLLECTED", closedAt: new Date() } });
     await db.webOrder.update({ where: { id: order.id }, data: { status: "DONE" } });
@@ -527,6 +573,8 @@ async function main() {
     const e2 = await db.estimateLink.findUniqueOrThrow({ where: { id: est.id } });
     assert.ok(e2.revokedAt && e2.tokenSealed === null && e2.customerId === null && e2.answer === "APPROVED");
     assert.equal((await db.partnerLink.findUniqueOrThrow({ where: { shopId_id: { shopId: A, id: delLink.id } } })).accountId, null);
+    const lc = await db.liveClaim.findUniqueOrThrow({ where: { id: dClaim.id } });
+    assert.deepEqual([lc.customerId, lc.name, lc.phone, lc.priceCents], [null, DELETED_NAME, null, 3000], "a paid live-sale claim stays, without the person");
     ok(
       "customer delete: refused while a ticket, order, booking, class seat, partner repair or partnership is open and while money is owed; then money records kept without the person, consent records and opt-outs kept, queued messages cancelled, bare machines deleted",
     );
@@ -567,6 +615,10 @@ async function main() {
     });
     await db.stockUnit.create({ data: { shopId: A, machineId: md.id, status: "SOLD" } });
     await db.assistantCall.create({ data: { shopId: A, feature: "likely_causes", machineId: md.id, model: "check", request: {}, response: "" } });
+    await db.softwareLicense.create({ data: { shopId: A, machineId: md.id, description: "Hatch", startsOn: new Date() } });
+    await db.warrantyClaim.create({ data: { shopId: A, number: 1, machineId: md.id, maker: "Janome" } });
+    await db.suppliesCare.create({ data: { shopId: A, machineId: md.id, calledAt: new Date(), calledBy: "Ann" } });
+    await db.machinePlan.create({ data: { shopId: A, machineId: md.id, name: "Free yearly cleaning", visits: 3, startsAt: new Date(2026, 0, 1), endsAt: new Date(2029, 0, 1) } });
     await db.vacCare.createMany({
       data: [
         { machineId: md.id, shopId: A, contactedAt: new Date(2026, 8, 20), contactedBy: "Ann", stopped: true },
@@ -592,8 +644,8 @@ async function main() {
     await expectError("different equipment", () => mergeMachinesFor(a.user, md.id, vac.id, "Janome HD 3000"), /aren't the same kind of thing/);
     const stockA = await db.machine.create({ data: { shopId: A, brand: "Miele", model: "C3", modelKey: modelKey("C3"), equipment: "VACUUM", kind: "vacuum", stock: { create: { shopId: A } } } });
     const stockB = await db.machine.create({ data: { shopId: A, brand: "Miele", model: "C3", modelKey: modelKey("C3"), equipment: "VACUUM", kind: "vacuum", stock: { create: { shopId: A } } } });
-    assert.match((await machineMergePlan(a.user, stockA.id, stockB.id)).blockers.join(" "), /Both are Vac Shop stock/);
-    await expectError("both for sale", () => mergeMachinesFor(a.user, stockA.id, stockB.id, "Miele C3"), /Both are Vac Shop stock/);
+    assert.match((await machineMergePlan(a.user, stockA.id, stockB.id)).blockers.join(" "), /Both are machines-for-sale stock/);
+    await expectError("both for sale", () => mergeMachinesFor(a.user, stockA.id, stockB.id, "Miele C3"), /Both are machines-for-sale stock/);
     await expectError("wrong name typed", () => mergeMachinesFor(a.user, md.id, mk.id, "Janome"), /Type Janome HD 3000 to confirm/);
     await expectError("a tech", () => mergeMachinesFor(tech, md.id, mk.id, "Janome HD 3000"), /Only the shop owner or an admin/);
     assert.deepEqual(await counts(MACHINE_REFS, md.id, A), mBeforeDup, "a refused merge moves nothing");
@@ -617,7 +669,7 @@ async function main() {
 
     // ---------- 5. machine delete ----------
     await expectError("has tickets", () => deleteMachineFor(a.user, mk.id, "Janome HD3000"), /It has 1 ticket:/);
-    await expectError("stock record", () => deleteMachineFor(a.user, stockA.id, "Miele C3"), /Vac Shop stock record/);
+    await expectError("stock record", () => deleteMachineFor(a.user, stockA.id, "Miele C3"), /machine-for-sale stock record/);
     const gone = await db.machine.create({ data: { shopId: A, customerId: owner.id, brand: "Eureka", model: "Mighty Mite", modelKey: modelKey("Mighty Mite"), equipment: "VACUUM", kind: "vacuum" } });
     const openJob = await db.repairJob.create({
       data: { id: `rj${token()}`, shopId: A, linkId: "l1", side: "retail", tag: "T4", customerName: "Mo O.", brand: "Eureka", model: "Mighty Mite", machineId: gone.id, status: "ON_BENCH" },

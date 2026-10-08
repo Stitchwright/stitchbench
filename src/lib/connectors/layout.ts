@@ -4,9 +4,9 @@
 import { csvCell } from "@/lib/csv";
 import { parseCost, tenThouToCents, toCents } from "@/lib/format";
 import { MAX_CENTS } from "@/lib/parts";
-import { inEighths, yards } from "@/lib/register-math";
+import { inEighths } from "@/lib/register-math";
 import { UserError } from "@/lib/user-error";
-import { lineCostTotal, lineYards } from "@/lib/fabric-orders-math";
+import { amountText, costPer, lineCostTotal, lineYards } from "@/lib/fabric-orders-math";
 import type { OrderView } from "@/lib/fabric-orders";
 import { CATALOG_FIELDS, ORDER_FIELDS, type CatalogField, type CatalogRead, type CatalogRow, type ColumnMap, type OrderColumn, type OrderLayout } from "./types";
 
@@ -86,9 +86,9 @@ export function readCatalogRows(table: string[][], map: ColumnMap): CatalogRead 
     const row: CatalogRow = { line, itemNumber };
     const description = cell(r, "description");
     if (description) row.description = description.slice(0, 200);
-    for (const f of ["collection", "designer", "brand"] as const) {
+    for (const f of ["collection", "designer", "brand", "upc", "kind", "colorNumber", "colorName", "material", "weight", "putUp", "diameter", "spool", "size", "model", "warranty"] as const) {
       const v = cell(r, f);
-      if (v) row[f] = v.slice(0, 80);
+      if (v) row[f] = v.slice(0, f === "colorNumber" ? 30 : 80);
     }
     const cost = cell(r, "costPerYard");
     if (cost) {
@@ -198,11 +198,12 @@ export function orderRows(o: OrderView, layout: OrderLayout | null | undefined, 
       case "quantity":
         return l.qty;
       case "unit":
-        return l.unit === "BOLT" ? "bolt" : "yd";
+        return l.unit === "BOLT" ? "bolt" : l.unit === "EACH" ? "each" : "yd";
       case "yards":
-        return lineYards(l);
+        // An item sold each (shop-features-round-2-design.md 1.1) has no yards or bolts: the quantity column says how many.
+        return l.unit === "EACH" ? "" : lineYards(l);
       case "bolts":
-        return l.unit === "BOLT" ? l.qty : Math.round((l.qty / (l.boltYards || 15)) * 1000) / 1000;
+        return l.unit === "EACH" ? "" : l.unit === "BOLT" ? l.qty : Math.round((l.qty / (l.boltYards || 15)) * 1000) / 1000;
       case "costPerYard":
         return dollars(l.costCents);
       case "lineTotal":
@@ -234,9 +235,8 @@ export const fileNameFor = (o: OrderView) => `order-${o.number}-${o.supplier.nam
 /** The email for the rep: a formatted body (the lines in columns, the total, the note, the shop's account number). */
 export function orderEmailParts(o: OrderView, account: string | null, shop: { phone: string | null; address: string | null }) {
   const subject = `Purchase order #${o.number} from ${o.shopName}`;
-  const amount = (l: OrderView["lines"][number]) => (l.unit === "BOLT" ? `${l.qty} ${l.qty === 1 ? "bolt" : "bolts"} (${yards(lineYards(l))} yd)` : `${yards(l.qty)} yd`);
   const w = Math.min(24, Math.max(6, ...o.lines.map((l) => l.itemNumber.length)));
-  const rows = o.lines.map((l) => `${l.itemNumber.padEnd(w)}  ${amount(l)}${l.costCents != null ? `  @ $${dollars(l.costCents)}/yd` : ""}  ${l.description}`);
+  const rows = o.lines.map((l) => `${l.itemNumber.padEnd(w)}  ${amountText(l)}${l.costCents != null ? `  @ $${dollars(l.costCents)}${costPer(l)}` : ""}  ${l.description}`);
   const text = [
     `Purchase order #${o.number}`,
     `From: ${o.shopName}`,
@@ -244,7 +244,7 @@ export function orderEmailParts(o: OrderView, account: string | null, shop: { ph
     "",
     ...rows,
     "",
-    `Total: ${yards(o.totalYards)} yd${o.totalCents ? `, $${dollars(o.totalCents)} at our cost` : ""}`,
+    `Total: ${o.amountText}${o.totalCents ? `, $${dollars(o.totalCents)} at our cost` : ""}`,
     ...(o.note ? ["", o.note] : []),
     "",
     "The same order is attached as a spreadsheet (CSV).",

@@ -266,7 +266,7 @@ async function main() {
     const poId2 = await createOrderFor(user(a), "Other Fabrics Co");
     const notion = await db.part.create({ data: { shopId: a.shopId, partNumber: "THR-1", numberKeys: ["THR1"], description: "Thread", kind: "NOTION", qtyOnHand: 5 } });
     await expectError("unknown number", () => addLineFor(user(a), poId2, fd({ itemNumber: "NOPE-9", qty: "1", unit: "BOLT" })), /No item numbered NOPE-9/);
-    await expectError("not by the yard", () => addLineFor(user(a), poId2, fd({ itemNumber: notion.partNumber, qty: "1", unit: "YD" })), /isn't sold by the yard/);
+    await expectError("an item sold each comes in whole pieces", () => addLineFor(user(a), poId2, fd({ itemNumber: notion.partNumber, qty: "1.5", unit: "YD" })), /whole number of pieces/);
     await expectError("eighths", () => addLineFor(user(a), poId2, fd({ itemNumber: "REO-2", qty: "2.1", unit: "YD" })), /eighths/);
     await expectError("halves", () => addLineFor(user(a), poId2, fd({ itemNumber: "REO-2", qty: "1.3", unit: "BOLT" })), /halves/);
     await expectError("zero", () => addLineFor(user(a), poId2, fd({ itemNumber: "REO-2", qty: "0", unit: "YD" })), /over 0/);

@@ -29,7 +29,7 @@ export default async function ManageBooking({ params, searchParams }: { params: 
     <BookShell shop={v.shop} slug={v.shop.slug}>
       {sp.new === "1" && (
         <p className="card card-pad tone-ready" role="status">
-          {v.status === "WAITLIST" ? "You're on the waiting list. We'll let you know if a seat opens up." : "You're booked. Thank you!"} Keep this page&apos;s address to change or cancel it.
+          {v.status === "WAITLIST" ? "You're on the waiting list. We'll let you know if a seat opens up." : "You're booked. Thank you!"}{" "}Keep this page&apos;s address to change or cancel it.
         </p>
       )}
       {sp.done === "cancelled" && (

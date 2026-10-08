@@ -11,8 +11,8 @@
 // never sets TRUST_PROXY, so customers' addresses are not recorded.
 import http from "node:http";
 
-export const PUBLIC_GET = ["/e/", "/u/", "/book/", "/shop/", "/api/e/", "/api/u/", "/api/book/", "/api/shop/", "/_next/static/", "/favicon.ico"];
-export const PUBLIC_POST = ["/api/e/", "/api/u/", "/api/book/", "/api/shop/"];
+export const PUBLIC_GET = ["/e/", "/u/", "/book/", "/shop/", "/api/e/", "/api/u/", "/api/book/", "/api/shop/", "/api/public/", "/_next/static/", "/favicon.ico"];
+export const PUBLIC_POST = ["/api/e/", "/api/u/", "/api/book/", "/api/shop/", "/api/public/"];
 export const MAX_POST_BYTES = 16 * 1024;
 
 // Never passed on: a tunnel's address headers, Host (set to the public address), the hop-by-hop ones, and the program

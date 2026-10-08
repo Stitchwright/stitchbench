@@ -10,6 +10,7 @@ import type { CurrentUser } from "@/lib/session";
 import { requireOn } from "@/lib/module-gate";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { addDays, dayStart, fmtRange, parseYmd, rangeFromForm, wall, weekStart, ymdOf, zonedTime } from "@/lib/zoned";
+import { currentStoreId } from "@/lib/stores";
 
 /** The shifts of the week that starts on `weekYmd` (a Sunday), by start. */
 export async function weekShifts(shopId: string, weekYmd: string, tz: string): Promise<Shift[]> {
@@ -88,7 +89,9 @@ export async function saveShiftAs(user: CurrentUser, shiftId: string | null, fd:
     await db.shift.updateMany({ where: { id: existing.id, shopId }, data });
     return { id: existing.id, week: weekStart(ymdOf(startsAt, tz)) };
   }
-  const made = await db.shift.create({ data: { shopId, ...data, createdById: user.id }, select: { id: true } });
+  // At the person's home store, else the store that scheduled it (7.1, "who's on shift" per store).
+  const home = who.userId ? (await db.user.findFirst({ where: { id: who.userId, shopId }, select: { locationId: true } }))?.locationId : null;
+  const made = await db.shift.create({ data: { shopId, ...data, createdById: user.id, locationId: home ?? (await currentStoreId(user)) }, select: { id: true } });
   return { id: made.id, week: weekStart(ymdOf(startsAt, tz)) };
 }
 
@@ -121,7 +124,7 @@ export async function copyWeekAs(user: CurrentUser, fd: FormData): Promise<{ to:
     const ws = wall(s.startsAt, tz);
     const we = wall(s.endsAt, tz);
     const day = addDays(to, ws.weekday);
-    return { shopId, userId: s.userId, name: s.name, startsAt: zonedTime(day, ws.hour * 60 + ws.minute, tz), endsAt: zonedTime(day, we.hour * 60 + we.minute, tz), role: s.role, note: s.note, createdById: user.id };
+    return { shopId, locationId: s.locationId, userId: s.userId, name: s.name, startsAt: zonedTime(day, ws.hour * 60 + ws.minute, tz), endsAt: zonedTime(day, we.hour * 60 + we.minute, tz), role: s.role, note: s.note, createdById: user.id };
   });
   await db.$transaction(async (tx) => {
     if (target.length) await tx.shift.deleteMany({ where: { shopId, id: { in: target.map((t) => t.id) } } });

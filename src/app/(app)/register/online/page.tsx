@@ -12,6 +12,9 @@ import { fmtWhen } from "@/lib/zoned";
 import { orderCancel, orderDone, orderNote, orderReady, orderRetry } from "@/actions/online-shop";
 import { ActionForm, Submit } from "@/components/action-form";
 import { Empty, PageHeader } from "@/components/ui";
+import { pirateShipFile } from "@/lib/ship-orders";
+import { shippoSettings } from "@/lib/shippo";
+import { ShippoLabel } from "@/components/shippo-label";
 
 const TONE: Record<OrderStatus, string> = { PENDING: "tone-wait", PAID: "tone-warn", READY: "tone-ok", DONE: "", CANCELLED: "tone-bad" };
 
@@ -22,6 +25,11 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { timeZone: true, shopOn: true, sellsRetail: true } }),
     ordersFor(user.shopId, { all: !!all }),
   ]);
+  // Shipping labels (shop-features-round-2-design.md 9.5): the paid orders to post, as a Pirate Ship spreadsheet.
+  const ship = await pirateShipFile(user.shopId);
+  const toShip = ship.rows.length - 1;
+  // Labels through Shippo (9.5), when the shop turned them on.
+  const shippo = await shippoSettings(user.shopId);
   const admin = user.role !== "TECH";
   return (
     <div className="space-y-6">
@@ -30,6 +38,9 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
         sub={all ? "Every order, newest first." : "Paid orders to pack, and ready ones waiting at the counter."}
         actions={
           <>
+            <Link href="/register/pay-links" className="btn">
+              Pay links
+            </Link>
             <Link href={all ? "/register/online" : "/register/online?all=1"} className="btn">
               {all ? "To do only" : "Show all"}
             </Link>
@@ -51,6 +62,17 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
           )}
         </p>
       )}
+      {toShip > 0 && (
+        <div className="card card-pad space-y-2 text-base">
+          <p>
+            {toShip === 1 ? "1 order" : `${toShip} orders`} to post. Make the labels at Pirate Ship: download the spreadsheet, then on pirateship.com choose Import a spreadsheet. Paste each tracking number back here with Shipped.
+          </p>
+          {ship.unsure.length > 0 && <p className="text-sm">Check the address of order {ship.unsure.map((n) => `#${n}`).join(", ")} in Pirate Ship: it couldn&apos;t be split into street, city, state and ZIP for sure.</p>}
+          <a href="/api/shop-orders/pirate-ship" className="btn btn-primary" download>
+            Export for Pirate Ship
+          </a>
+        </div>
+      )}
       {orders.length === 0 ? (
         <Empty>{all ? "No online orders yet." : "Nothing to pack. Orders show here as soon as they're paid."}</Empty>
       ) : (
@@ -63,6 +85,7 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div>
                     <span className="text-lg font-semibold">#{o.number}</span> <span className={`pill ${TONE[status]}`}>{ORDER_STATUS_LABEL[status]}</span>{" "}
+                    {o.source === "staff" && <span className="pill tone-neutral">Pay link</span>}{" "}
                     <span className="pill">{o.fulfil === "ship" ? "Ship" : "Pickup"}</span>
                   </div>
                   <div className="muted text-sm">
@@ -114,6 +137,15 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                     Tracking: <span className="mono">{o.tracking}</span>
                   </p>
                 )}
+                {o.labelUrl && (
+                  <p className="text-sm">
+                    <a href={o.labelUrl} target="_blank" rel="noreferrer" className="btn btn-sm btn-primary">
+                      Print the label
+                    </a>{" "}
+                    {o.labelCarrier ?? ""} {o.labelCents != null ? money(o.labelCents) : ""}
+                  </p>
+                )}
+                {shippo.on && status === "PAID" && o.fulfil === "ship" && !o.shippoTxId && <ShippoLabel orderId={o.id} weightOz={shippo.parcel.weightOz} canBuy={admin} />}
                 <div className="flex flex-wrap items-end gap-3">
                   {o.saleId && (
                     <Link href={`/register/sales/${o.saleId}`} className="btn btn-sm">
@@ -141,7 +173,7 @@ export default async function OnlineOrders({ searchParams }: { searchParams: Pro
                         <label htmlFor={`trk-${o.id}`} className="label">
                           Tracking number
                         </label>
-                        <input id={`trk-${o.id}`} name="tracking" className="input" maxLength={120} placeholder="optional" />
+                        <input id={`trk-${o.id}`} name="tracking" className="input" maxLength={120} placeholder="optional" defaultValue={o.tracking ?? ""} />
                       </div>
                       <Submit className="btn btn-sm btn-primary">Shipped</Submit>
                     </ActionForm>

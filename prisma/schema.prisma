@@ -23,146 +23,245 @@ enum Role {
 }
 
 model Shop {
-  id                   String        @id @default(cuid())
-  name                 String
-  phone                String?
-  email                String?
-  address              String?
-  laborRateCents       Int           @default(9800)
-  taxRatePct           Float         @default(0)
-  partsMarkupPct       Float         @default(30)
+  id                       String        @id @default(cuid())
+  name                     String
+  phone                    String?
+  email                    String?
+  address                  String?
+  laborRateCents           Int           @default(9800)
+  taxRatePct               Float         @default(0)
+  partsMarkupPct           Float         @default(30)
   // Fabric (fabric-smarts-design.md section 9): fat quarter price = yard price / 4 x (1 + this %), a half yard =
   // yard price / 2 x (1 + this %), a remnant sells at this % of the yard price (never under cost x 1.05), and a bolt
   // end is this many yards or fewer.
-  fatQuarterMarkupPct  Float         @default(15)
-  halfYardMarkupPct    Float         @default(10)
-  remnantPricePct      Float         @default(50)
-  boltEndYards         Float         @default(1)
+  fatQuarterMarkupPct      Float         @default(15)
+  halfYardMarkupPct        Float         @default(10)
+  remnantPricePct          Float         @default(50)
+  boltEndYards             Float         @default(1)
   // Fabric insight (fabric-smarts-design.md sections 2 and 9; docs/research/fabric-analytics-methods.md): every threshold
   // of What sells, Slow fabric and the markdown ladder. Days, percents and cents; the floor is a percent of cost.
-  fabVelocityWeeks     Int           @default(12)
-  fabEarlyDays         Int           @default(21)
-  fabBlendDays         Int           @default(42)
-  fabUnratedDays       Int           @default(42)
-  fabWatchDays         Int           @default(90)
-  fabWatchWeeks        Int           @default(26)
-  fabMarkdownDays      Int           @default(120)
-  fabClearanceDays     Int           @default(180)
-  fabMarkdownSoldPct   Int           @default(60)
-  fabStep1Pct          Int           @default(20)
-  fabStep2Pct          Int           @default(35)
-  fabStep3Pct          Int           @default(50)
-  fabFloorPct          Int           @default(105)
-  fabCutCostCents      Int           @default(50)
-  fabAbcAPct           Int           @default(80)
-  fabAbcBPct           Int           @default(95)
-  fabGmroiGood         Float         @default(3)
-  fabGmroiReview       Float         @default(1.5)
+  fabVelocityWeeks         Int           @default(12)
+  fabEarlyDays             Int           @default(21)
+  fabBlendDays             Int           @default(42)
+  fabUnratedDays           Int           @default(42)
+  fabWatchDays             Int           @default(90)
+  fabWatchWeeks            Int           @default(26)
+  fabMarkdownDays          Int           @default(120)
+  fabClearanceDays         Int           @default(180)
+  fabMarkdownSoldPct       Int           @default(60)
+  fabStep1Pct              Int           @default(20)
+  fabStep2Pct              Int           @default(35)
+  fabStep3Pct              Int           @default(50)
+  fabFloorPct              Int           @default(105)
+  fabCutCostCents          Int           @default(50)
+  fabAbcAPct               Int           @default(80)
+  fabAbcBPct               Int           @default(95)
+  fabGmroiGood             Float         @default(3)
+  fabGmroiReview           Float         @default(1.5)
   // Fabric ordering (package F3): the review period in weeks, the safety-stock z for collections (90%) and staples (95%),
   // the lead time in days for a supplier with no received order yet, and "Reorder now" (this percent of the lot sold in
   // this many days, and the weeks of supply under lead time plus this many weeks).
-  fabReviewWeeks       Int           @default(2)
-  fabZCollection       Float         @default(1.28)
-  fabZStaple           Float         @default(1.65)
-  fabLeadDays          Int           @default(14)
-  fabUrgentSoldPct     Int           @default(60)
-  fabUrgentDays        Int           @default(28)
-  fabUrgentWeeks       Int           @default(2)
+  fabReviewWeeks           Int           @default(2)
+  fabZCollection           Float         @default(1.28)
+  fabZStaple               Float         @default(1.65)
+  fabLeadDays              Int           @default(14)
+  fabUrgentSoldPct         Int           @default(60)
+  fabUrgentDays            Int           @default(28)
+  fabUrgentWeeks           Int           @default(2)
   // Kits (package F4): the margin a kit price aims for (percent of the price) and the bundle discount off the parts' shelf prices.
-  fabKitMarginPct      Int           @default(50)
-  fabBundleDiscountPct Int           @default(5)
-  warrantyDays         Int           @default(90)
-  abandonedAfterDays   Int           @default(60)
-  storageFeeCents      Int           @default(4500)
-  nextTicketNumber     Int           @default(51)
+  fabKitMarginPct          Int           @default(50)
+  fabBundleDiscountPct     Int           @default(5)
+  warrantyDays             Int           @default(90)
+  abandonedAfterDays       Int           @default(60)
+  storageFeeCents          Int           @default(4500)
+  nextTicketNumber         Int           @default(51)
   // Where the shop keeps its manual library on every PC (links show this path)
-  libraryRoot          String        @default("C:\\Manuals")
+  libraryRoot              String        @default("C:\\Manuals")
   // Service checklist template, one item per line of work (edited in Settings)
-  checklistItems       String[]
+  checklistItems           String[]
   // Fine print at the bottom of the printed price list
-  priceListNote        String?
+  priceListNote            String?
   // How other shops pay this one for marketplace orders (PayPal, Zelle, check to...)
-  payInstructions      String?
+  payInstructions          String?
   // Send the hub this company's monthly parts counts for the community's most-used list (counts only; off unless turned on)
-  shareUsage           Boolean       @default(false)
+  shareUsage               Boolean       @default(false)
   // What this company does: a repair bench (StitchBench), a sewing / quilt shop counter (StitchShop), or both
-  doesRepair           Boolean       @default(true)
-  sellsRetail          Boolean       @default(false)
-  nextSaleNumber       Int           @default(1001)
-  nextLongarmNumber    Int           @default(1)
-  nextTagNumber        Int           @default(101)
-  nextOrderNumber      Int           @default(1001)
+  doesRepair               Boolean       @default(true)
+  sellsRetail              Boolean       @default(false)
+  nextSaleNumber           Int           @default(1001)
+  nextLongarmNumber        Int           @default(1)
+  // Print and cut jobs (shop-features-round-2-design.md 6.5, Maker Shop): the next job number, the machine's hourly rate,
+  // the set-up fee, and the materials the laser never cuts (PVC and vinyl give off chlorine gas when laser cut).
+  nextMakeJobNumber        Int           @default(1)
+  makeRateCents            Int           @default(2000)
+  makeSetupCents           Int           @default(500)
+  makeNeverCut             String        @default("PVC, vinyl")
+  // Warranty claims to makers (shop-features-round-2-design.md 9.1): the next claim's number
+  nextClaimNumber          Int           @default(1)
+  // Co-op advertising and rebate claims (9.2): the next one's number
+  nextCoopNumber           Int           @default(1)
+  // Customers' machines on consignment (9.6): the shop's commission when none is typed, a percent of what it sells for
+  consignDefaultPct        Float         @default(25)
+  // Quilt appraisals (9.8): the next certificate's number, the usual fee, and the appraiser's name and credential
+  nextAppraisalNumber      Int           @default(1)
+  appraisalFeeCents        Int           @default(7500)
+  appraiserName            String?
+  appraiserCredential      String?
+  // House charge accounts (9.4): off until the owner turns them on
+  houseAccountsOn          Boolean       @default(false)
+  // The card reader at the counter (4.8): Stripe Terminal on the shop's own Stripe account (its key is stripeKeySealed),
+  // off until turned on; the Terminal location the readers are registered to
+  cardReaderOn             Boolean       @default(false)
+  terminalLocationId       String?
+  // Shipping labels through Shippo (9.5): off until turned on; the shop's own Shippo API key (sealed), where parcels ship
+  // from { name, street1, city, state, zip, phone } and the usual box { lengthIn, widthIn, heightIn, weightOz }
+  shippoOn                 Boolean       @default(false)
+  shippoKeySealed          String?
+  shipFrom                 Json          @default("{}")
+  // More than one store (7.1-7.5): the store whose shelves the online shop and the product feeds sell from (a Location
+  // id; null = the main store), the next transfer's number, and the owner's daily summary at each store's closing time
+  // (on unless turned off; sent only with more than one store), by "email" or "text".
+  onlineLocationId         String?
+  nextTransferNumber       Int           @default(1)
+  dailySummaryOn           Boolean       @default(true)
+  dailySummaryBy           String        @default("email")
+  shipParcel               Json          @default("{}")
+  nextTagNumber            Int           @default(101)
+  nextOrderNumber          Int           @default(1001)
   // The next shop number for a stock item the maker gave no number (SB-00001 in StitchBench, SS-00001 in StitchShop)
-  nextPartNumber       Int           @default(1)
+  nextPartNumber           Int           @default(1)
   // Line at the bottom of register receipts (returns policy, hours)
-  receiptNote          String?
+  receiptNote              String?
   // The shop's own time zone: where days and months start for reports and statements
-  timeZone             String        @default("America/New_York")
+  timeZone                 String        @default("America/New_York")
   // Online booking (online-and-parts-design.md section 2): the public address /book/{bookingSlug}, on or off, the
   // first offered time this many hours from now, how far ahead, and the welcome text.
-  bookingSlug          String?       @unique
-  bookingOn            Boolean       @default(false)
-  bookingLeadHours     Int           @default(24)
-  bookingDaysAhead     Int           @default(60)
-  bookingWelcome       String?
+  bookingSlug              String?       @unique
+  bookingOn                Boolean       @default(false)
+  bookingLeadHours         Int           @default(24)
+  bookingDaysAhead         Int           @default(60)
+  bookingWelcome           String?
   // The online shop (online-and-parts-design.md section 3): /shop/{bookingSlug} (the same public address as booking),
   // on or off, pickup at the counter and / or flat-rate shipping, who takes the money ("own": the shop's Stripe account,
   // its keys sealed below; "platform": the hosted service's account, paid out to the shop by hand), the welcome and
   // the pickup instructions.
-  shopOn               Boolean       @default(false)
-  shopPickup           Boolean       @default(true)
-  shopShipping         Boolean       @default(false)
-  shopShipCents        Int           @default(0)
-  shopFreeOverCents    Int?
-  shopPayVia           String        @default("own")
+  shopOn                   Boolean       @default(false)
+  shopPickup               Boolean       @default(true)
+  shopShipping             Boolean       @default(false)
+  shopShipCents            Int           @default(0)
+  shopFreeOverCents        Int?
+  shopPayVia               String        @default("own")
   // Sales tax on online orders: "rate" (the shop's one rate, as at the counter) or "stripe" (Stripe Tax works out the
   // tax on shipped orders from the delivery address; pickup orders stay at the rate). Own-account shops only.
-  shopTaxVia           String        @default("rate")
-  shopWelcome          String?
-  shopPickupNote       String?
-  stripeKeySealed      String?
-  stripeWebhookSealed  String?
-  nextWebOrderNumber   Int           @default(1001)
+  shopTaxVia               String        @default("rate")
+  shopWelcome              String?
+  shopPickupNote           String?
+  stripeKeySealed          String?
+  stripeWebhookSealed      String?
+  nextWebOrderNumber       Int           @default(1001)
+  // Layaway (tax-machine-sales-layaway-design.md section 4): the shop's defaults (owner's answer 3): the deposit as a
+  // percent of the price, days to pay it off, payments every 2 weeks ("2w") or monthly ("month"), what cancelling keeps
+  // (a fee in cents and / or a percent of what was paid), how the rest goes back ("credit": store credit, "money": the
+  // way they paid), and the terms the customer signs (blank: the program's default wording).
+  layawayDepositPct        Int           @default(10)
+  layawayDays              Int           @default(90)
+  layawayEvery             String        @default("2w")
+  layawayFeeCents          Int           @default(0)
+  layawayFeePct            Int           @default(0)
+  layawayRefund            String        @default("credit")
+  layawayTerms             String?
+  nextLayawayNumber        Int           @default(1)
+  // Special orders and pre-orders (shop-features-round-2-design.md 1.2): the deposit asked by default (a percent of the
+  // price, or a set amount; both 0: none), what cancelling does with the deposit ("credit": store credit, "refund": the
+  // money back, "keep": kept), and the days after it's here before it shows on the dashboard as not picked up.
+  specialOrderDepositPct   Int           @default(0)
+  specialOrderDepositCents Int           @default(0)
+  specialOrderDepositRule  String        @default("credit")
+  specialOrderDays         Int           @default(30)
+  nextSpecialOrderNumber   Int           @default(1001)
+  // "Price includes the tax" promotions allowed (tax-machine-sales-layaway-design.md section 2, owner's answer 5): off
+  // until the owner turns it on past the warning that some states forbid advertising it.
+  taxIncludedOn            Boolean       @default(false)
+  // Software licences (shop-features-round-2-design.md 2.5): a licence sold here counts as activated on the sale date
+  // (on), or only when the shop marks it activated (off, the default).
+  softwareActivatedAtSale  Boolean       @default(false)
   // The kind /tickets/new opens on (sewing, vacuum, stand-mixer, 3d-printer, resin-printer, other, or a shop kind's key)
-  checkInKind          String        @default("sewing")
+  checkInKind              String        @default("sewing")
   // Vac Shop "bags due": days between bag purchases
-  bagReminderDays      Int           @default(180)
+  bagReminderDays          Int           @default(180)
+  // The lifetime discount a vacuum sold here gives on its supplies, by default (1.5)
+  lifetimePctDefault       Int           @default(25)
+  // The birthday offer (1.6): { kind: "pct" | "credit", value } (a percent off one sale, or store credit in cents),
+  // during the birthday month, once a year; null: none
+  birthdayOffer            Json?
+  // Loaners (1.7): the deposit asked by default (0: none, a "card on file" note instead) and the days a loaner is lent
+  // for by default (tickets carry no promised date)
+  loanerDepositCents       Int           @default(0)
+  loanerDays               Int           @default(14)
+  // Trial purchases (1.8): machines sold with "Try it for N days" (0: off)
+  trialDays                Int           @default(0)
+  // Trade-up credit (1.9): a repair's cost taken off a new machine bought within this many days (0: off), and the
+  // trade-in value rule: what the shop expects to sell it for, less this percent
+  tradeUpDays              Int           @default(0)
+  tradeInLessPct           Int           @default(30)
   // Set by the StitchBench administrator (Companies): this company can't write to the community hub
-  hubWritesOff         Boolean       @default(false)
+  hubWritesOff             Boolean       @default(false)
+  // Customer answers (shop-features-round-2-design.md 5.6): the shop's opening hours for the public page's Hours answer
+  // ([{ day: 0-6, from: "HH:MM", to: "HH:MM" }], the appointment types' shape), a line under them ("Closed on holidays"),
+  // and the phone-answering service's key (sha256 of it; the key is shown once) with when it was made.
+  openHours                Json          @default("[]")
+  hoursNote                String?
+  statusKeyHash            String?
+  statusKeyAt              DateTime?
   // Techs may offer manuals to the hub's repository (Settings -> Community hub); off by default: strikes land on the owner's account.
-  techsOfferManuals    Boolean       @default(false)
-  manualOffers         ManualOffer[]
+  techsOfferManuals        Boolean       @default(false)
+  manualOffers             ManualOffer[]
   // This company's StitchHub account and standing, as the hub last told it (hub-accounts-billing-design.md 2.4, 5.2):
   // shown on Settings → Account. Only the hub's signed key (a License row with source "hub") changes what the program allows.
-  hubAccountEmail      String?
-  hubAccountVerified   Boolean       @default(false)
-  hubStanding          String? // trial | active | past_due | waived | comped | lapsed, as the hub said
-  hubStandingAt        DateTime? // when the hub last answered
-  hubStandingUntil     String? // the hub's lastDay (YYYY-MM-DD), when it gave one
-  hubStandingNote      String? // the hub's message, shown as it came
+  hubAccountEmail          String?
+  hubAccountVerified       Boolean       @default(false)
+  hubStanding              String? // trial | active | past_due | waived | comped | lapsed, as the hub said
+  hubStandingAt            DateTime? // when the hub last answered
+  hubStandingUntil         String? // the hub's lastDay (YYYY-MM-DD), when it gave one
+  hubStandingNote          String? // the hub's message, shown as it came
   // The owner allows a password reset from their StitchHub account (Windows program, package hosted-provisioning); off by default
-  hubResetOptIn        Boolean       @default(false)
+  hubResetOptIn            Boolean       @default(false)
   // Which version of the hub's terms the company's account accepted: sent when the account is started from here, then as
   // the hub reports it at each claim (it may have been accepted again on the hub)
-  termsVersion         String?
+  termsVersion             String?
   // Moving the company to another install (company-move-design.md sections 7 and 8). movingAt: the owner confirmed the
   // move and this copy is read-only (Cancel clears it); movedTo: where it is going, in the owner's words, then the hub's
   // name for the new install once it says moved; movedOutAt: the hub said moved (package move-hub). movedInAt /
   // movedFrom: this copy came in from a move file (package move-import).
-  movingAt             DateTime?
-  movedOutAt           DateTime?
-  movedTo              String?
-  movedInAt            DateTime?
-  movedFrom            String?
+  movingAt                 DateTime?
+  movedOutAt               DateTime?
+  movedTo                  String?
+  movedInAt                DateTime?
+  movedFrom                String?
+  // Joining this company into another as a store (round-2 7.6): a one-time code its owner makes while signed in here
+  // (hashed), good for 30 minutes, typed into the other company by the same person (never matched by email)
+  joinCodeHash             String?
+  joinCodeUntil            DateTime?
+  joinCodeById             String?
   // Made by StitchHub's "Start a hosted shop" (POST /api/platform/companies, package hosted-provisioning): the Companies
   // page says "Started from StitchHub"
-  startedFromHubAt     DateTime?
+  startedFromHubAt         DateTime?
   // The Assistant add-on (ai-assistant-scope.md 2.3): this month's calls as the hub last counted them, in the company's
   // zone ("2026-10"), and the month's limit with any top-ups; the hub's count is the authority, this one shows offline.
-  assistantMonth       String?
-  assistantCalls       Int           @default(0)
-  assistantLimit       Int           @default(300)
-  createdAt            DateTime      @default(now())
+  assistantMonth           String?
+  assistantCalls           Int           @default(0)
+  assistantLimit           Int           @default(300)
+  // Product feeds for Google and Meta (shop-features-round-2-design.md 4.1, 4.2): the secret in the feed links (null: feeds
+  // off) and the store code from the Google Business Profile, for the local inventory feed.
+  feedToken                String?       @unique
+  feedStoreCode            String?
+  // Margin floor (shop-features-round-2-design.md 4.4): "tell me when an item's margin falls under N%", as {"all": 40} with
+  // optional per-kind figures ({"FABRIC": 45}); null: off. src/lib/repricing-math.ts.
+  marginFloor              Json?
+  // Shop hops (shop-features-round-2-design.md 4.6): off until the shop turns it on (Settings, Selling); then the Shop hop
+  // page shows in the menu.
+  hopOn                    Boolean       @default(false)
+  createdAt                DateTime      @default(now())
 
   users             User[]
   customers         Customer[]
@@ -213,6 +312,45 @@ model Shop {
   webOrders         WebOrder[]
   partPhotos        PartPhoto[]
   stockUnits        StockUnit[]
+  // Machines for sale (tax-machine-sales-layaway-design.md section 3)
+  makerWarranties   MakerWarranty[]
+  layaways          Layaway[]
+  specialOrders     SpecialOrder[]
+  wantItems         WantItem[]
+  priceGroups       PriceGroup[]
+  yardBreaks        YardBreak[]
+  unitLoans         UnitLoan[]
+  tradeUpOffers     TradeUpOffer[]
+  taxHolidays       TaxHoliday[]
+  lenders           Lender[]
+  promotions        Promotion[]
+  fitGroups         FitGroup[]
+  softwareLicenses  SoftwareLicense[]
+  softwareCodes     SoftwareCode[]
+  starterBundles    StarterBundle[]
+  suppliesCare      SuppliesCare[]
+  certifications    Certification[]
+  makeJobs          MakeJob[]
+  // Phase 4 AI (shop-features-round-2-design.md section 5)
+  patternNeeds      PatternNeed[]
+  careTips          CareTip[]
+  customerQuestions CustomerQuestion[]
+  warrantyClaims    WarrantyClaim[]
+  coopClaims        CoopClaim[]
+  coopProofs        CoopProof[]
+  consignPayouts    ConsignPayout[]
+  slipReceipts      SlipReceipt[]
+  appraisals        Appraisal[]
+  appraisalPhotos   AppraisalPhoto[]
+  giftRegistries    GiftRegistry[]
+  registryItems     RegistryItem[]
+  houseAccounts     HouseAccount[]
+  accountEntries    AccountEntry[]
+  cardReaders       CardReader[]
+  cardPayments      CardPayment[]
+  financedSales     FinancedSale[]
+  servicePlans      ServicePlan[]
+  machinePlans      MachinePlan[]
   vacCares          VacCare[]
   manualDownloads   ManualDownload[]
   // Scheduling and messages
@@ -231,11 +369,24 @@ model Shop {
   appointments      Appointment[]
   shifts            Shift[]
   companyMoves      CompanyMove[]
+  priceChanges      PriceChange[]
+  liveSales         LiveSale[]
+  liveClaims        LiveClaim[]
+  eventPayments     EventPayment[]
+  eventDraws        EventDraw[]
+  shopHops          ShopHop[]
+  hopStamps         HopStampLocal[]
   // The Assistant add-on
   assistantSettings AssistantSettings?
   assistantCallLog  AssistantCall[]
   manualPages       ManualPage[]
   manualIndexDocs   ManualIndexDoc[]
+  // More than one store (shop-features-round-2-design.md section 7)
+  locations         Location[]
+  stockLevels       StockLevel[]
+  stockTransfers    StockTransfer[]
+  storeNotes        StoreNote[]
+  approvals         Approval[]
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -277,6 +428,15 @@ model User {
   id             String   @id @default(cuid())
   shopId         String
   shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The person's home store (7.1): plain Location id; null = the main store
+  locationId     String?
+  // A manager's approval code at the register (7.5), hashed; null = none
+  approveCode    String?
+  // The code was set before codes were 6 numbers: Settings -> Stores asks her to change it
+  approveCodeOld Boolean  @default(false)
+  // Wrong approval codes typed by this person (counted before each try), and the 15 minutes' wait after five
+  approveFails   Int      @default(0)
+  approveLockedUntil DateTime?
   email          String
   name           String
   passwordHash   String
@@ -284,17 +444,20 @@ model User {
   active         Boolean  @default(true)
   // Bumped when the password changes or access is removed: sessions signed in before that stop working
   sessionVersion Int      @default(0)
+  // Sales commission (shop-features-round-2-design.md 9.7): { pct, on: "machines" | "all" }; {} for none
+  commission     Json     @default("{}")
   createdAt      DateTime @default(now())
 
-  notes         ModelNote[]
-  ticketsOpened Ticket[]        @relation("TicketOpenedBy")
-  ticketsAsTech Ticket[]        @relation("TicketTech")
-  stockMoves    StockMove[]
-  sharedPosts   SharedPost[]
-  sales         Sale[]
-  shifts        Shift[]
-  appointments  Appointment[]
-  resets        PasswordReset[]
+  notes          ModelNote[]
+  ticketsOpened  Ticket[]        @relation("TicketOpenedBy")
+  ticketsAsTech  Ticket[]        @relation("TicketTech")
+  stockMoves     StockMove[]
+  storeNoteReads StoreNoteRead[]
+  sharedPosts    SharedPost[]
+  sales          Sale[]
+  shifts         Shift[]
+  appointments   Appointment[]
+  resets         PasswordReset[]
 
   // An email is unique inside one company (round 3 W1): the same address may have a login in several companies.
   @@unique([shopId, email])
@@ -360,17 +523,35 @@ model Customer {
   // Tax exempt (a resale or exemption certificate): sales and tickets for them charge no tax, with the number recorded
   taxExemptId        String?
   taxExemptUntil     DateTime?
+  // Price group or membership (shop-features-round-2-design.md 1.5): the group whose discount the register gives her,
+  // and the last day of a paid membership (YYYY-MM-DD; null: no end)
+  priceGroupId       String?
+  priceGroup         PriceGroup?       @relation(fields: [priceGroupId], references: [id], onDelete: SetNull)
+  priceGroupUntil    String?
+  // Birthday (shop-features-round-2-design.md 1.6): month and day, only if she'd like to tell; the year she last used the
+  // birthday offer (once a year)
+  birthMonth         Int?
+  birthDay           Int?
+  birthdayUsedYear   Int?
 
-  machines      Machine[]
-  tickets       Ticket[]       @relation("TicketCustomer")
-  viaTickets    Ticket[]       @relation("TicketViaAccount")
-  sales         Sale[]
-  giftCards     GiftCard[]
-  repairJobs    RepairJob[]
-  outMessages   OutMessage[]
-  consentEvents ConsentEvent[]
-  enrollments   Enrollment[]
-  appointments  Appointment[]
+  machines         Machine[]
+  tickets          Ticket[]          @relation("TicketCustomer")
+  viaTickets       Ticket[]          @relation("TicketViaAccount")
+  sales            Sale[]
+  giftCards        GiftCard[]
+  layaways         Layaway[]
+  repairJobs       RepairJob[]
+  outMessages      OutMessage[]
+  consentEvents    ConsentEvent[]
+  enrollments      Enrollment[]
+  appointments     Appointment[]
+  softwareLicenses SoftwareLicense[]
+  certifications   Certification[]
+  makeJobs         MakeJob[]
+  specialOrders    SpecialOrder[]
+  wantItems        WantItem[]
+  unitLoans        UnitLoan[]
+  tradeUpOffers    TradeUpOffer[]
 
   @@index([shopId, name])
 }
@@ -401,11 +582,13 @@ model Machine {
   serviceNoticeFor DateTime?
   createdAt        DateTime  @default(now())
 
-  tickets    Ticket[]
-  photos     MachinePhoto[]
-  repairJobs RepairJob[]
-  stock      StockUnit?
-  vacCare    VacCare?
+  tickets      Ticket[]
+  photos       MachinePhoto[]
+  repairJobs   RepairJob[]
+  stock        StockUnit?
+  vacCare      VacCare?
+  suppliesCare SuppliesCare?
+  plans        MachinePlan[]
 
   @@index([shopId, serial])
   @@index([shopId, brand, modelKey])
@@ -566,6 +749,8 @@ model Ticket {
   id                  String       @id @default(cuid())
   shopId              String
   shop                Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId          String?
   number              Int
   status              TicketStatus @default(ON_BENCH)
   machineId           String
@@ -601,6 +786,10 @@ model Ticket {
   // Since when it has been waiting on the pickup shelf: set on every move into READY_FOR_PICKUP, cleared on leaving it
   // (uncollected-machine notices count from here)
   pickupReadyAt       DateTime?
+  // The pickup sheet (shop-features-round-2-design.md 5.5): "What we did" in plain words and the care tips chosen from
+  // the shop's own list (their text, as printed), printed with the invoice
+  pickupWhat          String?
+  pickupTips          String[]     @default([])
   closedAt            DateTime?
   warrantyUntil       DateTime?
   // The trade account's commission % as it was when the ticket closed (null while open): editing the account later
@@ -632,6 +821,7 @@ model Ticket {
   @@index([machineId])
   @@index([customerId])
   @@index([viaAccountId])
+  @@index([shopId, locationId])
 }
 
 enum LineKind {
@@ -653,9 +843,18 @@ model TicketLine {
   taxable        Boolean  @default(true)
   partId         String?
   part           Part?    @relation(fields: [partId], references: [id], onDelete: SetNull)
+  // Covered by the machine's service plan (MachinePlan id, plain): the line charges 0 and coveredCents keeps what it
+  // would have cost, for the report
+  coveredPlanId  String?
+  coveredCents   Int?
+  // Claimed from the machine's maker under its warranty (WarrantyClaim id, plain; shop-features-round-2-design.md 9.1):
+  // the line charges 0 and coveredCents keeps what it would have cost, as for a plan
+  claimId        String?
   createdAt      DateTime @default(now())
 
   @@index([ticketId])
+  @@index([coveredPlanId])
+  @@index([claimId])
 }
 
 enum PaymentMethod {
@@ -707,73 +906,207 @@ model ServiceItem {
 // ============================================================
 
 model Part {
-  id              String        @id @default(cuid())
-  shopId          String
-  shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  partNumber      String
-  description     String
-  brand           String?
-  fits            String? // models it fits, free text
-  location        String? // bin / drawer
-  qtyOnHand       Float         @default(0) // fabric sells in fractions of a yard
-  reorderAt       Float         @default(0)
-  costCents       Int?
+  id                String        @id @default(cuid())
+  shopId            String
+  shop              Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partNumber        String
+  description       String
+  brand             String?
+  fits              String? // models it fits, free text
+  location          String? // bin / drawer
+  qtyOnHand         Float         @default(0) // fabric sells in fractions of a yard
+  reorderAt         Float         @default(0)
+  costCents         Int?
   // The same cost in ten-thousandths of a dollar ($0.125 = 1250), for supplier prices finer than a cent; costCents is
   // this rounded to cents and is what margins and exports read. Empty on older parts: costCents is then exact.
-  costTenThou     Int?
-  priceCents      Int?
-  supplier        String?
-  notes           String?
-  createdAt       DateTime      @default(now())
-  kind            PartKind      @default(PART)
+  costTenThou       Int?
+  priceCents        Int?
+  // The maker's minimum advertised price (shop-features-round-2-design.md 9.3): below it, the online shop shows this price
+  // and "Add to cart to see our price", and the cart shows the real one
+  mapCents          Int?
+  // Also listed on eBay, Etsy or Marketplace (9.7): [{ where, url }]; selling the last one here asks to take those down
+  listedOn          Json          @default("[]")
+  supplier          String?
+  notes             String?
+  createdAt         DateTime      @default(now())
+  kind              PartKind      @default(PART)
   // Other numbers it's sold under (other makers' numbers, generic numbers)
-  altNumbers      String[]
+  altNumbers        String[]
   // partNumber + altNumbers, upper-case letters and digits only, for matching the cross-reference
-  numberKeys      String[]
+  numberKeys        String[]
   // null = sold each; "yd" = by the yard (fabric)
-  unit            String?
+  unit              String?
   // Offered to partner sewing shops at this price (their catalog from this shop)
-  wholesaleCents  Int?
-  offerToPartners Boolean       @default(false)
+  wholesaleCents    Int?
+  offerToPartners   Boolean       @default(false)
   // A partner repair shop's stock held here on consignment: which partnership, and the owner's id for the item
-  consignLinkId   String?
-  consignItemKey  String?
+  consignLinkId     String?
+  consignItemKey    String?
   // New, used or refurbished; and who made it: the machine maker (genuine), a compatible replacement or 3D printed
-  condition       PartCondition @default(NEW)
-  origin          PartOrigin    @default(GENUINE)
+  condition         PartCondition @default(NEW)
+  origin            PartOrigin    @default(GENUINE)
   // The maker gave no number, so partNumber is a shop number (SB-00001): never presented as the maker's
-  ownNumber       Boolean       @default(false)
+  ownNumber         Boolean       @default(false)
   // Listed in the online shop (section 3): needs a price; the customer's title and text, and up to four photos
-  online          Boolean       @default(false)
-  onlineTitle     String?
-  onlineText      String?
+  online            Boolean       @default(false)
+  // Coming soon (shop-features-round-2-design.md 1.2): the day it is expected (YYYY-MM-DD); the register and the online
+  // shop take pre-orders for it. A special order's deposit for this item is kept if she cancels (kit pre-registrations).
+  comingSoonOn      String?
+  depositKept       Boolean       @default(false)
+  // An item that sells a membership (1.5): selling it puts the buyer in this price group for this many months
+  membershipGroupId String?
+  membershipMonths  Int?
+  // Its own per-yard break (1.6): from this many yards, this price a yard ("this wide-back: $18 a yard from 3 yards")
+  breakMinQty       Float?
+  breakPriceCents   Int?
+  onlineTitle       String?
+  onlineText        String?
   // Fabric smarts (fabric-smarts-design.md section 6): the collection and designer, color tags, the yards on a full
   // bolt, whether the maker still prints it, and the items its cuts feed. The links are plain ids (no foreign key, so a
   // company file imports in any order); fabric.ts checks the target is this shop's own before using it.
-  collection      String?
-  designer        String?
-  colorTags       String[]
-  boltYards       Float         @default(15)
-  inPrint         InPrint       @default(UNKNOWN)
-  fatQuarterId    String?
-  halfYardId      String?
-  remnantId       String?
+  collection        String?
+  designer          String?
+  colorTags         String[]
+  boltYards         Float         @default(15)
+  inPrint           InPrint       @default(UNKNOWN)
+  fatQuarterId      String?
+  halfYardId        String?
+  remnantId         String?
+  // Item details (shop-features-round-2-design.md 2.1 and 6.2): the maker's own color number (Isacord 0015), its name, a
+  // swatch color (#rrggbb), the material (thread's fibre, filament's PLA, resin's type, vinyl's kind, laser stock's
+  // material), what it is (itemType: thread | filament | resin | blade | mat | vinyl | laser-material | die, null for
+  // anything else) and the rest in specs (weight and put-up for thread, diameter and spool grams for filament, volume
+  // for resin, size, thickness, shape). The three the counter search reads are columns; src/lib/item-details.ts.
+  colorNumber       String?
+  colorName         String?
+  colorHex          String?
+  material          String?
+  itemType          String?
+  specs             Json?
+  // The shop's own color matches (shop-features-round-2-design.md 2.2): plain ids of this company's other items that
+  // are the same color ("same as Madeira 1147"), kept both ways. No foreign key (a company file imports in any order);
+  // src/lib/colors.ts reads only the company's own.
+  sameAs            String[]      @default([])
+  // Which machines it fits (shop-features-round-2-design.md 2.4): models as the shop picked them ("Brother PE800"), their
+  // model keys (modelKey of the model, what every lookup matches on), and fit groups the shop named (plain ids of this
+  // company's FitGroup rows: no foreign key). The free-text `fits` stays for notes. src/lib/fits.ts.
+  fitsModels        String[]      @default([])
+  fitsKeys          String[]      @default([])
+  fitGroupIds       String[]      @default([])
+  // Software (2.5, kind SOFTWARE): ONCE (perpetual) or SUBSCRIPTION (licenseMonths long), and the no-returns words the
+  // receipt prints (blank: the default, "Software can't be returned once it has been activated.").
+  licenseKind       String?
+  licenseMonths     Int?
+  noReturnText      String?
 
-  moves     StockMove[]
-  markdowns FabricMarkdown[]
-  poLines   PurchaseOrderLine[]
-  kitLines  KitLine[]
-  kitStock  Kit[]               @relation("KitStock")
-  photos    PartPhoto[]
-  lines     TicketLine[]
-  sources   PartSource[]
-  saleLines SaleLine[]
-  waits     PartWait[]
+  softwareLicenses SoftwareLicense[]
+  softwareCodes    SoftwareCode[]
+
+  // The barcode number (UPC / EAN, a GTIN) for Google and Meta product feeds (shop-features-round-2-design.md 4.1): typed or
+  // scanned on the item page; empty: the feed uses a valid GTIN among the item's numbers. Digits only, check digit checked.
+  gtin String?
+
+  moves         StockMove[]
+  levels        StockLevel[]
+  transferLines StockTransferLine[]
+  markdowns     FabricMarkdown[]
+  poLines       PurchaseOrderLine[]
+  kitLines      KitLine[]
+  kitStock      Kit[]               @relation("KitStock")
+  photos        PartPhoto[]
+  lines         TicketLine[]
+  sources       PartSource[]
+  saleLines     SaleLine[]
+  waits         PartWait[]
 
   // The number is also unique in any case: a unique index on (shopId, lower(partNumber)), which Prisma can't express,
   // in migration 20260930220000_round3_tail2_part_number_ci. Writes catch its P2002 (partNumberClash in lib/parts.ts).
   @@unique([shopId, partNumber])
   @@index([numberKeys], type: Gin)
+  @@index([shopId, itemType])
+  @@index([fitsKeys], type: Gin)
+}
+
+// A software licence sold (shop-features-round-2-design.md 2.5): the item, the sale line, the customer and the machine it
+// is for, the activation code (null until it is filled in: the "Codes to fill in" list), ONCE or SUBSCRIPTION with its
+// renewal date, when it was activated, and where it stands (ACTIVE | RENEWED | RETURNED | ENDED). The code is the shop's
+// record of the sale: masked in lists, never sent to the hub or the Assistant. renewNoticeFor: the renewal date the
+// friendly reminder went out about (never twice for the same one).
+model SoftwareLicense {
+  id             String    @id @default(cuid())
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId         String?
+  part           Part?     @relation(fields: [partId], references: [id], onDelete: SetNull)
+  description    String
+  saleId         String? // plain ids: the sale and line that sold it
+  saleLineId     String?
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  machineId      String? // plain id of one of the customer's machines
+  code           String?
+  kind           String    @default("ONCE") // ONCE | SUBSCRIPTION
+  startsOn       DateTime
+  renewsOn       DateTime?
+  activatedAt    DateTime?
+  status         String    @default("ACTIVE") // ACTIVE | RENEWED | RETURNED | ENDED
+  note           String?
+  renewNoticeFor DateTime?
+  renewedFromId  String? // a renewal: the licence it carries on (plain id), RENEWED until this one is voided
+  returnLineId   String? // the sale line that took it back (plain id): voiding that return makes it active again
+  createdAt      DateTime  @default(now())
+
+  @@index([shopId, status, renewsOn])
+  @@index([shopId, customerId])
+  @@index([shopId, saleId])
+}
+
+// An activation code on hand (2.5): cards in a drawer or a distributor's list, loaded on the software item; the
+// register fills the next one in by itself. usedById: the licence it went to (plain id).
+model SoftwareCode {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId     String
+  part       Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  code       String
+  usedById   String?
+  receivedAt DateTime @default(now())
+
+  @@unique([shopId, partId, code])
+  @@index([shopId, partId, usedById])
+}
+
+// A starter bundle (shop-features-round-2-design.md 6.1): what the shop puts with a new machine of a kind ("Bambu starter:
+// 2 spools PLA, build plate glue"), added to the sale in one tap. kind: the equipment kind's key; lines: [{ partId, qty }]
+// with plain ids of this company's items (checked when used).
+model StarterBundle {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind      String
+  name      String
+  lines     Json     @default("[]")
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, name])
+  @@index([shopId, kind])
+}
+
+// A fit group (shop-features-round-2-design.md 2.4): a name the shop gives once ("Brother 7 mm low shank", "Cricut
+// Maker 3", "Bambu P1 hot end") and the models in it; an item that fits the group fits every one of them. `models` as
+// typed ("Brother PE800"), `modelKeys` their keys.
+model FitGroup {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  models    String[] @default([])
+  modelKeys String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, name])
+  @@index([modelKeys], type: Gin)
 }
 
 enum InPrint {
@@ -790,6 +1123,8 @@ enum PartKind {
   FABRIC
   THREAD
   PATTERN
+  SOFTWARE // embroidery, cutting-machine or slicer software sold with an activation code (shop-features-round-2-design.md 2.5)
+  MACHINE // a machine model from a distributor's list, ordered on a purchase order; never stock itself: receiving it makes machines for sale (StockUnit)
 }
 
 enum PartCondition {
@@ -827,12 +1162,16 @@ enum MoveReason {
   SOLD // over the counter (register) or to a partner shop
   CONSIGNED // sent to, or taken back from, a partner shop's consignment shelf
   CUT // fabric cut into fat quarters, half yards or a remnant: one move out of the bolt, one into the item it feeds
+  HELD // set aside for a layaway (off the shelf), or back on the shelf when it is picked up or cancelled
+  TRANSFER // sent to, or arrived from, another store of the company (7.2)
 }
 
 model StockMove {
   id          String     @id @default(cuid())
   shopId      String
   shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store whose shelf it moved (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   partId      String
   part        Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
   qty         Float // + in, - out
@@ -847,6 +1186,7 @@ model StockMove {
 
   @@index([partId, createdAt])
   @@index([shopId, createdAt])
+  @@index([shopId, locationId])
 }
 
 // ============================================================
@@ -1243,6 +1583,8 @@ model Sale {
   id            String    @id @default(cuid())
   shopId        String
   shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId    String?
   number        Int
   customerId    String?
   customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1270,6 +1612,7 @@ model Sale {
   @@unique([shopId, number])
   @@unique([shopId, clientKey])
   @@index([shopId, createdAt])
+  @@index([shopId, locationId])
 }
 
 model SaleLine {
@@ -1304,6 +1647,29 @@ model SaleLine {
   appointmentId  String?
   // A gift card sold, loaded or paid out on this line (plain id)
   giftCardId     String?
+  // A service plan sold on this line (the MachinePlan it made, plain id)
+  machinePlanId  String?
+  // Why a line that could be taxed wasn't (or was taxed differently): null, "exempt" (the customer's certificate),
+  // "holiday:<TaxHoliday id>" (a sales tax holiday), "included" (the price includes the tax): for the receipt, a return and the tax report
+  taxNote        String?
+  // The promotion that priced this line (percent or amount off, or the price including the tax), plain id
+  promotionId    String?
+  // The price group whose discount priced this line (1.5, plain id), and what the receipt says about the line's price
+  // rule: "Guild 10%", "Lifetime 25%", "10+ yd price", "Birthday 15%"; a membership line: "member:<prev group>|<prev until>"
+  priceGroupId   String?
+  priceNote      String?
+  // Layaway (plain id): a payment toward it (kind LAYAWAY, qty 1), its payments used up when it is picked up or given
+  // back when it is cancelled (kind LAYAWAY, qty -1), its cancel fee (LAYAWAY_FEE), or an item it held, sold on pick-up
+  layawayId      String?
+  // A special order (plain id): money paid toward it (kind DEPOSIT +), its deposits used up at pick-up or given back
+  // (DEPOSIT -), a kept deposit (DEPOSIT_KEPT), or the item itself sold at pick-up
+  specialOrderId String?
+  // A loaner's or rental's money (plain id, 1.7, 1.8): its deposit (DEPOSIT), a kept deposit (LOAN_FEE), rent (RENT)
+  unitLoanId     String?
+  // Who sold it (User id, plain; shop-features-round-2-design.md 9.7): picked at the register, the person signed in by default
+  soldById       String?
+  // Bought from a customer's gift list (RegistryItem id, plain; shop-features-round-2-design.md 9.9): ticks it off
+  registryItemId String?
   // The category it is reported under when sold (a part's kind, CLASS, APPOINTMENT, UNIT, REPAIR, TRADE_IN, GIFT_CARD, MISC)
   kind           String?
 
@@ -1313,6 +1679,8 @@ model SaleLine {
   @@index([machineId])
   @@index([enrollmentId])
   @@index([appointmentId])
+  @@index([layawayId])
+  @@index([registryItemId])
 }
 
 // A partnership with another shop, from this shop's side (the id is the hub's link id).
@@ -1753,6 +2121,8 @@ model WebOrder {
   id              String    @id @default(cuid())
   shopId          String
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   number          Int
   status          String    @default("PENDING")
   customerId      String?
@@ -1776,6 +2146,12 @@ model WebOrder {
   linkSealed      String? // the order page's link (it carries the token), sealed, for the mail
   saleId          String?
   tracking        String?
+  // A label bought through Shippo (shop-features-round-2-design.md 9.5): where to print it, the carrier and service,
+  // what it cost the shop, and Shippo's transaction id
+  labelUrl        String?
+  labelCarrier    String?
+  labelCents      Int?
+  shippoTxId      String?
   note            String?
   staffNote       String?
   createdAt       DateTime  @default(now())
@@ -1783,10 +2159,18 @@ model WebOrder {
   readyAt         DateTime?
   doneAt          DateTime?
   cancelledAt     DateTime?
+  // Pay links sent by staff (shop-features-round-2-design.md 1.3): "customer" (built in the online shop) or "staff" (the
+  // lines filled in by the shop and the link texted or emailed); the special orders it pays toward (plain ids), who
+  // made it, and the day the link stops working (a staff link waits for the customer; Stripe's page is opened on demand).
+  source          String    @default("customer")
+  specialOrderIds String[]  @default([])
+  createdById     String?
+  expiresAt       DateTime?
 
   @@unique([shopId, number])
   @@index([shopId, status, createdAt])
   @@index([customerId])
+  @@index([shopId, locationId])
 }
 
 model PartWait {
@@ -1836,12 +2220,23 @@ model StockUnit {
   id              String    @id @default(cuid())
   shopId          String
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   machineId       String    @unique
   machine         Machine   @relation(fields: [machineId], references: [id], onDelete: Restrict)
-  status          String    @default("IN_STOCK") // IN_STOCK | SOLD | REMOVED
+  status          String    @default("IN_STOCK") // IN_STOCK | HELD (on a layaway) | SOLD | REMOVED
+  layawayId       String? // the layaway holding it (plain id) while HELD
   condition       String    @default("NEW") // NEW | OPEN_BOX | REFURB | USED
   costCents       Int? // what it cost the shop (a trade-in: the credit given)
   priceCents      Int? // asking price
+  mapCents        Int? // the maker's minimum advertised price (9.3): an asking price below it is never advertised
+  // A customer's used machine on consignment (shop-features-round-2-design.md 9.6): whose it is (Customer id, plain), the
+  // shop's commission (a percent of what it sells for) and the day to give it back or mark it down (YYYY-MM-DD)
+  consignorId     String?
+  consignPct      Float?
+  consignUntil    String?
+  // Also listed on eBay, Etsy or Marketplace (9.7): [{ where, url }]; selling it here asks to take those down first
+  listedOn        Json      @default("[]")
   warrantyMonths  Int?
   warrantyBy      String? // who stands behind it: the maker's name, or the shop
   soldLineId      String? // SaleLine that sold it (kept after a return, until it sells again)
@@ -1853,15 +2248,115 @@ model StockUnit {
   registeredAt    DateTime? // warranty registered with the maker
   registrationRef String?
   note            String?
+  // What comes with it, one item a line (accessories, software, a cabinet discount): printed on the receipt
+  bundle          String?
+  // Owner's classes ("guide classes") the buyer gets with it; used by signing up with Enrollment.creditUnitId
+  classCredits    Int       @default(0)
+  // A service plan included in the price (ServicePlan id, plain): put on the machine when it sells
+  includedPlanId  String?
+  // A lifetime discount on its supplies for the buyer (1.5, the vacuum's bags, belts and filters), percent
+  lifetimePctOff  Int?
+  // What the shop uses it for (shop-features-round-2-design.md 1.7): SALE (machines for sale, as before) | LOANER | DEMO |
+  // RENTAL. Only SALE units show in the register's "sell a machine" search.
+  use             String    @default("SALE")
+  // A trial purchase (1.8): sold with "Try it for N days"; a return inside the window takes it back in full
+  trialUntil      DateTime?
   events          Json      @default("[]") // [{ at, note, prev? }] (prev: the sale fields a trade-in cleared, put back if it is voided)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([shopId, status])
+  @@index([shopId, locationId])
 }
 
 // "Bags due" for a customer's vacuum: when someone last got in touch, snoozes and stops. Due dates come from sales.
 // Always written after checking the machine is this shop's (the id alone is the key).
+// "Supplies due" marks for a printer or cutter a customer bought here (shop-features-round-2-design.md 6.3, Maker Shop):
+// the general twin of VacCare. calledAt: someone got in touch (by phone, or "message" for a one-off send); snoozeUntil:
+// left off the list until then; stoppedAt: no more reminders for this machine.
+// A customer certified to use one of the shop's machines on her own (shop-features-round-2-design.md 6.4): "Longarm",
+// "Laser", "3D printer", after the safety class. Customer.longarmCertifiedAt is copied in as "Longarm" by the migration
+// and kept in step until it is removed. byUserId: who certified her (plain id).
+// A print or cut job (shop-features-round-2-design.md 6.5, package make-jobs, Maker Shop): the longarm work order's
+// pattern for the shop's 3D printer, resin printer, laser or cutter. kind: PRINT | RESIN | LASER | CUT; status: QUOTED |
+// APPROVED | WORKING | READY | COLLECTED | CANCELLED | TURNED_DOWN. The price: machine time x the rate + material used x
+// its price + the set-up fee (all kept as worked out). The customer's file is kept until 30 days after pickup
+// (fileDeleteAfter), then deleted. estimateLinkId and saleId are plain ids.
+model MakeJob {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
+  number          Int
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name            String
+  kind            String    @default("PRINT")
+  status          String    @default("QUOTED")
+  title           String
+  fileName        String?
+  fileMime        String?
+  fileData        Bytes?
+  fileDeleteAfter DateTime?
+  machineMinutes  Int       @default(0)
+  materialPartId  String?
+  materialName    String?
+  materialQty     Float     @default(0)
+  materialUnit    String? // g | ml | sheet
+  materialCents   Int       @default(0)
+  setupCents      Int       @default(0)
+  rateCents       Int       @default(0)
+  quoteCents      Int       @default(0)
+  taxable         Boolean   @default(true)
+  estimateLinkId  String?
+  dueAt           DateTime?
+  turnedDownWhy   String?
+  saleId          String?
+  note            String?
+  approvedAt      DateTime?
+  startedAt       DateTime?
+  readyAt         DateTime?
+  collectedAt     DateTime?
+  closedAt        DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, customerId])
+  @@index([shopId, locationId])
+}
+
+model Certification {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipment   String
+  certifiedAt DateTime @default(now())
+  byUserId    String?
+
+  @@unique([shopId, customerId, equipment])
+  @@index([shopId, equipment])
+}
+
+model SuppliesCare {
+  machineId   String    @id
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  calledAt    DateTime?
+  calledBy    String?
+  callNote    String?
+  snoozeUntil DateTime?
+  stoppedAt   DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([shopId])
+}
+
 model VacCare {
   machineId    String    @id
   machine      Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
@@ -2140,6 +2635,7 @@ model EstimateLink {
   maskedUrl   String // how the link appears in stored message bodies, e.g. https://.../e/•••Xk3q
   ticketId    String? // a StitchBench ticket (plain id, always checked with shopId)
   repairJobId String? // or a partner repair job, the sewing shop's side
+  makeJobId   String? // or a print or cut job (shop-features-round-2-design.md 6.5; plain id)
   customerId  String?
   totalCents  Int // the estimate as shown; a changed bill needs a new link
   lines       Json // [{ description, amountCents }] as shown
@@ -2167,30 +2663,46 @@ model JobLease {
 
 // A class, workshop or club: one or more meetings, a seat limit, a fee rung up at the register.
 model ShopClass {
-  id          String         @id @default(cuid())
-  shopId      String
-  shop        Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  teacher     String?
-  location    String?
-  supplies    String? // supply list: on the roster, the sign-up message and the reminder
-  feeCents    Int            @default(0)
-  taxable     Boolean        @default(false)
-  seats       Int
-  waitlist    Boolean        @default(true)
-  remind      String         @default("every") // day-before reminders: every | first (meeting only) | never
-  status      String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
-  online      Boolean        @default(false) // customers may sign up themselves on /book/{slug}
-  firstAt     DateTime? // first and last meeting, kept in step by the actions (for lists)
-  lastAt      DateTime?
-  createdById String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  meetings    ClassMeeting[]
-  enrollments Enrollment[]
+  id                String         @id @default(cuid())
+  shopId            String
+  shop              Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId        String?
+  title             String
+  description       String?
+  teacher           String?
+  location          String?
+  supplies          String? // supply list: on the roster, the sign-up message and the reminder
+  feeCents          Int            @default(0)
+  taxable           Boolean        @default(false)
+  seats             Int
+  waitlist          Boolean        @default(true)
+  remind            String         @default("every") // day-before reminders: every | first (meeting only) | never
+  status            String         @default("OPEN") // OPEN | CLOSED (no more sign-ups) | CANCELLED
+  online            Boolean        @default(false) // customers may sign up themselves on /book/{slug}
+  firstAt           DateTime? // first and last meeting, kept in step by the actions (for lists)
+  lastAt            DateTime?
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  // Events (shop-features-round-2-design.md 4.5): CLASS | EVENT (a trunk show, sew-in) | RETREAT; the early-bird price
+  // until a day (YYYY-MM-DD, the shop's zone), a deposit each (refundable or not) with the balance due this many days
+  // before the first day, the choices with their prices ([{ key, label, options: [{ label, cents }] }], plus a
+  // "dietary" ask), and the price at the door. src/lib/events-math.ts.
+  kind              String         @default("CLASS")
+  earlyCents        Int?
+  earlyUntil        String?
+  depositCents      Int?
+  depositRefundable Boolean        @default(false)
+  balanceDays       Int            @default(60)
+  choices           Json?
+  doorCents         Int?
+  meetings          ClassMeeting[]
+  enrollments       Enrollment[]
+  draws             EventDraw[]
 
   @@index([shopId, firstAt])
+  @@index([shopId, locationId])
 }
 
 model ClassMeeting {
@@ -2211,18 +2723,18 @@ model ClassMeeting {
 // Someone signed up for a class (or waiting for a seat). One row per sign-up: signing up again after a cancel makes a
 // new row. Paid and refunded at the register.
 model Enrollment {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   shopId        String
-  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   classId       String
-  shopClass     ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  shopClass     ShopClass      @relation(fields: [classId], references: [id], onDelete: Cascade)
   customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   name          String // the customer's name when they signed up (the roster keeps it)
   attendee      String? // who's coming when it isn't the customer (a child, a friend)
-  status        String    @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
+  status        String         @default("ENROLLED") // ENROLLED | WAITLIST | CANCELLED
   feeCents      Int // the price for this person
-  taxable       Boolean   @default(false)
+  taxable       Boolean        @default(false)
   paidCents     Int?
   paidAt        DateTime?
   paidLineId    String? // the register sale line that paid it
@@ -2230,11 +2742,18 @@ model Enrollment {
   refundedAt    DateTime?
   refundLineId  String?
   note          String?
-  source        String    @default("counter") // counter | online
+  source        String         @default("counter") // counter | online
+  // An owner's class that came with a machine bought here (the StockUnit id, plain): the seat is free
+  creditUnitId  String?
   cancelledAt   DateTime?
   createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  // Events (4.5): what she chose ({ room: "Single", meals: "All meals", dietary: "gluten free" }) and when she came in
+  // the door; payments toward an event (deposit, balance) are EventPayment rows beside the one-payment paidAt above.
+  choices       Json?
+  checkedInAt   DateTime?
+  eventPayments EventPayment[]
 
   @@index([classId, customerId])
   @@index([shopId, customerId])
@@ -2246,12 +2765,17 @@ model AppointmentType {
   id           String        @id @default(cuid())
   shopId       String
   shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId   String?
   name         String
   minutes      Int           @default(60)
   feeCents     Int           @default(0)
   taxable      Boolean       @default(false)
   hourlyCents  Int? // a rental by the hour: the fee is this x the hours booked (the fee above is then ignored)
   needsCert    Boolean       @default(false) // only customers certified to rent (the longarm) can book it
+  // What they must be certified on (shop-features-round-2-design.md 6.4: "Laser", "3D printer"); empty with needsCert
+  // means the longarm, as before.
+  certFor      String?
   capacity     Int           @default(1) // bookings at the same time (two longarms: 2); shared by types with the same resource
   resource     String? // what it uses up, e.g. "Longarm": types naming the same resource share its capacity
   // When it can be booked: [{ day: 0-6 (Sunday 0), from: "10:00", to: "17:00" }]; empty = any time
@@ -2264,6 +2788,7 @@ model AppointmentType {
   appointments Appointment[]
 
   @@index([shopId, sortOrder])
+  @@index([shopId, locationId])
 }
 
 model Appointment {
@@ -2311,6 +2836,8 @@ model Shift {
   id          String   @id @default(cuid())
   shopId      String
   shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   userId      String?
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   name        String
@@ -2324,6 +2851,7 @@ model Shift {
 
   @@index([shopId, startsAt])
   @@index([userId, startsAt])
+  @@index([shopId, locationId])
 }
 
 // Fabric markdown ladder (fabric-smarts-design.md section 2): one row each time a fabric's price is marked down a step, so
@@ -2373,6 +2901,9 @@ model FabricSupplier {
   accountNumber String?
   catalogAt     DateTime?
   catalogNote   String?
+  // What this supplier's list holds when a row doesn't say (shop-features-round-2-design.md 2.3): an item form's "What is
+  // it?" value (FABRIC, THREAD, NOTION, SUPPLY:filament...). Empty: fabric by the yard, as before.
+  defaultKind   String?
 
   orders PurchaseOrder[]
 
@@ -2390,12 +2921,15 @@ enum PurchaseOrderStatus {
 enum PoUnit {
   YD
   BOLT
+  EACH // any item that isn't sold by the yard (shop-features-round-2-design.md 1.1)
 }
 
 model PurchaseOrder {
   id              String              @id @default(cuid())
   shopId          String
   shop            Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
   number          Int
   supplierId      String
   supplier        FabricSupplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
@@ -2415,14 +2949,19 @@ model PurchaseOrder {
 
   @@unique([shopId, number])
   @@index([shopId, status])
+  @@index([shopId, locationId])
 }
 
-// One line: the fabric (kept by number and description too, so the order reads right if the item is changed), the amount
-// in yards or bolts (a bolt is boltYards, copied when the line is made), the maker's item number and the cost a yard.
+// One line: the item (kept by number and description too, so the order reads right if the item is changed), the amount
+// in yards or bolts for fabric (a bolt is boltYards, copied when the line is made) or in pieces (EACH) for anything else,
+// the maker's item number and the cost a yard or each. receivedYards is what came in, in the line's own measure: yards
+// for fabric, pieces for an EACH line (the name is from when orders were fabric only).
 model PurchaseOrderLine {
   id            String        @id @default(cuid())
   shopId        String
   shop          Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // How many of the line are for each store when the order is for several (7.3): { locationId: qty }; {} = all for the order's store
+  split         Json          @default("{}")
   orderId       String
   order         PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId        String?
@@ -2434,6 +2973,10 @@ model PurchaseOrderLine {
   boltYards     Float         @default(15)
   costCents     Int?
   receivedYards Float         @default(0)
+  // The supplier says it's back ordered (shop-features-round-2-design.md 4.4): when the shop marked it, and the day it is
+  // expected (YYYY-MM-DD, the shop's zone; null: not known). Cleared when it comes or the shop takes the mark off.
+  backorderedOn DateTime?
+  expectedOn    String?
 
   @@index([orderId])
   @@index([shopId, partId])
@@ -2678,6 +3221,8 @@ model LongarmOrder {
   id             String         @id @default(cuid())
   shopId         String
   shop           Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId     String?
   number         Int
   customerId     String?
   customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -2714,6 +3259,7 @@ model LongarmOrder {
   @@unique([shopId, number])
   @@index([shopId, status, dueAt])
   @@index([shopId, customerId])
+  @@index([shopId, locationId])
 }
 
 model LongarmPhoto {
@@ -2737,42 +3283,52 @@ model LongarmPhoto {
 // A company's Assistant settings (Settings -> Assistant): a switch per feature group, the shop's voice sample, and the
 // consent switch for customers' first names in drafts (off: drafts carry {first_name}, filled in on this PC).
 model AssistantSettings {
-  shopId          String   @id
-  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  draftOn         Boolean  @default(true)
-  causesOn        Boolean  @default(true)
-  plateOn         Boolean  @default(true)
-  manualsOn       Boolean  @default(true)
-  partsOn         Boolean  @default(true)
-  fabricOn        Boolean  @default(true)
-  offerFirstNames Boolean  @default(false)
-  voice           String?
-  updatedAt       DateTime @updatedAt
+  shopId           String   @id
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  draftOn          Boolean  @default(true)
+  causesOn         Boolean  @default(true)
+  plateOn          Boolean  @default(true)
+  manualsOn        Boolean  @default(true)
+  partsOn          Boolean  @default(true)
+  fabricOn         Boolean  @default(true)
+  // Stock helpers (shop-features-round-2-design.md 1.10): a photo of the packing slip or invoice fills in receiving
+  stockOn          Boolean  @default(true)
+  // Phase 4 (shop-features-round-2-design.md section 5): Ask your shop, marketing drafts, the quilt planner's picks, and
+  // customer answers on the booking page (off until the shop turns it on; typed questions at most customerDailyCap a day)
+  askOn            Boolean  @default(true)
+  marketingOn      Boolean  @default(true)
+  quiltOn          Boolean  @default(true)
+  customerOn       Boolean  @default(false)
+  customerDailyCap Int      @default(20)
+  offerFirstNames  Boolean  @default(false)
+  voice            String?
+  updatedAt        DateTime @updatedAt
 }
 
 // What the Assistant was asked and what it said, per company: the record a tech can check, and the month's count.
 model AssistantCall {
-  id             String   @id @default(cuid())
-  shopId         String
-  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  feature        String // draft_work_done | draft_diagnosis | draft_partner_note | draft_estimate | draft_ready | likely_causes | read_plate
-  ticketId       String? // what it was about: at most one of these is set
-  repairJobId    String?
-  machineId      String?
-  partId         String?
-  byUserId       String?
-  model          String // the model id the hub used
-  request        Json // the redacted request exactly as sent: { system, messages, maxTokens } (a photo as its size and hash)
-  response       String // the model's text, or the structured JSON as text; a serial masked as [serial]
-  sources        Json     @default("[]") // [{ kind: ticket|gotcha|hubpost|spec|setting|servicemode|general, ref, label }]
-  inputTokens    Int      @default(0)
-  cacheTokens    Int      @default(0)
-  outputTokens   Int      @default(0)
-  costMillicents Int      @default(0) // thousandths of a cent: money stays an integer, and a call is under a cent
-  ms             Int      @default(0)
-  accepted       Boolean? // "Use this" pressed, or "helped"; null for calls that only showed something
-  error          String?
-  createdAt      DateTime @default(now())
+  id              String   @id @default(cuid())
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  feature         String // draft_work_done | draft_diagnosis | draft_partner_note | draft_estimate | draft_ready | likely_causes | read_plate
+  ticketId        String? // what it was about: at most one of these is set
+  repairJobId     String?
+  machineId       String?
+  partId          String?
+  purchaseOrderId String? // a packing slip or invoice read for this purchase order (1.10)
+  byUserId        String?
+  model           String // the model id the hub used
+  request         Json // the redacted request exactly as sent: { system, messages, maxTokens } (a photo as its size and hash)
+  response        String // the model's text, or the structured JSON as text; a serial masked as [serial]
+  sources         Json     @default("[]") // [{ kind: ticket|gotcha|hubpost|spec|setting|servicemode|general, ref, label }]
+  inputTokens     Int      @default(0)
+  cacheTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  costMillicents  Int      @default(0) // thousandths of a cent: money stays an integer, and a call is under a cent
+  ms              Int      @default(0)
+  accepted        Boolean? // "Use this" pressed, or "helped"; null for calls that only showed something
+  error           String?
+  createdAt       DateTime @default(now())
 
   @@index([shopId, createdAt])
   @@index([shopId, ticketId])
@@ -2870,6 +3426,8 @@ model GiftCard {
 model GiftCardEntry {
   id          String   @id @default(cuid())
   shopId      String
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
   cardId      String
   card        GiftCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
   at          DateTime @default(now())
@@ -2889,4 +3447,1012 @@ model GiftCardEntry {
   @@index([shopId, at])
   @@index([saleId])
   @@index([paymentId])
+  @@index([shopId, locationId])
+}
+
+// Machines for sale (tax-machine-sales-layaway-design.md section 3): a maker's warranty terms as the shop types them
+// (no built-in claims about any maker), shown on the unit, the receipt and a ticket for a machine sold here. One row per
+// brand; brandKey is the brand in lower case.
+model MakerWarranty {
+  id               String   @id @default(cuid())
+  shopId           String
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  brand            String
+  brandKey         String
+  partsYears       Float?
+  laborYears       Float?
+  electronicsYears Float?
+  // The maker's warranty registration page
+  registerUrl      String?
+  note             String?
+  updatedAt        DateTime @updatedAt
+
+  @@unique([shopId, brandKey])
+}
+
+// The shop's own service plan: "Free cleaning yearly for 3 years" (3 visits in 36 months) or an extended warranty (no
+// visit limit). Sold as a register line or included with a machine for sale; each sale makes a MachinePlan.
+model ServicePlan {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // Covered visits (repair tickets) in the term; null: no limit (an extended warranty)
+  visits      Int?
+  months      Int
+  priceCents  Int      @default(0)
+  taxable     Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([shopId])
+}
+
+// A service plan on one machine: copied from the ServicePlan when sold (later changes to the plan don't touch it). A
+// ticket's line covered by it points here (TicketLine.coveredPlanId); a visit is a ticket with a covered line.
+model MachinePlan {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  machineId   String
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  planId      String? // the ServicePlan it came from (plain id)
+  name        String
+  visits      Int?
+  startsAt    DateTime
+  endsAt      DateTime
+  // The register line that sold it, or the line that sold the machine it came with (plain ids)
+  saleLineId  String?
+  stockUnitId String?
+  // Ended early: its sale was voided or the machine returned
+  voidedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([shopId, machineId])
+  @@index([saleLineId])
+}
+
+// Layaway (tax-machine-sales-layaway-design.md section 4): the items held for a customer while they pay over time. The
+// money goes through the register (SaleLine.layawayId, kind LAYAWAY: money held for the customer, not a sale yet); the
+// last visit sells the items at that day's tax and uses the payments up. A machine is HELD (StockUnit.layawayId), a
+// stock item's quantity taken off the shelf (StockMove HELD) until then.
+model Layaway {
+  id              String        @id @default(cuid())
+  shopId          String
+  shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId      String?
+  number          Int
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status          String        @default("OPEN") // OPEN | COMPLETED | CANCELLED
+  startedAt       DateTime      @default(now())
+  // The last day to pay (YYYY-MM-DD, shop's zone) and the payment plan: [{ due: "YYYY-MM-DD", cents }] after the deposit
+  dueBy           String
+  every           String        @default("2w")
+  plan            Json          @default("[]")
+  // The deposit taken at the start (the plan splits the rest)
+  depositMinCents Int           @default(0)
+  // The terms as printed for the customer to sign (kept as they were)
+  terms           String
+  note            String?
+  // The pick-up sale, or the cancel's refund sale (plain ids)
+  saleId          String?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelFeeCents  Int?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  lines           LayawayLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([customerId])
+  @@index([shopId, locationId])
+}
+
+model LayawayLine {
+  id             String  @id @default(cuid())
+  layawayId      String
+  layaway        Layaway @relation(fields: [layawayId], references: [id], onDelete: Cascade)
+  partId         String?
+  stockUnitId    String?
+  description    String
+  partNumber     String?
+  unit           String?
+  qty            Float
+  unitPriceCents Int
+  discountCents  Int     @default(0)
+  taxable        Boolean @default(true)
+
+  @@index([layawayId])
+}
+
+// A sales tax holiday (tax-machine-sales-layaway-design.md section 1): whole days in the shop's zone (YYYY-MM-DD), the
+// kinds of item it covers (sale line kinds: FABRIC, NOTION, UNIT...), and a per-item limit: a line whose price each,
+// after its own discount, is over it is taxed in full. The register applies it by date; preset: the state it was
+// filled in from ("MA"), for the yearly "confirm the dates" reminder.
+model TaxHoliday {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  preset       String?
+  firstDay     String
+  lastDay      String
+  kinds        String[]
+  maxUnitCents Int?
+  // The stores it covers (Location ids); empty = every store (a preset fills in the stores in its state)
+  locationIds  String[] @default([])
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([shopId, firstDay])
+}
+
+// Financing (tax-machine-sales-layaway-design.md section 5, owner's answer 7: record only): a lender the shop offers
+// (Synchrony, Affirm...), with its "apply now" page. Taken at the register as the Financing payment method.
+model Lender {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  applyUrl  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  financed FinancedSale[]
+
+  @@index([shopId])
+}
+
+// One Financing payment on a register sale: the lender owes the shop this much until the shop marks it paid (the books
+// carry it as owed by lenders). A refund through the lender is a negative one. Voided with its sale.
+model FinancedSale {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleId      String // plain id of the Sale
+  lenderId    String
+  lender      Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  amountCents Int
+  approval    String?
+  at          DateTime  @default(now())
+  paidAt      DateTime?
+  paidById    String?
+  voidedAt    DateTime?
+
+  @@index([shopId, paidAt])
+  @@index([saleId])
+  @@index([lenderId])
+}
+
+// A promotion (tax-machine-sales-layaway-design.md section 2): whole days in the shop's zone, what it covers (scope:
+// { kinds: [...], brands: [...], partIds: [...] }, any of them), and one effect: PERCENT off (value: the percent),
+// AMOUNT off each (value: cents), or TAX_INCLUDED (the price includes the tax, backed out at the shop's rate; only
+// while Shop.taxIncludedOn). The register applies it by date as the line's own discount.
+model Promotion {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  firstDay  String
+  lastDay   String
+  scope     Json     @default("{}")
+  effect    String
+  value     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([shopId, firstDay])
+}
+
+// A pattern's yardage per size and role, typed once from the back of the pattern (shop-features-round-2-design.md 5.3):
+// "Throw: background 2 1/4 yd". patternPartId is a plain id of this company's PATTERN item (no foreign key, so a company
+// file imports in any order); src/lib/quilt.ts reads only the company's own.
+model PatternNeed {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  patternPartId String
+  size          String
+  role          String
+  yards         Float
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([shopId, patternPartId])
+}
+
+// The shop's own care tips per kind of machine (5.5): the pickup sheet picks from these; the model never writes advice.
+model CareTip {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind      String // sewing | vacuum | a shop kind's key
+  text      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([shopId, kind])
+}
+
+// A customer's question from the public page that goes to a person (5.6): her name and contact as she typed them, and
+// when staff dealt with it.
+model CustomerQuestion {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  at        DateTime  @default(now())
+  name      String?
+  contact   String?
+  text      String
+  handledAt DateTime?
+  handledBy String?
+
+  @@index([shopId, handledAt])
+}
+
+// "Raise prices" (shop-features-round-2-design.md 4.4): one raise as the shop chose it (rule: whose, by how much, how
+// rounded) and every item it changed with the old and new price, so "Undo" (for a day) puts back what it raised.
+model PriceChange {
+  id       String    @id @default(cuid())
+  shopId   String
+  shop     Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  at       DateTime  @default(now())
+  userId   String?
+  rule     Json
+  items    Json // [{ partId, oldCents, newCents }]
+  undoneAt DateTime?
+
+  @@index([shopId, at])
+}
+
+// A live sale (shop-features-round-2-design.md 4.3): a Facebook Live or similar show. The shop picks what's on today's
+// show beforehand (picks: plain part ids), claims each buyer's items as they're called out, and at the end sends each
+// buyer one pay link for her claims. status OPEN | CLOSED; holdHours: unpaid claims after this show "Let go of these?".
+model LiveSale {
+  id          String      @id @default(cuid())
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
+  name        String
+  startsAt    DateTime    @default(now())
+  status      String      @default("OPEN")
+  holdHours   Int         @default(48)
+  picks       String[]    @default([])
+  createdById String?
+  createdAt   DateTime    @default(now())
+  closedAt    DateTime?
+  claims      LiveClaim[]
+
+  @@index([shopId, startsAt])
+  @@index([shopId, locationId])
+}
+
+// One buyer's claim on a live sale: the item (plain part id), how much (yards in eighths for fabric), the price, and
+// where it stands: HELD (the stock is held for her), SENT (in her pay link, webOrderId), PAID, LET_GO (back on the shelf).
+// customerId is a plain id (a new name is fine: the customer is made when the pay link is sent).
+model LiveClaim {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  liveSaleId  String
+  liveSale    LiveSale  @relation(fields: [liveSaleId], references: [id], onDelete: Cascade)
+  customerId  String?
+  name        String
+  phone       String?
+  partId      String?
+  description String
+  qty         Float
+  unit        String?
+  priceCents  Int
+  status      String    @default("HELD")
+  webOrderId  String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  paidAt      DateTime?
+  letGoAt     DateTime?
+
+  @@index([liveSaleId, status])
+  @@index([shopId, status, partId])
+}
+
+// A payment toward an event sign-up (shop-features-round-2-design.md 4.5): a deposit or the balance, taken at the counter
+// (a register sale, saleId) or by a pay link (webOrderId; paidAt is set when she pays). kind DEPOSIT | BALANCE | PAYMENT.
+model EventPayment {
+  id           String     @id @default(cuid())
+  shopId       String
+  shop         Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  kind         String     @default("PAYMENT")
+  amountCents  Int
+  saleId       String?
+  webOrderId   String?
+  paidAt       DateTime?
+  cancelledAt  DateTime?
+  createdById  String?
+  createdAt    DateTime   @default(now())
+
+  @@index([enrollmentId])
+  @@index([shopId, webOrderId])
+}
+
+// A door prize drawn at an event (4.5): who, for which prize, and whether she was there (a draw again keeps the first,
+// marked not present).
+model EventDraw {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  classId      String
+  shopClass    ShopClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  enrollmentId String
+  name         String
+  prize        String
+  drawnAt      DateTime  @default(now())
+  present      Boolean   @default(true)
+
+  @@index([classId, drawnAt])
+}
+
+// A shop hop this shop takes part in (shop-features-round-2-design.md 4.6), as the hub last told it: the hub's id, the
+// name and dates (YYYY-MM-DD), the prize rule ("all", or "any:6"), how many shops, and this shop's part: ORGANIZER or
+// MEMBER, status JOINED | LEFT. The hub holds the hop, its shops, passports and stamps.
+model ShopHop {
+  id         String          @id @default(cuid())
+  shopId     String
+  shop       Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hubHopId   String
+  name       String
+  startsOn   String?
+  endsOn     String?
+  rule       String          @default("all")
+  shopsCount Int             @default(1)
+  role       String          @default("MEMBER")
+  status     String          @default("JOINED")
+  slug       String?
+  updatedAt  DateTime        @updatedAt
+  createdAt  DateTime        @default(now())
+  stamps     HopStampLocal[]
+
+  @@unique([shopId, hubHopId])
+}
+
+// A passport stamped at this shop (4.6): the shop's own record, sent to the hub signed (sentAt when the hub took it).
+// One per passport per hop. What the hub answered: the stamp's number of how many, and the shopper's details only if she
+// chose to share them with this shop.
+model HopStampLocal {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hopId        String
+  hop          ShopHop   @relation(fields: [hopId], references: [id], onDelete: Cascade)
+  passportRef  String
+  at           DateTime  @default(now())
+  byUserId     String?
+  sentAt       DateTime?
+  stampNo      Int?
+  stampsOf     Int?
+  complete     Boolean   @default(false)
+  shopperName  String?
+  shopperEmail String?
+  shopperPhone String?
+  error        String?
+
+  @@unique([hopId, passportRef])
+  @@index([shopId, at])
+}
+
+// Special orders and pre-orders (shop-features-round-2-design.md 1.2): something a customer wants that isn't on the
+// shelf (an item of the shop's, or words: "Tula Pink Untamed charm pack"), at a price, with a deposit. A pre-order is the
+// same for an item marked coming soon (Part.comingSoonOn). Money goes through the register (SaleLine.specialOrderId,
+// kind DEPOSIT: held for the customer, not a sale yet); the pick-up sells the item and uses the deposits up. When it
+// arrives it is HERE: an item's quantity is held off the shelf for her (StockMove HELD, heldQty) until she picks it up.
+// WAITING (not ordered yet) | ORDERED (on a purchase order) | HERE | DONE (picked up) | CANCELLED.
+model SpecialOrder {
+  id           String    @id @default(cuid())
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId   String?
+  number       Int
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  kind         String    @default("ORDER") // ORDER | PREORDER
+  status       String    @default("WAITING")
+  partId       String? // plain id: the shop's item, when it is one
+  description  String
+  qty          Float     @default(1)
+  unit         String?
+  priceCents   Int // each
+  depositCents Int       @default(0) // asked when taken
+  depositRule  String    @default("credit") // credit | refund | keep (non-refundable)
+  expectedOn   String? // YYYY-MM-DD
+  poLineId     String? // the purchase order line that covers it (plain id)
+  heldQty      Float     @default(0)
+  hereAt       DateTime?
+  noticedAt    DateTime? // the "it's here" message queued (never twice)
+  calledAt     DateTime? // marked called by hand
+  saleId       String? // the pick-up sale, or the cancel's (plain ids)
+  prevStatus   String? // the status before a cancel, put back when the cancel is undone
+  cancelledAt  DateTime?
+  note         String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, partId])
+  @@index([customerId])
+  @@index([shopId, locationId])
+}
+
+// Want lists (shop-features-round-2-design.md 1.4): what a customer wants the shop to tell her about, an item of the
+// shop's or words to watch for ("Tula Pink"). When an item that matches arrives (received, imported from a supplier's
+// list, added) the line shows "Here now" (matchedPartId, plain id); the shop chooses to tell her (toldAt, the order_in
+// message), nothing goes by itself. doneAt: taken off the list.
+model WantItem {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  partId        String? // plain id
+  words         String?
+  note          String?
+  matchedPartId String?
+  matchedAt     DateTime?
+  toldAt        DateTime?
+  doneAt        DateTime?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([shopId, doneAt])
+  @@index([customerId])
+}
+
+// Customer price groups and memberships (shop-features-round-2-design.md 1.5): "Guild", "Teachers", "Club card",
+// "Wholesale". What it gives: a percent off, or the item's wholesale price; on which kinds of items (none listed: all);
+// and whether it also applies to items already on sale (a promotion on the same line: the bigger one wins, not both).
+model PriceGroup {
+  id           String     @id @default(cuid())
+  shopId       String
+  shop         Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  pctOff       Int        @default(0)
+  useWholesale Boolean    @default(false)
+  kinds        String[]   @default([])
+  onSaleItems  Boolean    @default(false)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  customers    Customer[]
+
+  @@index([shopId])
+}
+
+// Per-yard price breaks (shop-features-round-2-design.md 1.6): "10 yards or more of one fabric: 10% off", one or more
+// steps, on some kinds (none listed: every item sold by the yard). An item may have its own (Part.breakMinQty).
+model YardBreak {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  minYards  Float
+  pctOff    Int
+  kinds     String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@index([shopId])
+}
+
+// A machine lent out (shop-features-round-2-design.md 1.7): a loaner while hers is in for repair, a demo taken to a class,
+// a show or a home. The unit is one of the shop's machines (StockUnit with use LOANER or DEMO); out until backAt. A deposit
+// is money held for the customer (SaleLine.unitLoanId, kind DEPOSIT) until it is refunded or kept (LOAN_FEE, "Loaner
+// charges").
+model UnitLoan {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId    String?
+  unitId        String // plain id (StockUnit)
+  kind          String    @default("LOAN") // LOAN | DEMO | RENTAL
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  ticketId      String? // plain id: the repair ticket it was lent on
+  outAt         DateTime  @default(now())
+  dueOn         String? // YYYY-MM-DD
+  backAt        DateTime?
+  depositCents  Int       @default(0)
+  cardNote      String?
+  // A rental (1.8): the rate (cents a day, week or month), and rent-to-own: the percent of the rent paid that counts
+  // toward buying it, until a day (YYYY-MM-DD)
+  rateCents     Int?
+  ratePer       String? // day | week | month
+  ownPct        Int?
+  ownUntil      String?
+  conditionOut  String?
+  conditionBack String?
+  note          String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([shopId, backAt])
+  @@index([unitId])
+  @@index([customerId])
+  @@index([shopId, locationId])
+}
+
+// Trade-up credit used (shop-features-round-2-design.md 1.9): a repair's cost taken off a machine bought within the shop's
+// days. The offer itself is worked out from the ticket (its charges, the day it was done); this row is written when the
+// credit is used on a sale (once per ticket), so a void deletes it and the credit is there again.
+model TradeUpOffer {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  ticketId    String // plain id
+  amountCents Int
+  until       String // YYYY-MM-DD
+  usedLineId  String // the sale line it came off (plain id)
+  createdAt   DateTime  @default(now())
+
+  @@unique([shopId, ticketId])
+  @@index([usedLineId])
+}
+
+// A warranty claim to a machine's maker (shop-features-round-2-design.md 9.1, package warranty-claims): the ticket's
+// lines marked "Claim it from the maker" (TicketLine.claimId) charge the customer nothing and go on it. Logged and
+// reconciled here; the makers' own portals are never connected. status: OPEN (being put together) | FILED (sent) |
+// PAID | SHORT (paid less than expected) | REFUSED. partsCents and laborCents add up the claimed lines; expectedCents is
+// what the maker should pay (fixed once filed; owed by the maker in the books from filedAt); receivedCents came in on
+// receivedAt (also the day a refused or short claim is closed). ticketId and machineId are plain ids.
+model WarrantyClaim {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  ticketId      String?
+  machineId     String?
+  maker         String
+  claimNumber   String?
+  status        String    @default("OPEN")
+  filedAt       DateTime?
+  partsCents    Int       @default(0)
+  laborCents    Int       @default(0)
+  expectedCents Int       @default(0)
+  receivedCents Int       @default(0)
+  receivedAt    DateTime?
+  note          String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, ticketId])
+}
+
+// A co-op advertising or rebate claim to a maker (shop-features-round-2-design.md 9.2, package coop-claims): what the
+// shop spent (an ad placed, or machines sold under a rebate program), what it can claim back, the program's deadline
+// (a dashboard line 14 days before, while not sent), sent, and what came in. kind: COOP | REBATE; status: OPEN (not
+// sent) | FILED | PAID | SHORT | DENIED. placedOn and deadline are the shop's days (YYYY-MM-DD). The proof (a photo of
+// the ad, the invoice) is CoopProof.
+model CoopClaim {
+  id            String      @id @default(cuid())
+  shopId        String
+  shop          Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number        Int
+  maker         String
+  kind          String      @default("COOP")
+  program       String?
+  adWhere       String?
+  placedOn      String?
+  spentCents    Int         @default(0)
+  claimCents    Int         @default(0)
+  deadline      String?
+  status        String      @default("OPEN")
+  filedAt       DateTime?
+  receivedCents Int         @default(0)
+  receivedAt    DateTime?
+  note          String?
+  createdById   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  proofs        CoopProof[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status, deadline])
+}
+
+// A photo or PDF proving a co-op claim (the ad as it ran, the invoice for it), 5 MB at most.
+model CoopProof {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  claimId   String
+  claim     CoopClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  data      Bytes
+  createdAt DateTime  @default(now())
+
+  @@index([claimId])
+}
+
+// What the shop owes a consignor for her machine sold on consignment (shop-features-round-2-design.md 9.6, package
+// consign-machines): written when the machine sells (amountCents: what it sold for before tax, less the shop's
+// commission), paid by check, cash or store credit (paidAt, method, note: the check number), voided with the sale or a
+// return before it was paid. unitId, customerId, saleLineId and giftCardId are plain ids. In the books it is owed to
+// consignors (a liability) from the sale until it is paid.
+model ConsignPayout {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  unitId      String
+  customerId  String
+  saleLineId  String
+  soldCents   Int
+  pct         Float
+  amountCents Int
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+  method      String? // CHECK | CASH | CREDIT
+  note        String?
+  giftCardId  String?
+  paidById    String?
+  voidedAt    DateTime?
+
+  @@index([shopId, customerId])
+  @@index([shopId, paidAt])
+  @@index([saleLineId])
+}
+
+// A quilt appraisal (shop-features-round-2-design.md 9.8, package appraisals): the customer, the quilt (details:
+// { title, widthIn, lengthIn, maker, made, techniques, materials, condition, description }), the value and its purpose
+// (insurance replacement | fair market | donation), the appraiser and her credential as on the certificate, the fee
+// rung up at the register (saleId, plain), and issuedAt once the certificate is final (it can't be changed after; a
+// new appraisal replaces it). customerId is plain.
+model Appraisal {
+  id          String           @id @default(cuid())
+  shopId      String
+  shop        Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number      Int
+  customerId  String?
+  name        String
+  details     Json             @default("{}")
+  valueCents  Int              @default(0)
+  purpose     String           @default("insurance")
+  appraiser   String?
+  credential  String?
+  feeCents    Int              @default(0)
+  saleId      String?
+  issuedAt    DateTime?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  photos      AppraisalPhoto[]
+
+  @@unique([shopId, number])
+  @@index([shopId, customerId])
+}
+
+// A photo of the appraised quilt (the first prints on the certificate), 5 MB at most.
+model AppraisalPhoto {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  appraisalId String
+  appraisal   Appraisal @relation(fields: [appraisalId], references: [id], onDelete: Cascade)
+  mime        String
+  data        Bytes
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([appraisalId])
+}
+
+// A customer's wish list or gift registry (shop-features-round-2-design.md 9.9, package gift-registry): what she would
+// like, shared by a link she sends to family (token, on the shop's public page). Bought at the counter it is ticked off
+// (SaleLine.registryItemId) without telling her. customerId is plain. closedAt: no longer shared.
+model GiftRegistry {
+  id         String         @id @default(cuid())
+  shopId     String
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String?
+  name       String
+  title      String
+  eventDate  String?
+  token      String         @unique
+  closedAt   DateTime?
+  createdAt  DateTime       @default(now())
+  items      RegistryItem[]
+
+  @@index([shopId, customerId])
+}
+
+// One thing on a gift list: an item from stock (partId, plain) or words, and how many she would like.
+model RegistryItem {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  registryId  String
+  registry    GiftRegistry @relation(fields: [registryId], references: [id], onDelete: Cascade)
+  partId      String?
+  description String
+  qtyWanted   Int          @default(1)
+  note        String?
+  createdAt   DateTime     @default(now())
+
+  @@index([registryId])
+}
+
+// A customer's house charge account (shop-features-round-2-design.md 9.4, package house-accounts): she buys "on account"
+// at the register (tender ACCOUNT) or on a ticket (payment INVOICE), up to her limit (0: no limit), and pays within the
+// terms (days) from a monthly statement. status: OPEN | CLOSED (no new charges). Only while Shop.houseAccountsOn.
+model HouseAccount {
+  id         String         @id @default(cuid())
+  shopId     String
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String
+  limitCents Int            @default(0)
+  termsDays  Int            @default(30)
+  status     String         @default("OPEN")
+  note       String?
+  createdAt  DateTime       @default(now())
+  entries    AccountEntry[]
+
+  @@unique([shopId, customerId])
+}
+
+// One charge or payment on a house account: kind CHARGE (a sale or a ticket put on account; negative for a refund to the
+// account) | PAYMENT (money she paid against it: method CASH | CHECK | CARD | OTHER, note the check number) | ADJUST.
+// saleId, ticketId and paymentId (a ticket's Payment) are plain. voidedAt: the sale was voided (or the payment undone).
+model AccountEntry {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId  String?
+  accountId   String
+  account     HouseAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind        String
+  amountCents Int
+  method      String?
+  note        String?
+  saleId      String?
+  ticketId    String?
+  paymentId   String?
+  byUserId    String?
+  at          DateTime     @default(now())
+  voidedAt    DateTime?
+
+  @@index([accountId, at])
+  @@index([shopId, at])
+  @@index([saleId])
+  @@index([shopId, locationId])
+}
+
+// A Stripe Terminal card reader paired to the shop (shop-features-round-2-design.md 4.8, package card-reader): Stripe's
+// reader id (tmr_...), the shop's name for it, and its kind (a simulated reader in test mode).
+model CardReader {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId String?
+  readerId   String
+  label      String
+  deviceType String?
+  createdAt  DateTime @default(now())
+
+  @@unique([shopId, readerId])
+  @@index([shopId, locationId])
+}
+
+// A card payment taken on the reader (4.8): the PaymentIntent (pi_...), how much, where it stands (PENDING | SUCCEEDED |
+// FAILED | CANCELLED), the card's last four, the sale it paid (saleId, plain; null while on no sale yet), and what has
+// been refunded to the card since.
+model CardPayment {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  intentId      String   @unique
+  readerId      String?
+  amountCents   Int
+  status        String   @default("PENDING")
+  last4         String?
+  brand         String?
+  saleId        String?
+  refundedCents Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shopId, saleId])
+  @@index([shopId, status])
+}
+
+// ============================================================
+// More than one store (shop-features-round-2-design.md section 7, phase 5)
+// ============================================================
+
+// A store of the company (7.1). The main store (main = true; the migration makes one per company from its own details,
+// and a company without one gets it when a second store is added) keeps its address, phone, time zone, tax rate and
+// receipt line on the Shop row as before, so a company with one store works exactly as it did; another store keeps its
+// own here. Rows whose locationId is null belong to the main store. A store is closed (active = false), never deleted;
+// the main store can't be closed. approveRefundCents / approveDiscountPct (7.5): a refund over the amount, or a discount
+// over the percent, needs a manager's code or the owner's approval; null = no limit. dailyAt: the store's closing time
+// ("HH:MM", the daily summary goes then; null = 18:00).
+model Location {
+  id                 String   @id @default(cuid())
+  shopId             String
+  shop               Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name               String
+  main               Boolean  @default(false)
+  address            String?
+  phone              String?
+  timeZone           String   @default("America/New_York")
+  taxRatePct         Float    @default(0)
+  // Wrong approval codes typed at this store's register (counted before each try), and the 15 minutes' wait after five
+  approveFails       Int      @default(0)
+  approveLockedUntil DateTime?
+  hours              String?
+  receiptFooter      String?
+  dailyAt            String?
+  approveRefundCents Int?
+  approveDiscountPct Int?
+  // Google's local inventory feed: the store's Business Profile store code (the main store's is Shop.feedStoreCode)
+  feedStoreCode      String?
+  // The owner's daily summary (7.5): the store's day it was last sent for (YYYY-MM-DD in the store's zone), never twice
+  dailySentOn        String?
+  active             Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  levels StockLevel[]
+
+  @@index([shopId, sortOrder])
+}
+
+// An item's stock at a store other than the main one (7.2). The main store's stock is Part.qtyOnHand less every other
+// store's level, so Part.qtyOnHand stays the company's total (kept in the same transaction) and every reader that wants
+// the total keeps working; bin and reorder point here are the store's own (the main store's are Part.location and
+// Part.reorderAt). A store with no row has none.
+model StockLevel {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  partId     String
+  part       Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  qtyOnHand  Float    @default(0)
+  reorderAt  Float    @default(0)
+  bin        String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([partId, locationId])
+  @@index([shopId, locationId])
+}
+
+// Stock sent from one store to another, or asked for (7.2, 7.3, 7.7). status: ASKED (a request; the other store sends
+// it or says it can't, with a reason) | SENT (off the sending store's shelf, on its way) | ARRIVED (on the receiving
+// store's shelf; counts corrected on arrival are recorded there as an adjustment) | CANCELLED | DECLINED. forCustomerId:
+// brought over for a customer (her "it's here" message goes when it arrives); saleId: the sale it was paid on;
+// specialOrderId: the special order holding it; poId: a purchase order's share for this store. fromId / toId are
+// Location ids. The user ids and the parties' ids are plain.
+model StockTransfer {
+  id             String              @id @default(cuid())
+  shopId         String
+  shop           Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  number         Int
+  fromId         String
+  toId           String
+  status         String              @default("SENT")
+  note           String?
+  neededBy       String?
+  declineReason  String?
+  forCustomerId  String?
+  saleId         String?
+  specialOrderId String?
+  poId           String?
+  askedById      String?
+  askedAt        DateTime?
+  sentById       String?
+  sentAt         DateTime?
+  arrivedById    String?
+  arrivedAt      DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime            @default(now())
+  lines          StockTransferLine[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, toId, status])
+}
+
+// One item of a transfer: a stocked item (partId) and how many were asked for, sent and counted on arrival, or a machine
+// for sale (unitId, plain StockUnit id; qty 1).
+model StockTransferLine {
+  id          String        @id @default(cuid())
+  transferId  String
+  transfer    StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  partId      String?
+  part        Part?         @relation(fields: [partId], references: [id], onDelete: SetNull)
+  unitId      String?
+  description String
+  qty         Float
+  qtySent     Float?
+  qtyArrived  Float?
+
+  @@index([transferId])
+}
+
+// Notes between stores (7.7): to one store (toLocationId) or all (null); pinned notes first. fromLocationId and userId
+// are plain ids (the writer and her store).
+model StoreNote {
+  id             String          @id @default(cuid())
+  shopId         String
+  shop           Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  fromLocationId String?
+  toLocationId   String?
+  userId         String?
+  text           String
+  pinned         Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  reads          StoreNoteRead[]
+
+  @@index([shopId, createdAt])
+}
+
+model StoreNoteRead {
+  noteId String
+  note   StoreNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt DateTime  @default(now())
+
+  @@id([noteId, userId])
+}
+
+// A refund or discount over the store's limit, waiting for the owner (7.5): kind REFUND | DISCOUNT; amountCents (the
+// refund, or the discount in money) and pct (a discount's percent); draft: what the register needs to carry on (its
+// lines, for the owner to see); status ASKED | APPROVED | REFUSED | EXPIRED | USED (the register used an approval).
+// A manager's code at the register approves at once (decidedById: the manager). Ids are plain.
+model Approval {
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  locationId    String?
+  kind          String
+  amountCents   Int
+  pct           Float?
+  reason        String?
+  draft         Json      @default("{}")
+  requestedById String?
+  status        String    @default("ASKED")
+  decidedById   String?
+  decidedAt     DateTime?
+  note          String?
+  usedAt        DateTime?
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+
+  @@index([shopId, status])
+}
+
+// A packing slip received through the slip reader (round-2 3.x): its key, made once per reading, so "Receive these"
+// sent again (a retry, a double tap) receives nothing twice
+model SlipReceipt {
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  key       String
+  words     String?
+  createdAt DateTime @default(now())
+
+  @@id([shopId, key])
 }

@@ -8,6 +8,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { PageHeader, Section, KV } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { ListingCard } from "@/components/shop/listing-card";
+import { PatternYardage } from "@/components/pattern-yardage";
 import { PartFields } from "@/components/part-fields";
 import { addPartSource, moveStock, preferPartSource, removePartSource, updatePart } from "@/actions/parts";
 import { addPartToCrossRef } from "@/actions/xref";
@@ -24,6 +25,21 @@ import { EVIDENCE_LABEL, KIND_LABEL, baseNumber, xrefForKeys, type XFit, type XN
 import { partTags } from "@/lib/part-labels";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { qtyText } from "@/lib/register-math";
+import { ITEM_TYPES, detailsLine, typeOf } from "@/lib/item-details";
+import { ColorDot } from "@/components/color-dot";
+import { SameColor } from "@/components/same-color";
+import { FitsSection } from "@/components/fits-section";
+import { MapPriceSection } from "@/components/map-price";
+import { ListedSection } from "@/components/listed-elsewhere";
+import { SoftwareItem } from "@/components/software-item";
+import { ItemSpecialOrders } from "@/components/item-special-orders";
+import { ItemMembership } from "@/components/item-membership";
+import { ItemYardBreak } from "@/components/item-yard-break";
+import { OrderMoreForm } from "@/components/fabric-orders-forms";
+import { eachSuggestion } from "@/lib/fabric-orders-math";
+import { ItemStores } from "@/components/item-stores";
+import { currentStore, storesOf } from "@/lib/stores";
+import { elsewhereWords, storeStockFor } from "@/lib/stock";
 
 const REASON: Record<string, string> = {
   RECEIVED: "Received",
@@ -33,6 +49,8 @@ const REASON: Record<string, string> = {
   SOLD: "Sold",
   CONSIGNED: "Consignment",
   CUT: "Cut",
+  HELD: "Held",
+  TRANSFER: "Between stores",
 };
 
 export default async function PartPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ existing?: string }> }) {
@@ -57,8 +75,14 @@ export default async function PartPage({ params, searchParams }: { params: Promi
   const shopFlags = await db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, shopOn: true } });
   const swatchPhoto = p.kind === "FABRIC" && shopFlags.sellsRetail ? await db.partPhoto.findFirst({ where: { partId: p.id, shopId: user.shopId }, orderBy: { sortOrder: "asc" }, select: { id: true } }) : null;
   const tagEntry = swatchPhoto ? await entryFor(user.shopId, "fabric") : null;
+  // Marketing drafts on the Online shop card (shop-features-round-2-design.md 5.2).
+  const marketingEntry = shopFlags.sellsRetail ? await entryFor(user.shopId, "marketing") : null;
   // The items this fabric's cuts feed (fat quarters, half yards, remnant): only this shop's own.
   const cutIds = [p.fatQuarterId, p.halfYardId, p.remnantId].filter((x): x is string => !!x);
+  // More than one store: this store's stock in the header, the total under Stock (7.2).
+  const here = await currentStore(user);
+  const stock = (await storeStockFor(user.shopId, [p], here))?.get(p.id) ?? null;
+  const storeNames = new Map((await storesOf(user.shopId)).map((s) => [s.id, s.name]));
   const cutItems = cutIds.length ? await db.part.findMany({ where: { id: { in: cutIds }, shopId: user.shopId }, select: { id: true, partNumber: true, description: true, qtyOnHand: true, unit: true } }) : [];
 
   return (
@@ -78,7 +102,13 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 {t}
               </span>
             ))}
-            {`${p.kind !== "PART" ? `${KIND_LABEL[p.kind]} · ` : ""}${qtyText(p.qtyOnHand, p.unit)} on hand${p.location ? ` · bin ${p.location}` : ""}${p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {`${p.kind !== "PART" ? `${typeOf(p) && typeOf(p) !== "thread" ? ITEM_TYPES[typeOf(p)!].label : KIND_LABEL[p.kind]} · ` : ""}${stock ? `${qtyText(stock.here, p.unit)} in this store${stock.others.length ? ` · ${elsewhereWords(stock)}` : ""}` : `${qtyText(p.qtyOnHand, p.unit)} on hand`}${p.location && !stock ? ` · bin ${p.location}` : ""}${!stock && p.qtyOnHand <= p.reorderAt ? " · time to reorder" : ""}`}
+            {detailsLine(p) && (
+              <span className="mt-1 flex items-center gap-2 text-base text-ink">
+                <ColorDot hex={p.colorHex} size="lg" />
+                {detailsLine(p)}
+              </span>
+            )}
           </>
         }
         actions={
@@ -109,7 +139,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
         <div className="space-y-6">
           <Section title="Stock">
             <div className="mb-4 grid grid-cols-3 gap-3">
-              <KV k="On hand" v={<span className="num text-xl font-semibold">{qtyText(p.qtyOnHand, p.unit)}</span>} />
+              <KV k={stock ? "In all stores" : "On hand"} v={<span className="num text-xl font-semibold">{qtyText(p.qtyOnHand, p.unit)}</span>} />
               <KV k="Cost" v={moneyCost(p.costCents, p.costTenThou)} />
               <KV k="Price" v={money(p.priceCents)} />
             </div>
@@ -134,8 +164,27 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                   <input name="note" aria-label="Note" className="input" placeholder="reason (optional)" />
                   <Submit className="btn btn-sm">Set count</Submit>
                 </ActionForm>
+                {/* Ordering from a supplier (shop-features-round-2-design.md 1.1): onto its supplier's draft order. */}
+                <div className="space-y-2 rounded border border-line p-3 sm:col-span-2">
+                  <div className="label">Order more</div>
+                  {p.supplier?.trim() ? (
+                    <OrderMoreForm
+                      partId={p.id}
+                      supplier={p.supplier.trim()}
+                      fabric={p.unit === "yd"}
+                      suggest={p.unit === "yd" ? 1 : Math.max(1, eachSuggestion({ reorderAt: p.reorderAt, onHand: p.qtyOnHand, onOrder: 0 }))}
+                    />
+                  ) : (
+                    <p className="muted text-sm">Give it a supplier under Details, then order it here.</p>
+                  )}
+                  <Link href="/parts/orders" className="link text-sm">
+                    Orders to suppliers
+                  </Link>
+                </div>
               </div>
             )}
+            {/* More than one store (7.2, 7.7): each store's stock, sending and asking. Nothing with one store. */}
+            <ItemStores user={user} part={p} />
           </Section>
           {swatchPhoto && tagEntry?.show && (
             <Section title="Color and theme tags">
@@ -143,7 +192,20 @@ export default async function PartPage({ params, searchParams }: { params: Promi
               <TagOneButton partId={p.id} photoId={swatchPhoto.id} unavailable={tagEntry.unavailable} />
             </Section>
           )}
-          {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} />}
+          {/* Software (shop-features-round-2-design.md 2.5): once or a subscription, its words, codes on hand. */}
+          {p.kind === "SOFTWARE" && <SoftwareItem shopId={user.shopId} partId={p.id} />}
+          {/* Which machines it fits (shop-features-round-2-design.md 2.4); a machine model or fabric fits nothing. */}
+          {p.kind !== "MACHINE" && p.kind !== "FABRIC" && <FitsSection shopId={user.shopId} partId={p.id} />}
+          {/* The shop's own color matches (shop-features-round-2-design.md 2.2), for items with a color. */}
+          {shopFlags.sellsRetail && (p.colorNumber || p.colorName || p.colorHex || typeOf(p) === "thread") && <SameColor shopId={user.shopId} partId={p.id} />}
+          {p.kind === "PATTERN" && shopFlags.sellsRetail && <PatternYardage shopId={user.shopId} partId={p.id} />}
+          {shopFlags.sellsRetail && <ListingCard part={p} admin={user.role !== "TECH"} shopOn={shopFlags.shopOn} drafting={marketingEntry?.show ? { unavailable: marketingEntry.unavailable } : null} />}
+          {/* Special orders and coming soon (shop-features-round-2-design.md 1.2). */}
+          {shopFlags.sellsRetail && p.kind !== "MACHINE" && <ItemSpecialOrders shopId={user.shopId} part={p} admin={user.role !== "TECH"} />}
+          {shopFlags.sellsRetail && p.kind !== "MACHINE" && user.role !== "TECH" && <ItemMembership shopId={user.shopId} part={p} />}
+          {shopFlags.sellsRetail && p.unit === "yd" && user.role !== "TECH" && <ItemYardBreak part={p} />}
+          {shopFlags.sellsRetail && p.kind !== "FABRIC" && <MapPriceSection what="part" id={p.id} priceCents={p.priceCents} mapCents={p.mapCents} admin={user.role !== "TECH"} online={p.online} />}
+          {shopFlags.sellsRetail && p.kind !== "MACHINE" && <ListedSection what="part" id={p.id} listedOn={p.listedOn} />}
           <Section title="Where to buy">
             {p.sources.length === 0 && !xrefs.some((x) => (x.sources as XSource[]).length) ? (
               <p className="muted text-sm">No suppliers yet. Add where you buy it.</p>
@@ -337,6 +399,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                 <li key={m.id} className="flex justify-between gap-2 py-2">
                   <span>
                     {fmtDate(m.createdAt, tz)} · {REASON[m.reason]}
+                    {stock && <span className="muted"> · {storeNames.get(m.locationId ?? "") ?? storeNames.get([...storeNames.keys()][0]) ?? ""}</span>}
                     {m.ticketId && tno.has(m.ticketId) && (
                       <>
                         {" "}

@@ -380,15 +380,21 @@ async function otherCompany(a: CheckShop, b: CheckShop, ticketId: string, linkId
   ok("another company's ticket id -> 'Ticket not found.'; revoke / record / job lookups find nothing; its rows are unchanged");
 }
 
+/** Without Marketing: the estimate link is in the base (pricing-review-2026-10.md, 7 Oct 2026). */
 async function moduleOff(off: CheckShop) {
   const c = await customer(off.shopId);
   const t = await ticket(off.shopId, c.id);
-  await expectError("Marketing off", () => sendEstimateAs(user(off), "ticket", t.id, both), /./);
-  assert.equal(await db.estimateLink.count({ where: { shopId: off.shopId } }), 0);
+  await sendEstimateAs(user(off), "ticket", t.id, both);
+  const links = await linkOf(off.shopId, t.id);
+  assert.equal(links.length, 1, "the link is made without Marketing");
+  const rows = await db.outMessage.findMany({ where: { shopId: off.shopId, ticketId: t.id, kind: "estimate" } });
+  assert.equal(rows.length, 1, "the estimate email is queued without Marketing");
+  assert.equal(rows[0].status, "QUEUED");
+  assert.equal(rows[0].refId, links[0].id);
   // Recording an answer is counter work: it works without the module.
   await recordEstimateAnswerAs(user(off), "ticket", t.id, { answer: "APPROVED", via: "phone", note: null });
   assert.equal((await db.ticket.findUniqueOrThrow({ where: { id: t.id } })).status, "ON_BENCH");
-  ok("Marketing off: sending is refused, recording an answer still works");
+  ok("Marketing off: the estimate still goes by link (base), and recording an answer works");
 }
 
 async function lines() {

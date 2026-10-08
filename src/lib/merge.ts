@@ -49,6 +49,22 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "KitSeriesMember", field: "customerId", label: ["Block of the Month sign-up", "Block of the Month sign-ups"] },
   { model: "ClubMember", field: "customerId", label: ["club membership", "club memberships"] },
   { model: "LongarmOrder", field: "customerId", label: ["quilting work order", "quilting work orders"] },
+  { model: "Layaway", field: "customerId", label: ["layaway", "layaways"] },
+  { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
+  { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
+  { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
+  { model: "LiveClaim", field: "customerId", label: ["live-sale claim", "live-sale claims"] },
+  { model: "SpecialOrder", field: "customerId", label: ["special order", "special orders"] },
+  { model: "WantItem", field: "customerId", label: ["want list line", "want list lines"] },
+  { model: "UnitLoan", field: "customerId", label: ["loaner, demo or rental", "loaners, demos and rentals"] },
+  { model: "TradeUpOffer", field: "customerId", label: ["repair credit used", "repair credits used"] },
+  { model: "HouseAccount", field: "customerId", label: ["house account", "house accounts"] },
+  { model: "GiftRegistry", field: "customerId", label: ["gift list", "gift lists"] },
+  { model: "Appraisal", field: "customerId", label: ["quilt appraisal", "quilt appraisals"] },
+  { model: "StockUnit", field: "consignorId", label: ["machine on consignment", "machines on consignment"] },
+  { model: "ConsignPayout", field: "customerId", label: ["consignment payout", "consignment payouts"] },
+  // Stock brought from another store for her (shop-features-round-2-design.md 7.3).
+  { model: "StockTransfer", field: "forCustomerId", label: ["item brought from another store", "items brought from another store"] },
 ];
 
 /** Customer ids inside a JSON list: a campaign's members (the ids picked when it was sent). Replaced in place, so a campaign being built keeps its place. */
@@ -60,10 +76,14 @@ export const MACHINE_REFS: readonly Ref[] = [
   { model: "MachinePhoto", field: "machineId", label: ["photo", "photos"] },
   { model: "RepairJob", field: "machineId", label: ["partner repair", "partner repairs"] },
   { model: "SaleLine", field: "machineId", via: "sale", label: ["sale line (supplies bought for it)", "sale lines (supplies bought for it)"] },
-  { model: "StockUnit", field: "machineId", one: true, label: ["Vac Shop stock record", "Vac Shop stock records"] },
+  { model: "StockUnit", field: "machineId", one: true, label: ["for-sale stock record", "for-sale stock records"] },
   { model: "VacCare", field: "machineId", one: true, label: ["bag reminder setting", "bag reminder settings"] },
+  { model: "SuppliesCare", field: "machineId", one: true, label: ["supplies reminder setting", "supplies reminder settings"] },
+  { model: "MachinePlan", field: "machineId", label: ["service plan", "service plans"] },
   { model: "OutMessage", field: "refId", tag: `"refType" = 'machine'`, label: ["message about it", "messages about it"] },
   { model: "AssistantCall", field: "machineId", label: ["Assistant call", "Assistant calls"] },
+  { model: "SoftwareLicense", field: "machineId", label: ["software licence", "software licences"] },
+  { model: "WarrantyClaim", field: "machineId", label: ["warranty claim", "warranty claims"] },
 ];
 
 /** What a deleted customer's kept rows say instead of their name. */
@@ -251,6 +271,16 @@ export async function mergeCustomersFor(user: CurrentUser, fromId: string, intoI
     const theirSeries = new Set((await tx.kitSeriesMember.findMany({ where: { shopId, customerId: into.id }, select: { seriesId: true } })).map((x) => x.seriesId));
     const seriesClash = (await tx.kitSeriesMember.findMany({ where: { shopId, customerId: from.id }, select: { id: true, seriesId: true } })).filter((x) => theirSeries.has(x.seriesId));
     if (seriesClash.length) await tx.kitSeriesMember.deleteMany({ where: { shopId, id: { in: seriesClash.map((x) => x.id) } } });
+    // Certified on the same machine on both: the kept record's certification stands (one a machine).
+    const theirCerts = new Set((await tx.certification.findMany({ where: { shopId, customerId: into.id }, select: { equipment: true } })).map((x) => x.equipment.toLowerCase()));
+    const certClash = (await tx.certification.findMany({ where: { shopId, customerId: from.id }, select: { id: true, equipment: true } })).filter((x) => theirCerts.has(x.equipment.toLowerCase()));
+    if (certClash.length) await tx.certification.deleteMany({ where: { shopId, id: { in: certClash.map((x) => x.id) } } });
+    // A house account on both (9.4): the duplicate's charges and payments join the kept one's account.
+    const [fromAcct, intoAcct] = await Promise.all([tx.houseAccount.findFirst({ where: { shopId, customerId: from.id } }), tx.houseAccount.findFirst({ where: { shopId, customerId: into.id } })]);
+    if (fromAcct && intoAcct) {
+      await tx.accountEntry.updateMany({ where: { shopId, accountId: fromAcct.id }, data: { accountId: intoAcct.id } });
+      await tx.houseAccount.delete({ where: { id: fromAcct.id } });
+    }
     for (const r of CUSTOMER_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await replaceInLists(tx, shopId, from.id, into.id);
     await tx.customer.update({ where: { id: into.id }, data: customerFill(from, into, date).data });
@@ -298,6 +328,13 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const g of await tx.giftCard.findMany({ where: { shopId, customerId: c.id, status: "active", balanceCents: { gt: 0 } }, select: { kind: true, balanceCents: true } })) {
     out.push(`${g.kind === "credit" ? "Store credit" : "A gift card"} of ${money(g.balanceCents)} is still owed. Pay it out or let them spend it first.`);
   }
+  for (const l of await tx.layaway.findMany({ where: { shopId, customerId: c.id, status: "OPEN" }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Layaway #${l.number} is still being paid for. Finish or cancel it first.`);
+  }
+  for (const o of await tx.specialOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["WAITING", "ORDERED", "HERE"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Special order ${o.number} is still open. Finish or cancel it first.`);
+  }
+  if (await tx.unitLoan.count({ where: { shopId, customerId: c.id, backAt: null } })) out.push("She still has one of the shop's machines (a loaner, demo or rental). Mark it back first.");
   for (const a of await tx.appointment.findMany({
     where: { shopId, customerId: c.id, status: "BOOKED", endsAt: { gt: now } },
     select: { title: true, startsAt: true },
@@ -308,6 +345,22 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const q of await tx.longarmOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["RECEIVED", "ON_FRAME", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Quilting work order #${q.number} isn't collected yet. Finish or cancel it first.`);
   }
+  for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
+  }
+  // A live-sale claim still held for them or waiting in their pay link (LiveClaim.customerId is a plain id).
+  const claims = await tx.liveClaim.count({ where: { shopId, customerId: c.id, status: { in: ["HELD", "SENT"] } } });
+  if (claims) out.push(`${say(claims, ["live-sale claim is", "live-sale claims are"])} still held or waiting to be paid. Let them go or wait for the payment first.`);
+  const acct = await tx.houseAccount.findFirst({ where: { shopId, customerId: c.id }, select: { id: true } });
+  if (acct) {
+    const es = await tx.accountEntry.findMany({ where: { accountId: acct.id, voidedAt: null }, select: { kind: true, amountCents: true } });
+    const owes = es.reduce((x, e) => x + (e.kind === "PAYMENT" ? -e.amountCents : e.amountCents), 0);
+    if (owes !== 0) out.push(`Their house account ${owes > 0 ? `owes ${money(owes)}` : `holds a credit of ${money(-owes)}`}. Settle it first.`);
+  }
+  const owedHer = await tx.consignPayout.count({ where: { shopId, customerId: c.id, paidAt: null, voidedAt: null } });
+  if (owedHer) out.push(`The shop still owes them for ${owedHer === 1 ? "a consigned machine" : `${owedHer} consigned machines`}. Pay them first (Paperwork, Consigned machines).`);
+  const consigned = await tx.stockUnit.count({ where: { shopId, consignorId: c.id, status: { in: ["IN_STOCK", "HELD"] } } });
+  if (consigned) out.push(`${consigned === 1 ? "Their machine is" : `${consigned} of their machines are`} for sale on consignment. Sell or give ${consigned === 1 ? "it" : "them"} back first.`);
   const seats = await tx.enrollment.findMany({
     where: { shopId, customerId: c.id, status: { in: ["ENROLLED", "WAITLIST"] }, shopClass: { status: { not: "CANCELLED" }, meetings: { some: { cancelled: false, endsAt: { gt: now } } } } },
     select: { shopClass: { select: { title: true } } },
@@ -373,6 +426,19 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(clubsIn, ["club membership", "club memberships"], `deleted${cards ? `; ${cards === 1 ? "their card subscription is" : "their card subscriptions are"} stopped at Stripe first (if that fails, nothing is deleted)` : ""}; the club payments already in the register's books stay`);
   add(n["LongarmOrder.customerId"], ["quilting work order", "quilting work orders"], `kept in the books as "${DELETED_NAME}" (with their photos and the sale they were billed on)`);
   add(n["KitSeriesMember.customerId"], ["Block of the Month sign-up", "Block of the Month sign-ups"], "deleted");
+  add(n["Layaway.customerId"], ["finished layaway", "finished layaways"], "kept in the books, without the customer");
+  add(n["SoftwareLicense.customerId"], ["software licence", "software licences"], "kept with their sale, without the customer");
+  add(n["Certification.customerId"], ["certification", "certifications"], "deleted");
+  add(n["HouseAccount.customerId"], ["house account", "house accounts"], "kept in the books (nothing owed on it), without the customer");
+  add(n["GiftRegistry.customerId"], ["gift list", "gift lists"], "deleted (its link stops working)");
+  add(n["Appraisal.customerId"], ["quilt appraisal", "quilt appraisals"], `kept in the books as "${DELETED_NAME}" (their photos deleted)`);
+  add(n["StockUnit.consignorId"], ["machine once on consignment", "machines once on consignment"], "kept, without the customer");
+  add(n["ConsignPayout.customerId"], ["consignment payout", "consignment payouts"], "kept in the books, without the customer");
+  add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
+  add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
+  add(n["WantItem.customerId"], ["want list line", "want list lines"], "deleted");
+  add(n["UnitLoan.customerId"], ["finished loan", "finished loans"], "kept, without the customer");
+  add(n["TradeUpOffer.customerId"], ["repair credit used", "repair credits used"], "kept in the books, without the customer");
   const notes = ["Notes typed on kept tickets and machines aren't changed. If they name the customer, edit them first."];
   return { id: c.id, name: c.name, into: null, rows, blockers, notes, confirm: c.name };
 }
@@ -411,6 +477,22 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.enrollment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, attendee: null, note: null } });
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
+    await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
+    await tx.liveClaim.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null } });
+    // A settled house account (9.4) stays for the books, without her (its id stands in, so the one-per-customer key holds).
+    for (const a of await tx.houseAccount.findMany({ where: { shopId, customerId: c.id }, select: { id: true } })) {
+      await tx.houseAccount.update({ where: { id: a.id }, data: { customerId: `deleted:${a.id}`, status: "CLOSED" } });
+    }
+    // Gift lists (9.9): hers, so they go (lines already bought keep their sales).
+    await tx.giftRegistry.deleteMany({ where: { shopId, customerId: c.id } });
+    // Quilt appraisals (9.8): kept as the fee's record, without her name or the quilt's photos.
+    await tx.appraisalPhoto.deleteMany({ where: { shopId, appraisal: { customerId: c.id } } });
+    await tx.appraisal.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME } });
+    // Consignment (9.6): her machines and payouts stay in the books without her (the payout's id is a plain one, blanked).
+    await tx.stockUnit.updateMany({ where: { shopId, consignorId: c.id }, data: { consignorId: null } });
+    // A transfer brought over for her stays as the stores' record, without her (7.3).
+    await tx.stockTransfer.updateMany({ where: { shopId, forCustomerId: c.id }, data: { forCustomerId: null } });
+    await tx.consignPayout.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: "" } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id, revokedAt: null }, data: { revokedAt: now } });
     await tx.estimateLink.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, tokenSealed: null } });
     await tx.bookingLink.deleteMany({ where: { shopId, customerId: c.id } });
@@ -458,10 +540,10 @@ export async function machineMergeCandidates(user: CurrentUser, machineId: strin
 type MachineRow = Machine & { stock: { id: string } | null; vacCare: VacCare | null; customer: { name: string } | null };
 const MACHINE_INCLUDE = { stock: { select: { id: true } }, vacCare: true, customer: { select: { name: true } } } as const;
 
-/** Why two machines can't be merged (beyond not found): different equipment, or both are Vac Shop stock. */
+/** Why two machines can't be merged (beyond not found): different equipment, or both are machines-for-sale stock. */
 function machineMergeRefusal(from: MachineRow, into: MachineRow): string | null {
   if (from.equipment !== into.equipment) return "They aren't the same kind of thing (one is a vacuum or an appliance, the other isn't). Use 'It isn't ...' on the wrong one first.";
-  if (from.stock && into.stock) return "Both are Vac Shop stock records, which are kept for good. They can't be merged.";
+  if (from.stock && into.stock) return "Both are machines-for-sale stock records, which are kept for good. They can't be merged.";
   return null;
 }
 
@@ -540,6 +622,8 @@ export async function mergeMachinesFor(user: CurrentUser, fromId: string, intoId
       await tx.vacCare.update({ where: { machineId: into.id }, data: vacCombine(from.vacCare, into.vacCare) });
       await tx.vacCare.delete({ where: { machineId: from.id } });
     }
+    // Maker Shop's supplies-due marks: the kept machine's stay when both have them (one row per machine).
+    if ((await tx.suppliesCare.count({ where: { machineId: { in: [from.id, into.id] } } })) === 2) await tx.suppliesCare.delete({ where: { machineId: from.id } });
     for (const r of MACHINE_REFS) await moveRef(tx, r, from.id, into.id, shopId);
     await tx.machine.update({ where: { id: into.id }, data: machineFill(from, into, date).data });
     await tx.machine.delete({ where: { id: from.id } });
@@ -547,12 +631,12 @@ export async function mergeMachinesFor(user: CurrentUser, fromId: string, intoId
   return intoId;
 }
 
-/** Why this machine can't be deleted: tickets (its history and their bills), a Vac Shop stock record, an open partner repair. */
+/** Why this machine can't be deleted: tickets (its history and their bills), a machines-for-sale stock record, an open partner repair. */
 async function machineBlockers(tx: Db, shopId: string, m: { id: string; stock: { id: string } | null }): Promise<string[]> {
   const out: string[] = [];
   const tickets = await tx.ticket.count({ where: { shopId, machineId: m.id } });
   if (tickets) out.push(`It has ${say(tickets, ["ticket", "tickets"])}: its service history and their bills stay. Merge it into the right machine instead.`);
-  if (m.stock) out.push("It is a Vac Shop stock record, and those are kept for good (take it off sale instead).");
+  if (m.stock) out.push("It is a machine-for-sale stock record, and those are kept for good (take it off sale instead).");
   for (const j of await tx.repairJob.findMany({ where: { shopId, machineId: m.id, pickedUpAt: null, status: { notIn: CLOSING_STATUSES } }, select: { tag: true } })) {
     out.push(`Partner repair tag ${j.tag} isn't picked up yet.`);
   }
@@ -573,6 +657,7 @@ export async function machineDeletePlan(user: CurrentUser, machineId: string): P
   };
   add(n["MachinePhoto.machineId"], ["photo", "photos"], "deleted");
   add(n["VacCare.machineId"], ["bag reminder setting", "bag reminder settings"], "deleted");
+  add(n["SuppliesCare.machineId"], ["supplies reminder setting", "supplies reminder settings"], "deleted");
   add(n["SaleLine.machineId"], ["sale line", "sale lines"], "kept in the books, no longer naming it");
   add(n["RepairJob.machineId"], ["partner repair", "partner repairs"], "kept, without the link (they keep the brand, model and serial)");
   const queued = await db.outMessage.count({ where: { shopId, refType: "machine", refId: m.id, status: "QUEUED" } });

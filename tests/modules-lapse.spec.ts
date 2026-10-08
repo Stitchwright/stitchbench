@@ -78,7 +78,7 @@ test("set-up: the admin turns vac on for D; D checks in T1 and sells a unit; the
   await page.getByRole("button", { name: "Save readings" }).click();
   await expect(page.getByText("Readings saved")).toBeVisible();
 
-  await page.goto("/vac/units");
+  await page.goto("/units?kind=vacuum");
   await page.getByLabel("Brand", { exact: true }).fill("Miele");
   await page.getByLabel("Model", { exact: true }).fill("C3");
   await page.getByLabel("Bags or bagless").selectOption("Bagged");
@@ -89,7 +89,7 @@ test("set-up: the admin turns vac on for D; D checks in T1 and sells a unit; the
   await page.goto("/register");
   await page.locator("#register-customer").fill("D Customer");
   await page.getByRole("button", { name: `D Customer ${RUN}` }).first().click();
-  await page.getByRole("button", { name: "Vacuum for sale" }).click();
+  await page.getByRole("button", { name: "Machine for sale" }).click();
   await page.getByRole("button", { name: "Look up" }).click();
   await page.getByRole("button", { name: "Add $499.00" }).click();
   await page.getByRole("button", { name: "Cash", exact: true }).click();
@@ -102,11 +102,12 @@ test("set-up: the admin turns vac on for D; D checks in T1 and sells a unit; the
 
 test("D after the end: read-only units, no new vacuum check-in, T1 finishes, the unit returns, the export has T1", async ({ browser }) => {
   const page = await login(browser, d.owner);
-  await page.goto("/vac/units");
-  await expect(page.getByText(/ended on/).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add to stock" })).toHaveCount(0);
+  // Machines for sale is for every shop now: the list stays, but a vacuum can't be added (sewing machines still can).
+  await page.goto("/units?kind=vacuum");
+  await expect(page.getByLabel("Serial numbers, one per line (one vacuum each)")).toHaveCount(0);
+  await expect(page.getByLabel("Serial numbers, one per line (one machine each)")).toBeVisible();
   await expect(page.getByRole("row", { name: new RegExp(unitSerial) })).toHaveCount(0); // the Sold tab has it; In stock is empty
-  await page.goto("/vac/units?tab=sold");
+  await page.goto("/units?tab=sold");
   await expect(page.getByRole("row", { name: new RegExp(unitSerial) })).toContainText("Sold");
 
   await page.goto("/tickets/new?kind=vacuum");
@@ -133,10 +134,10 @@ test("D after the end: read-only units, no new vacuum check-in, T1 finishes, the
   const options = await page.locator("#status option").allTextContents();
   expect(options.sort()).toEqual(["Abandoned", "Collected by customer", "Returned unrepaired"].sort());
 
-  // "Return a vacuum" still refunds the unit (money already owed).
+  // "Return a machine" still refunds the unit (money already owed).
   await page.goto("/register");
   await page.getByRole("button", { name: /Return an item/ }).click();
-  await page.getByRole("button", { name: "Return a vacuum" }).click();
+  await page.getByRole("button", { name: "Return a machine" }).click();
   await page.getByRole("button", { name: "Look up" }).click();
   await page.getByRole("button", { name: "Refund $499.00" }).click();
   await expect(page.getByRole("table", { name: "Sale" })).toContainText(`Return: Miele C3`);

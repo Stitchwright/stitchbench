@@ -67,6 +67,14 @@ export default async function ShopSettingsPage() {
           <pre className="mt-1 overflow-x-auto rounded border border-line p-2 text-xs">{`<iframe src="${url}" title="Shop ${shop.name}" style="width:100%;height:1000px;border:0"></iframe>`}</pre>
         </Section>
       )}
+      {s.on && (
+        <Section title="Google and Facebook">
+          <p className="text-base">Show what you have on the shelf on Google, and your items on Facebook and Instagram.</p>
+          <Link href="/settings/shop/feeds" className="btn mt-3 min-h-11 text-base">
+            Show your stock on Google and Facebook
+          </Link>
+        </Section>
+      )}
       <ActionForm action={saveShopSettings} success="Saved" className="space-y-6">
         <fieldset disabled={!admin} className="space-y-6">
           <Section title="The page">
@@ -132,7 +140,7 @@ export default async function ShopSettingsPage() {
               <label className="flex items-start gap-2">
                 <input type="radio" name="taxVia" value="stripe" defaultChecked={s.taxVia === "stripe"} className="check mt-1" />
                 <span>
-                  <span className="font-semibold">Stripe Tax.</span> Shipped orders are taxed by the delivery address at checkout, shipping included where that state taxes it; pickup orders stay at my
+                  <span className="font-semibold">Stripe Tax.</span>{" "}Shipped orders are taxed by the delivery address at checkout, shipping included where that state taxes it; pickup orders stay at my
                   rate. Needs Stripe Tax switched on in your Stripe dashboard, and your own Stripe account (not StitchShop&apos;s). The sale in the books records the tax Stripe charged.
                 </span>
               </label>
@@ -144,7 +152,7 @@ export default async function ShopSettingsPage() {
                 <label className="flex items-start gap-2">
                   <input type="radio" name="payVia" value="own" defaultChecked={s.payVia === "own"} className="check mt-1" />
                   <span>
-                    <span className="font-semibold">Your own Stripe account.</span> Customers pay you directly; Stripe pays out to your bank. Paste the account&apos;s secret key and, after adding the
+                    <span className="font-semibold">Your own Stripe account.</span>{" "}Customers pay you directly; Stripe pays out to your bank. Paste the account&apos;s secret key and, after adding the
                     webhook below in Stripe, its signing secret.
                   </span>
                 </label>
