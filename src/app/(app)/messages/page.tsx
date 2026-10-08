@@ -83,7 +83,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
 
       {!on && waiting > 0 && (
         <Banner>
-          Marketing is off: {waiting} message{waiting === 1 ? " is" : "s are"} waiting and won&apos;t go out.
+          Marketing is off: {waiting} message{waiting === 1 ? " is" : "s are"}{" "}waiting and won&apos;t go out.
         </Banner>
       )}
       {ms.emailPausedAt && (

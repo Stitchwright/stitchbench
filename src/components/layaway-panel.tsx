@@ -153,7 +153,7 @@ export function LayawayPanel({
             <div className="space-y-3">
               <h3 className="text-lg font-semibold">Hold these items for {customerName}</h3>
               <p className="muted text-sm">
-                {money(totalCents)} with today&apos;s tax. The tax is worked out again on the day they pick it up.
+                {money(totalCents)}{" "}with today&apos;s tax. The tax is worked out again on the day they pick it up.
               </p>
               <div className="grid-form">
                 <div className="field">

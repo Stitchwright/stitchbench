@@ -187,7 +187,7 @@ export function ClassForm({
         </label>
         <label className="flex items-center gap-2">
           <input type="hidden" name="waitlist" value="off" />
-          <input type="checkbox" name="waitlist" value="on" className="check" defaultChecked={draft?.waitlist ?? true} /> Keep a waiting list when it&apos;s full
+          <input type="checkbox" name="waitlist" value="on" className="check" defaultChecked={draft?.waitlist ?? true} />{" "}Keep a waiting list when it&apos;s full
         </label>
       </div>
       <Field id="cl-remind" label="Reminders the day before">

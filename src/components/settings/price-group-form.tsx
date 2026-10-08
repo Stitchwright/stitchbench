@@ -24,7 +24,7 @@ export function PriceGroupForm({ g }: { g: GroupView | null }) {
             <input name="pctOff" aria-label="Percent off" className="input num w-20" inputMode="numeric" defaultValue={g && !g.useWholesale ? g.pctOff : 10} />% off
           </label>
           <label className="flex min-h-11 items-center gap-2">
-            <input type="radio" name="gives" value="wholesale" defaultChecked={!!g?.useWholesale} className="h-5 w-5" /> The item&apos;s wholesale price
+            <input type="radio" name="gives" value="wholesale" defaultChecked={!!g?.useWholesale} className="h-5 w-5" />{" "}The item&apos;s wholesale price
           </label>
         </fieldset>
       </div>

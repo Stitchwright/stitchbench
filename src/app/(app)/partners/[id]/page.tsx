@@ -226,7 +226,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
             <Submit className="btn btn-danger">End partnership</Submit>
           </ActionForm>
           <p className="muted mt-2 text-xs">
-            Both shops keep their records. Settle the last statement and return any consigned stock ({terms.noticeDays} days&apos; notice, per the agreement).
+            Both shops keep their records. Settle the last statement and return any consigned stock ({terms.noticeDays}{" "}days&apos; notice, per the agreement).
           </p>
         </Section>
       )}

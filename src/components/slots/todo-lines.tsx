@@ -197,7 +197,7 @@ export async function TodoLinesSlot({ user }: { user: CurrentUser }) {
         key: "failed",
         node: (
           <Link href="/messages?status=FAILED" className="link">
-            {failed} {failed === 1 ? "message" : "messages"} didn&apos;t go out this week
+            {failed} {failed === 1 ? "message" : "messages"}{" "}didn&apos;t go out this week
           </Link>
         ),
       });

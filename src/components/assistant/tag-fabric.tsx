@@ -104,7 +104,7 @@ export function TagBatch({ items, more, unavailable }: { items: { id: string; ph
       {confirming && (
         <div className="space-y-2 rounded border border-line p-2" role="alertdialog" aria-label="Confirm tagging">
           <p>
-            This sends {items.length} swatch picture{items.length === 1 ? "" : "s"} to the Assistant (through StitchHub), one at a time, and uses {items.length} call{items.length === 1 ? "" : "s"} of this month&apos;s allowance. Tags are added to each
+            This sends {items.length} swatch picture{items.length === 1 ? "" : "s"} to the Assistant (through StitchHub), one at a time, and uses {items.length} call{items.length === 1 ? "" : "s"}{" "}of this month&apos;s allowance. Tags are added to each
             fabric&apos;s own. Nothing else is sent.
           </p>
           <div className="flex gap-2">

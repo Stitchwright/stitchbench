@@ -21,7 +21,16 @@ export function BackorderControl({
   const [open, setOpen] = useState(false);
   if (open)
     return (
-      <ActionForm action={mark} success="Saved" className="mt-1 flex flex-wrap items-end gap-2">
+      <ActionForm
+        action={async (fd) => {
+          // Saved: close the form so the line shows "Back ordered, expected ..." again.
+          const r = await mark(fd);
+          if (!r?.error) setOpen(false);
+          return r;
+        }}
+        success="Saved"
+        className="mt-1 flex flex-wrap items-end gap-2"
+      >
         <div className="field">
           <label className="label text-sm">
             Expected (if they said)

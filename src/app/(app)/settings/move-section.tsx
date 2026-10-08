@@ -85,7 +85,7 @@ export async function MoveSection({ user, timeZone }: { user: CurrentUser; timeZ
               <input id="move-to" name="to" className="input" maxLength={80} placeholder="the shop PC, the hosted StitchShop, our own server" />
             </div>
             <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" name="agreed" className="check mt-0.5" required /> I understand the file holds everything this company holds, including every login&apos;s password hash, and that
+              <input type="checkbox" name="agreed" className="check mt-0.5" required />{" "}I understand the file holds everything this company holds, including every login&apos;s password hash, and that
               this copy becomes read-only now.
             </label>
             <Submit>Prepare the move file</Submit>

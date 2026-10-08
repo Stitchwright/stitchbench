@@ -91,7 +91,7 @@ export function ManualLibrary({ canOffer = false }: { canOffer?: boolean }) {
         ) : (
           <p>
             Pick the folder where you keep your service manuals (sub-folders are included). Name files like{" "}
-            <span className="mono">Brand_Model_ServiceManual_Year.pdf</span> and they&apos;ll match machines by model.
+            <span className="mono">Brand_Model_ServiceManual_Year.pdf</span>{" "}and they&apos;ll match machines by model.
           </p>
         )}
         {(!index || index.mode === "session") && (

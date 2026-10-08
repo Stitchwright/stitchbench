@@ -320,7 +320,7 @@ export function Register({
         const credit = l.tradeUpTicketId ? Math.min(Math.abs(roundCents(l.qty * l.unitPriceCents)), extras?.tradeUps.find((t) => t.ticketId === l.tradeUpTicketId)?.amountCents ?? 0) : null;
         // A return line from the scanned receipt comes back taxed as it was sold.
         const p = priceLine(pricingCtx, { ...start, tradeUpCents: credit, asSold: start.qty < 0 && start.fromSale ? { taxable: start.taxable, taxNote: null } : null });
-        return { ...start, discountCents: p.discountCents, taxable: p.taxable, manualDiscountCents: manual, promo: p.promo?.name ?? null, rule: p.ruleLabel, taxIncluded: p.taxIncluded, holidayCovered: !!p.holidayId };
+        return { ...start, discountCents: p.discountCents, taxable: p.taxable, manualDiscountCents: manual, promo: p.promo?.name ?? null, rule: p.ruleLabel, taxIncluded: p.taxIncluded, holidayCovered: !!p.holidayId || p.holidayWaived };
       }),
     [cart, pricingCtx, extras],
   );
@@ -985,7 +985,7 @@ export function Register({
             </button>
           )}
           <button type="button" className="btn btn-sm" onClick={openBookings}>
-            <CalendarDays size={14} aria-hidden /> Classes &amp; appointments
+            <CalendarDays size={14} aria-hidden />{" "}Classes &amp; appointments
           </button>
           <ColorFinder customerId={customer?.id ?? null} customerName={customer?.name ?? null} returnMode={returnMode} onAdd={(it) => addItem(it)} />
           <RegisterGiftLists returnMode={returnMode} onAdd={addGiftListLine} />

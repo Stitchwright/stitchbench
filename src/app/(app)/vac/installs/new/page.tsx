@@ -72,7 +72,7 @@ export default async function NewInstall() {
               </select>
             </div>
             <label className="flex items-center gap-2 self-end text-sm">
-              <input type="checkbox" name="quoteFirst" className="check" /> Quote first (the customer OKs a quote before it&apos;s booked)
+              <input type="checkbox" name="quoteFirst" className="check" />{" "}Quote first (the customer OKs a quote before it&apos;s booked)
             </label>
             <div className="field">
               <label htmlFor="unitBrand" className="label">

@@ -201,7 +201,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <ActionForm action={saveNoteForShop.bind(null, t.id)} className="flex flex-wrap items-end gap-2" success="The shop will see it">
             <div className="field min-w-64 flex-1">
               <label htmlFor="repairNote" className="label">
-                Note for {jobLink?.partnerName ?? "the shop"} (what it needs, what it&apos;ll cost, when it&apos;s back)
+                Note for {jobLink?.partnerName ?? "the shop"}{" "}(what it needs, what it&apos;ll cost, when it&apos;s back)
               </label>
               <input id="repairNote" name="repairNote" defaultValue={job.repairNote ?? ""} className="input" />
             </div>
