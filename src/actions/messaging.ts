@@ -1,7 +1,8 @@
 "use server";
 // Settings -> Messages and the outbox's buttons (scheduling-messaging-design.md section 8.1). Every action is
-// requireAdmin() + requireOn(user, "marketing") unless the table says otherwise; secrets are sealed here and never
-// sent back to a page.
+// requireAdmin(); since 7 Oct 2026 (pricing-review-2026-10.md) the setup is in the base, for the ready, parts-in and
+// estimate messages, and only what is Marketing's own (its automatic messages and wording, held marketing, the
+// restore hold) also needs requireOn(user, "marketing"). Secrets are sealed here and never sent back to a page.
 import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -9,7 +10,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { isUserError, safe, UserError } from "@/lib/action";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
-import { requireOn } from "@/lib/module-gate";
+import { moduleOn, requireOn } from "@/lib/module-gate";
 import { isDesktop } from "@/lib/modules";
 import { allow } from "@/lib/rate-limit";
 import { fmtPhone, toE164, validEmail } from "@/lib/phone";
@@ -23,7 +24,7 @@ import { messageRun, sendOneNow } from "@/lib/messaging/worker";
 import { checkSmtpHost, verifySmtp } from "@/lib/messaging/smtp";
 import { checkTwilio, sendText } from "@/lib/messaging/twilio";
 import { isSendError } from "@/lib/messaging/errors";
-import type { Channel } from "@/lib/messaging/types";
+import { BASE_KINDS, BASE_TEMPLATE_KINDS, type Channel } from "@/lib/messaging/types";
 
 // ---------- small helpers ----------
 
@@ -56,7 +57,13 @@ function afterSave() {
   revalidatePath("/messages");
 }
 
+/** An owner or admin: the messaging setup is in the base (the ticket's own notices). */
 async function admin(): Promise<CurrentUser> {
+  return requireAdmin();
+}
+
+/** An owner or admin, with Marketing on: what only marketing uses. */
+async function marketingAdmin(): Promise<CurrentUser> {
   const user = await requireAdmin();
   await requireOn(user, "marketing");
   return user;
@@ -344,6 +351,13 @@ function parseAbandonDays(raw: string | null): number[] {
 export const saveAutoMessages = safe(async function saveAutoMessages(fd: FormData) {
   const user = await admin();
   const cur = await messagingView(user.shopId);
+  // Without Marketing only the base notices' settings change (the form shows the rest read-only); the rest is kept.
+  if (!(await moduleOn(user.shopId, "marketing"))) {
+    const estimateLinkDays = int(fd, "estimateLinkDays", 1, 30, "Estimate links stay open 1 to 30 days.", cur.estimateLinkDays);
+    await upsertSettings(user.shopId, { readyNotice: on(fd, "readyNotice"), estimateLinkDays });
+    afterSave();
+    return;
+  }
 
   const readyNotice = on(fd, "readyNotice");
   const reminders = on(fd, "reminders");
@@ -400,9 +414,14 @@ async function writeTemplates(shopId: string, cur: MessagingView, change: (t: Re
   afterSave();
 }
 
+/** The wording of a base notice is the base's; every other wording is Marketing's (or Scheduling's, sent through it). */
+async function templateAdmin(kind: string): Promise<CurrentUser> {
+  return BASE_TEMPLATE_KINDS.includes(kind) ? admin() : marketingAdmin();
+}
+
 export const saveTemplate = safe(async function saveTemplate(key: string, fd: FormData) {
-  const user = await admin();
   const { kind, part } = templateKind(key);
+  const user = await templateAdmin(kind);
   const cur = await messagingView(user.shopId);
   const typed = String(fd.get("text") ?? "").replace(/\r\n?/g, "\n");
   const text = plainText(typed).text.trim();
@@ -417,8 +436,7 @@ export const saveTemplate = safe(async function saveTemplate(key: string, fd: Fo
 });
 
 export const resetTemplate = safe(async function resetTemplate(key: string) {
-  const user = await admin();
-  templateKind(key);
+  const user = await templateAdmin(templateKind(key).kind);
   const cur = await messagingView(user.shopId);
   await writeTemplates(user.shopId, cur, (t) => {
     delete t[key];
@@ -553,8 +571,9 @@ export const runMessagesNow = safe(async function runMessagesNow() {
 
 export const retryMessage = safe(async function retryMessage(id: string, fd?: FormData) {
   const user = await admin();
-  const row = await db.outMessage.findFirst({ where: { id, shopId: user.shopId }, select: { id: true, status: true, error: true } });
+  const row = await db.outMessage.findFirst({ where: { id, shopId: user.shopId }, select: { id: true, status: true, error: true, kind: true } });
   if (!row) throw new UserError("Message not found.");
+  if (!(BASE_KINDS as string[]).includes(row.kind)) await requireOn(user, "marketing");
   if (row.status !== "FAILED") throw new UserError("Only a message that wasn't sent can be retried.");
   if (/may have gone out/i.test(row.error ?? "") && fd?.get("confirm") !== "on") {
     throw new UserError("This one may already have gone out. Tick the box to send it again anyway.");
@@ -579,7 +598,7 @@ const staleWhere = (shopId: string): Prisma.OutMessageWhereInput => ({ shopId, p
 
 /** Marketing messages that waited more than two days go out now. */
 export const releaseHeld = safe(async function releaseHeld() {
-  const user = await admin();
+  const user = await marketingAdmin();
   await db.outMessage.updateMany({ where: staleWhere(user.shopId), data: { sendAfter: new Date(), nextTryAt: null } });
   revalidatePath("/messages");
 });
@@ -592,7 +611,7 @@ export const cancelHeld = safe(async function cancelHeld() {
 });
 
 export const releaseMarketingHold = safe(async function releaseMarketingHold(fd: FormData) {
-  const user = await admin();
+  const user = await marketingAdmin();
   if (!on(fd, "checked")) throw new UserError("Tick the box first: check Messages -> Opt-outs (and your mailbox) for opt-outs recorded since the backup.");
   await upsertSettings(user.shopId, { marketingHoldAt: null });
   afterSave();

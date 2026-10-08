@@ -13,6 +13,7 @@ import { lineTotal, ticketTotals } from "@/lib/ticket-math";
 import { PAID_ELSEWHERE } from "@/lib/sales";
 import { dateIn } from "@/lib/time-zone";
 import type { LineKind } from "@/generated/prisma/enums";
+import { atStore, type StoreWhere } from "@/lib/stores";
 
 export type Period = "day" | "week" | "month";
 export const PERIODS: Period[] = ["day", "week", "month"];
@@ -46,9 +47,9 @@ export type CategoryRow = { key: string; label: string; qty: number; net: number
 
 type SaleWithLines = Awaited<ReturnType<typeof loadSales>>[number];
 
-function loadSales(shopId: string, start: Date, end: Date) {
+function loadSales(shopId: string, start: Date, end: Date, sw: StoreWhere = {}) {
   return db.sale.findMany({
-    where: { shopId, OR: [{ createdAt: { gte: start, lt: end } }, { status: "VOIDED", voidedAt: { gte: start, lt: end } }] },
+    where: { shopId, ...sw, OR: [{ createdAt: { gte: start, lt: end } }, { status: "VOIDED", voidedAt: { gte: start, lt: end } }] },
     include: { lines: { include: { part: { select: { kind: true } } } } },
     orderBy: { createdAt: "asc" },
   });
@@ -67,7 +68,7 @@ function lineCost(l: { qty: number; costCents: number | null; costTenThou: numbe
  */
 export function saleLines(s: SaleWithLines) {
   const kinds = s.lines.map((l) => saleLineKind({ ...l, partKind: l.part?.kind }));
-  const eligible = s.lines.map((l, i) => lineNet(l) > 0 && !["REPAIR", "GIFT_CARD", "TRADE_IN", "CLASS", "APPOINTMENT"].includes(kinds[i]));
+  const eligible = s.lines.map((l, i) => lineNet(l) > 0 && !["REPAIR", "GIFT_CARD", "TRADE_IN", "CLASS", "APPOINTMENT", "LAYAWAY", "LAYAWAY_FEE", "DEPOSIT", "DEPOSIT_KEPT"].includes(kinds[i]));
   const base = s.lines.reduce((a, l, i) => a + (eligible[i] ? lineNet(l) : 0), 0);
   const orderDiscount = Math.min(s.discountCents, base);
   let left = orderDiscount;
@@ -97,7 +98,9 @@ export type SalesReport = {
 };
 
 /** `start` and `end` are the shop-zone day bounds of the range (end exclusive), as monthRange gives them. */
-export async function salesReport(shopId: string, tz: string, start: Date, end: Date, period: Period): Promise<SalesReport> {
+export async function salesReport(shopId: string, tz: string, start: Date, end: Date, period: Period, store: { id: string; main: boolean } | null = null): Promise<SalesReport> {
+  // One store's (shop-features-round-2-design.md 7.4), or every store's together (null).
+  const sw = atStore(store);
   const rows = new Map<string, SalesRow>();
   const row = (at: Date) => {
     const key = periodKey(dateIn(at, tz), period);
@@ -119,7 +122,7 @@ export async function salesReport(shopId: string, tz: string, start: Date, end: 
   const inRange = (d: Date | null) => d != null && d >= start && d < end;
 
   // ----- counter and online sales, their returns and voids -----
-  for (const s of await loadSales(shopId, start, end)) {
+  for (const s of await loadSales(shopId, start, end, sw)) {
     const lines = saleLines(s);
     const online = (s.tenders as Tender[]).some((t) => t.method === "ONLINE");
     const salesAmount = lines.filter((x) => !NOT_SALE_KINDS.includes(x.kind)).reduce((a, x) => a + x.amount, 0);
@@ -138,7 +141,8 @@ export async function salesReport(shopId: string, tz: string, start: Date, end: 
       r.tax += sign * s.taxCents;
       for (const t of s.tenders as Tender[]) {
         addTender(t.method, sign * t.amountCents);
-        if (t.method !== "GIFT" && t.method !== "CREDIT") r.taken += sign * t.amountCents;
+        // Gift cards and store credit were taken before; financing is the lender's money, owed until it pays.
+        if (t.method !== "GIFT" && t.method !== "CREDIT" && t.method !== "FINANCED") r.taken += sign * t.amountCents;
       }
       if (s.changeCents) {
         addTender("CASH", -sign * s.changeCents);
@@ -154,7 +158,7 @@ export async function salesReport(shopId: string, tz: string, start: Date, end: 
 
   // ----- repairs, when the machine goes home -----
   const closed = await db.ticket.findMany({
-    where: { shopId, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
+    where: { shopId, ...sw, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
     include: { lines: true, payments: true },
   });
   const repairCats = new Map<string, CategoryRow>();
@@ -167,7 +171,7 @@ export async function salesReport(shopId: string, tz: string, start: Date, end: 
   }
 
   // ----- repair money, when it is paid -----
-  const pays = await db.payment.findMany({ where: { ticket: { shopId }, paidAt: { gte: start, lt: end } }, select: { amountCents: true, method: true, paidAt: true } });
+  const pays = await db.payment.findMany({ where: { ticket: { shopId, ...sw }, paidAt: { gte: start, lt: end } }, select: { amountCents: true, method: true, paidAt: true } });
   for (const p of pays) {
     addTender(`T:${p.method}`, p.amountCents);
     if (!PAID_ELSEWHERE.includes(p.method) && p.method !== "GIFT" && p.method !== "CREDIT") row(p.paidAt).taken += p.amountCents;

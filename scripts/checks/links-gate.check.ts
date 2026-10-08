@@ -42,6 +42,10 @@ const TABLE: Row[] = [
   { method: "OPTIONS", path: "/e/x", expect: "404" },
   { method: "GET", path: "/e/../login", expect: "404" },
   { method: "GET", path: "/estimate/x", expect: "404" },
+  // A pay link's page and its Pay button (review fix: the button posted to /shop/o/<token>/pay, which the gate refused).
+  { method: "GET", path: "/shop/o/tok123", expect: "pass" },
+  { method: "POST", path: "/api/public/pay-link/tok123", body: "", expect: "pass" },
+  { method: "POST", path: "/shop/o/tok123/pay", body: "", expect: "404" },
 ];
 
 function listen(server: http.Server): Promise<number> {

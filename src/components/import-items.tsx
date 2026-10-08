@@ -284,9 +284,9 @@ export function ImportItems({ assist }: { assist?: { unavailable?: string } | nu
                 <>
                   {" "}
                   <span className="text-[var(--bad)]">
-                    {unreadable.length} row{unreadable.length === 1 ? " has" : "s have"} a quantity that can&apos;t be read (row
+                    {unreadable.length} row{unreadable.length === 1 ? " has" : "s have"}{" "}a quantity that can&apos;t be read (row
                     {unreadable.length === 1 ? "" : "s"} {unreadable.slice(0, 10).join(", ")}
-                    {unreadable.length > 10 ? ` and ${unreadable.length - 10} more` : ""}): {unreadable.length === 1 ? "it" : "they"} won&apos;t be
+                    {unreadable.length > 10 ? ` and ${unreadable.length - 10} more` : ""}): {unreadable.length === 1 ? "it" : "they"}{" "}won&apos;t be
                     imported.
                   </span>{" "}
                   Fix those cells, or set Quantity to (none) to bring the items in without stock.

@@ -8,7 +8,6 @@ import { JOB_STATUS_LABEL, SITE_STATUS_LABEL, STATUS_LABEL } from "@/lib/constan
 import { estimateChannels, estimateContent, estimateSubject, repliesSince, type EstimateSubject } from "@/lib/estimate-links";
 import { finalize } from "@/lib/messaging/queue";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
-import { gateFor } from "@/lib/module-gate";
 import { shopTimeZone } from "@/lib/shop-zone";
 import type { Channel } from "@/lib/messaging/types";
 import { recordEstimateAnswer, revokeEstimateLink, sendEstimate } from "@/actions/estimate-links";
@@ -118,13 +117,13 @@ export async function EstimatePanel({ target, id, user }: { target: "ticket" | "
   const since = round.length ? round[round.length - 1].createdAt : (link?.createdAt ?? null);
   const replies = waiting && since && customer ? await repliesSince(shopId, customer.phone, since) : [];
 
-  // The send form.
-  const gate = await gateFor(shopId, "marketing");
+  // The send form: in the base since 7 Oct 2026 (pricing-review-2026-10.md), once email or texts are switched on.
+  const setUp = waiting ? await messagingView(shopId).then((m) => m.emailOn || m.smsOn) : false;
   let form: React.ReactNode = null;
-  if (waiting && gate !== "on") {
+  if (waiting && !setUp) {
     form = (
       <p className="muted">
-        Messages are off: call {customer?.name ?? "the customer"}
+        Email and texts aren&apos;t set up (Settings → Messages): call {customer?.name ?? "the customer"}
         {customer?.phone && ` at ${customer.phone}`}.
       </p>
     );

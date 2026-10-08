@@ -11,6 +11,7 @@ import { PERIODS, salesReport, type Period } from "@/lib/reports/sales";
 import { ticketsReport, topCustomers } from "@/lib/reports/tickets";
 import { liabilityReport } from "@/lib/reports/giftcards";
 import { taxReport } from "@/lib/reports/tax";
+import { storesOf } from "@/lib/stores";
 
 const dollars = (c: number | null | undefined) => (c == null ? "" : (c / 100).toFixed(2));
 const days = (n: number | null) => (n == null ? "" : n.toFixed(1));
@@ -25,26 +26,29 @@ export async function GET(req: Request, { params }: { params: Promise<{ what: st
   const tz = await shopTimeZone(shopId);
   const { start, end, fromStr, toStr } = monthRange(url.searchParams.get("from"), url.searchParams.get("to"), tz);
   const period = (PERIODS as string[]).includes(url.searchParams.get("period") ?? "") ? (url.searchParams.get("period") as Period) : "day";
+  // One store's figures (shop-features-round-2-design.md 7.4), only a store of this company; anything else is all stores.
+  const asked = url.searchParams.get("store");
+  const store = asked && asked !== "all" ? ((await storesOf(shopId)).find((s) => s.id === asked) ?? null) : null;
   let data: unknown[][] | null = null;
 
   if (what === "sales") {
-    const r = await salesReport(shopId, tz, start, end, period);
+    const r = await salesReport(shopId, tz, start, end, period, store);
     data = [
       [period, "counter", "repairs", "online", "returns", "voids", "discounts", "net_sales", "tax", "money_taken"],
       ...[...r.rows, r.totals].map((x) => [x.period, dollars(x.counter), dollars(x.repairs), dollars(x.online), dollars(x.returns), dollars(x.voids), dollars(x.discounts), dollars(x.net), dollars(x.tax), dollars(x.taken)]),
     ];
   } else if (what === "categories") {
-    const r = await salesReport(shopId, tz, start, end, "month");
+    const r = await salesReport(shopId, tz, start, end, "month", store);
     data = [
       ["source", "category", "counts_as_sale", "quantity", "net", "cost", "margin"],
       ...r.counterCategories.map((c) => ["counter", c.label, c.sale ? "yes" : "no", c.qty, dollars(c.net), dollars(c.cost), dollars(c.margin)]),
       ...r.repairCategories.map((c) => ["repairs", c.label, "yes", c.qty, dollars(c.net), "", ""]),
     ];
   } else if (what === "tenders") {
-    const r = await salesReport(shopId, tz, start, end, "month");
+    const r = await salesReport(shopId, tz, start, end, "month", store);
     data = [["how_paid", "amount"], ...r.tenders.map((t) => [t.label, dollars(t.cents)])];
   } else if (what === "tickets") {
-    const r = await ticketsReport(shopId, start, end);
+    const r = await ticketsReport(shopId, start, end, new Date(), store);
     data = [
       ["measure", "value"],
       ["tickets in", r.ticketsIn],
@@ -65,7 +69,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ what: st
       ...r.byKind.map((k) => [k.kind, k.in, k.out, k.open]),
     ];
   } else if (what === "customers") {
-    const r = await topCustomers(shopId, start, end, 100);
+    const r = await topCustomers(shopId, start, end, 100, store);
     data = [["customer", "visits", "counter_sales", "repairs", "total"], ...r.map((c) => [c.name, c.visits, dollars(c.counterCents), dollars(c.repairCents), dollars(c.totalCents)])];
   } else if (what === "gift-cards") {
     const r = await liabilityReport(shopId, start, end);
@@ -76,7 +80,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ what: st
       data.push([k.label, "balance at end", dollars(k.closing)]);
     }
   } else if (what === "tax" || what === "tax-exempt") {
-    const r = await taxReport(shopId, tz, start, end);
+    const r = await taxReport(shopId, tz, start, end, store);
     if (what === "tax") {
       data = [
         ["rate_percent", "gross_sales", "non_taxable_sales", "taxable_sales", "tax_collected", "returns_and_voids_gross", "returns_and_voids_tax"],

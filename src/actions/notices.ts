@@ -1,8 +1,9 @@
 "use server";
 
 // Automatic notices, by hand (scheduling-messaging-design.md section 9.5): record a notice given by hand, send the ready
-// or uncollected-machine notice now, and "It's back at the counter" for a partner job. Gates per 6.3: only sendNoticeNow
-// needs Marketing; the others are counter work and custody records, so they always work.
+// or uncollected-machine notice now, and "It's back at the counter" for a partner job. Gates per 6.3, with the ready
+// notice in the base since 7 Oct 2026 (pricing-review-2026-10.md): only the uncollected-machine notice needs Marketing;
+// the others are counter work and custody records, so they always work.
 import { revalidatePath } from "next/cache";
 import { safe, UserError, isUserError, type ActionResult } from "@/lib/action";
 import { assertId } from "@/lib/input";
@@ -34,11 +35,11 @@ export const recordManualNotice = safe(async function recordManualNotice(target:
   refresh(t);
 });
 
-/** Send the ready notice again, or the uncollected-machine notice that is due now (an owner or admin). Needs Marketing. */
+/** Send the ready notice again (anyone), or the uncollected-machine notice that is due now (an owner or admin; needs Marketing). */
 export const sendNoticeNow = safe(async function sendNoticeNow(target: { ticketId?: string; jobId?: string }, kind: "ready" | "abandon") {
   const user = kind === "abandon" ? await requireAdmin() : await requireUser();
-  await requireOn(user, "marketing");
   if (kind !== "ready" && kind !== "abandon") throw new UserError("Not found.");
+  if (kind === "abandon") await requireOn(user, "marketing");
   const t = targetOf(target);
   await sendNow(user, t, kind);
   refresh(t);

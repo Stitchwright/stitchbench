@@ -5,7 +5,8 @@ import type { Enrollment, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { lockKeys } from "@/lib/lock";
-import { addDays, addMonths, fmtWhen, nthWeekdayIn, nthWeekdayOf, ymdParts } from "@/lib/zoned";
+import { addDays, addMonths, fmtWhen, nthWeekdayIn, nthWeekdayOf, ymdOf, ymdParts } from "@/lib/zoned";
+import { choicesOf, pickedChoices, priceToday } from "@/lib/events-math";
 
 type Db = Prisma.TransactionClient | typeof db;
 
@@ -87,7 +88,19 @@ const same = (a: string | null, b: string | null) => (a ?? "").trim().toLowerCas
  */
 export async function enrollIn(
   tx: Prisma.TransactionClient,
-  a: { shopId: string; classId: string; customer: { id: string; name: string }; attendee: string | null; byUserId: string; skipWaitlist: boolean; now?: Date },
+  a: {
+    shopId: string;
+    classId: string;
+    customer: { id: string; name: string };
+    attendee: string | null;
+    byUserId: string;
+    skipWaitlist: boolean;
+    now?: Date;
+    /** An event's choices as she picked them (room, meals, dietary); the first of each when missing. */
+    choices?: Record<string, string | null | undefined>;
+    /** A ticket sold at the door: the event's door price. */
+    door?: boolean;
+  },
 ): Promise<Enrollment> {
   const now = a.now ?? new Date();
   await lockKeys(tx, [`class:${a.classId}`]);
@@ -105,8 +118,30 @@ export async function enrollIn(
   if (enrolled < c.seats && (waiting === 0 || a.skipWaitlist)) status = "ENROLLED";
   else if (c.waitlist) status = "WAITLIST";
   else throw new UserError("The class is full.");
+  // An event (shop-features-round-2-design.md 4.5): the early-bird or door price, and what her choices add.
+  let feeCents = c.feeCents;
+  let picked: Record<string, string> | null = null;
+  if (c.kind !== "CLASS") {
+    const shop = await tx.shop.findUniqueOrThrow({ where: { id: a.shopId }, select: { timeZone: true } });
+    const base = a.door && c.doorCents != null ? c.doorCents : priceToday(c, ymdOf(now, shop.timeZone)).cents;
+    const ch = pickedChoices(choicesOf(c.choices), a.choices ?? {});
+    feeCents = base + ch.extraCents;
+    picked = Object.keys(ch.picked).length ? ch.picked : null;
+  }
   return tx.enrollment.create({
-    data: { shopId: a.shopId, classId: a.classId, customerId: a.customer.id, name: a.customer.name, attendee, status, feeCents: c.feeCents, taxable: c.taxable, createdById: a.byUserId },
+    data: {
+      shopId: a.shopId,
+      classId: a.classId,
+      customerId: a.customer.id,
+      name: a.customer.name,
+      attendee,
+      status,
+      feeCents,
+      taxable: c.taxable,
+      createdById: a.byUserId,
+      ...(picked ? { choices: picked } : {}),
+      ...(a.door ? { checkedInAt: now } : {}),
+    },
   });
 }
 

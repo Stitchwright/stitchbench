@@ -26,9 +26,14 @@ export default async function LongarmPage({ searchParams }: { searchParams: Prom
         title="Longarm quilting"
         sub="Quilts in for longarm work: size, price, thread and batting, and the day it is due (it shows on the Calendar). Renting the machine by the hour is booked on the Calendar."
         actions={
-          <Link href={showClosed ? "/longarm" : "/longarm?closed=1"} className="btn">
-            {showClosed ? "Show open orders" : "Show collected and cancelled"}
-          </Link>
+          <>
+            <Link href={showClosed ? "/longarm" : "/longarm?closed=1"} className="btn">
+              {showClosed ? "Show open orders" : "Show collected and cancelled"}
+            </Link>
+            <Link href="/appraisals" className="btn">
+              Quilt appraisals
+            </Link>
+          </>
         }
       />
       <div className="card">

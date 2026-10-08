@@ -15,9 +15,9 @@ import { AutoMessagesForm } from "@/components/messaging-settings-forms";
 export default async function AutoMessagesPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
+  // The ready and estimate messages are in the base (7 Oct 2026); the rest is Marketing's, read-only (or not shown) without it.
   const gate = await gateFor(user.shopId, "marketing");
-  if (gate === "hidden") return <ModuleOff shopId={user.shopId} module="marketing" admin={admin} />;
-  const canEdit = admin && gate === "on";
+  const canEdit = admin;
   const [ms, shop, vac] = await Promise.all([
     messagingView(user.shopId),
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, phone: true, address: true } }),
@@ -33,7 +33,7 @@ export default async function AutoMessagesPage() {
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Email and text messages" back={{ href: "/settings", label: "Settings" }} sub="What goes out by itself, and the words it uses. Texts start with the shop's name; marketing messages end with how to opt out." />
       <MessagingTabs active="auto" />
-      {gate === "readonly" && <ModuleOff shopId={user.shopId} module="marketing" what="Your automatic messages" admin={admin} />}
+      {gate !== "on" && <ModuleOff shopId={user.shopId} module="marketing" what="The marketing messages' settings" admin={admin} />}
       {!admin && <p className="muted text-sm">The shop owner or an admin changes these.</p>}
       <AutoMessagesForm
         v={{
@@ -64,6 +64,7 @@ export default async function AutoMessagesPage() {
         }}
         hasVac={vac}
         readOnly={!canEdit}
+        marketing={gate}
       />
     </div>
   );

@@ -42,7 +42,7 @@ export async function previewCatalog(supplierId: string, fd: FormData): Promise<
   try {
     const user = await requireAdmin();
     const f = await fileOf(fd);
-    return { preview: await previewCatalogFor(user, supplierId, f.name, f.bytes, mapOf(fd)) };
+    return { preview: await previewCatalogFor(user, supplierId, f.name, f.bytes, mapOf(fd), String(fd.get("defaultKind") ?? "") || null) };
   } catch (e) {
     if (isUserError(e)) return { error: e.message };
     throw e;
@@ -53,7 +53,7 @@ export async function previewCatalog(supplierId: string, fd: FormData): Promise<
 export const applyCatalog = safe(async function applyCatalog(supplierId: string, fd: FormData) {
   const user = await requireAdmin();
   const f = await fileOf(fd);
-  const text = await applyCatalogFor(user, supplierId, f.name, f.bytes, mapOf(fd), fd.get("saveMap") === "on");
+  const text = await applyCatalogFor(user, supplierId, f.name, f.bytes, mapOf(fd), fd.get("saveMap") === "on", String(fd.get("defaultKind") ?? "") || null);
   revalidatePath("/fabric");
   revalidatePath("/parts", "layout");
   return noted(text);

@@ -8,14 +8,22 @@ import { gateFor } from "@/lib/module-gate";
 import { fmtDate, money } from "@/lib/format";
 import { fmtPhone } from "@/lib/phone";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { classCreditsFor } from "@/lib/units/units";
 import { fmtRange, fmtWhen, hmOf, wall, ymdOf } from "@/lib/zoned";
 import { CLASS_REMIND_LABEL, CLASS_STATUS_LABEL, CLASS_STATUS_TONE } from "@/lib/constants";
-import { addMeetings, cancelEnrollment, cancelMeeting, deleteClass, deleteMeeting, enroll, messageClass, moveUp, saveClass, saveMeeting, setClassStatus, setEnrollmentFee } from "@/actions/classes";
+import { addMeetings, applyClassCredit, cancelEnrollment, cancelMeeting, deleteClass, deleteMeeting, enroll, messageClass, moveUp, saveClass, saveMeeting, setClassStatus, setEnrollmentFee } from "@/actions/classes";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { ClassForm, MeetingFields } from "@/components/class-form";
+import { entryFor } from "@/lib/assistant/ui";
+import { PostDraft } from "@/components/assistant/marketing-drafts";
 import { CustomerPicker } from "@/components/customer-picker";
 import { ModuleOff } from "@/components/module-off";
 import { KV, PageHeader, Section } from "@/components/ui";
+import { EventPanel, EventSignupFields } from "@/components/event-panel";
+import { eventView } from "@/lib/events";
+import { priceToday } from "@/lib/events-math";
+import { payLinkProblem } from "@/lib/pay-links";
+import { fmtYmdLong } from "@/lib/units/units";
 
 function Tell({ on, label = "Tell them" }: { on: boolean; label?: string }) {
   if (!on) return null;
@@ -26,6 +34,14 @@ function Tell({ on, label = "Tell them" }: { on: boolean; label?: string }) {
   );
 }
 
+/** "$350 until Nov 1 (early-bird), then $395. A $150 deposit now, non-refundable." */
+function eventPriceWords(c: { feeCents: number; earlyCents: number | null; earlyUntil: string | null; depositCents: number | null; depositRefundable: boolean }, today: string): string {
+  const p = priceToday(c, today);
+  const price = p.early && c.earlyUntil ? `Early-bird price ${money(p.cents)} until ${fmtYmdLong(c.earlyUntil)}, then ${money(c.feeCents)}.` : `Price ${money(p.cents)}.`;
+  const dep = c.depositCents ? ` A ${money(c.depositCents)} deposit${c.depositRefundable ? "" : " (non-refundable)"} now, the rest before the event.` : "";
+  return price + dep;
+}
+
 export default async function ClassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
@@ -34,8 +50,13 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   if (gate === "hidden") return <ModuleOff shopId={shopId} module="scheduling" admin={user.role !== "TECH"} />;
   const c = await db.shopClass.findFirst({ where: { id, shopId }, include: { meetings: { orderBy: { startsAt: "asc" } } } });
   if (!c) notFound();
+  // Retreats, trunk shows and other events (shop-features-round-2-design.md 4.5): money in parts, choices, the door.
+  const ev = c.kind !== "CLASS" ? await eventView(shopId, c.id) : null;
+  const linkProblem = ev ? await payLinkProblem(shopId) : null;
   const on = gate === "on";
   const admin = user.role !== "TECH" && on;
+  // Marketing drafts (shop-features-round-2-design.md 5.2): "Draft it" for About the class, and a social post.
+  const mk = admin ? await entryFor(shopId, "marketing") : ({ show: false } as const);
   const now = new Date();
   const [tz, marketing, rows] = await Promise.all([
     shopTimeZone(shopId),
@@ -54,7 +75,37 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   const first = c.meetings.find((m) => !m.cancelled);
   const meetingDefaults = first ? { start: hmOf(wall(first.startsAt, tz).hour * 60 + wall(first.startsAt, tz).minute), end: hmOf(wall(first.endsAt, tz).hour * 60 + wall(first.endsAt, tz).minute) } : undefined;
 
+  // Owner's classes that came with machines the people signed up bought here (machines for sale), by customer.
+  const people = [...new Set(rows.filter((r) => r.customerId && r.status !== "CANCELLED").map((r) => r.customerId!))];
+  const credits = new Map(await Promise.all(people.map(async (id) => [id, (await classCreditsFor(shopId, id)).filter((x) => x.left > 0)] as const)));
   const payment = (r: (typeof rows)[number]) => {
+    const evp = ev?.people.find((x) => x.id === r.id);
+    if (evp) return <span>{evp.owingCents ? `Owes ${money(evp.owingCents)} of ${money(evp.priceCents)}` : "Paid in full"}</span>;
+    if (r.creditUnitId && !r.paidAt) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          Owner&apos;s class (came with their machine)
+          {on && (
+            <ActionButton action={applyClassCredit.bind(null, r.id, null)} className="link text-xs">
+              Charge for it instead
+            </ActionButton>
+          )}
+        </span>
+      );
+    }
+    const free = r.customerId && !r.paidAt && r.feeCents > 0 && on ? (credits.get(r.customerId) ?? []) : [];
+    if (free.length && !r.refundedAt) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          Owes {money(r.feeCents)}
+          {free.map((x) => (
+            <ActionButton key={x.unitId} action={applyClassCredit.bind(null, r.id, x.unitId)} className="btn btn-sm btn-primary">
+              Use an owner&apos;s class ({x.left} left with the {x.machine})
+            </ActionButton>
+          ))}
+        </span>
+      );
+    }
     if (r.refundedAt) return <span className="muted">Refunded {money(r.refundedCents ?? 0)}</span>;
     if (r.paidAt) {
       const s = r.paidLineId ? saleOf.get(r.paidLineId) : null;
@@ -141,6 +192,7 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
               </label>
               <input id="attendee" name="attendee" className="input" maxLength={80} placeholder="A child, a friend" />
             </div>
+            {ev && <EventSignupFields v={ev} priceWords={eventPriceWords(c, ymdOf(now, tz))} />}
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span>{c.feeCents ? `Fee ${money(c.feeCents)}, paid at the counter.` : "No fee."}</span>
               {seatsLeft <= 0 && c.waitlist && <span className="pill tone-wait">Full: they go on the waiting list</span>}
@@ -214,6 +266,8 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
       </Section>
+
+      {ev && <EventPanel v={ev} on={on} admin={admin} canLink={!linkProblem} />}
 
       {(waiting.length > 0 || c.waitlist) && (
         <Section title={`Waiting list (${waiting.length})`}>
@@ -325,7 +379,12 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
       {admin && (
         <>
           <Section title="Edit the class">
-            <ClassForm action={saveClass.bind(null, c.id)} draft={c} isNew={false} />
+            <ClassForm action={saveClass.bind(null, c.id)} draft={c} isNew={false} drafting={mk.show ? { classId: c.id, unavailable: mk.unavailable } : null} />
+            {mk.show && !mk.unavailable && c.status !== "CANCELLED" && (
+              <div className="mt-4">
+                <PostDraft about="class" id={c.id} />
+              </div>
+            )}
           </Section>
           {marketing && c.status !== "CANCELLED" && (
             <Section title="Message everyone">

@@ -14,7 +14,7 @@ import { VacFrame, vacPageState } from "@/components/vac/vac-page";
 const CARDS: { href: string; title: string; text: string }[] = [
   { href: "/tickets?kind=vacuum", title: "Repairs", text: "Vacuum tickets: intake with bag type and power, the vacuum checklist, suction and amp readings." },
   { href: "/vac/finder", title: "Finder", text: "Which bags, belts and filters fit a model, from your stock and the community's cross-references." },
-  { href: "/vac/units", title: "For sale", text: "New, used and trade-in vacuums with serials and warranties, sold at the register." },
+  { href: "/units", title: "For sale", text: "New, used and trade-in vacuums with serials and warranties, sold at the register (Machines for sale, open to every shop)." },
   { href: "/vac/bags-due", title: "Bags due", text: "Customers whose bagged vacuum is due for bags, to call or remind." },
   { href: "/vac/installs", title: "Installs", text: "Central vac installs: the site, the quote, the schedule and the checklist." },
 ];

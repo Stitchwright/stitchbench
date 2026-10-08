@@ -8,6 +8,8 @@ import { kindOf } from "@/lib/equipment/shop";
 import { PrintButton } from "@/components/print-button";
 import { PageHeader } from "@/components/ui";
 import { SiteInvoiceBlock } from "@/components/vac/site-invoice";
+import { creditForTicket } from "@/lib/trade-up";
+import { fmtYmdLong } from "@/lib/units/units";
 
 export default async function Invoice({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -21,6 +23,8 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
   const isSite = t.jobType === "SITE";
   const tot = ticketTotals(t.lines, t.payments, t.taxRatePct);
   const s = t.shop;
+  // Trade-up credit (shop-features-round-2-design.md 1.9), when the shop offers it.
+  const tradeUp = await creditForTicket(user.shopId, t.id);
 
   return (
     <div>
@@ -79,7 +83,11 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           <tbody>
             {t.lines.map((l) => (
               <tr key={l.id}>
-                <td>{l.description}</td>
+                <td>
+                  {l.description}
+                  {l.coveredPlanId && <span className="block text-xs">Covered by your service plan (no charge)</span>}
+                  {l.claimId && <span className="block text-xs">Covered by the maker&apos;s warranty (no charge)</span>}
+                </td>
                 <td className="num text-right">{l.qty}</td>
                 <td className="num text-right">{money(l.unitPriceCents)}</td>
                 <td className="num text-right">{money(lineTotal(l))}</td>
@@ -114,6 +122,28 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           <dd className="border-t border-line pt-1 text-right font-semibold">{money(tot.balance)}</dd>
         </dl>
 
+        {/* The pickup sheet (shop-features-round-2-design.md 5.5): what we did in plain words and the shop's care tips. */}
+        {(t.pickupWhat || t.pickupTips.length > 0) && (
+          <section className="mt-6 border-t border-line pt-4 text-sm">
+            {t.pickupWhat && (
+              <>
+                <div className="label">What we did</div>
+                <p className="whitespace-pre-wrap">{t.pickupWhat}</p>
+              </>
+            )}
+            {t.pickupTips.length > 0 && (
+              <>
+                <div className="label mt-3">Caring for your {kind.noun}</div>
+                <ul className="list-disc pl-5">
+                  {t.pickupTips.map((tip) => (
+                    <li key={tip}>{tip}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
         <footer className="mt-8 border-t border-line pt-4 text-xs">
           {s.warrantyDays > 0 && (
             <p>
@@ -129,6 +159,11 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
           )}
           {t.accessories.some((a) => !t.accessoriesReturned.includes(a)) && (
             <p className="mt-1">Still with us: {t.accessories.filter((a) => !t.accessoriesReturned.includes(a)).join(", ")}.</p>
+          )}
+          {tradeUp && (
+            <p className="mt-1 font-semibold">
+              If you&apos;d rather buy a new machine by {fmtYmdLong(tradeUp.until)}, we&apos;ll take {money(tradeUp.amountCents)} off.
+            </p>
           )}
           <p className="mt-1">Thank you for your business.</p>
         </footer>

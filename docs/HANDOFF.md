@@ -973,6 +973,25 @@ rerun: estimate-links' text reply (worker timing); inventory's community most-us
 main again.
 Open choice: a cart mixing scanned returns with new items still taxes all at today's rate (one rate per sale).
 
+## 2al. 7-8 Oct 2026: every round-2 phase built, merged, max-reviewed and fixed (not on main)
+
+`scheduling-features` = `round2-all` (b44719c): the release plus machine sales, layaway, tax holidays, financing,
+promotions and round-2 phases 1-6 incl. multi-store (design Built notes at the end of
+`docs/plans/shop-features-round-2-design.md`). Hub: `hub-accounts` = `round2-hub` (0dc4770): add-on billing for five
+modules and the bundle, extra-store quantity billing, photo features, shop hops (migrations 031-033). A max review of
+both found a company-join takeover (now a one-time join code), money and multi-store bugs, add-on billing edge cases:
+all fixed with checks. All 120 program checks and 87 unit tests pass; every hub test passes on scratch DBs. NOT yet run:
+a fresh build and the whole Playwright regression (about 70 specs incl. many new ones written but never run; the
+stores and pay-link specs need updating for the join code and the new Pay flow). Next: owner restarts the PC, then
+start Docker, migrate the `stitchbench` dev DB, restart the test hub (now round-2 code), STITCH_TEST_BUILD=1 build in
+the foreground, run every spec one at a time (:3300 set, then the :3501 mail/text/Stripe set, then assistant with the
+Anthropic stand-in), fix, then the owner merges both to main. Stripe day needs 14 new prices (add-ons, bundle, stores).
+7-8 Oct night: the whole regression is green (a263760..56ae280): groups A (:3300, 58 specs), B (:3501 mail/text/Stripe,
+13 runs), C (9 AI specs with the stand-in), D (card reader, Shippo: scripts/local-test/.run/devices_run.sh). Four app
+bugs fixed on the way (missing spaces before JSX entities in 42 places with a scanning unit test; tax-holiday Undo; the
+back-order form; check-in blocked when messaging was set up without Marketing). Left: calendar's 4th test (after 9 pm
+Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in daytime before the merge.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
@@ -1230,6 +1249,12 @@ accounts and billing: design first).
 24. **Tax holidays, shop-pays-the-tax sales, machine sales with warranty for every shop, layaway, financing** (owner
    request, 7 Oct 2026; designed, not built, after the test month): `docs/plans/tax-machine-sales-layaway-design.md`,
    ten owner questions in its section 7: **all answered as recommended (7 Oct); building on branch `sales-features`**.
+
+27. **Machine sales and phase 2 ship with the hub-night release** (owner, 7 Oct 2026, reversing "after the test
+   month"): `sales-features` (machines for sale, layaway, tax holidays, financing, promotions) and `phase2-selling`
+   (any-item POs, thread/supply details, colour lookup, distributor import incl. machines, fits-machines, software codes,
+   maker machines, Maker Shop module) merge into the release after: the release merged into them, full checks, a max
+   review of the new code with fixes, new Playwright specs for the new screens, and the whole regression. Order in chat.
 
 25. **Everything in the shop research** (owner, 7 Oct 2026: "I want it all"): every recommendation in
    `docs/research/shop-retail-features-and-ai.md` except the two it says not to build, plus selling thread, accessories

@@ -23,7 +23,7 @@ test("draws a timing figure from the tech's own manual", async ({ page }) => {
   await page.locator("#pick-folder").setInputFiles(dir);
   await expect(page.getByText(/PDFs indexed/)).toBeVisible();
 
-  await page.getByRole("link", { name: "Machines" }).click();
+  await page.getByRole("link", { name: "Machines", exact: true }).click();
   await page.getByRole("link", { name: label }).first().click();
   await expect(page.getByRole("heading", { name: /Timing and adjustments/ })).toBeVisible();
   await page.getByRole("button", { name: "Show figure" }).first().click();

@@ -141,7 +141,7 @@ test("reorder: a suggestion becomes a purchase order, sent and received", async 
   await expect(got).toBeVisible();
   const outstanding = Number(await got.inputValue());
   expect(outstanding).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Receive these yards" }).click();
+  await page.getByRole("button", { name: "Receive what came" }).click();
   await expect.poll(async () => (await one<{ qtyOnHand: number }>(`SELECT "qtyOnHand" FROM "Part" WHERE id = $1`, [id]))!.qtyOnHand).toBeCloseTo(3 + outstanding, 3);
   await expect(page.locator(".pill", { hasText: "Received" }).first()).toBeVisible();
 });

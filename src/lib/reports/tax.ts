@@ -3,12 +3,14 @@ import "server-only";
 // (untaxed lines and exempt customers) is taxable sales, with the tax collected, grouped by the rate charged so a
 // mid-year rate change shows two lines. Returns and voids are netted into the period they happen in and shown apart.
 // Stripe Tax orders (the tax Stripe worked out, by ship-to state) are listed apart; tax-exempt sales are listed with their
-// certificate numbers, the list an auditor asks for.
+// certificate numbers, the list an auditor asks for. Sales made tax free on a sales tax holiday are listed apart by
+// holiday (tax-machine-sales-layaway-design.md section 1: states ask for them on the return).
 import { db } from "@/lib/db";
 import { saleLines } from "@/lib/reports/sales";
 import { NOT_SALE_KINDS } from "@/lib/sale-kind";
 import { lineTotal } from "@/lib/ticket-math";
 import { dateIn } from "@/lib/time-zone";
+import { atStore } from "@/lib/stores";
 
 export type TaxRateRow = {
   /** The rate charged, in percent (0 for an exempt sale or an untaxed ticket). */
@@ -32,6 +34,8 @@ export type TaxReport = {
   exemptTotal: number;
   stripe: StripeRow[];
   stripeTotal: number;
+  /** Sold tax free on each sales tax holiday (returns netted in), already counted in non-taxable sales. */
+  holidays: { name: string; amountCents: number }[];
   /** Sales where taxable times the rate is not the tax charged to the cent (sales the report can't re-work). */
   oddTax: { kind: "Sale" | "Ticket"; number: number; day: string; taxCents: number; expectedCents: number }[];
 };
@@ -42,7 +46,9 @@ export function stateOf(address: string | null): string {
   return m ? m[1] : "Unknown";
 }
 
-export async function taxReport(shopId: string, tz: string, start: Date, end: Date): Promise<TaxReport> {
+export async function taxReport(shopId: string, tz: string, start: Date, end: Date, store: { id: string; main: boolean } | null = null): Promise<TaxReport> {
+  // One store's return (shop-features-round-2-design.md 7.4: each state's), or every store's together (null).
+  const sw = atStore(store);
   const rates = new Map<number, TaxRateRow>();
   const rate = (r: number) => {
     let x = rates.get(r);
@@ -54,15 +60,16 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
   const inRange = (d: Date | null) => d != null && d >= start && d < end;
 
   // Sales the tax of which Stripe worked out are reported apart.
-  const stripeOrders = await db.webOrder.findMany({ where: { shopId, taxVia: "stripe", saleId: { not: null } }, select: { number: true, saleId: true, address: true, fulfil: true, status: true, tracking: true } });
+  const stripeOrders = await db.webOrder.findMany({ where: { shopId, ...sw, taxVia: "stripe", saleId: { not: null } }, select: { number: true, saleId: true, address: true, fulfil: true, status: true, tracking: true } });
   const stripeBySale = new Map(stripeOrders.map((o) => [o.saleId!, o]));
 
   const sales = await db.sale.findMany({
-    where: { shopId, OR: [{ createdAt: { gte: start, lt: end } }, { status: "VOIDED", voidedAt: { gte: start, lt: end } }] },
+    where: { shopId, ...sw, OR: [{ createdAt: { gte: start, lt: end } }, { status: "VOIDED", voidedAt: { gte: start, lt: end } }] },
     include: { lines: { include: { part: { select: { kind: true } } } }, customer: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
   const stripe: StripeRow[] = [];
+  const byHoliday = new Map<string, number>();
   for (const s of sales) {
     const lines = saleLines(s).filter((x) => !NOT_SALE_KINDS.includes(x.kind));
     const gross = lines.reduce((a, x) => a + x.amount, 0);
@@ -86,6 +93,9 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
         r.returnsGross += sign === -1 ? -gross : gross;
         r.returnsTax += sign === -1 ? -s.taxCents : s.taxCents;
       }
+      for (const x of lines) {
+        if (x.line.taxNote?.startsWith("holiday:")) byHoliday.set(x.line.taxNote.slice(8), (byHoliday.get(x.line.taxNote.slice(8)) ?? 0) + sign * x.amount);
+      }
       if (sign === 1 && s.taxExemptId) {
         exempt.push({ kind: "Sale", number: s.number, day: dateIn(at, tz), customer: s.customer?.name ?? "", certificate: s.taxExemptId, amountCents: taxableBase });
       }
@@ -99,7 +109,7 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
 
   // Repairs: the tax is due when the machine goes home.
   const tickets = await db.ticket.findMany({
-    where: { shopId, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
+    where: { shopId, ...sw, status: { in: ["COLLECTED", "RETURNED_UNREPAIRED"] }, closedAt: { gte: start, lt: end } },
     include: { lines: true, customer: { select: { name: true } } },
   });
   for (const t of tickets) {
@@ -131,6 +141,8 @@ export async function taxReport(shopId: string, tz: string, start: Date, end: Da
   }
   // Exempt amounts of tickets are taxable lines that were not taxed: sum what an auditor would see.
   exempt.sort((a, b) => a.day.localeCompare(b.day) || a.number - b.number);
-  return { rates: rows, totals, exempt, exemptTotal: exempt.reduce((a, e) => a + e.amountCents, 0), stripe, stripeTotal: stripe.reduce((a, s) => a + s.taxCents, 0), oddTax };
+  const names = byHoliday.size ? new Map((await db.taxHoliday.findMany({ where: { shopId, id: { in: [...byHoliday.keys()] } }, select: { id: true, name: true } })).map((h) => [h.id, h.name])) : new Map<string, string>();
+  const holidays = [...byHoliday].map(([id, amountCents]) => ({ name: names.get(id) ?? "Tax holiday", amountCents }));
+  return { rates: rows, totals, holidays, exempt, exemptTotal: exempt.reduce((a, e) => a + e.amountCents, 0), stripe, stripeTotal: stripe.reduce((a, s) => a + s.taxCents, 0), oddTax };
 }
 

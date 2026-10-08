@@ -55,7 +55,7 @@ export async function takeInMachine(formData: FormData): Promise<{ id: string } 
     // Customer: an existing one, or a new one typed in.
     const pickedCustomerId = str(formData.get("customerId"));
     // "How should we tell them": a non-blank valid value, or none (blank keeps a picked customer's earlier answer). With
-    // Marketing on and a channel ready, a customer who hasn't been asked yet must be asked now.
+    // email or texts ready, a customer who hasn't been asked yet must be asked now.
     const typedNotify = str(formData.get("notifyBy"));
     if (typedNotify != null && !isNotifyBy(typedNotify)) throw new UserError("Pick how to tell them.");
     const notifyBy = typedNotify;

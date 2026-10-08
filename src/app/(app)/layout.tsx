@@ -19,15 +19,20 @@ import { deleteFrom } from "@/lib/move/format";
 import { partnershipNotice } from "@/lib/hub-standing";
 import { AppHeader } from "@/components/app-header";
 import { HubResetPrompt } from "@/components/hub-reset-prompt";
+import { activeStores, currentStore } from "@/lib/stores";
+import { StoreSwitch } from "@/components/store-switch";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const [shop, hub, retailPartners, modules] = await Promise.all([
-    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true, hubStanding: true, hubStandingUntil: true, hubStandingNote: true } }),
+    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true, hubStanding: true, hubStandingUntil: true, hubStandingNote: true, hopOn: true } }),
     db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
     getModules(user.shopId),
   ]);
+  // More than one store (7.1): the store this computer is at, at the top of the menu; nothing shows with one store.
+  const openStores = await activeStores(user.shopId);
+  const here = openStores.length > 1 ? await currentStore(user) : null;
   const doesRepair = shop?.doesRepair ?? true;
   const admin = user.role !== "TECH";
   // Nav gates: the modules' own state, then Scheduling / Marketing as the data says (a company with records of a
@@ -83,6 +88,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               Stitch<span className="text-thread">{appName() === "StitchShop" || !doesRepair ? "Shop" : "Bench"}</span>
             </div>
             <div className="muted truncate text-xs">{shop?.name}</div>
+            {here && (
+              <div className="truncate text-xs font-semibold" data-testid="store-name">
+                {here.name}
+              </div>
+            )}
           </Link>
         }
           search={
@@ -94,8 +104,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </form>
           }
         >
+        {here && <StoreSwitch stores={openStores.map((s) => ({ id: s.id, name: s.name }))} current={here.id} />}
         <Nav
           platformAdmin={isPlatformAdmin(user.email)}
+          multiStore={here != null}
           chatUrl={hub?.installKey && hub.scope === "member" ? hub.discordUrl : null}
           doesRepair={doesRepair}
           sellsRetail={shop?.sellsRetail ?? false}
@@ -104,6 +116,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           gates={gates}
           badges={{ "/messages": replies }}
           pausePill={pausePill}
+          hopOn={shop?.hopOn ?? false}
         />
         <ModulePills items={pills} />
         {offline && (

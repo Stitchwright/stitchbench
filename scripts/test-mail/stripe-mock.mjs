@@ -158,6 +158,15 @@ export async function startStripeMock(o = {}) {
       }
       // ---- the API
       if (!authOk(req)) return stripeError(res, 401, "Invalid API Key provided", "authentication_error");
+      // Expire an open page (an already finished one is refused, as Stripe does).
+      const ex = p.match(/^\/v1\/checkout\/sessions\/([^/]+)\/expire$/);
+      if (ex && req.method === "POST") {
+        const s = sessions.get(ex[1]);
+        if (!s) return stripeError(res, 404, `No such checkout.session: '${ex[1]}'`);
+        if (s.status !== "open") return stripeError(res, 400, "Only open sessions can be expired.");
+        s.status = "expired";
+        return json(res, 200, s);
+      }
       if (p === "/v1/checkout/sessions" && req.method === "POST") {
         const f = parseForm(await readBody(req));
         const lines = Array.isArray(f.line_items) ? f.line_items : [];

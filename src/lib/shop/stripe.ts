@@ -65,6 +65,9 @@ async function call<T>(key: string, method: "GET" | "POST" | "DELETE", path: str
   return json as T;
 }
 
+/** The same call for the card reader (src/lib/card-reader.ts, shop-features-round-2-design.md 4.8). */
+export const stripeCall = call;
+
 export type CheckoutLine = { name: string; description?: string | null; unitCents: number; qty: number; taxCode?: string | null };
 
 /** Stripe's tax code for shipping (taxed where the state taxes delivery). */
@@ -118,6 +121,11 @@ export async function createCheckoutSession(
 
 export async function retrieveSession(key: string, id: string, o: { lines?: boolean } = {}): Promise<StripeSession> {
   return call<StripeSession>(key, "GET", `/v1/checkout/sessions/${encodeURIComponent(id)}${o.lines ? "?expand[]=line_items" : ""}`);
+}
+
+/** Closes an open payment page so it can't be paid any more (an already closed or paid one is left as it is). */
+export async function expireSession(key: string, id: string): Promise<void> {
+  await call<unknown>(key, "POST", `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`, {}, `expire:${id}`);
 }
 
 export type StripeRefund = { id: string; amount: number; status: string };

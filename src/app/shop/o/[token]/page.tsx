@@ -22,8 +22,17 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   const o = await orderByToken(token);
   if (!o) return <main className="mx-auto max-w-xl p-6 text-base">There&apos;s no order at this address.</main>;
   const shop = { name: o.shop.name, phone: o.shop.phone, slug: o.shop.slug ?? "" };
-  const headline =
-    o.status === "PENDING"
+  // A pay link the shop sent (shop-features-round-2-design.md 1.3): the customer pays it here.
+  const toPay = o.payLink && o.status === "PENDING" && !sp.paid;
+  const ranOut = toPay && o.ranOut;
+  const err = typeof sp.err === "string" ? sp.err.slice(0, 300) : null;
+  const headline = toPay
+    ? ranOut
+      ? "This link has run out."
+      : `${o.shop.name}: ${money(o.totalCents)} to pay`
+    : o.payLink && o.status !== "CANCELLED" && o.status !== "PENDING"
+      ? "Paid. Thank you!"
+      : o.status === "PENDING"
       ? "We're confirming your payment…"
       : o.status === "PAID"
         ? "Thanks! We have your order."
@@ -36,13 +45,27 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             : "This order was cancelled.";
   return (
     <ShopShell shop={shop}>
-      {o.status === "PENDING" && <meta httpEquiv="refresh" content="5" />}
+      {o.status === "PENDING" && !toPay && <meta httpEquiv="refresh" content="5" />}
       <h1 className="h1">{headline}</h1>
       <p className="muted text-sm">
         Order #{o.number} · {fmtWhen(o.createdAt, o.shop.timeZone)}
       </p>
-      {o.status === "PENDING" && <p className="card card-pad text-sm">If you paid, this page updates in a moment. If you didn&apos;t, nothing was charged.</p>}
-      {o.status === "PAID" && (
+      {err && (
+        <p className="card card-pad text-base" role="alert">
+          {err}
+        </p>
+      )}
+      {toPay && !ranOut && (
+        <form method="post" action={`/api/public/pay-link/${encodeURIComponent(token)}`} className="card card-pad space-y-3">
+          {o.note && <p className="text-base">{o.note}</p>}
+          <p className="text-base">Pay by card on the next page. Nothing is charged until you confirm there.</p>
+          <button className="btn btn-primary min-h-11 w-full text-lg">Pay {money(o.totalCents)}</button>
+          {o.expiresAt && <p className="muted text-sm">This link works until {fmtWhen(o.expiresAt, o.shop.timeZone)}.</p>}
+        </form>
+      )}
+      {ranOut && <p className="card card-pad text-base">Please call {o.shop.name} for a new one{o.shop.phone ? ` at ${o.shop.phone}` : ""}.</p>}
+      {o.status === "PENDING" && !toPay && <p className="card card-pad text-sm">If you paid, this page updates in a moment. If you didn&apos;t, nothing was charged.</p>}
+      {o.status === "PAID" && !o.payLink && (
         <p className="card card-pad text-sm">
           {o.fulfil === "ship" ? "We'll let you know when it ships." : `We'll let you know when it's ready to pick up${o.shop.address ? ` at ${o.shop.address}` : ""}.`}
         </p>

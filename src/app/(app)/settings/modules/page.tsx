@@ -158,7 +158,7 @@ export default async function ModulesPage() {
 
       <Section title="Add-ons">
         <p className="muted mb-3 text-sm">
-          Extra parts of {programName()} you can add, paid monthly or yearly. When one ends, nothing is deleted: you can still look at and export what&apos;s there
+          Extra parts of {programName()}{" "}you can add, paid monthly or yearly. When one ends, nothing is deleted: you can still look at and export what&apos;s there
           and finish work already in, but new work in it stops. The program itself is licensed through your{" "}
           <Link href={SETTINGS_ACCOUNT_HREF} className="link">
             StitchHub account

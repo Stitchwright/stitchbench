@@ -404,6 +404,19 @@ async function main() {
     assert.equal((await accountView(b.user)).shop.hubAccountEmail, null, "B has no account");
     ok("the sync claims every company with name, kind, program, version and sole; the install stays pending");
 
+    // The store count (phase 5): one store until a second is added; the hub bills each store after the first.
+    assert.equal(claimA.body.stores, 1, "a company with one store says 1");
+    const mainA = await db.location.create({ data: { shopId: a.shopId, name: "Main store", main: true } });
+    const flA = await db.location.create({ data: { shopId: a.shopId, name: "Florida", sortOrder: 1 } });
+    const closedA = await db.location.create({ data: { shopId: a.shopId, name: "Old store", sortOrder: 2, active: false } });
+    const storeClaims0 = mock.claims.length;
+    await syncHub();
+    const again = mock.claims.slice(storeClaims0).find((c) => c.body.shopRef === a.shopId)!;
+    assert.equal(again.body.stores, 2, "two open stores (a closed one doesn't count)");
+    assert.equal(mock.claims.slice(storeClaims0).find((c) => c.body.shopRef === b.shopId)?.body.stores, 1, "B's count is its own");
+    await db.location.deleteMany({ where: { id: { in: [mainA.id, flA.id, closedA.id] } } });
+    ok("the claim says how many open stores the company has (1 until a second is added)");
+
     await startHubAccountFor(a.user, form({ email, terms: "on" }));
     assert.equal(mock.starts.length, 2);
     assert.equal(mock.starts[1].auth, mock.installKey, "'Send it again' goes with the install key now");
@@ -568,6 +581,25 @@ async function main() {
     await applyStanding(b.shopId, { standing: "active", revokeKeyIds: [idOf(asK2)] });
     assert.equal(await db.license.count({ where: { shopId: b.shopId, keyId: idOf(asK2) } }), 0, "the hub can take back an Assistant key it issued (a refund)");
     ok("moduleKeys: the Assistant's key kept apart from the program's, replaced by the next, checked for company and module, never over a pasted key");
+
+    // ---------- 7. the trade add-ons from the hub (moduleKeys: vac, appliance, scheduling, marketing, maker, the bundle) ----------
+    // The hub sells each add-on self-serve and signs its key with the module id; the bundle's one key names all five.
+    await db.license.deleteMany({ where: { shopId: b.shopId, source: "hub", NOT: { keyId: idOf(baseK2) } } });
+    const vacK = modKey(["vac"], 30);
+    const makerK = modKey(["maker"], 30);
+    const asK3 = modKey(["assistant"], 30);
+    await applyStanding(b.shopId, { standing: "active", moduleKeys: [asK3, vacK, makerK] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK3), idOf(vacK), idOf(makerK)].sort(), "single add-on keys kept beside the Assistant's");
+    const m7 = (await loadModules(b.shopId)).states;
+    assert.ok(m7.vac.active && m7.vac.keyId === idOf(vacK) && m7.maker.active && m7.maker.keyId === idOf(makerK), "Vac Shop and Maker Shop on from the hub's keys");
+    const bundleK = modKey(["vac", "appliance", "scheduling", "marketing", "maker"], 365);
+    await applyStanding(b.shopId, { standing: "active", key: baseK2, moduleKeys: [asK3, bundleK] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK3), idOf(bundleK)].sort(), "the bundle's key replaces the single ones; the base key stays");
+    const m7b = (await loadModules(b.shopId)).states;
+    assert.ok(["vac", "appliance", "scheduling", "marketing", "maker"].every((id) => m7b[id as keyof typeof m7b].active), "the bundle turns all five on");
+    await applyStanding(b.shopId, { standing: "active", moduleKeys: [modKey(["base", "vac"], 30), modKey(["nonsense"], 30), modKey(["marketing"], 30, a.shopId)] });
+    assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK3), idOf(bundleK)].sort(), "a key carrying base, an unknown module or another company's is ignored");
+    ok("moduleKeys: trade add-on keys (single and the bundle) kept, replaced by the next set, base and foreign keys ignored");
 
     if (savedAdmins === undefined) delete process.env.PLATFORM_ADMIN_EMAILS;
     else process.env.PLATFORM_ADMIN_EMAILS = savedAdmins;

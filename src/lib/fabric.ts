@@ -12,6 +12,8 @@ import { CUT_INFO, cutPlan, cutPrices, exactYards, type CutKind } from "@/lib/fa
 import { onOrderFor } from "@/lib/fabric-orders";
 import type { CurrentUser } from "@/lib/session";
 import type { InPrint } from "@/generated/prisma/enums";
+import { currentStoreId, isMultiStore } from "@/lib/stores";
+import { changeStock, placeNewStock, storeQty, takeStockIfThere } from "@/lib/stock";
 
 const LINK = { FQ: "fatQuarterId", HALF: "halfYardId", REMNANT: "remnantId" } as const;
 const IMAGE = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -27,15 +29,18 @@ export async function cutFor(user: CurrentUser, partId: string, kind: CutKind): 
   assertId(partId);
   if (!(kind in CUT_INFO)) throw new UserError("Pick fat quarters, half yards or remnant.");
   const info = CUT_INFO[kind];
+  // Cut at this store, from its shelf (7.2).
+  const here = await currentStoreId(user);
   const out = await db
     .$transaction(async (tx) => {
       const src = await tx.part.findFirst({ where: { id: partId, shopId: user.shopId }, include: { photos: { orderBy: { sortOrder: "asc" }, take: 1 } } });
       if (!src) throw new UserError("Fabric not found.");
       if (src.consignLinkId) throw new UserError(`${src.partNumber} is a partner's consigned stock: it can't be cut here.`);
       if (src.unit !== "yd") throw new UserError(`${src.partNumber} isn't sold by the yard, so there are no yards to cut.`);
-      if (src.qtyOnHand <= 0) throw new UserError(`${src.partNumber} has no yards left to cut.`);
-      const plan = cutPlan(kind, src.qtyOnHand);
-      if (plan.count <= 0) throw new UserError(`${exactYards(src.qtyOnHand)} yd is too short for a ${info.one}.`);
+      const have = await storeQty(tx, user.shopId, src.id, here);
+      if (have <= 0) throw new UserError(`${src.partNumber} has no yards left to cut${here && (await isMultiStore(user.shopId)) ? " in this store" : ""}.`);
+      const plan = cutPlan(kind, have);
+      if (plan.count <= 0) throw new UserError(`${exactYards(have)} yd is too short for a ${info.one}.`);
       if (src.priceCents == null) throw new UserError(`Give ${src.partNumber} a price per yard first: the ${info.tag} price is worked out from it.`);
       const shop = await tx.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { fatQuarterMarkupPct: true, halfYardMarkupPct: true, remnantPricePct: true } });
       const link = src[LINK[kind]];
@@ -72,15 +77,16 @@ export async function cutFor(user: CurrentUser, partId: string, kind: CutKind): 
         await tx.part.update({ where: { id: src.id }, data: { [LINK[kind]]: target.id } });
         made = true;
       }
-      // The bolt's yards go first, and only while they are all still there (two cuts at once can't take the same yards).
-      const took = await tx.part.updateMany({ where: { id: src.id, shopId: user.shopId, qtyOnHand: { gte: plan.usedYards } }, data: { qtyOnHand: { decrement: plan.usedYards } } });
-      if (took.count !== 1) throw new UserError(`${src.partNumber} changed while you were cutting it. Look at the yards left and try again.`);
-      await tx.part.update({ where: { id: target.id }, data: { qtyOnHand: { increment: plan.count } } });
+      // The bolt's yards go first, and only while they are all still on this store's shelf (two cuts at once can't
+      // take the same yards); the cut pieces go onto the same store's shelf (7.2).
+      const took = await takeStockIfThere(tx, user.shopId, src.id, here, plan.usedYards);
+      if (!took) throw new UserError(`${src.partNumber} changed while you were cutting it. Look at the yards left and try again.`);
+      await changeStock(tx, user.shopId, target.id, here, plan.count);
       const what = kind === "REMNANT" ? `${exactYards(plan.count)} yd of remnant` : `${plan.count} ${plan.count === 1 ? info.one : info.many}`;
       await tx.stockMove.createMany({
         data: [
-          { shopId: user.shopId, partId: src.id, qty: -plan.usedYards, reason: "CUT", userId: user.id, note: `Cut into ${what}`, otherPartId: target.id },
-          { shopId: user.shopId, partId: target.id, qty: plan.count, reason: "CUT", userId: user.id, note: `Cut from ${exactYards(plan.usedYards)} yd of ${src.partNumber}`, otherPartId: src.id },
+          { shopId: user.shopId, locationId: here, partId: src.id, qty: -plan.usedYards, reason: "CUT", userId: user.id, note: `Cut into ${what}`, otherPartId: target.id },
+          { shopId: user.shopId, locationId: here, partId: target.id, qty: plan.count, reason: "CUT", userId: user.id, note: `Cut from ${exactYards(plan.usedYards)} yd of ${src.partNumber}`, otherPartId: src.id },
         ],
       });
       const left = plan.leftYards > 0 ? ` ${exactYards(plan.leftYards)} yd left on the bolt.` : "";
@@ -162,6 +168,7 @@ export function collectionRows(fd: FormData): CollectionRow[] {
  * twice in the list, stops the whole add before anything is made. Returns how many fabrics were made.
  */
 export async function addCollectionFor(user: CurrentUser, fd: FormData): Promise<number> {
+  const here = await currentStoreId(user);
   const maker = str(fd.get("maker"));
   const collection = str(fd.get("collection"));
   if (!maker) throw new UserError("Enter the maker (Moda, Riley Blake...).");
@@ -192,7 +199,7 @@ export async function addCollectionFor(user: CurrentUser, fd: FormData): Promise
       }
       for (const [i, r] of rows.entries()) {
         const data = photos[i];
-        await tx.part.create({
+        const made = await tx.part.create({
           data: {
             shopId: user.shopId,
             partNumber: r.number,
@@ -209,10 +216,12 @@ export async function addCollectionFor(user: CurrentUser, fd: FormData): Promise
             qtyOnHand: r.yards,
             supplier,
             colorTags: [],
-            moves: r.yards > 0 ? { create: { shopId: user.shopId, qty: r.yards, reason: "RECEIVED", userId: user.id, note: `Received with ${collection}` } } : undefined,
+            moves: r.yards > 0 ? { create: { shopId: user.shopId, locationId: here, qty: r.yards, reason: "RECEIVED", userId: user.id, note: `Received with ${collection}` } } : undefined,
             photos: data ? { create: { shopId: user.shopId, mime: r.photo!.type, data, sortOrder: 0 } } : undefined,
           },
         });
+        // Received at this store (7.2).
+        if (r.yards > 0) await placeNewStock(tx, user.shopId, made.id, here, r.yards);
       }
     });
   } catch (e) {

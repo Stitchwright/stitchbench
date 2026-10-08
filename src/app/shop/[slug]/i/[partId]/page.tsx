@@ -33,6 +33,7 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
     );
   }
   const byYard = it.unit === "yd";
+  const err = typeof sp.err === "string" ? sp.err.slice(0, 300) : null;
   return (
     <ShopShell shop={store} cart={cart}>
       <Link href={`/shop/${store.slug}${c}`} className="link text-sm">
@@ -66,7 +67,7 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
           )}
           {it.text && <p className="whitespace-pre-wrap">{it.text}</p>}
           <p className="text-xl">
-            <Price cents={it.priceCents} unit={it.unit} />
+            <Price cents={it.priceCents} unit={it.unit} seeInCart={it.seeInCart} />
           </p>
           {it.inStock ? (
             <form method="post" action={`/api/shop/${store.slug}`} className="flex items-end gap-2">
@@ -80,6 +81,36 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
                 <input id="qty" name="qty" type="number" min={byYard ? 0.125 : 1} max={99} step={byYard ? 0.125 : 1} defaultValue={1} className="input num w-24" required />
               </div>
               <button className="btn btn-primary">Add to cart</button>
+            </form>
+          ) : it.comingSoonOn ? (
+            <form method="post" action={`/api/shop/${store.slug}`} className="card card-pad space-y-3 text-base">
+              <input type="hidden" name="action" value="preorder" />
+              <input type="hidden" name="partId" value={it.id} />
+              <input type="hidden" name="t0" value={String(new Date().getTime())} />
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
+              <p className="font-semibold">Coming soon: {new Date(`${it.comingSoonOn}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", day: "numeric" })}. Pre-order it now with a deposit.</p>
+              {err && <p role="alert">{err}</p>}
+              <div className="field">
+                <label htmlFor="po-name" className="label">
+                  Your name
+                </label>
+                <input id="po-name" name="name" className="input text-base" required autoComplete="name" />
+              </div>
+              <div className="field">
+                <label htmlFor="po-phone" className="label">
+                  Mobile number
+                </label>
+                <input id="po-phone" name="phone" type="tel" className="input text-base" autoComplete="tel" />
+              </div>
+              <div className="field">
+                <label htmlFor="po-email" className="label">
+                  Email
+                </label>
+                <input id="po-email" name="email" type="email" className="input text-base" autoComplete="email" />
+              </div>
+              <input type="hidden" name="notify" value="email" />
+              <button className="btn btn-primary min-h-11 w-full">Pre-order and pay the deposit</button>
+              <p className="muted text-sm">We&apos;ll let you know when it&apos;s here; the rest is paid when you pick it up.</p>
             </form>
           ) : (
             <p className="card card-pad text-sm">Out of stock right now. {store.phone ? `Call us at ${store.phone} and we'll order it for you.` : ""}</p>

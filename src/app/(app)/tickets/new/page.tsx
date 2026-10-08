@@ -38,8 +38,8 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
       : (kinds.usable.find((k) => k.key === shop.checkInKind) ?? SEWING_KIND);
   const usable = machine ? await canWorkOn(user.shopId, machine.equipment) : kinds.usable.some((k) => k.key === kind.key);
   const sewing = kind.key === "sewing";
-  // "How should we tell them": asked (required) while Marketing is on and email or texts are ready; offered as an
-  // optional choice while Marketing isn't hidden; not shown otherwise.
+  // "How should we tell them": asked (required) while email or texts are ready (ready notices are
+  // in the base); offered as an optional choice while Marketing isn't hidden (any messaging record); not shown otherwise.
   const [accounts, services, specBrands, presetCustomer, blocked, needNotify, marketingGate, plate] = await Promise.all([
     db.customer.findMany({ where: { shopId: user.shopId, kind: "TRADE" }, orderBy: { name: "asc" } }),
     servicesFor(user.shopId, kind.key),
@@ -74,7 +74,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
             <ModuleNotice state={blocked} what={`Every ${noun} already here`} admin={user.role !== "TECH"} shop={shop} />
           ) : (
             <div className="card card-pad text-sm" role="status">
-              <strong>{kind.plural} aren&apos;t checked in here any more.</strong> What&apos;s already here stays to look at and finish.
+              <strong>{kind.plural} aren&apos;t checked in here any more.</strong>{" "}What&apos;s already here stays to look at and finish.
             </div>
           )}
           <p className="text-sm">
@@ -107,7 +107,8 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
                 </label>
                 <input id="customerEmail" name="customerEmail" type="email" className="input" />
               </div>
-              {marketingGate !== "hidden" && <NotifyByField required={needNotify} name="notifyBy" />}
+              {/* Asked whenever the ready notice needs it (email or texts set up in the base), Marketing on or not. */}
+              {(marketingGate !== "hidden" || needNotify) && <NotifyByField required={needNotify} name="notifyBy" />}
               <div className="field">
                 <label htmlFor="viaAccountId" className="label">
                   {sewing ? "Came in through (quilt shop / dealer)" : "Came in through (dealer / partner shop)"}

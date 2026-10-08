@@ -171,3 +171,123 @@ About 9.5 days in all, each on its own branch off the release, each with checks 
 8. House accounts: leave out? **Recommended: leave out.**
 9. Service plans (free cleanings, extended warranty) as a shop-defined product? **Recommended: yes, with section 3.**
 10. Order of building (section 6)? **Recommended: as listed.**
+
+## Built
+
+**Section 3, machines for sale for every shop (7 Oct 2026, branch `sales-features`).** Migration
+`20261019000000_machine_sales`. The unit code moved from `src/lib/vac/` to `src/lib/units/` (`units.ts`,
+`sale-units.ts`, `plans.ts`, `types.ts`), `src/actions/units.ts`, `src/components/units/`; pages at `/units` and
+`/units/[id]` (old `/vac/units` links redirect, tab and search kept); "Machines for sale" in the menu for shops with a
+counter; Settings → "Plans and warranties" (`/settings/sales`). Check: `scripts/checks/machine-sales.check.ts` (7 groups);
+`vac-units`, `customer-merge`, `modules-tenant`, `move-export`, `audit-log` and `reports` checks still pass.
+Decisions made while building:
+- The gate is per kind, not per module: a sewing machine sells with no module (base price, answer 1); a vacuum or an
+  appliance sells and trades in only while its module allows new work (`requireEquipment`), returns always. The "Add"
+  form picks the kind (only the kinds the shop can take new work for); a trade-in at the register says its kind (older
+  registers that send none mean a vacuum).
+- Owner's classes are a count on the unit (`StockUnit.classCredits`), used by a class seat (`Enrollment.creditUnitId`,
+  the seat free); the customer's page and the class's sign-up list show what is left. A return of the machine takes the
+  unused ones away. No separate credit table, so no new customer column to merge.
+- Service plans (`ServicePlan`, copied to the machine as `MachinePlan` when sold): sold as a register line for a machine
+  on the same sale or one of the customer's machines, or included with a unit. A visit is a ticket with a covered line;
+  covering keeps the would-be price (`TicketLine.coveredCents`) and is audited (`ticket.covered`). A void or a return
+  ends the plans; voiding the return starts them again. A plan is not returned at the register: an owner ends it on the
+  machine's page and refunds by a misc line (said on the screen). Plans are untaxed by default (the shop ticks it).
+- Maker warranty terms are per brand (`MakerWarranty`), with the maker's registration page, shown on the unit, the
+  receipt and the ticket. The registration reminder is a to-do line (dashboard and register) after 7 days.
+- Browser test needed: `/units` add form (kind links, "More options"), the register's Machine for sale / Trade-in /
+  Service plan / Return a machine, a ticket's "Covered by ..." button, the class roster's "Use an owner's class",
+  `/settings/sales`; `tests/vac-shop.spec.ts` and `tests/modules-lapse.spec.ts` were updated for the new words.
+
+**Section 4, layaway (7 Oct 2026).** Migration `20261019100000_layaway` (Shop layaway defaults, `Layaway`,
+`LayawayLine`, `SaleLine.layawayId`, `StockUnit.layawayId` with status HELD, stock move reason HELD). Code:
+`src/lib/layaway.ts`, `src/lib/layaway-hooks.ts` (the register's part, so `register-sale.ts` doesn't import it back),
+`src/lib/layaway-math.ts`, `src/actions/layaway.ts`, the register's Layaway button (`src/components/layaway-panel.tsx`),
+`/layaways`, `/layaways/[id]`, `/layaways/[id]/print` (terms to sign), Settings → "Layaway, plans and warranties",
+Reports → "Layaways and plans", to-do lines for layaways behind, the customer's page. Check:
+`scripts/checks/layaway.check.ts` (8 groups); `customer-merge`, `move-export`, `books-export`, `reports`, `sales-tax`,
+`store-credit`, `gift-cards`, `clubs`, `online-shop`, `register-bookings`, `machine-sales`, `vac-units` still pass.
+Decisions made while building:
+- No `LayawayPayment` table: every payment is a register sale with a LAYAWAY line carrying the layaway's id (any
+  payment method, store credit and gift cards included), so receipts, the day's takings, voids and the books need
+  nothing new. What was paid is the LAYAWAY lines of sales that stand; the books post them to a new "Customer Deposits"
+  account (Settings → Bookkeeping can rename it), and the report checks that total against the open layaways.
+- Pick-up is one sale: the held items sold at that day's rate (answer 4; the holiday rule comes with section 1), a
+  LAYAWAY line of minus what was paid, and the rest paid then. The machine's warranty starts that day. Voiding the
+  pick-up opens the layaway again and holds the items again; a payment can't be voided once the layaway is finished.
+- Cancel (owner or admin) gives the payments back less the shop's fee (a LAYAWAY_FEE line, income) as store credit or
+  money, by the setting, changeable each time; the items go back on sale.
+- Stock items come off the shelf when held (a HELD stock move) and go back on at pick-up just before the sale takes
+  them again, so sales velocity counts them on the pick-up day.
+- The stored deposit is the one taken (the plan splits the rest); "behind" is what the plan asked for by today less
+  what was paid. The reminder is a button ("Send a friendly reminder", Marketing on), not automatic.
+- Browser test needed: the register's Layaway button (start with a machine and an item, payment, pick up), the layaway
+  page (plan, payments, cancel), the printed terms, Settings → Layaway, Reports → Layaways and plans.
+
+**Section 1, sales tax holidays (7 Oct 2026).** Migration `20261019200000_tax_holidays` (`TaxHoliday`,
+`SaleLine.taxNote`). Code: `src/lib/tax-holiday-math.ts` (kinds, the Massachusetts preset, the limit rule, shared by
+the register and the server), `src/lib/tax-holidays.ts`, `src/actions/tax-holidays.ts`, `src/components/tax-holiday-form.tsx`;
+Settings → Selling (was "Layaway, plans and warranties") starts with "Sales tax holidays". Check:
+`scripts/checks/tax-holidays.check.ts` (8 groups); `layaway`, `sales-tax`, `online-shop`, `reports`, `move-export`,
+`register-bookings`, `store-credit` still pass.
+Decisions made while building:
+- What a holiday covers is picked from the register's report categories (fabric, notions, thread, patterns, accessories,
+  supplies, parts, machines for sale, other items; classes, appointments and service plans unticked by default). The
+  Massachusetts preset ticks the goods with a $2,500 limit and fills Aug 8 to 9 for 2026, the second August weekend for
+  other years, for the shop to confirm. The limit is checked on the price each after the line's own discount (not the
+  whole-sale discount).
+- `completeSaleAs` applies it by the shop's date (no holiday for a processor's tax amount, an exempt customer, or a
+  return); a covered line is saved untaxed with `taxNote = holiday:<id>`; "Charge tax anyway" on the register's line
+  sends `taxAnyway`. An exempt customer's taxable lines get `taxNote = exempt`. A receipt return copies each item's
+  tax and note from the original line (an item bought tax free comes back tax free).
+- Layaway: the pick-up checks the holidays on the pick-up day and on the day the layaway began; the layaway's own
+  totals (plan, pick-up quote, page) use the same rule.
+- Online shop: the cart is priced with the holiday on the order's day. If the order is posted to the books on another
+  day, the tax the customer paid is kept (the existing "given tax" path), but those lines carry no holiday note.
+- The "confirm the dates" reminder is a to-do line for owners and admins, from two weeks before the preset's month
+  until a holiday from that preset is set up for the year, only for shops that used the preset before.
+- A holiday with sales under it is switched off, not deleted (receipts and the tax report name it).
+- Browser test needed: Settings → Selling's holidays (the Massachusetts button, the form), the register on a holiday
+  (the banner, "Tax holiday" on lines, "Charge tax anyway"), the receipt's "(tax holiday)" and its line, Reports →
+  Sales tax's holiday list.
+
+**Section 5, financing (7 Oct 2026).** Migration `20261019300000_financing` (`Lender`, `FinancedSale`). Code:
+`src/lib/financing.ts`, `src/actions/financing.ts`; the register's "Financing" payment button (shown once the shop lists
+a lender), Settings → Selling → Financing, Reports → Financing (by lender, not paid yet, "Lender paid"), the receipt
+("Financing by Synchrony, approval ..."; a machine's receipt prints the lenders' apply pages), the online shop's home
+page ("Financing available: apply with ..."). Check: `scripts/checks/financing.check.ts` (6 groups); `books-export`,
+`reports`, `store-credit`, `move-export`, `online-shop`, `layaway` still pass. No house accounts (answer 8).
+Decisions made while building:
+- FINANCED is a payment method on the sale's tenders (the lender's id and name and the approval number kept with it);
+  each one also makes a `FinancedSale` row, which is what the lender owes. The books post it to a new "Due from
+  Lenders" account; marking it paid posts the money in on that day. It is left out of the day's "money taken".
+- A sale whose lender already paid can't be voided until an owner marks it not paid (the lender has the money to sort
+  out). A refund can be paid back as a negative Financing payment (the lender's reversal).
+- The approval number is required. A lender can be unticked (no new payments) but not deleted.
+- Online shop: the design's "machine pages" don't exist (the online shop sells stock items), so the apply links are on
+  the shop's home page.
+- Browser test needed: Settings → Selling → Financing, the register's Financing button (lender, approval number),
+  the receipt, Reports → Financing ("Lender paid", "Not paid after all"), the online shop's financing line.
+
+**Section 2, promotions with "price includes the tax" (7 Oct 2026).** Migration `20261019400000_promotions`
+(`Promotion`, `SaleLine.promotionId`, `Shop.taxIncludedOn` off by default). Code: `src/lib/promo-math.ts` (shared by
+the register and the server), `src/lib/promotions.ts`, `src/actions/promotions.ts`, `src/components/promotion-form.tsx`;
+Settings → Selling → "Sales (promotions)", with "price includes the tax" under More options behind the state-law
+warning (answer 5). Check: `scripts/checks/promotions.check.ts` (5 groups); every check named in the sections above,
+plus `clubs`, `gift-cards`, `audit-log`, `modules-tenant`, `longarm`, `kits` and the unit tests, pass after it.
+Decisions made while building:
+- The server applies promotions (by the shop's date) to items being bought: the best percent or amount off that covers
+  the line becomes its own discount, unless an owner typed a bigger one. The register sends only the discount typed
+  there, so a tech rings up a promotion without the "only an owner can give a discount" refusal. Not applied to
+  returns, a layaway's pick-up (prices settled when it began), the online shop (priced at checkout, unchanged) or a
+  given tax amount. What a promotion covers: kinds (the report categories), brands (an item's or a machine's), or item
+  numbers; any of them.
+- "Price includes the tax" keeps the line at the price before tax, worked out so price plus tax lands on the sticker
+  (a $1,000 machine at 7%: $934.58 + $65.42), with `taxNote = included`; the receipt says "Price includes $65.42 sales
+  tax". It applies only to a taxable line with no discount and no tax holiday, and not for an exempt customer. On a sale
+  that mixes such a line with other taxed lines the tax is worked out on the whole, so the total can differ from the
+  sticker prices by a cent. Switching the setting off stops every such promotion at once.
+- A promotion with sales under it is switched off, not deleted (receipts name it).
+- Browser test needed: Settings → Selling → Sales (add, change, the More options switch and warning), the register on
+  a promotion's day (the pill on lines, the totals, a tech's sale), the receipt's promotion name and "Price includes
+  ... sales tax".

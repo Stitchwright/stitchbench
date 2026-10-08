@@ -12,8 +12,8 @@ import type { PartKind } from "@/generated/prisma/enums";
 import { handleClubEvent } from "@/lib/clubs";
 import { db } from "@/lib/db";
 import { actorOf, audit } from "@/lib/audit";
-import { UserError } from "@/lib/user-error";
-import { money, str } from "@/lib/format";
+import { isUserError, UserError } from "@/lib/user-error";
+import { modelKey, money, str } from "@/lib/format";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { seal, unseal } from "@/lib/messaging/secrets";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
@@ -23,14 +23,20 @@ import { moduleOn } from "@/lib/module-gate";
 import { customerForOnline, SLUG_RE, slugOf, type OnlineCustomer } from "@/lib/online-booking";
 import { KIND_LABEL, numberKey } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
+import { belowMap } from "@/lib/map-math";
 import { inEighths, qtyText, saleTotals } from "@/lib/register-math";
+import { holidaysOn } from "@/lib/tax-holidays";
+import { holidayCovers } from "@/lib/tax-holiday-math";
+import { ymdOf } from "@/lib/zoned";
 import { completeSaleAs, voidSaleAs, type SaleLineInput } from "@/lib/register-sale";
 import type { CurrentUser } from "@/lib/session";
 import { createCheckoutSession, looksLikeSecretKey, looksLikeWebhookSecret, refundPayment, retrieveSession, TAX_CODE_SHIPPING, verifyWebhook, type StripeSession } from "@/lib/shop/stripe";
+import { onlineStore, storeDetails, storeOfRow } from "@/lib/stores";
+import { withStoreQty } from "@/lib/stock";
 
 type Db = Prisma.TransactionClient | typeof db;
-const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
-const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+export const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
+export const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 const ID_RE = /^[a-z0-9]{20,40}$/;
 /** The most of one item in a cart, and the most lines. */
 export const MAX_QTY = 99;
@@ -290,6 +296,9 @@ export async function publicStore(slug: string): Promise<PublicStore | null> {
     },
   });
   if (!s) return null;
+  // More than one store (7.1): the online shop sells from the store chosen in Settings -> Stores, at its tax rate, from
+  // its address and in its time zone (the main store's are the company's own).
+  Object.assign(s, storeDetails({ taxRatePct: s.taxRatePct, timeZone: s.timeZone, address: s.address, phone: s.phone }, await onlineStore(s.id)));
   const payVia = s.shopPayVia === "platform" ? "platform" : "own";
   const canPay = payVia === "platform" ? platformStripeOn() : !!s.stripeKeySealed && !!s.stripeWebhookSealed;
   return {
@@ -319,25 +328,38 @@ export type CatalogItem = {
   partNumber: string;
   brand: string | null;
   kind: string;
+  /** The price shown: the maker's minimum advertised price when the real one is lower (seeInCart, 9.3). */
   priceCents: number;
+  /** The real price is below the minimum advertised price: shown only in the cart. */
+  seeInCart: boolean;
   unit: string | null;
   inStock: boolean;
   photoId: string | null;
   tags: string[];
 };
 
+/** The price a listing may show (shop-features-round-2-design.md 9.3): never below the maker's minimum advertised price. */
+function shownPrice(p: { priceCents: number | null; mapCents: number | null }) {
+  const seeInCart = belowMap(p.priceCents, p.mapCents);
+  return { priceCents: seeInCart ? p.mapCents! : p.priceCents!, seeInCart };
+}
+
 const LISTED = (shopId: string): Prisma.PartWhereInput => ({ shopId, online: true, priceCents: { not: null }, consignLinkId: null });
 const titleOf = (p: { onlineTitle: string | null; description: string }) => p.onlineTitle?.trim() || p.description;
 
-/** The listed items, by words, number or kind; in stock first. */
-export async function catalog(shopId: string, o: { q?: string | null; kind?: string | null; take?: number } = {}): Promise<CatalogItem[]> {
+/** The listed items, by words, number, kind, or the machine they fit ("Fits your machine", 2.4); in stock first. */
+export async function catalog(shopId: string, o: { q?: string | null; kind?: string | null; fits?: string | null; take?: number } = {}): Promise<CatalogItem[]> {
   const q = (o.q ?? "").trim().slice(0, 80);
   const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
   const kind = o.kind && KIND_LABEL[o.kind] ? o.kind : null;
+  // `fits` is a model key from the picker (catalogFitModels), or a model typed ("PE800").
+  const fitKey = o.fits ? modelKey(o.fits.slice(0, 80)) : "";
+  const fitGroups = fitKey ? (await db.fitGroup.findMany({ where: { shopId, modelKeys: { has: fitKey } }, select: { id: true } })).map((g) => g.id) : [];
   const rows = await db.part.findMany({
     where: {
       ...LISTED(shopId),
       ...(kind ? { kind: kind as PartKind } : {}),
+      ...(fitKey ? { AND: [{ OR: [{ fitsKeys: { has: fitKey } }, ...(fitGroups.length ? [{ fitGroupIds: { hasSome: fitGroups } }] : [])] }] } : {}),
       ...(q
         ? {
             OR: [
@@ -367,6 +389,7 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
       brand: true,
       kind: true,
       priceCents: true,
+      mapCents: true,
       unit: true,
       qtyOnHand: true,
       condition: true,
@@ -374,14 +397,16 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
       photos: { select: { id: true }, orderBy: { sortOrder: "asc" }, take: 1 },
     },
   });
-  return rows
+  // In stock at the store the online shop sells from (7.2).
+  const atStoreRows = await withStoreQty(shopId, rows, await onlineStore(shopId));
+  return atStoreRows
     .map((p) => ({
       id: p.id,
       title: titleOf(p),
       partNumber: p.partNumber,
       brand: p.brand,
       kind: p.kind,
-      priceCents: p.priceCents!,
+      ...shownPrice(p),
       unit: p.unit,
       inStock: p.qtyOnHand > 0,
       photoId: p.photos[0]?.id ?? null,
@@ -390,18 +415,36 @@ export async function catalog(shopId: string, o: { q?: string | null; kind?: str
     .sort((a, b) => Number(b.inStock) - Number(a.inStock) || a.title.localeCompare(b.title));
 }
 
+/**
+ * "Fits your machine" (shop-features-round-2-design.md 2.4): the models the listed items fit, by their own models and
+ * their fit groups' models, each once, for the online shop's machine picker. Labels as the shop typed them.
+ */
+export async function catalogFitModels(shopId: string): Promise<{ label: string; key: string }[]> {
+  const listed = await db.part.findMany({ where: { ...LISTED(shopId), OR: [{ fitsModels: { isEmpty: false } }, { fitGroupIds: { isEmpty: false } }] }, select: { fitsModels: true, fitsKeys: true, fitGroupIds: true }, take: 2000 });
+  const groupIds = [...new Set(listed.flatMap((p) => p.fitGroupIds))];
+  const groups = groupIds.length ? await db.fitGroup.findMany({ where: { shopId, id: { in: groupIds } }, select: { models: true, modelKeys: true } }) : [];
+  // Labels and keys are kept side by side on both (the same position is the same model).
+  const pairs = [...listed, ...groups.map((g) => ({ fitsModels: g.models, fitsKeys: g.modelKeys }))].flatMap((x) => (x.fitsModels.length === x.fitsKeys.length ? x.fitsModels.map((label, i) => ({ label, key: x.fitsKeys[i] })) : []));
+  const byKey = new Map<string, { label: string; key: string }>();
+  for (const p of pairs) if (p.key && !byKey.has(p.key)) byKey.set(p.key, p);
+  return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label)).slice(0, 300);
+}
+
 /** The kinds the shop has listed, for the category links. */
 export async function catalogKinds(shopId: string): Promise<{ kind: string; label: string; n: number }[]> {
   const g = await db.part.groupBy({ by: ["kind"], where: LISTED(shopId), _count: { _all: true } });
   return g.map((r) => ({ kind: r.kind, label: KIND_LABEL[r.kind] ?? r.kind, n: r._count._all })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
-export type ItemView = CatalogItem & { text: string | null; fits: string | null; photoIds: string[]; description: string };
+/** `comingSoonOn`: the day a coming-soon item is expected (the page takes a pre-order with a deposit, 1.2). */
+export type ItemView = CatalogItem & { text: string | null; fits: string | null; photoIds: string[]; description: string; comingSoonOn: string | null };
 
 export async function catalogItem(shopId: string, partId: string): Promise<ItemView | null> {
   if (!ID_RE.test(partId)) return null;
-  const p = await db.part.findFirst({ where: { ...LISTED(shopId), id: partId }, include: { photos: { select: { id: true }, orderBy: { sortOrder: "asc" } } } });
-  if (!p) return null;
+  const found = await db.part.findFirst({ where: { ...LISTED(shopId), id: partId }, include: { photos: { select: { id: true }, orderBy: { sortOrder: "asc" } } } });
+  if (!found) return null;
+  // In stock at the store the online shop sells from (7.2).
+  const [p] = await withStoreQty(shopId, [found], await onlineStore(shopId));
   return {
     id: p.id,
     title: titleOf(p),
@@ -409,7 +452,7 @@ export async function catalogItem(shopId: string, partId: string): Promise<ItemV
     partNumber: p.partNumber,
     brand: p.brand,
     kind: p.kind,
-    priceCents: p.priceCents!,
+    ...shownPrice(p),
     unit: p.unit,
     inStock: p.qtyOnHand > 0,
     photoId: p.photos[0]?.id ?? null,
@@ -417,6 +460,7 @@ export async function catalogItem(shopId: string, partId: string): Promise<ItemV
     tags: partTags(p),
     text: p.onlineText,
     fits: p.fits,
+    comingSoonOn: p.comingSoonOn,
   };
 }
 
@@ -489,10 +533,15 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
   const parts = ids.length
     ? await db.part.findMany({
         where: { ...LISTED(store.id), id: { in: ids } },
-        select: { id: true, description: true, onlineTitle: true, partNumber: true, priceCents: true, unit: true, qtyOnHand: true },
+        select: { id: true, description: true, onlineTitle: true, partNumber: true, priceCents: true, unit: true, qtyOnHand: true, kind: true },
       })
     : [];
-  const byId = new Map(parts.map((p) => [p.id, p]));
+  // What the online shop's store has (7.2).
+  const byId = new Map((await withStoreQty(store.id, parts, await onlineStore(store.id))).map((p) => [p.id, p]));
+  // Less what is claimed for live-sale buyers there (held for them until they pay or are let go).
+  const claimed = ids.length ? await (await import("@/lib/live-sales")).liveHeld(store.id, ids, await onlineStore(store.id)) : new Map<string, number>();
+  // A sales tax holiday in force today (by the order's date, as at the counter) takes the tax off what it covers.
+  const holidays = await holidaysOn(store.id, [ymdOf(new Date(), store.timeZone)], (await onlineStore(store.id))?.id ?? null);
   const lines: CartLine[] = [];
   const problems: string[] = [];
   for (const [id, qtyRaw] of cart) {
@@ -506,7 +555,7 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
     if (p.unit === "yd") {
       if (!inEighths(qty)) qty = Math.round(qty * 8) / 8;
     } else if (!Number.isInteger(qty)) qty = Math.max(1, Math.round(qty));
-    const available = Math.max(0, p.qtyOnHand);
+    const available = Math.max(0, p.qtyOnHand - (claimed.get(p.id) ?? 0));
     if (available <= 0) problem = "Out of stock";
     else if (qty > available) problem = `Only ${qtyText(available, p.unit)} left`;
     const unitPriceCents = p.priceCents!;
@@ -514,7 +563,10 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
     lines.push({ partId: p.id, partNumber: p.partNumber, title: titleOf(p), qty, unit: p.unit, unitPriceCents, lineCents, available, problem });
     if (problem) problems.push(`${titleOf(p)}: ${problem.toLowerCase()}.`);
   }
-  const saleLines = lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true }));
+  const saleLines = lines.map((l) => {
+    const line = { qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true };
+    return { ...line, taxable: !holidays.some((h) => holidayCovers(h, { ...line, kind: byId.get(l.partId)?.kind })) };
+  });
   const subtotal = saleLines.reduce((a, l) => a + Math.round(l.qty * l.unitPriceCents), 0);
   const shipLine = shipLineFor(store, fulfil, subtotal);
   const taxAtCheckout = store.taxVia === "stripe" && fulfil === "ship";
@@ -524,10 +576,26 @@ export async function priceCart(store: PublicStore, cart: Cart, fulfil: "pickup"
 
 // ---------------------------------------------------------------- checkout
 
-export type OrderItem = { partId: string | null; partNumber: string | null; description: string; qty: number; unit: string | null; unitPriceCents: number; short?: number };
+/**
+ * One line of an order. A pay link made by staff (src/lib/pay-links.ts) also says whether the line is taxed and what it
+ * pays toward: a special order's deposit or balance (`specialOrderId`, money held for the customer, never taxed) or a
+ * rental's rent (`loanId`).
+ */
+export type OrderItem = {
+  partId: string | null;
+  partNumber: string | null;
+  description: string;
+  qty: number;
+  unit: string | null;
+  unitPriceCents: number;
+  short?: number;
+  taxable?: boolean;
+  specialOrderId?: string | null;
+  loanId?: string | null;
+};
 export type CheckoutInput = { slug: string; cart: Cart; customer: OnlineCustomer; fulfil: "pickup" | "ship"; address: string | null; note: string | null };
 
-function stripeKeyFor(shop: { id: string; shopPayVia: string; stripeKeySealed: string | null }): string {
+export function stripeKeyFor(shop: { id: string; shopPayVia: string; stripeKeySealed: string | null }): string {
   if (shop.shopPayVia === "platform") {
     const k = process.env.STRIPE_SECRET_KEY?.trim();
     if (!k) throw new UserError("Payments aren't set up on this server. Please call the shop.");
@@ -538,7 +606,7 @@ function stripeKeyFor(shop: { id: string; shopPayVia: string; stripeKeySealed: s
   return k.plain;
 }
 
-const orderUrl = (token: string) => `${publicBaseUrl() ?? ""}/shop/o/${token}`;
+export const orderUrl = (token: string) => `${publicBaseUrl() ?? ""}/shop/o/${token}`;
 const fmtNo = (n: number) => `#${n}`;
 
 /**
@@ -578,6 +646,8 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
       data: {
         id: orderId,
         shopId: store.id,
+        // Sold from (and picked up at) the online shop's store (7.1).
+        locationId: (await onlineStore(store.id))?.id ?? null,
         number: sh.nextWebOrderNumber - 1,
         status: "PENDING",
         customerId: customer.id,
@@ -634,7 +704,7 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
 // ---------------------------------------------------------------- payment
 
 /** The user the books record online sales under: the shop's first owner (else admin). */
-async function booksUserFor(shopId: string): Promise<CurrentUser> {
+export async function booksUserFor(shopId: string): Promise<CurrentUser> {
   const u =
     (await db.user.findFirst({ where: { shopId, role: "OWNER", active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, email: true } })) ??
     (await db.user.findFirst({ where: { shopId, role: "ADMIN", active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, email: true } })) ??
@@ -643,10 +713,10 @@ async function booksUserFor(shopId: string): Promise<CurrentUser> {
   return { id: u.id, shopId, role: "OWNER", name: "Online shop", email: u.email };
 }
 
-type OrderRow = Prisma.WebOrderGetPayload<{
+export type OrderRow = Prisma.WebOrderGetPayload<{
   include: { shop: { select: { name: true; phone: true; timeZone: true; taxRatePct: true; shopPayVia: true; stripeKeySealed: true; shopPickupNote: true; bookingSlug: true } } };
 }>;
-const ORDER_INCLUDE = { shop: { select: { name: true, phone: true, timeZone: true, taxRatePct: true, shopPayVia: true, stripeKeySealed: true, shopPickupNote: true, bookingSlug: true } } } as const;
+export const ORDER_INCLUDE = { shop: { select: { name: true, phone: true, timeZone: true, taxRatePct: true, shopPayVia: true, stripeKeySealed: true, shopPickupNote: true, bookingSlug: true } } } as const;
 
 /**
  * Stripe says the session is paid: once. The order is claimed PENDING -> PAID; the sale goes in the books with what is
@@ -711,6 +781,7 @@ export const orderNeedsAttention = (o: { status: string; staffNote: string | nul
  * of an order that was paid). Any failure leaves the order PAID with "Needs attention" on it, and Try again runs this again.
  */
 async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolean; status: string }> {
+  if (order.source === "staff") return finishStaffPaid(order, now);
   try {
     const items = order.items as unknown as OrderItem[];
     const ids = items.map((i) => i.partId).filter(Boolean) as string[];
@@ -721,10 +792,14 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
       // Stock was taken already: what was short is on the order's items (written with the sale's link).
       kept = items;
     } else {
-      const parts = new Map((await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } })).map((p) => [p.id, p]));
+      // What the order's store has (7.2).
+      const orderStore = await storeOfRow(order.shopId, order.locationId);
+      const parts = new Map((await withStoreQty(order.shopId, await db.part.findMany({ where: { shopId: order.shopId, id: { in: ids } }, select: { id: true, qtyOnHand: true, unit: true } }), orderStore)).map((p) => [p.id, p]));
+      // Live-sale claims there are held for their buyers: not this order's to take.
+      const claimed = ids.length ? await (await import("@/lib/live-sales")).liveHeld(order.shopId, ids, orderStore) : new Map<string, number>();
       for (const it of items) {
         const p = it.partId ? parts.get(it.partId) : null;
-        const onHand = p ? Math.max(0, p.qtyOnHand) : 0;
+        const onHand = p ? Math.max(0, p.qtyOnHand - (it.partId ? (claimed.get(it.partId) ?? 0) : 0)) : 0;
         let have = Math.min(it.qty, onHand);
         if (p?.unit === "yd") have = Math.floor(have * 8) / 8;
         else have = Math.floor(have);
@@ -747,32 +822,23 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
       givenTax = lines.length ? keptTax(session, items, kept, !!shipLine, paidTax) : 0;
     }
     if (!existing && givenTax == null && lines.length) {
-      // The rate as it stood at checkout. If today's rate no longer gives the tax the customer paid on the whole order
-      // (the shop changed its rate meanwhile), the order's own tax is used, in proportion to what is sold.
-      const wholeByRate = saleTotals(
-        [
-          ...items.map((i) => ({ qty: i.qty, unitPriceCents: i.unitPriceCents, taxable: true })),
-          ...(order.fulfil === "ship" && order.shipCents > 0 ? [{ qty: 1, unitPriceCents: order.shipCents, taxable: false }] : []),
-        ],
-        0,
-        order.shop.taxRatePct,
-      ).tax;
-      if (wholeByRate !== order.taxCents) {
-        const soldNet = sold.reduce((s2, l) => s2 + Math.round(l.qty * l.unitPriceCents), 0);
-        givenTax = order.subtotalCents > 0 ? Math.round((order.taxCents * soldNet) / order.subtotalCents) : 0;
-      }
+      // What the customer paid stands (review fix: the sale recomputing the tax at another rate or with a holiday made the
+      // payment and the sale disagree): the order's own tax when all of it is sold; with a line short, the tax on what is
+      // sold at the store's rate when that rate gives the order's tax, else the order's tax in proportion.
+      const soldNet = sold.reduce((s2, l) => s2 + Math.round(l.qty * l.unitPriceCents), 0);
+      const rate = storeDetails({ taxRatePct: order.shop.taxRatePct }, await storeOfRow(order.shopId, order.locationId)).taxRatePct;
+      const byRate = (ls: { qty: number; unitPriceCents: number; taxable: boolean }[]) => saleTotals(ls, 0, rate).tax;
+      const itemsTax = byRate(items.map((i) => ({ qty: i.qty, unitPriceCents: i.unitPriceCents, taxable: true })));
+      givenTax =
+        soldNet >= order.subtotalCents
+          ? order.taxCents
+          : itemsTax === order.taxCents
+            ? byRate(sold.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: true })))
+            : order.subtotalCents > 0
+              ? Math.round((order.taxCents * soldNet) / order.subtotalCents)
+              : 0;
     }
-    const saleTotal = existing
-      ? existing.totalCents
-      : (givenTax != null
-          ? withGivenTax(lines, givenTax)
-          : saleTotals(
-              lines.map((l) => ({ qty: l.qty, unitPriceCents: l.unitPriceCents, taxable: l.taxable })),
-              0,
-              order.shop.taxRatePct,
-            )
-        ).total;
-    const refund = Math.max(0, paidTotal - saleTotal);
+    let saleTotal = existing ? existing.totalCents : lines.length ? withGivenTax(lines, givenTax ?? 0).total : 0;
     let saleId: string | null = existing?.id ?? null;
     if (!existing && lines.length) {
       const user = await booksUserFor(order.shopId);
@@ -781,15 +847,18 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
         {
           customerId: order.customerId,
           lines,
-          tenders: [{ method: "ONLINE", amountCents: saleTotal, note: `Online order ${fmtNo(order.number)}` }],
-          note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${givenTax != null ? ", tax by Stripe Tax" : ""}`,
+          tenders: [],
+          note: `Online order ${fmtNo(order.number)}${order.fulfil === "ship" ? " (ship)" : " (pickup)"}${order.taxVia === "stripe" ? ", tax by Stripe Tax" : ""}`,
           clientKey: `web-${order.id}`,
-          taxCents: givenTax,
+          taxCents: givenTax ?? 0,
         },
-        { paidOnline: true },
+        // Off the shelf of the order's store (7.2); one Paid online payment for exactly the sale's total.
+        { paidOnline: true, locationId: order.locationId, tenderExact: { method: "ONLINE", amountCents: 0, note: `Online order ${fmtNo(order.number)}` } },
       );
       saleId = r.saleId;
+      saleTotal = r.totalCents;
     }
+    const refund = Math.max(0, paidTotal - saleTotal);
     // The link to the sale is written before the refund, so a refund that fails can't lose it.
     if (saleId && order.saleId !== saleId) {
       await db.webOrder.update({ where: { id: order.id }, data: { saleId, items: kept as unknown as Prisma.InputJsonValue, taxCents: paidTax, totalCents: paidTotal } });
@@ -832,6 +901,74 @@ async function finishPaid(order: OrderRow, now: Date): Promise<{ applied: boolea
     // Paid, but the books or the refund failed: the order stays PAID with the problem on it; Try again runs the rest.
     await db.webOrder.update({ where: { id: order.id }, data: { staffNote: `${ORDER_ATTENTION}${e instanceof Error ? e.message.slice(0, 400) : "error"}` } });
     console.error("online shop payment:", e instanceof Error ? e.message : e);
+    return { applied: true, status: "PAID" };
+  }
+}
+
+/**
+ * A pay link the shop sent (shop-features-round-2-design.md 1.3), paid: its lines as the shop filled them in, sold at the
+ * tax worked out when it was made (no stock check: the shop promised these), with tender "Paid online". Deposits and
+ * balances of special orders and rent go through the register's own rules (their lines carry the ids). A link of
+ * money only (nothing to hand over) is done at once; one with items waits to be picked up like any order.
+ */
+async function finishStaffPaid(order: OrderRow, now: Date): Promise<{ applied: boolean; status: string }> {
+  try {
+    const items = order.items as unknown as OrderItem[];
+    let saleId = order.saleId;
+    if (!saleId) {
+      const user = await booksUserFor(order.shopId);
+      const lines: SaleLineInput[] = items.map((i) => ({
+        partId: i.partId,
+        description: i.description,
+        qty: i.qty,
+        unitPriceCents: i.unitPriceCents,
+        taxable: i.specialOrderId ? false : i.taxable !== false,
+        ...(i.specialOrderId ? { specialOrderId: i.specialOrderId, depositKind: "DEPOSIT" as const } : {}),
+        ...(i.loanId ? { unitLoanId: i.loanId, rentKind: "RENT" as const } : {}),
+      }));
+      const r = await completeSaleAs(
+        user,
+        {
+          customerId: order.customerId,
+          lines,
+          tenders: [],
+          note: `Pay link ${fmtNo(order.number)}`,
+          clientKey: `web-${order.id}`,
+          taxCents: order.taxCents,
+        },
+        // The tax charged stands (taxCents) and no price rule reprices a paid link: one Paid online payment for exactly the total.
+        { paidOnline: true, internal: true, locationId: order.locationId, tenderExact: { method: "ONLINE", amountCents: 0, note: `Pay link ${fmtNo(order.number)}` } },
+      );
+      saleId = r.saleId;
+    }
+    const goods = items.some((i) => i.partId);
+    await db.webOrder.update({ where: { id: order.id }, data: { saleId, staffNote: null, ...(goods ? {} : { status: "DONE", doneAt: now }) } });
+    const fresh = (await db.webOrder.findUnique({ where: { id: order.id }, include: ORDER_INCLUDE }))!;
+    try {
+      await notifyOrder(fresh, "paid", now);
+    } catch (e) {
+      console.error("pay link notice:", e instanceof Error ? e.message : e);
+    }
+    return { applied: true, status: fresh.status };
+  } catch (e) {
+    // The sale can't be booked (its special order was picked up or cancelled while the link waited, an item is gone):
+    // trying again won't help, so her money goes straight back through Stripe and the shop is told on the order.
+    if (isUserError(e) && !order.saleId && order.stripeIntent && order.refundedCents === 0) {
+      try {
+        const key = stripeKeyFor({ id: order.shopId, shopPayVia: order.shop.shopPayVia, stripeKeySealed: order.shop.stripeKeySealed });
+        const r = await refundPayment(key, order.stripeIntent, null, `pay-link-unbooked:${order.id}`, "could not be booked");
+        await db.webOrder.update({
+          where: { id: order.id },
+          data: { status: "CANCELLED", cancelledAt: now, refundedCents: r.amount, staffNote: `Paid, but it couldn't be booked (${e.message.slice(0, 200)}): ${money(r.amount)} refunded to her card. Send a new link if she still owes it.` },
+        });
+        console.error("pay link refunded, not booked:", e.message);
+        return { applied: true, status: "CANCELLED" };
+      } catch (re) {
+        console.error("pay link refund:", re instanceof Error ? re.message : re);
+      }
+    }
+    await db.webOrder.update({ where: { id: order.id }, data: { staffNote: `${ORDER_ATTENTION}${e instanceof Error ? e.message.slice(0, 400) : "error"}` } });
+    console.error("pay link payment:", e instanceof Error ? e.message : e);
     return { applied: true, status: "PAID" };
   }
 }
@@ -917,17 +1054,25 @@ export async function handleWebhook(who: string, rawBody: string, signature: str
   const obj = ev.data.object;
   if (obj.object !== "checkout.session" || typeof obj.id !== "string") return { status: 200, body: "ignored" };
   const sessionId = obj.id;
-  const order = await db.webOrder.findUnique({ where: { stripeSessionId: sessionId }, select: { id: true, shopId: true, status: true, payVia: true } });
+  let order = await db.webOrder.findUnique({ where: { stripeSessionId: sessionId }, select: { id: true, shopId: true, status: true, payVia: true, source: true } });
+  // A pay link paid on an earlier payment page (a newer one was made since): the link is found by its id.
+  let earlierPage = false;
+  const meta = obj.metadata as Record<string, unknown> | undefined;
+  if (!order && typeof meta?.orderId === "string" && ID_RE.test(meta.orderId)) {
+    order = await db.webOrder.findFirst({ where: { id: meta.orderId, source: "staff" }, select: { id: true, shopId: true, status: true, payVia: true, source: true } });
+    earlierPage = !!order;
+  }
   if (!order) return { status: 200, body: "no order" };
   // The endpoint must be the order's own: a shop's secret can't confirm another shop's order, nor the platform's a shop's.
   if (shopId ? order.shopId !== shopId || order.payVia !== "own" : order.payVia !== "platform") return { status: 200, body: "not this endpoint" };
   if (ev.type === "checkout.session.completed" || ev.type === "checkout.session.async_payment_succeeded") {
     if (obj.payment_status === "paid" || obj.payment_status === "no_payment_required") {
       const intent = typeof obj.payment_intent === "string" ? obj.payment_intent : null;
-      await applyPayment(order.id, { sessionId, intent }, now);
+      await applyPayment(order.id, { sessionId: earlierPage ? null : sessionId, intent }, now);
     }
   } else if (ev.type === "checkout.session.expired" || ev.type === "checkout.session.async_payment_failed") {
-    await db.webOrder.updateMany({ where: { id: order.id, status: "PENDING" }, data: { status: "CANCELLED", cancelledAt: now, staffNote: "Never paid." } });
+    // A pay link the shop sent stays open for the customer: a fresh payment page is made when she comes back.
+    await db.webOrder.updateMany({ where: { id: order.id, status: "PENDING", source: "customer" }, data: { status: "CANCELLED", cancelledAt: now, staffNote: "Never paid." } });
   }
   return { status: 200, body: "ok" };
 }
@@ -958,7 +1103,7 @@ async function notifyOrder(o: OrderRow, stage: "paid" | "ready" | "shipped" | "c
       o.status !== "CANCELLED" && o.refundedCents > 0
         ? ` ${items.filter((i) => i.short).length === 1 ? "One item was" : "Some items were"} out of stock; ${money(o.refundedCents)} goes back to your card in a few days.`
         : "",
-    fulfil_line: o.fulfil === "ship" ? " We'll let you know when it ships." : " We'll let you know when it's ready to pick up.",
+    fulfil_line: !items.some((i) => i.partId) ? "" : o.fulfil === "ship" ? " We'll let you know when it ships." : " We'll let you know when it's ready to pick up.",
     pickup_line: o.shop.shopPickupNote?.trim() || "Come to the counter with your order number.",
     tracking_line: o.tracking ? ` Tracking: ${o.tracking}.` : "",
     refund_line: o.refundedCents > 0 ? ` ${money(o.refundedCents)} goes back to your card in a few days.` : "",
@@ -1010,6 +1155,11 @@ export type OrderView = {
   note: string | null;
   createdAt: Date;
   paidAt: Date | null;
+  /** A pay link the shop sent: the customer pays it from this page. */
+  payLink: boolean;
+  expiresAt: Date | null;
+  /** A pay link past its day. */
+  ranOut: boolean;
   shop: { name: string; phone: string | null; address: string | null; timeZone: string; slug: string | null; pickupNote: string | null };
 };
 
@@ -1037,6 +1187,9 @@ export async function orderByToken(token: string): Promise<OrderView | null> {
     note: o.note,
     createdAt: o.createdAt,
     paidAt: o.paidAt,
+    payLink: o.source === "staff",
+    expiresAt: o.expiresAt,
+    ranOut: !!o.expiresAt && o.expiresAt.getTime() < Date.now(),
     shop: { name: o.shop.name, phone: o.shop.phone, address: o.shop.address, timeZone: o.shop.timeZone, slug: o.shop.bookingSlug, pickupNote: o.shop.shopPickupNote },
   };
 }
@@ -1081,6 +1234,11 @@ export async function markDoneFor(user: CurrentUser, id: string, a: { tracking?:
   if (orderNeedsAttention(o)) throw new UserError("This order needs attention first: press Try again.");
   const tracking = a.tracking?.trim().slice(0, 120) || null;
   await db.webOrder.update({ where: { id }, data: { status: "DONE", doneAt: now, tracking } });
+  // Shipped from another store for a counter sale (7.3): the tracking number goes on the sale too.
+  if (o.source === "store" && o.saleId && tracking) {
+    const sale = await db.sale.findFirst({ where: { id: o.saleId, shopId: o.shopId }, select: { note: true } });
+    if (sale) await db.sale.updateMany({ where: { id: o.saleId, shopId: o.shopId }, data: { note: [sale.note, `Shipped, tracking ${tracking}`].filter(Boolean).join(" · ").slice(0, 500) } });
+  }
   if (o.fulfil === "ship") await notifyOrder({ ...o, status: "DONE", tracking }, "shipped", now);
 }
 
@@ -1093,6 +1251,7 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
   const o = await ownOrder(user, id);
   if (o.status === "CANCELLED") throw new UserError("This order is cancelled already.");
   if (o.status === "DONE") throw new UserError("This order went out. Take a return at the register instead.");
+  if (o.source === "store") throw new UserError("This was sold at the counter and ships from another store: void or return the sale at the register instead (that cancels the shipping too).");
   if (o.status === "PENDING") {
     await db.webOrder.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, staffNote: `Cancelled by ${user.name}: ${reason || "no reason given"}` } });
     await audit(db, actorOf(user), { action: "order.cancel", subjectType: "WebOrder", subjectId: id, subjectLabel: `Online order ${fmtNo(o.number)} (not paid)`, amountCents: 0, reason: reason || null });
@@ -1117,7 +1276,8 @@ export async function cancelOrderFor(user: CurrentUser, id: string, reason: stri
 /** The register's void must not undo an online order's sale (the customer's money would stay taken): cancel the order instead. */
 export async function refuseVoidOfOnlineSale(shopId: string, saleId: string): Promise<void> {
   const sale = await db.sale.findFirst({ where: { id: saleId, shopId }, select: { clientKey: true } });
-  const order = await db.webOrder.findFirst({ where: { shopId, OR: [{ saleId }, ...(sale?.clientKey?.startsWith("web-") ? [{ id: sale.clientKey.slice(4) }] : [])] }, select: { number: true } });
+  // A counter sale shipped from another store (7.3) is the register's own sale: its void cancels the shipping.
+  const order = await db.webOrder.findFirst({ where: { shopId, source: { not: "store" }, OR: [{ saleId }, ...(sale?.clientKey?.startsWith("web-") ? [{ id: sale.clientKey.slice(4) }] : [])] }, select: { number: true } });
   if (order) throw new UserError(`This sale is online order ${fmtNo(order.number)}. Cancel the order on the Online orders page instead: that refunds the customer and puts the stock back.`);
 }
 
@@ -1130,10 +1290,17 @@ export async function noteOrderFor(user: CurrentUser, id: string, note: string):
 /** A PENDING order left for two hours (the payment page abandoned without Stripe's expiry event) is cancelled. */
 export async function expireStaleOrders(now = new Date()): Promise<number> {
   const r = await db.webOrder.updateMany({
-    where: { status: "PENDING", createdAt: { lt: new Date(now.getTime() - 2 * 3_600_000) } },
+    where: { status: "PENDING", source: "customer", createdAt: { lt: new Date(now.getTime() - 2 * 3_600_000) } },
     data: { status: "CANCELLED", cancelledAt: now, staffNote: "Never paid." },
   });
-  return r.count;
+  // A pay link the shop sent lasts until its own day (14 days unless the shop chose).
+  const links = await db.webOrder.updateMany({
+    where: { status: "PENDING", source: "staff", expiresAt: { lt: now } },
+    data: { status: "CANCELLED", cancelledAt: now, staffNote: "The pay link ran out unpaid." },
+  });
+  // Pre-orders made online whose deposit link ran out unpaid: cancelled, so they don't hold stock when it comes.
+  await (await import("@/lib/special-orders")).expireUnpaidPreorders(now).catch((e) => console.error("pre-orders:", e instanceof Error ? e.message : e));
+  return r.count + links.count;
 }
 
 export const decodeCartParam = (sp: Record<string, string | string[] | undefined>, key = "c") => parseCart(typeof sp[key] === "string" ? (sp[key] as string) : null);

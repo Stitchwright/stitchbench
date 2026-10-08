@@ -25,6 +25,10 @@ import { estimateStillWanted } from "@/lib/estimate-links";
 import { bagsDueStillWanted } from "@/lib/vac/bags-due";
 import { partsInStillWanted } from "@/lib/part-waits";
 import { orderNoticeStillWanted } from "@/lib/shop/online-shop";
+import { renewNoticeStillWanted } from "@/lib/software";
+import { suppliesStillWanted } from "@/lib/supplies-due";
+import { eventBalanceStillWanted } from "@/lib/events-wanted";
+import { orderInStillWanted } from "@/lib/special-order-hooks";
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof db;
@@ -125,7 +129,7 @@ export async function onTicketStatus(tx: Tx, t: TicketForStatus, status: TicketS
     });
     return null;
   }
-  if (!ctx.marketing || !ctx.ms.readyNotice) return null;
+  if (!ctx.notices || !ctx.ms.readyNotice) return null;
   const v = await ticketVars(tx, t.id, t.shopId);
   if (!v || !v.direct || v.jobType === "SITE" || !v.customerId) return null;
   const ready = t.pickupReadyAt ?? at;
@@ -169,7 +173,7 @@ export async function onJobStatus(tx: Tx, job: JobForHook, status: string, at: D
  * person confirmed it is here, so the ready notice goes now. Returns the line for the toast, or null.
  */
 export async function onJobsBack(tx: Tx, shopId: string, jobIds: string[], at: Date, byUserId: string | null, ctx: HookCtx): Promise<string | null> {
-  if (!ctx.marketing || !ctx.ms.readyNotice || !jobIds.length) return null;
+  if (!ctx.notices || !ctx.ms.readyNotice || !jobIds.length) return null;
   const jobs = await tx.repairJob.findMany({
     where: { shopId, id: { in: jobIds }, side: "retail", customerId: { not: null }, pickedUpAt: null, backAt: { not: null } },
     select: { id: true, customerId: true, backAt: true },
@@ -245,7 +249,16 @@ export async function stillWanted(row: OutMessage): Promise<string | null> {
     case "parts_in":
       return partsInStillWanted(row);
     case "order_notice":
+    case "pay_link":
       return orderNoticeStillWanted(row);
+    case "software_renew":
+      return renewNoticeStillWanted(row);
+    case "supplies_due":
+      return suppliesStillWanted(row);
+    case "class_notice":
+      return eventBalanceStillWanted(row);
+    case "order_in":
+      return orderInStillWanted(row);
     default:
       return null;
   }
@@ -357,7 +370,7 @@ export async function recordBack(user: CurrentUser, ids: string[], o: { single: 
       if (!done.length) throw new UserError("Already recorded.");
       const note = await onJobsBack(tx, shopId, done, at, user.id, ctx);
       if (note) return { note, callThem: /call them/.test(note) };
-      if (ctx.marketing) return { note: "Recorded.", callThem: false };
+      if (ctx.notices) return { note: "Recorded.", callThem: false };
       return { note: `Recorded. Messages are off: call the ${done.length === 1 ? "customer" : "customers"}.`, callThem: true };
     },
     { timeout: 60_000 },

@@ -7,7 +7,6 @@ import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
 import { fmtTime } from "@/lib/zoned";
 import { isDesktop } from "@/lib/modules";
-import { gateFor } from "@/lib/module-gate";
 import { fmtPhone, validEmail } from "@/lib/phone";
 import { consentWording, isLocalRequest, messagingView, type MessagingView } from "@/lib/messaging/settings";
 import { render, SAMPLE_VARS, templateFor } from "@/lib/messaging/templates";
@@ -16,7 +15,6 @@ import type { MessageKind } from "@/lib/messaging/types";
 import { KV, PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
-import { ModuleOff } from "@/components/module-off";
 import { ChannelStatusLine, channelStatus, MessagingTabs } from "@/components/messaging-tabs";
 import { EmailSettingsForm, LOCAL_ONLY_MESSAGE, TestSendForm, TextSettingsForm } from "@/components/messaging-settings-forms";
 import { addTestPhone, confirmTestPhone, confirmTimeZone, removeTestPhone } from "@/actions/messaging";
@@ -113,7 +111,7 @@ function Registering({ ms, shop }: { ms: MessagingView; shop: Shop }) {
           </div>
         ))}
         <p className="muted">
-          Most US shops pay a one-time brand fee and a small monthly campaign fee; texts cost about {ms.smsPartMills} tenths of a cent per part. Registration
+          Most US shops pay a one-time brand fee and a small monthly campaign fee; texts cost about {ms.smsPartMills}{" "}tenths of a cent per part. Registration
           takes a few days; until it&apos;s done, carriers may drop your texts.
         </p>
       </div>
@@ -172,9 +170,8 @@ function TestNumbers({ ms, canEdit }: { ms: MessagingView; canEdit: boolean }) {
 export default async function MessagesSetupPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
-  const gate = await gateFor(user.shopId, "marketing");
-  if (gate === "hidden") return <ModuleOff shopId={user.shopId} module="marketing" admin={admin} />;
-  const canEdit = admin && gate === "on";
+  // In the base since 7 Oct 2026 (pricing-review-2026-10.md): the ready, parts-in and estimate messages need this setup.
+  const canEdit = admin;
   const [ms, shop, waitingEmail, waitingSms] = await Promise.all([
     messagingView(user.shopId),
     db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { name: true, phone: true, address: true, email: true, timeZone: true } }),
@@ -194,7 +191,6 @@ export default async function MessagesSetupPage() {
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Email and text messages" back={{ href: "/settings", label: "Settings" }} sub="Where messages to customers go out from. Automatic messages and the rules have their own tabs." />
       <MessagingTabs active="setup" />
-      {gate === "readonly" && <ModuleOff shopId={user.shopId} module="marketing" what="Your message settings" admin={admin} />}
 
       <Section title="Email" id="email">
         <div className="space-y-4">

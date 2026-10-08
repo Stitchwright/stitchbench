@@ -97,7 +97,7 @@ export function AskManualsCard({ brand, model, ticketId, unavailable, blocked }:
           )}
           {result.scanned > 0 && (
             <p className="muted text-xs">
-              {result.scanned} page{result.scanned === 1 ? "" : "s"} of these manuals are scans and can&apos;t be searched yet.
+              {result.scanned} page{result.scanned === 1 ? "" : "s"}{" "}of these manuals are scans and can&apos;t be searched yet.
             </p>
           )}
         </div>

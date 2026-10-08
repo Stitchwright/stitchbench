@@ -19,8 +19,19 @@ import { CustomerMergePanel, type MergeParams } from "@/components/merge-panel";
 import { firstValues } from "@/lib/search-params";
 import { ordersOfCustomer } from "@/lib/longarm";
 import { STATUS_LABEL as LONGARM_STATUS } from "@/lib/longarm-math";
-import { CertifyButton } from "@/components/longarm-forms";
 import { StoreCreditSection } from "@/components/store-credit-section";
+import { classCreditsFor } from "@/lib/units/units";
+import { CustomerLayaways } from "@/components/customer-layaways";
+import { CustomerSpecialOrders } from "@/components/customer-special-orders";
+import { CustomerWantList } from "@/components/customer-want-list";
+import { CustomerPriceGroup } from "@/components/customer-price-group";
+import { CustomerBirthday } from "@/components/customer-birthday";
+import { CustomerLoans } from "@/components/customer-loans";
+import { CustomerColors } from "@/components/customer-colors";
+import { CustomerFitsSection } from "@/components/customer-fits";
+import { CustomerSoftware } from "@/components/customer-software";
+import { CustomerCertifications } from "@/components/customer-certifications";
+import { CustomerPaperwork } from "@/components/paperwork/customer-paperwork";
 
 export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<MergeParams> }) {
   const user = await requireUser();
@@ -72,9 +83,16 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         }
         actions={
           c.kind === "RETAIL" ? (
-            <Link href={`/tickets/new?customerId=${c.id}`} className="btn btn-primary">
-              Check in a machine
-            </Link>
+            <>
+              {shopRow.sellsRetail && (
+                <Link href={`/register/pay-links?customer=${c.id}`} className="btn">
+                  Send a pay link
+                </Link>
+              )}
+              <Link href={`/tickets/new?customerId=${c.id}`} className="btn btn-primary">
+                Check in a machine
+              </Link>
+            </>
           ) : undefined
         }
       />
@@ -118,8 +136,27 @@ export default async function CustomerPage({ params, searchParams }: { params: P
                 ))}
               </ul>
             )}
+            {(await classCreditsFor(user.shopId, c.id)).map((x) => (
+              <p key={x.unitId} className="mt-2 text-sm">
+                <span className={`pill ${x.left ? "tone-ready" : "tone-neutral"}`}>
+                  Owner&apos;s classes: {x.left} of {x.granted} left
+                </span>{" "}
+                <span className="muted">came with the {x.machine}; book them from a class&apos;s sign-up list</span>
+              </p>
+            ))}
           </Section>
         )}
+        {c.kind === "RETAIL" && <CustomerLayaways shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerSpecialOrders shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerWantList shopId={user.shopId} customerId={c.id} tz={tz} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerPriceGroup shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerBirthday shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && <CustomerLoans shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerColors shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && shopRow.sellsRetail && <CustomerFitsSection shopId={user.shopId} customerId={c.id} />}
+        {c.kind === "RETAIL" && <CustomerSoftware shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} />}
+        {c.kind === "RETAIL" && <CustomerCertifications shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} tz={tz} />}
+        <CustomerPaperwork shopId={user.shopId} customerId={c.id} admin={user.role !== "TECH"} retail={c.kind === "RETAIL"} />
         {c.kind === "RETAIL" && <StoreCreditSection shopId={user.shopId} role={user.role} customerId={c.id} timeZone={tz} />}
         {orders.length > 0 && (
           <Section title="Online orders">
@@ -150,10 +187,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         {(quilts.length > 0 || (shopRow.sellsRetail && c.kind === "RETAIL")) && (
           <Section title="Longarm">
             {shopRow.sellsRetail && c.kind === "RETAIL" && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                {c.longarmCertifiedAt ? <span className="pill tone-ready">Certified to rent since {fmtDate(c.longarmCertifiedAt, tz)}</span> : <span className="pill tone-neutral">Not certified to rent the longarm</span>}
-                {user.role !== "TECH" && <CertifyButton customerId={c.id} certified={!!c.longarmCertifiedAt} />}
-              </div>
+              <p className="muted mb-3 text-sm">Certified to rent the longarm: see Certified on.</p>
             )}
             {quilts.length === 0 ? (
               <Empty>No quilting work orders.</Empty>

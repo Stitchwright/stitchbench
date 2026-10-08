@@ -6,7 +6,7 @@ import type { OutMessage, Prisma } from "@/generated/prisma/client";
 import { SKIP_REASON_LABEL } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { withLease } from "@/lib/lease";
-import { shopsWith } from "@/lib/module-gate";
+import { shopsWith, shopsWithWorkingBase } from "@/lib/module-gate";
 import { isDesktop } from "@/lib/modules";
 import { stillWanted } from "@/lib/notices/hooks";
 import { runSchedulers } from "@/lib/notices/scheduler";
@@ -21,7 +21,8 @@ import { publicBaseUrl, sendConfig, type SendConfig } from "./settings";
 import { openSmtp, verifySmtp, type SmtpSession } from "./smtp";
 import { textToHtml } from "./templates";
 import { checkTwilio, findSent, sendText } from "./twilio";
-import { EXPLICIT_KINDS, type Channel, type MessageKind, type SkipReason } from "./types";
+import { BASE_KINDS, EXPLICIT_KINDS, type Channel, type MessageKind, type SkipReason } from "./types";
+import { dailySummaries } from "@/lib/owner-today";
 
 export type MessageRunResult = { sent: number; failed: number; waiting: number } | { busy: true } | { off: true };
 
@@ -70,17 +71,34 @@ async function run(o: { now?: Date; shopIds?: string[]; forceSchedulers?: boolea
   await recover(now, o.shopIds);
   await tidy(now, o.shopIds);
   await readReplies(now, o.shopIds);
-  // 4. Only shops with Marketing on send anything; other shops' rows stay QUEUED (held).
+  // The owner's daily summary at each store's closing time (more than one store, shop-features-round-2-design.md 7.5).
+  await dailySummaries(now, o.shopIds).catch(log("daily summaries"));
+  // 4. Shops with Marketing on send everything; the others send only the base kinds (ready, parts in, estimates and
+  // what texting needs), and their other rows stay QUEUED (held). Campaigns and schedulers need Marketing.
   const live = await shopsWith("marketing", o.shopIds);
-  if (live.length) {
-    await checkPaused(now, live);
-    await buildCampaigns(now, live).catch(log("campaigns"));
-    await schedulers(now, live, !!o.forceSchedulers);
-    await sendAll(now, live, counts, renew, claimUntil);
-    await sweepCampaigns(now, live);
-    counts.waiting = await db.outMessage.count({ where: { shopId: { in: live }, status: "QUEUED" } });
+  const base = await baseOnlyShops(live, o.shopIds);
+  const sending = [...live, ...base];
+  if (sending.length) {
+    await checkPaused(now, sending);
+    if (live.length) {
+      await buildCampaigns(now, live).catch(log("campaigns"));
+      await schedulers(now, live, !!o.forceSchedulers);
+    }
+    await sendAll(now, sending, new Set(base), counts, renew, claimUntil);
+    if (live.length) await sweepCampaigns(now, live);
+    counts.waiting = await db.outMessage.count({ where: { status: "QUEUED", OR: [{ shopId: { in: live } }, { shopId: { in: base }, kind: { in: BASE_KINDS } }] } });
   }
   return counts;
+}
+
+/** Working shops without Marketing that have a base-kind row waiting (the rest of their rows stay held). */
+async function baseOnlyShops(live: string[], shopIds?: string[]): Promise<string[]> {
+  const rows = await db.outMessage.findMany({
+    where: { shopId: shopIds ? { in: shopIds, notIn: live } : { notIn: live }, status: "QUEUED", kind: { in: BASE_KINDS } },
+    distinct: ["shopId"],
+    select: { shopId: true },
+  });
+  return shopsWithWorkingBase(rows.map((r) => r.shopId));
 }
 
 const scopeOf = (shopIds?: string[]) => (shopIds ? { shopId: { in: shopIds } } : {});
@@ -192,8 +210,8 @@ async function schedulers(now: Date, live: string[], force: boolean) {
 
 const dueWhere = (now: Date): Prisma.OutMessageWhereInput => ({ status: "QUEUED", sendAfter: { lte: now }, OR: [{ nextTryAt: null }, { nextTryAt: { lte: now } }] });
 
-/** 8. Every live shop with due rows, starting from a different one each run. */
-async function sendAll(now: Date, live: string[], counts: Counts, renew: Renew, claimUntil: number) {
+/** 8. Every sending shop with due rows, starting from a different one each run (`baseOnly`: shops without Marketing). */
+async function sendAll(now: Date, live: string[], baseOnly: Set<string>, counts: Counts, renew: Renew, claimUntil: number) {
   const due = await db.outMessage.findMany({ where: { shopId: { in: live }, ...dueWhere(now) }, distinct: ["shopId"], select: { shopId: true } });
   let shops = due.map((d) => d.shopId).sort();
   if (!shops.length) return;
@@ -202,7 +220,7 @@ async function sendAll(now: Date, live: string[], counts: Counts, renew: Renew, 
   shops = [...shops.slice(start), ...shops.slice(0, start)];
   for (const shopId of shops) {
     if (Date.now() > claimUntil) break;
-    await sendForShop(shopId, now, counts, renew, Math.min(Date.now() + SHOP_MS, claimUntil)).catch(log(`send ${shopId}`));
+    await sendForShop(shopId, now, counts, renew, Math.min(Date.now() + SHOP_MS, claimUntil), baseOnly.has(shopId)).catch(log(`send ${shopId}`));
   }
 }
 
@@ -216,13 +234,15 @@ type Turn = {
   until: number;
   smtp: SmtpSession | null;
   stop: Record<Channel, boolean>;
+  /** Marketing is off: only the base kinds go. */
+  baseOnly: boolean;
   recipientFails: Record<Channel, number>;
   ok: Record<Channel, boolean>;
 };
 
-async function sendForShop(shopId: string, now: Date, counts: Counts, renew: Renew, until: number) {
+async function sendForShop(shopId: string, now: Date, counts: Counts, renew: Renew, until: number, baseOnly: boolean) {
   const cfg = await sendConfig(shopId);
-  const t: Turn = { shopId, cfg, tz: cfg.shop.timeZone, now, counts, until, smtp: null, stop: { email: false, sms: false }, recipientFails: { email: 0, sms: 0 }, ok: { email: false, sms: false } };
+  const t: Turn = { shopId, cfg, tz: cfg.shop.timeZone, now, counts, until, smtp: null, stop: { email: false, sms: false }, baseOnly, recipientFails: { email: 0, sms: 0 }, ok: { email: false, sms: false } };
   const batch = Math.max(1, Number(process.env.MESSAGE_BATCH ?? 20) || 20);
   try {
     for (const channel of CHANNELS) {
@@ -244,13 +264,13 @@ async function sendForShop(shopId: string, now: Date, counts: Counts, renew: Ren
   }
 }
 
-/** Up to `batch` due rows of a channel: notices first, then marketing (unless held), oldest sendAfter first. */
+/** Up to `batch` due rows of a channel: notices first, then marketing (unless held or Marketing is off), oldest sendAfter first. */
 async function dueRows(t: Turn, channel: Channel, batch: number): Promise<OutMessage[]> {
   const v = t.cfg.view;
   const base: Prisma.OutMessageWhereInput = { shopId: t.shopId, channel, ...dueWhere(t.now) };
-  const notices = await db.outMessage.findMany({ where: { ...base, purpose: "notice" }, orderBy: { sendAfter: "asc" }, take: batch });
+  const notices = await db.outMessage.findMany({ where: { ...base, purpose: "notice", ...(t.baseOnly ? { kind: { in: BASE_KINDS } } : {}) }, orderBy: { sendAfter: "asc" }, take: batch });
   const room = batch - notices.length;
-  if (room <= 0 || v.marketingHoldAt || (channel === "sms" && v.textHoldAt)) return notices;
+  if (t.baseOnly || room <= 0 || v.marketingHoldAt || (channel === "sms" && v.textHoldAt)) return notices;
   // Marketing older than 48 h waits for a person ("Send them" / "Cancel them").
   const marketing = await db.outMessage.findMany({
     where: { ...base, purpose: "marketing", sendAfter: { lte: t.now, gte: new Date(t.now.getTime() - 48 * HOUR) } },
@@ -355,8 +375,8 @@ async function sendRow(t: Turn, row: OutMessage) {
 
   // 8.5 Marketing daily caps: at the cap, every due marketing row of the channel moves to the next shop-day. Online-order
   // mail counts too when Settings -> Online shop says so (online-and-parts-design.md section 3).
-  const capped: Prisma.OutMessageWhereInput = v.ordersInCap ? { OR: [{ purpose: "marketing" }, { kind: "order_notice" }] } : { purpose: "marketing" };
-  if (marketing || (v.ordersInCap && kind === "order_notice")) {
+  const capped: Prisma.OutMessageWhereInput = v.ordersInCap ? { OR: [{ purpose: "marketing" }, { kind: { in: ["order_notice", "pay_link"] } }] } : { purpose: "marketing" };
+  if (marketing || (v.ordersInCap && (kind === "order_notice" || kind === "pay_link"))) {
     const dayStart = zonedTime(ymdOf(now, t.tz), 0, t.tz);
     const cap = channel === "email" ? v.emailDailyCap : v.smsDailyCap;
     const n = await db.outMessage.count({

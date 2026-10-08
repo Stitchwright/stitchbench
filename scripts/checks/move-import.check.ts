@@ -258,7 +258,7 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   });
   const cls = await db.shopClass.create({ data: { shopId, title: "Quilting 101", seats: 8 } });
   await db.classMeeting.create({ data: { shopId, classId: cls.id, startsAt: new Date(now + 2 * day), endsAt: new Date(now + 2 * day + 7_200_000) } });
-  await db.enrollment.create({ data: { shopId, classId: cls.id, name: "Mona Mover", feeCents: 5000, customerId: cust.id } });
+  const enrollment = await db.enrollment.create({ data: { shopId, classId: cls.id, name: "Mona Mover", feeCents: 5000, customerId: cust.id } });
   const type = await db.appointmentType.create({ data: { shopId, name: "Machine pickup" } });
   await db.appointment.create({
     data: {
@@ -290,6 +290,72 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   });
   await db.assistantSettings.create({ data: { shopId: shopId, voice: "Short and friendly." } });
   await db.assistantCall.create({ data: { shopId: shopId, feature: "draft_work_done", model: "claude-sonnet-5-5", request: { system: "s", messages: [] }, response: "Done." } });
+  // Phase 4 (shop-features-round-2-design.md section 5): a pattern's yardage, a care tip, a customer's question.
+  await db.patternNeed.create({ data: { shopId, patternPartId: part.id, size: "Throw", role: "background", yards: 2.25 } });
+  await db.careTip.create({ data: { shopId, kind: "sewing", text: "Change the needle every 8 hours of sewing." } });
+  await db.customerQuestion.create({ data: { shopId, name: "Pat", contact: "pat@example.com", text: "Do you sell Bernina feet?" } });
+  // Selling (tax-machine-sales-layaway-design.md): service plans, maker warranties, tax holidays, financing, promotions, layaway.
+  const plan = await db.servicePlan.create({ data: { shopId, name: "Two cleanings", visits: 2, months: 24, priceCents: 9900 } });
+  await db.machinePlan.create({ data: { shopId, machineId: machine.id, planId: plan.id, name: "Two cleanings", visits: 2, startsAt: new Date(now), endsAt: new Date(now + 730 * day) } });
+  await db.makerWarranty.create({ data: { shopId, brand: "Bernina", brandKey: "bernina", partsYears: 5, laborYears: 1 } });
+  await db.taxHoliday.create({ data: { shopId, name: "Back to school", firstDay: "2026-08-07", lastDay: "2026-08-09", maxUnitCents: 10000 } });
+  const lender = await db.lender.create({ data: { shopId, name: "Check Credit", applyUrl: "https://lender.example.test/apply" } });
+  await db.financedSale.create({ data: { shopId, saleId: "sale_check_plain_id", lenderId: lender.id, amountCents: 29900, approval: "APP-1" } });
+  await db.promotion.create({ data: { shopId, name: "Fall sale", firstDay: "2026-10-01", lastDay: "2026-10-31", scope: { kinds: ["NOTION"] }, effect: "PERCENT", value: 10 } });
+  const layaway = await db.layaway.create({ data: { shopId, number: 1, customerId: cust.id, dueBy: "2026-12-31", depositMinCents: 1000, terms: "Pay by the date." } });
+  await db.layawayLine.create({ data: { layawayId: layaway.id, partId: part.id, description: "Hook", qty: 1, unitPriceCents: 4500 } });
+  // Phase 2 (shop-features-round-2-design.md 2.4 to 6.5): fit groups, software, starter bundles, certifications, supplies, jobs.
+  await db.fitGroup.create({ data: { shopId, name: "Bernina B9 hooks", models: ["Bernina 770 QE"], modelKeys: ["770qe"] } });
+  await db.softwareLicense.create({ data: { shopId, partId: part.id, description: "Embroidery software", customerId: cust.id, code: "SW-1", startsOn: new Date(now) } });
+  await db.softwareCode.create({ data: { shopId, partId: part.id, code: "SW-2" } });
+  await db.starterBundle.create({ data: { shopId, kind: "sewing", name: "First machine", lines: [{ partId: part.id, qty: 1 }] } });
+  await db.certification.create({ data: { shopId, customerId: cust.id, equipment: "Laser cutter" } });
+  await db.suppliesCare.create({ data: { shopId, machineId: machine.id, callNote: "Filament low" } });
+  await db.makeJob.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover", title: "Name tag", fileName: "tag.svg", fileMime: "image/svg+xml", fileData: crypto.randomBytes(800), machineMinutes: 12, quoteCents: 1500 } });
+  // Phase 3 (shop-features-round-2-design.md 4.3 to 4.6): a price raise, a live sale's claim, an event's payment and door
+  // prize, a shop hop with a passport stamped here.
+  await db.priceChange.create({ data: { shopId, userId: a.user.id, rule: { by: "supplier", pct: 5 }, items: [{ partId: part.id, oldCents: 4300, newCents: 4500 }] } });
+  const live = await db.liveSale.create({ data: { shopId, name: "Friday live", picks: [part.id] } });
+  await db.liveClaim.create({ data: { shopId, liveSaleId: live.id, customerId: cust.id, name: "Mona Mover", partId: part.id, description: "Hook", qty: 1, priceCents: 4500 } });
+  await db.eventPayment.create({ data: { shopId, enrollmentId: enrollment.id, kind: "DEPOSIT", amountCents: 2000, saleId: "sale_check_plain_id", paidAt: new Date(now) } });
+  await db.eventDraw.create({ data: { shopId, classId: cls.id, enrollmentId: enrollment.id, name: "Mona Mover", prize: "Fat quarter bundle" } });
+  const hop = await db.shopHop.create({ data: { shopId, hubHopId: `hop-${RUN}`, name: "Spring hop", startsOn: "2027-04-01", endsOn: "2027-04-10", shopsCount: 6 } });
+  await db.hopStampLocal.create({ data: { shopId, hopId: hop.id, passportRef: "HOP-ABCD-EFGH", byUserId: a.user.id, stampNo: 1, stampsOf: 6 } });
+  // Phase 1 (shop-features-round-2-design.md 1.2 to 1.9): a price group a customer is in, a yard break, a special order,
+  // a want list line, a loaner out, a trade-up credit used.
+  const group = await db.priceGroup.create({ data: { shopId, name: "Guild", pctOff: 10, kinds: ["FABRIC"] } });
+  await db.customer.update({ where: { id: cust.id }, data: { priceGroupId: group.id, priceGroupUntil: "2027-10-01" } });
+  await db.yardBreak.create({ data: { shopId, minYards: 10, pctOff: 10 } });
+  await db.specialOrder.create({ data: { shopId, number: 1001, customerId: cust.id, partId: part.id, description: "Hook", priceCents: 4500, depositCents: 1000, expectedOn: "2026-11-01" } });
+  await db.wantItem.create({ data: { shopId, customerId: cust.id, words: "Tula Pink" } });
+  await db.unitLoan.create({ data: { shopId, unitId: "unit_check_plain_id", customerId: cust.id, ticketId: ticket.id, dueOn: "2026-11-01", depositCents: 5000 } });
+  await db.tradeUpOffer.create({ data: { shopId, customerId: cust.id, ticketId: ticket.id, amountCents: 4500, until: "2026-11-30", usedLineId: "line_check_plain_id" } });
+  // Phase 6 (shop-features-round-2-design.md 9.x and 4.8): a warranty claim, a co-op claim with its proof, a consigned
+  // machine's payout, an appraisal with a photo, a gift list with an item, a house account with a charge, a card reader
+  // and a payment on it.
+  await db.warrantyClaim.create({ data: { shopId, number: 1, maker: "Bernina" } });
+  const coop = await db.coopClaim.create({ data: { shopId, number: 1, maker: "Bernina" } });
+  await db.coopProof.create({ data: { shopId, claimId: coop.id, name: "ad.jpg", mime: "image/jpeg", data: crypto.randomBytes(300) } });
+  await db.consignPayout.create({ data: { shopId, unitId: "unit_check_plain_id", customerId: cust.id, saleLineId: "line_check_plain_id", soldCents: 50000, pct: 25, amountCents: 37500 } });
+  const appraisal = await db.appraisal.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover" } });
+  await db.appraisalPhoto.create({ data: { shopId, appraisalId: appraisal.id, mime: "image/jpeg", data: crypto.randomBytes(400) } });
+  const registry = await db.giftRegistry.create({ data: { shopId, customerId: cust.id, name: "Mona Mover", title: "Mona's list", token: `move${crypto.randomBytes(8).toString("hex")}` } });
+  await db.registryItem.create({ data: { shopId, registryId: registry.id, partId: part.id, description: "Hook" } });
+  const houseAcct = await db.houseAccount.create({ data: { shopId, customerId: cust.id } });
+  await db.accountEntry.create({ data: { shopId, accountId: houseAcct.id, kind: "CHARGE", amountCents: 4500, saleId: sale.id, note: "Sale #7001" } });
+  await db.cardReader.create({ data: { shopId, readerId: "tmr_check", label: "Counter" } });
+  await db.cardPayment.create({ data: { shopId, intentId: `pi_check_${crypto.randomBytes(6).toString("hex")}`, amountCents: 4500, saleId: sale.id } });
+  // Phase 5 (shop-features-round-2-design.md section 7): the main store and a second, the item's stock there, a transfer
+  // with a line, a note between the stores read by the owner, an approval.
+  const mainStore = await db.location.create({ data: { shopId, name: "Main store", main: true } });
+  const florida = await db.location.create({ data: { shopId, name: "Florida", sortOrder: 1, taxRatePct: 7, timeZone: "America/New_York" } });
+  await db.stockLevel.create({ data: { shopId, partId: part.id, locationId: florida.id, qtyOnHand: 0 } });
+  const transfer = await db.stockTransfer.create({ data: { shopId, number: 1, fromId: mainStore.id, toId: florida.id, status: "ASKED", askedAt: new Date() } });
+  await db.stockTransferLine.create({ data: { transferId: transfer.id, partId: part.id, description: "Hook", qty: 1 } });
+  const storeNote = await db.storeNote.create({ data: { shopId, fromLocationId: mainStore.id, toLocationId: florida.id, text: "The rep visits Thursday" } });
+  await db.storeNoteRead.create({ data: { noteId: storeNote.id, userId: a.user.id } });
+  await db.approval.create({ data: { shopId, locationId: florida.id, kind: "REFUND", amountCents: 25000, expiresAt: new Date(Date.now() + 3_600_000) } });
+  await db.slipReceipt.create({ data: { shopId, key: "slip-move-fixture-0001", words: "Received 2 pieces." } });
   await db.shop.update({
     where: { id: shopId },
     data: {

@@ -57,12 +57,14 @@ export type MoveTable = {
  * PER_INSTALL, so a new table can't be forgotten.
  */
 export const MOVE_TABLES: readonly MoveTable[] = [
-  { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
+  { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed", "statusKeyHash", "statusKeyAt", "shippoKeySealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
   { t: "User", key: "id" },
   { t: "BooksSettings", key: '"shopId"' }, // the bookkeeping export's names (one row per company)
   { t: "OffsiteSettings", key: '"shopId"', leftOut: ["bucket"] }, // off-site backup: on or off, target, the public key; the own-bucket settings (a secret sealed under the install's key) are left out
   { t: "OffsiteObject", key: "id" }, // the company's index of its off-site store: photos are not sent again after a move
   { t: "AuditEntry", key: "id" }, // no foreign keys: an entry outlives the login or record it names
+  { t: "PriceGroup", key: "id" }, // customer price groups (1.5): before the customers that name one
+  { t: "YardBreak", key: "id" }, // per-yard price breaks (1.6)
   { t: "Customer", key: "id" },
   { t: "GiftCard", key: "id" }, // -> Customer
   { t: "Machine", key: "id" }, // -> Customer
@@ -92,6 +94,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ClubPick", key: "id" }, // -> Club, ClubMember
   { t: "LongarmOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale)
   { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
+  { t: "MakeJob", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> Customer: print and cut jobs with the customer's file (6.5)
   { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
@@ -100,7 +103,39 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Sale", key: "id" }, // -> Customer, User
   { t: "SaleLine", key: "id", via: { column: "saleId", parent: "Sale" } }, // -> Part too
   { t: "StockUnit", key: "id" }, // -> Machine
+  { t: "ServicePlan", key: "id" }, // the shop's own service plans
+  { t: "MakerWarranty", key: "id" }, // each maker's warranty as the shop typed it
+  { t: "TaxHoliday", key: "id" }, // the shop's sales tax holidays
+  { t: "Lender", key: "id" }, // the lenders the shop offers financing through
+  { t: "Promotion", key: "id" }, // the shop's planned sales
+  { t: "PriceChange", key: "id" }, // "Raise prices" with the old prices kept for Undo (shop-features-round-2-design.md 4.4; part ids are plain)
+  { t: "FitGroup", key: "id" }, // the shop's fit groups (shop-features-round-2-design.md 2.4; items name them by plain id)
+  { t: "CoopClaim", key: "id" }, // co-op advertising and rebate claims (9.2)
+  { t: "CoopProof", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> CoopClaim: the ad and invoice photos
+  { t: "CardReader", key: "id" }, // card readers paired at Stripe (4.8; paired again if the Stripe key changes)
+  { t: "CardPayment", key: "id" }, // card payments taken on the reader (4.8; sale id plain)
+  { t: "HouseAccount", key: "id" }, // house charge accounts (9.4; customer id plain)
+  { t: "AccountEntry", key: "id" }, // -> HouseAccount (sale, ticket and payment ids plain)
+  { t: "GiftRegistry", key: "id" }, // gift lists (9.9; customer id plain)
+  { t: "RegistryItem", key: "id" }, // -> GiftRegistry
+  { t: "Appraisal", key: "id" }, // quilt appraisals (9.8; customer and sale ids are plain)
+  { t: "AppraisalPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Appraisal
+  { t: "ConsignPayout", key: "id" }, // what the shop owes consignors for their machines sold (9.6; unit, customer and line ids are plain)
+  { t: "WarrantyClaim", key: "id" }, // warranty claims to makers (shop-features-round-2-design.md 9.1; ticket and machine ids are plain)
+  { t: "SoftwareLicense", key: "id" }, // -> Customer, Part (shop-features-round-2-design.md 2.5; its sale, line and machine ids are plain)
+  { t: "SoftwareCode", key: "id" }, // -> Part: activation codes on hand
+  { t: "StarterBundle", key: "id" }, // the starter bundles by machine kind (6.1; its item ids are plain)
+  { t: "FinancedSale", key: "id" }, // -> Lender (its sale id is plain)
+  { t: "MachinePlan", key: "id" }, // -> Machine (its sale line and unit ids are plain)
+  { t: "Layaway", key: "id" }, // -> Customer (its sale id is plain)
+  { t: "LayawayLine", key: "id", via: { column: "layawayId", parent: "Layaway" } }, // its part and unit ids are plain
+  { t: "SpecialOrder", key: "id" }, // -> Customer (its part, order line and sale ids are plain)
+  { t: "WantItem", key: "id" }, // -> Customer (its part ids are plain)
+  { t: "UnitLoan", key: "id" }, // -> Customer (its unit and ticket ids are plain)
+  { t: "TradeUpOffer", key: "id" }, // trade-up credits used (its ids are plain)
   { t: "VacCare", key: '"machineId"' }, // -> Machine (one row per machine)
+  { t: "Certification", key: "id" }, // -> Customer: certified on the shop's machines (6.4)
+  { t: "SuppliesCare", key: '"machineId"' }, // -> Machine: Maker Shop's supplies-due marks (one row per machine)
   { t: "PartnerKey", key: '"shopId"', leftOut: ["privateSealed"] }, // the sealed private key stays behind: the company makes a new key (src/lib/partner-keys.ts)
   { t: "PartnerLink", key: "id" },
   { t: "PartnerOutbox", key: "id" },
@@ -128,13 +163,32 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "ShopClass", key: "id" },
   { t: "ClassMeeting", key: "id" }, // -> ShopClass
   { t: "Enrollment", key: "id" }, // -> ShopClass, Customer
+  { t: "EventPayment", key: "id" }, // -> Enrollment (events' deposits and balances, 4.5; sale and web order ids are plain)
+  { t: "EventDraw", key: "id" }, // -> ShopClass (door prize draws; the enrollment id is plain)
   { t: "AppointmentType", key: "id" },
   { t: "Appointment", key: "id" }, // -> AppointmentType, Customer, User
   { t: "Shift", key: "id" }, // -> User
   { t: "BookingLink", key: "id" },
   { t: "WebOrder", key: "id", leftOut: ["linkSealed"] },
+  { t: "LiveSale", key: "id" }, // live sales (shop-features-round-2-design.md 4.3)
+  { t: "LiveClaim", key: "id" }, // -> LiveSale (its customer, part and web order ids are plain)
+  { t: "ShopHop", key: "id" }, // the shop hops this company takes part in, as the hub last told it (4.6)
+  { t: "HopStampLocal", key: "id" }, // -> ShopHop (passports stamped here)
   { t: "AssistantSettings", key: '"shopId"' }, // the company's own Assistant switches and voice sample (one row per company)
   { t: "AssistantCall", key: "id" }, // the company's own log of what the Assistant was asked and said
+  { t: "PatternNeed", key: "id" }, // a pattern's yardage per size and role (its pattern item by plain id)
+  { t: "CareTip", key: "id" }, // the shop's own care tips for the pickup sheet
+  { t: "CustomerQuestion", key: "id" }, // customers' questions from the public page that went to a person
+  // More than one store (shop-features-round-2-design.md section 7): the stores, each item's stock at a store other than
+  // the main one, transfers between stores, notes between stores and who read them, and approvals asked of the owner.
+  { t: "Location", key: "id" },
+  { t: "StockLevel", key: "id" }, // -> Part, Location
+  { t: "StockTransfer", key: "id" },
+  { t: "StockTransferLine", key: "id", via: { column: "transferId", parent: "StockTransfer" } }, // -> StockTransfer, Part
+  { t: "StoreNote", key: "id" },
+  { t: "StoreNoteRead", key: `"noteId" || '|' || "userId"`, via: { column: "noteId", parent: "StoreNote" } }, // -> StoreNote, User
+  { t: "Approval", key: "id" },
+  { t: "SlipReceipt", key: `"shopId" || '|' || "key"` }, // packing slips already received (so a retry receives nothing twice)
 ];
 
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */
@@ -153,7 +207,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
 export const LEFT_OUT: readonly string[] = MOVE_TABLES.flatMap((t) => (t.leftOut ?? []).map((c) => `${t.t}.${c}`));
 
 /** What the owner enters again on the new side, in the words the Settings page uses. */
-export const LEFT_OUT_WORDS = ["the mail password", "the Twilio secret", "the Stripe keys and webhook secret", "estimate and online-order links (customers get new ones)", "the partner signing key (the company makes a new one, and each partner trusts it by a new partner code)"];
+export const LEFT_OUT_WORDS = ["the mail password", "the Twilio secret", "the Stripe keys and webhook secret", "the Shippo key", "estimate and online-order links (customers get new ones)", "the partner signing key (the company makes a new one, and each partner trusts it by a new partner code)", "the phone-answering service's key (make a new one in Settings → Customer questions)"];
 
 export const tableNames = (): string[] => MOVE_TABLES.map((t) => t.t);
 

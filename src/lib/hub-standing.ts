@@ -23,8 +23,8 @@ export type StandingAnswer = {
   founding?: boolean | null;
   key?: string | null;
   /**
-   * Keys for add-on modules the company bought on the hub (the Assistant: its own subscription, module "assistant"), a hub from
-   * the Assistant billing package on. Verified like the base key and kept as hub rows of their own: the hub's newest
+   * Keys for add-on modules the company bought on the hub (the Assistant: its own subscription, module "assistant"; from
+   * round 2 on also Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop, alone or as the bundle's one key). Verified like the base key and kept as hub rows of their own: the hub's newest
    * replaces the older one, and the base key's arrival never takes them away (nor theirs the base key).
    */
   moduleKeys?: string[] | null;
@@ -115,10 +115,17 @@ export async function applyMovedOut(shopId: string, m: MovedAway): Promise<void>
   console.info(`[move] ${JSON.stringify({ company: shopId, movedOut: m.at.toISOString(), to: m.to })}`);
 }
 
-/** A hub-issued key that is an add-on's (carries "assistant" and not "base"), as opposed to the program's own. */
+/**
+ * The add-on modules the hub sells (the hub's src/addons.mjs: the Assistant, and Vac Shop, Small Appliance Repair,
+ * Scheduling, Marketing and Maker Shop, each alone or all five in the bundle's one key).
+ */
+const ADDON_MODULES = ["assistant", "vac", "appliance", "scheduling", "marketing", "maker"] as const;
+
+/** A hub-issued key that is an add-on's (carries an add-on module and not "base"), as opposed to the program's own. */
 function isModuleOnly(key: string, shopId: string): { keyId: string } | null {
   const v = verifyFor(key, "pasted");
-  if (!v.ok || v.payload.s !== shopId || v.payload.m.includes("base") || !v.payload.m.includes("assistant")) return null;
+  if (!v.ok || v.payload.s !== shopId || v.payload.m.includes("base")) return null;
+  if (!v.payload.m.some((m) => (ADDON_MODULES as readonly string[]).includes(m))) return null;
   return { keyId: v.payload.id };
 }
 
@@ -137,7 +144,8 @@ async function applyModuleKeys(shopId: string, sent: string[] | null | undefined
   if (!Array.isArray(sent)) return;
   const good = sent
     .filter((k): k is string => typeof k === "string")
-    .slice(0, 5)
+    // The Assistant's, up to four single add-ons (the hub's MAX_SINGLES) or the bundle, and the hub admin's comp key.
+    .slice(0, 8)
     .flatMap((k) => {
       const m = isModuleOnly(k.trim(), shopId);
       return m ? [{ keyId: m.keyId, key: k.trim() }] : [];
