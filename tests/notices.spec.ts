@@ -202,7 +202,8 @@ test("Marketing off: a due stage says send it by hand, and /repairs asks whether
   const page = await login(browser, owner);
   const ticketId = await newTicket(page, { name: `Hal Hand ${RUN}`, email: `hal-${RUN.toLowerCase()}@customer.test` });
   await page.getByLabel("Status", { exact: true }).selectOption({ label: "Ready - customer called" });
-  await expect(page.getByText("Status: Ready - customer called")).toBeVisible();
+  // The ready notice is in the base, so the toast says it goes (not just the new status).
+  await expect(page.getByText(/An email goes to Hal Hand/)).toBeVisible();
   // Ready 8 days ago: the first notice (day 7) is due, with Messages off it is staff's to send.
   await sql(`UPDATE "Ticket" SET "pickupReadyAt" = now() - interval '8 days' WHERE id = $1`, [ticketId]);
   await page.reload();

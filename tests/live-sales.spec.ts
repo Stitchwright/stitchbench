@@ -65,7 +65,7 @@ test("start a live sale, claim for two buyers, send the pay links", async ({ bro
   await page.getByLabel("How many").fill("2");
   await page.getByRole("button", { name: "Claim", exact: true }).click();
   await expect(page.getByText("Claimed")).toBeVisible();
-  await expect(page.getByText("1 left")).toBeVisible();
+  await expect(page.getByText("1 left", { exact: true })).toBeVisible();
 
   await page.getByLabel("Buyer's name").fill(`Ann New ${RUN}`);
   await page.getByLabel(/New buyer: her mobile number or email/).fill(`ann-${RUN.toLowerCase()}@customer.test`);
