@@ -97,7 +97,7 @@ export function IntakeForm({
             </div>
             {/* The search hit doesn't say whether they were asked how to be told, so while the answer is required it's
                 asked here; otherwise an optional change (blank keeps what they said before). */}
-            {!marketingHidden && (
+            {(!marketingHidden || notifyRequired) && (
               <div className="mt-3">{notifyRequired ? <NotifyByField required name="notifyBy" /> : <NotifyByField name="notifyBy" label="Change how we tell them (blank keeps it as it is)" />}</div>
             )}
           </div>
@@ -145,7 +145,8 @@ export function IntakeForm({
               </label>
               <input id="customerEmail" name="customerEmail" type="email" className="input" />
             </div>
-            {!marketingHidden && <NotifyByField required={notifyRequired} name="notifyBy" />}
+            {/* Asked whenever the ready notice needs it (email or texts set up in the base), Marketing on or not. */}
+            {(!marketingHidden || notifyRequired) && <NotifyByField required={notifyRequired} name="notifyBy" />}
           </>
         )}
       </section>
