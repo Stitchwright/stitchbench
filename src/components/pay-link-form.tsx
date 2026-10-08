@@ -79,7 +79,7 @@ export function PayLinkForm({ customer, taxRatePct }: { customer: CustomerHit | 
               <input type="radio" name="send" value="usual" defaultChecked className="h-5 w-5" /> Text or email it her usual way
             </label>
             <label className="flex min-h-11 items-center gap-2 text-base">
-              <input type="radio" name="send" value="none" className="h-5 w-5" /> Don&apos;t send it: I&apos;ll copy the link
+              <input type="radio" name="send" value="none" className="h-5 w-5" />{" "}Don&apos;t send it: I&apos;ll copy the link
             </label>
           </fieldset>
         </div>

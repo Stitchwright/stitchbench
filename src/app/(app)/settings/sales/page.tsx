@@ -103,7 +103,7 @@ function PlanFields({ p, prefix }: { p?: Awaited<ReturnType<typeof listPlans>>[n
             <input id={`${prefix}-desc`} name="description" className="input" defaultValue={p?.description ?? ""} />
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="taxable" defaultChecked={p?.taxable ?? false} /> Charge sales tax on it (check your state&apos;s rule for service plans)
+            <input type="checkbox" name="taxable" defaultChecked={p?.taxable ?? false} />{" "}Charge sales tax on it (check your state&apos;s rule for service plans)
           </label>
           {p && (
             <label className="flex items-center gap-2 text-sm">
@@ -199,7 +199,7 @@ export default async function SalesSettingsPage({ searchParams }: { searchParams
                 </p>
                 <ActionForm action={setTaxIncluded} success="Saved" className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-2">
-                    <input type="checkbox" name="on" defaultChecked={shop.taxIncludedOn} /> I have checked my state&apos;s rule: allow &quot;price includes the tax&quot; sales
+                    <input type="checkbox" name="on" defaultChecked={shop.taxIncludedOn} />{" "}I have checked my state&apos;s rule: allow &quot;price includes the tax&quot; sales
                   </label>
                   <Submit className="btn btn-sm">Save</Submit>
                 </ActionForm>

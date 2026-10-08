@@ -182,7 +182,7 @@ export function SwitchImport() {
           {preview.problems.length > 0 && (
             <details>
               <summary className="link cursor-pointer text-base">
-                {preview.problems.length} row{preview.problems.length === 1 ? "" : "s"} can&apos;t be read
+                {preview.problems.length} row{preview.problems.length === 1 ? "" : "s"}{" "}can&apos;t be read
               </summary>
               <ul className="muted mt-2 list-disc pl-6 text-sm">
                 {preview.problems.map((p) => (

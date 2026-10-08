@@ -13,7 +13,7 @@ export async function TradeUpSettings({ shopId, admin }: { shopId: string; admin
         <fieldset disabled={!admin} className="space-y-3">
           <label className="flex min-h-11 flex-wrap items-center gap-2">
             <input type="checkbox" name="on" defaultChecked={s.days > 0} className="h-5 w-5" /> If she buys a new machine within
-            <input name="days" aria-label="Trade-up days" className="input num w-20" inputMode="numeric" defaultValue={s.days || 30} /> days of a repair, take the repair&apos;s cost off
+            <input name="days" aria-label="Trade-up days" className="input num w-20" inputMode="numeric" defaultValue={s.days || 30} />{" "}days of a repair, take the repair&apos;s cost off
           </label>
           <p className="muted text-sm">The invoice says so (&quot;If you&apos;d rather buy a new machine by 12 Nov, we&apos;ll take $89 off&quot;); the register shows the credit when she buys a machine.</p>
           <label className="flex min-h-11 flex-wrap items-center gap-2">

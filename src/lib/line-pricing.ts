@@ -70,6 +70,8 @@ export type PricedLine = {
   tradeUp: boolean;
   taxIncluded: boolean;
   holidayId: string | null;
+  /** A holiday covers the line but the cashier tapped "Charge tax anyway" (the register shows "tax charged" and Undo). */
+  holidayWaived: boolean;
 };
 
 /** An item being bought that the shop's own promotions and rules can price. */
@@ -78,7 +80,7 @@ export function priceable(ctx: Pick<PricingCtx, "wholeReturn">, l: PricingLine):
 }
 
 export function priceLine(ctx: PricingCtx, l: PricingLine): PricedLine {
-  const out: PricedLine = { discountCents: l.discountCents, unitPriceCents: l.unitPriceCents, taxable: l.taxable, taxNote: null, promo: null, ruleLabel: null, groupId: null, tradeUp: false, taxIncluded: false, holidayId: null };
+  const out: PricedLine = { discountCents: l.discountCents, unitPriceCents: l.unitPriceCents, taxable: l.taxable, taxNote: null, promo: null, ruleLabel: null, groupId: null, tradeUp: false, taxIncluded: false, holidayId: null, holidayWaived: false };
   if (l.qty < 0 && l.asSold) {
     out.taxable = l.asSold.taxable;
     out.taxNote = l.asSold.taxNote;
@@ -109,9 +111,10 @@ export function priceLine(ctx: PricingCtx, l: PricingLine): PricedLine {
     if (out.taxable) out.taxNote = "exempt";
     return out;
   }
-  if (l.qty > 0 && out.taxable && !l.taxAnyway) {
+  if (l.qty > 0 && out.taxable) {
     const h = ctx.holidays.find((x) => holidayCovers(x, { ...l, kind: l.kind ?? "MISC", discountCents: out.discountCents, taxable: true }));
-    if (h) {
+    if (h && l.taxAnyway) out.holidayWaived = true;
+    else if (h) {
       out.taxable = false;
       out.taxNote = `holiday:${h.id}`;
       out.holidayId = h.id;

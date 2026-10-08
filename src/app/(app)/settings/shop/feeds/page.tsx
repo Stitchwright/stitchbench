@@ -67,7 +67,7 @@ export default async function FeedsPage() {
             </p>
             {v.google < GOOGLE_MIN_ITEMS && (
               <p className="muted mt-2 text-base">
-                Google asks for at least {GOOGLE_MIN_ITEMS} items with barcodes before it shows your stock. Scan the barcode on an item&apos;s page (Barcode), and tick &ldquo;Sell
+                Google asks for at least {GOOGLE_MIN_ITEMS}{" "}items with barcodes before it shows your stock. Scan the barcode on an item&apos;s page (Barcode), and tick &ldquo;Sell
                 online&rdquo;.
               </p>
             )}
@@ -95,7 +95,7 @@ export default async function FeedsPage() {
           <Section title="Steps for Google">
             <ol className="list-decimal space-y-2 pl-6 text-base">
               <li>
-                Make sure your shop has a Google Business Profile (the listing that shows on Google Maps). Note its <strong>store code</strong> (in the profile&apos;s Advanced
+                Make sure your shop has a Google Business Profile (the listing that shows on Google Maps). Note its <strong>store code</strong>{" "}(in the profile&apos;s Advanced
                 settings) and type it below.
               </li>
               <li>Open Google Merchant Center (merchants.google.com) with the same Google account and link your Business Profile when it asks.</li>

@@ -61,6 +61,9 @@ test("a holiday at this store takes the tax off; charge-tax-anyway keeps it; exe
   const c = ctx({ promos: [], holidays: [holiday] });
   assert.equal(priceLine(c, notion).taxable, false);
   assert.equal(priceLine(c, { ...notion, taxAnyway: true }).taxable, true);
+  // Still marked as a holiday line, so the register offers Undo next to "tax charged".
+  assert.equal(priceLine(c, { ...notion, taxAnyway: true }).holidayWaived, true);
+  assert.equal(priceLine(c, notion).holidayWaived, false);
   const ex = priceLine(ctx({ holidays: [holiday], exempt: true }), notion);
   assert.equal(ex.taxNote, "exempt");
   assert.equal(ex.holidayId, null);

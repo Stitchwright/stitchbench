@@ -106,7 +106,7 @@ export default async function CustomerQuestionsSettings() {
                   <input id="cq-link" readOnly value={link} className="input mono" />
                 </div>
                 <p className="muted text-xs">
-                  {shop.statusKeyAt ? `A key was made ${fmtDateTime(shop.statusKeyAt, shop.timeZone, { month: "short", day: "numeric", year: "numeric" })}.` : "No key yet: the link answers nothing until you make one."} The service
+                  {shop.statusKeyAt ? `A key was made ${fmtDateTime(shop.statusKeyAt, shop.timeZone, { month: "short", day: "numeric", year: "numeric" })}.` : "No key yet: the link answers nothing until you make one."}{" "}The service
                   sends it as &quot;Authorization: Bearer &lt;key&gt;&quot;.
                 </p>
                 <StatusKeyButton hasKey={!!shop.statusKeyAt} />

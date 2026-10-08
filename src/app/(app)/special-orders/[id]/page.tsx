@@ -82,7 +82,7 @@ export default async function SpecialOrderPage({ params }: { params: Promise<{ i
               {open && (
                 <>
                   {" "}
-                  · <span className="num font-semibold">{money(o.leftCents)}</span> left (at today&apos;s tax)
+                  · <span className="num font-semibold">{money(o.leftCents)}</span>{" "}left (at today&apos;s tax)
                 </>
               )}
             </p>

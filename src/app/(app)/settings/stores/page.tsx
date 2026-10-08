@@ -303,7 +303,7 @@ export default async function StoresPage() {
         <Section title="Your daily summary and approvals">
           <ActionForm action={saveDailySummary} success="Saved" className="space-y-3">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="on" defaultChecked={shop.dailySummaryOn} className="check" /> Email me each store&apos;s day at its closing time (takings, repairs waiting, low stock, who worked)
+              <input type="checkbox" name="on" defaultChecked={shop.dailySummaryOn} className="check" />{" "}Email me each store&apos;s day at its closing time (takings, repairs waiting, low stock, who worked)
             </label>
             <Submit className="btn btn-sm">Save</Submit>
           </ActionForm>

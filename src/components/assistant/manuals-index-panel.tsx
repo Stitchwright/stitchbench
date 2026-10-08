@@ -60,7 +60,7 @@ export async function ManualsIndexPanel({ shopId, scope, admin }: { shopId: stri
           )}
           {p.blankPages > 0 && (
             <p className="muted text-xs">
-              {p.blankPages} page{p.blankPages === 1 ? " is a scan" : "s are scans"} and can&apos;t be searched yet.
+              {p.blankPages} page{p.blankPages === 1 ? " is a scan" : "s are scans"}{" "}and can&apos;t be searched yet.
             </p>
           )}
           <div className="flex flex-wrap gap-2">

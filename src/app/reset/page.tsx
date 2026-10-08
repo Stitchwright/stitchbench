@@ -93,7 +93,7 @@ export default async function ResetPage({ searchParams }: { searchParams: Promis
     <Frame title="Forgot your password?">
       {problem ? (
         <p className="text-sm" role="status">
-          This {appName()} can&apos;t email a reset link yet. Ask its administrator: they can make you a link from the Companies page. Staff: your shop&apos;s owner or an admin can set a new password
+          This {appName()}{" "}can&apos;t email a reset link yet. Ask its administrator: they can make you a link from the Companies page. Staff: your shop&apos;s owner or an admin can set a new password
           for you in Settings → People.
         </p>
       ) : (

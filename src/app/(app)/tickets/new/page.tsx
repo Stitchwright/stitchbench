@@ -74,7 +74,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
             <ModuleNotice state={blocked} what={`Every ${noun} already here`} admin={user.role !== "TECH"} shop={shop} />
           ) : (
             <div className="card card-pad text-sm" role="status">
-              <strong>{kind.plural} aren&apos;t checked in here any more.</strong> What&apos;s already here stays to look at and finish.
+              <strong>{kind.plural} aren&apos;t checked in here any more.</strong>{" "}What&apos;s already here stays to look at and finish.
             </div>
           )}
           <p className="text-sm">

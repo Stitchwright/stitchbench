@@ -111,7 +111,7 @@ function Registering({ ms, shop }: { ms: MessagingView; shop: Shop }) {
           </div>
         ))}
         <p className="muted">
-          Most US shops pay a one-time brand fee and a small monthly campaign fee; texts cost about {ms.smsPartMills} tenths of a cent per part. Registration
+          Most US shops pay a one-time brand fee and a small monthly campaign fee; texts cost about {ms.smsPartMills}{" "}tenths of a cent per part. Registration
           takes a few days; until it&apos;s done, carriers may drop your texts.
         </p>
       </div>

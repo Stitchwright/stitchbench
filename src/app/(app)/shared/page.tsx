@@ -14,7 +14,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
       <PageHeader title="Shared by techs" sub="Issues, fixes and photos techs at every shop on StitchHub have shared. Share yours from a machine page." />
       {!joined && (
         <p className="pill tone-wait inline-block">
-          Not connected to StitchHub yet. <Link href="/settings#hub" className="link">Join it in Settings</Link> to see other shops&apos; notes.
+          Not connected to StitchHub yet. <Link href="/settings#hub" className="link">Join it in Settings</Link>{" "}to see other shops&apos; notes.
         </p>
       )}
       <form className="flex gap-2">
