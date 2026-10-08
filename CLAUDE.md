@@ -7,12 +7,13 @@
    order to work in. Don't re-ask decisions listed there.
 2. Two repos: this one (StitchBench + StitchShop, one codebase, StitchShop is a build flavor) and
    `C:\Users\bwatt\stitchhub` (the community hub). `main` in each holds all the work and is what's deployed
-   (merged and deployed 30 Sep 2026). Older branches are merged.
-3. Where things run: hub https://stitchhub-production.up.railway.app (Railway project `stitchhub`); hosted StitchShop
-   https://stitchshop-production.up.railway.app (project `stitchshop`, this folder is linked to it: `railway up
-   --service stitchshop --ci`); hosted StitchBench https://stitchbench-production-e554.up.railway.app (project
-   `stitchbench`: `railway link --project stitchbench` first, then `railway up --service stitchbench --ci`, then link
-   back with `railway link --project stitchshop --service stitchshop`); StitchBench 1.6.1 installed on this PC
+   (merged and deployed 8 Oct 2026). Older branches are merged.
+3. Where things run: hub https://hub.stitchbench.app (also https://stitchhub-production.up.railway.app; Railway project
+   `stitchhub`); hosted StitchShop https://stitchshop-production.up.railway.app (project `stitchshop`); hosted
+   StitchBench https://stitchbench-production-e554.up.railway.app (project `stitchbench`). Since 8 Oct all three
+   Railway services deploy from GitHub `main` (each repo connected, branch main): a push to main is a deploy. The
+   `railway` CLI won't run on this PC (Windows blocks it silently), so changes to variables and redeploys go through
+   the Railway website. StitchBench 1.6.1 installed on this PC
    (`%LOCALAPPDATA%\Programs\StitchBench`, port 3100), updated in place with
    `scripts/local-test/update_installed.ps1 -Version <v>` after `npm run prepare-app` in `desktop/` (back up first:
    `node desktop/backup-now.mjs`). Deploys and merges must be run by the owner; when giving `!` commands, use

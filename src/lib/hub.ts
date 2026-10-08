@@ -81,7 +81,7 @@ export async function hubState() {
  * hub still needs its invite. DEFAULT_HUB_URL overrides it for a test hub on this computer.
  */
 export function hubDefaultUrl() {
-  return (process.env.DEFAULT_HUB_URL ?? "https://stitchhub-production.up.railway.app").replace(/\/+$/, "");
+  return (process.env.DEFAULT_HUB_URL ?? "https://hub.stitchbench.app").replace(/\/+$/, "");
 }
 
 export async function hubJoined() {

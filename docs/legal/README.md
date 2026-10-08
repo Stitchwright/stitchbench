@@ -74,7 +74,7 @@ account is asked to accept it at its next sign-in on the hub, and before its nex
 | `[ADDRESS]` | The business's postal address for notices |
 | `[STATE OF GOVERNING LAW]` | The state whose law governs the Terms (usually the owner's home state) |
 | `[CONTACT EMAIL]` | One address for privacy, refunds and notices, read at least weekly (for example on the owner's domain, next to the billing mailbox decided in design 9.9) |
-| `[HUB ADDRESS]` | The hub's public address. Today `https://stitchhub-production.up.railway.app`; a domain of the owner's own is better before publishing, since the address is in every program's links |
+| `[HUB ADDRESS]` | The hub's public address. `https://hub.stitchbench.app` (since 8 Oct 2026; the old `https://stitchhub-production.up.railway.app` still reaches the same hub) |
 | `[VERSION DATE, YYYY-MM-DD]` | The version string, the day it comes into force |
 | `[OWNER: mail provider]` (Privacy 5.6, 7) | Who sends the hub's and hosted service's account and reset emails (`SMTP_URL`, `PLATFORM_SMTP_URL`) |
 
