@@ -107,7 +107,8 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
                 </label>
                 <input id="customerEmail" name="customerEmail" type="email" className="input" />
               </div>
-              {marketingGate !== "hidden" && <NotifyByField required={needNotify} name="notifyBy" />}
+              {/* Asked whenever the ready notice needs it (email or texts set up in the base), Marketing on or not. */}
+              {(marketingGate !== "hidden" || needNotify) && <NotifyByField required={needNotify} name="notifyBy" />}
               <div className="field">
                 <label htmlFor="viaAccountId" className="label">
                   {sewing ? "Came in through (quilt shop / dealer)" : "Came in through (dealer / partner shop)"}
