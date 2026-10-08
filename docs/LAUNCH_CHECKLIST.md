@@ -24,7 +24,7 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 **Day 1-2: review and deploy what's built** (you start it, Claude fixes)
 - [ ] Run the code review on `review-part2` (`git checkout review-part2`, then `/ultrareview`), and on the work since
       (Claude splits it to fit). Claude fixes the findings.
-- [ ] Push to main and deploy both hosted services (the commands are in the chat when it's time).
+- [x] Push to main and deploy both hosted services (the commands are in the chat when it's time).
 - [ ] Right after that deploy, at the PC's terminal (not over Remote Control), one read-only count for review item L6
       (prints three numbers per service; send them to Claude; if every "with no company" is 0 the fix isn't needed):
       `railway ssh -p 10264d2c-c4d5-4f20-9604-4f72c672005b -e production -s stitchbench -- node scripts/hosted/count-unassigned-market.mjs`
@@ -46,12 +46,12 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 - [ ] Keep `LIVE = false` (search engines stay out) until the test month is done.
 
 **Day 4-5: the hub goes live with accounts** (together, an evening; step by step in `docs/HUB_DAY.md`)
-- [ ] Email for the hub's account mail: a sending address (`MAIL_FROM`) and a mail service (`SMTP_URL`; a Gmail app
+- [x] Email for the hub's account mail: a sending address (`MAIL_FROM`) and a mail service (`SMTP_URL`; a Gmail app
       password works to start, a service like Postmark or Resend is better for delivery).
-- [ ] Point **hub.stitchbench.app** at the hub on Railway (`HUB_URL`).
-- [ ] Generate the hub's signing key (Claude runs it and writes the private half to a file in your Documents, never
+- [x] Point **hub.stitchbench.app** at the hub on Railway (`HUB_URL`).
+- [x] Generate the hub's signing key (Claude runs it and writes the private half to a file in your Documents, never
       into chat); you paste it into the hub's Railway variables; Claude adds the public line to the programs.
-- [ ] Release both programs with that public key line, then merge and deploy the hub branch.
+- [x] Release both programs with that public key line, then merge and deploy the hub branch.
 - [ ] Comp every shop already on the hub (the hub's admin page), so nobody gets a surprise when billing opens.
 - [ ] Any time before 1 December: apply the Railway config (two commands, in `docs/HANDOFF.md` item 14).
 
