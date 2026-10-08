@@ -227,6 +227,8 @@ test("both modules switched off: locks, read-only pages, a held message, the ros
   await page.goto("/messages");
   await expect(page.getByText(/Waiting|held/i).first()).toBeVisible();
 
+  // The class and its student come from the sign-up test, which skips itself after 10 pm Eastern (time of day only).
+  test.skip(!classId && nyHour >= 22, "the roster, export and unsubscribe need the class from the sign-up test: run before 10 pm Eastern");
   // Records still print and export.
   await page.goto(`/classes/${classId}/roster`);
   await expect(page.getByRole("button", { name: "Print or save PDF" })).toBeVisible();
