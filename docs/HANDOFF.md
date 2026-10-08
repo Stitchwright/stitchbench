@@ -1006,6 +1006,9 @@ Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in d
   installers built by the GitHub run of 8 Oct (workflow_dispatch, artifacts).
 - Left: comp the existing hub shops (/admin); the L6 marketplace count (needs `railway ssh`; find another way);
   Railway config before 1 Dec; Stripe day.
+- Owner decided 8 Oct: the Windows installers are code-signed **before the official release** (Azure Artifact
+  Signing, steps in docs/CODE_SIGNING.md, already on docs/LAUNCH_CHECKLIST.md). Until then hosted first, and
+  in-person installs click through the warning.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
