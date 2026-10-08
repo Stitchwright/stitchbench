@@ -12,11 +12,11 @@ Pick one:
 - **Quick start: Gmail.** In the bwattendorfdev Google account: Security → 2-Step Verification on → App passwords →
   make one named "StitchHub". Hub variables (Railway → stitchhub project → stitchhub service → Variables):
   `SMTP_URL` = `smtps://bwattendorfdev%40gmail.com:<the 16-letter app password, no spaces>@smtp.gmail.com:465`,
-  `MAIL_FROM` = `StitchHub <bwattendorfdev@gmail.com>`.
+  `MAIL_FROM` = `bwattendorfdev@gmail.com` (the bare address: the hub refuses a "Name <address>" form and adds its own name).
 - **Better: Resend (free, 3,000 mails a month), sending as noreply@stitchbench.app.** Sign up at resend.com, add the
   domain stitchbench.app; Resend lists 3 or 4 DNS records: add each in Cloudflare (stitchbench.app → DNS → Add record,
   DNS only, grey cloud). When Resend says Verified, make an API key, then: `SMTP_URL` =
-  `smtps://resend:<API key>@smtp.resend.com:465`, `MAIL_FROM` = `StitchHub <noreply@stitchbench.app>`.
+  `smtps://resend:<API key>@smtp.resend.com:465`, `MAIL_FROM` = `noreply@stitchbench.app` (the bare address).
 
 Never paste the password or key into chat: type it straight into Railway.
 
