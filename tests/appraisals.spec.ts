@@ -19,7 +19,7 @@ test("appraise a quilt and print its certificate", async ({ page }) => {
   await page.getByLabel("Length (inches)").fill("90");
   await page.getByLabel("Value ($)").fill("1200");
   await page.getByRole("button", { name: "Start the appraisal" }).click();
-  await expect(page.getByRole("heading", { name: new RegExp(`Appraisal #\d+: Flower Garden ${RUN}`) })).toBeVisible();
+  await expect(page.getByRole("heading", { name: new RegExp(`Appraisal #\\d+: Flower Garden ${RUN}`) })).toBeVisible();
   await page.getByLabel("Paid by").selectOption("CARD");
   await page.getByRole("button", { name: "Issue the certificate" }).click();
   await expect(page.getByRole("link", { name: "Print the certificate" })).toBeVisible();

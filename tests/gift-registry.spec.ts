@@ -24,7 +24,7 @@ test("a wish list bought from at the register", async ({ page }) => {
   await page.goto("/register");
   await page.getByRole("button", { name: "Gift lists" }).click();
   await page.getByLabel("Whose list? Her name").fill(`Wish${RUN}`);
-  await page.getByRole("button", { name: "Find" }).click();
+  await page.getByRole("button", { name: "Find", exact: true }).click();
   await page.locator('[aria-label="Gift lists"]').getByRole("button", { name: "Add", exact: true }).first().click();
   await expect(page.getByText(`gift: Birthday ${RUN}`)).toBeVisible();
   await page.getByRole("button", { name: "Cash", exact: true }).click();

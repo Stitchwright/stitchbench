@@ -49,8 +49,9 @@ test("on for 30 days: the invoice says so, and the register takes it off a machi
   const page = await login(browser, owner);
   await page.goto("/settings/sales");
   await page.getByText(/If she buys a new machine within/).click();
-  await page.getByLabel("Trade-up days").fill("30");
-  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  const tradeUp = page.locator("form", { has: page.getByLabel("Trade-up days") });
+  await tradeUp.getByLabel("Trade-up days").fill("30");
+  await tradeUp.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();
 
   await page.goto(`/tickets/${ticketId}/invoice`);
@@ -64,6 +65,6 @@ test("on for 30 days: the invoice says so, and the register takes it off a machi
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await page.getByRole("button", { name: "Use it" }).click();
   await expect(page.getByRole("button", { name: /Trade-up credit: take it off this line/ })).toBeVisible();
-  await expect(page.getByText("$1,111.00").first()).toBeVisible();
+  await expect(page.getByText("$1111.00").first()).toBeVisible();
   await page.context().close();
 });

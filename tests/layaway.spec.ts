@@ -96,7 +96,8 @@ test("start a layaway at the register: a machine and an item held, a $100 deposi
   await page.locator("#ru-serials").fill(serial);
   await page.locator("#ru-price").fill("500.00");
   await page.getByRole("button", { name: "Add to stock", exact: true }).click();
-  await expect(page.getByRole("link", { name: `${brand} ${model}`, exact: true })).toBeVisible();
+  // One machine added opens its page.
+  await expect(page.getByRole("heading", { name: `${brand} ${model}`, exact: true })).toBeVisible();
 
   await page.goto("/register");
   await pickCustomer(page, who);

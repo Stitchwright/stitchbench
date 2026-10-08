@@ -13,8 +13,9 @@ test("set a minimum advertised price and see it online", async ({ page }) => {
   try {
     await signIn(page, OWNER);
     await page.goto(`/parts/${part.id}`);
-    await page.getByLabel("The maker's minimum advertised price ($)").fill("49.99");
-    await page.getByRole("button", { name: "Save" }).last().click();
+    const mapBox = page.locator("form", { has: page.getByLabel("The maker's minimum advertised price ($)") });
+    await mapBox.getByLabel("The maker's minimum advertised price ($)").fill("49.99");
+    await mapBox.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Below the minimum")).toBeVisible();
 
     const shop = await one<{ bookingSlug: string | null; shopOn: boolean }>(`SELECT "bookingSlug", "shopOn" FROM "Shop" WHERE id = $1`, [owner.shopId]);

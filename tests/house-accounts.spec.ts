@@ -15,6 +15,7 @@ test("a sale on account, a payment, the statement", async ({ page }) => {
     await signIn(page, OWNER);
     await page.goto("/paperwork/accounts");
     await page.getByRole("button", { name: "Turn on house accounts" }).click();
+    await expect(page.getByRole("button", { name: "Turn on house accounts" })).toHaveCount(0);
     await page.goto(`/customers/${cust.id}`);
     await page.getByText("Let her buy now and pay from a monthly statement").click();
     await page.getByLabel("Limit ($, blank for none)").fill("500");

@@ -47,7 +47,7 @@ test("one store: nothing about stores but the way to add one", async ({ browser 
   const page = await login(browser, owner);
   await page.goto("/register");
   await expect(page.getByTestId("store-switch")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Today" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Today", exact: true })).toHaveCount(0);
   await page.goto("/settings");
   await expect(page.getByText("One store.")).toBeVisible();
   await page.getByRole("link", { name: "Opening another store? Add it here" }).click();
@@ -67,7 +67,7 @@ test("the owner adds Florida; the menu says which store this computer is at", as
   await expect(page.getByRole("heading", { name: "Boston (main store)" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Florida" })).toBeVisible();
   await expect(page.getByLabel("This computer is at")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Today" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Today", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Between stores" })).toBeVisible();
   const rows = await sql<{ name: string; main: boolean }>(`SELECT name, main FROM "Location" WHERE "shopId" = $1 ORDER BY "sortOrder"`, [shopId]);
   expect(rows).toEqual([

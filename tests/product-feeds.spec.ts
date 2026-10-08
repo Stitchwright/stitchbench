@@ -52,11 +52,12 @@ test("the owner scans a barcode, switches the feeds on and reads the links; swit
 
   // The barcode on the item's page; a wrong one is explained.
   await page.goto(`/parts/${partId}`);
+  const itemForm = page.locator("form", { has: page.getByLabel("Barcode (UPC or EAN, for Google and Facebook)") });
   await page.getByLabel("Barcode (UPC or EAN, for Google and Facebook)").fill("012345678901");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await itemForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(/last digit doesn't add up/)).toBeVisible();
   await page.getByLabel("Barcode (UPC or EAN, for Google and Facebook)").fill("0 12345 67890 5");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await itemForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(async () => (await sql<{ gtin: string }>(`SELECT gtin FROM "Part" WHERE id = $1`, [partId]))[0].gtin).toBe("012345678905");
 
   await page.goto("/settings/shop");

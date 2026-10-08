@@ -16,8 +16,9 @@ test("a listed machine waits for the take-down tick; commissions show it", async
   await signIn(page, OWNER);
   await page.goto(`/units/${unit.id}`);
   await page.getByText("Listed on eBay, Etsy or Marketplace too?").click();
-  await page.getByLabel("eBay").check();
-  await page.getByRole("button", { name: "Save" }).first().click();
+  const listed = page.locator("form", { has: page.getByRole("checkbox", { name: "eBay" }) });
+  await listed.getByRole("checkbox", { name: "eBay" }).check();
+  await listed.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("For sale on eBay too.")).toBeVisible();
 
   await page.goto("/register");
