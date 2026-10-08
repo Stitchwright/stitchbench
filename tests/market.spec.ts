@@ -76,7 +76,8 @@ test("cross-reference and marketplace", async ({ page }) => {
   await expect(page.getByText("Rolled back").first()).toBeVisible();
   await page.goto(xrefUrl);
   await expect(page.getByRole("link", { name: "Baby Lock BMP8" })).toHaveCount(0);
-  await page.goto("/models/Brother/PE770");
+  // The whole list: the model page shows the first 25, and every earlier run left a test screw that fits.
+  await page.goto("/models/Brother/PE770/parts");
   await expect(page.getByRole("link", { name: `Test screw ${run}` })).toBeVisible();
 
   // ---- selling: list it, member B orders, accept, paid, ship ----
