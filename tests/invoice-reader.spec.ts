@@ -6,6 +6,7 @@
 import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { OWNER, RUN, disconnect, insert, login, newId, sql } from "./helpers";
+import { assistantOn } from "./helpers/assistant";
 
 test.describe.configure({ mode: "serial" });
 
@@ -28,6 +29,7 @@ test.beforeAll(async ({ browser }) => {
   shopId = (await sql<{ id: string }>(`SELECT id FROM "Shop" WHERE name = $1`, [company]))[0].id;
   await admin.context().close();
   await sql(`UPDATE "Shop" SET "sellsRetail" = true WHERE id = $1`, [shopId]);
+  await assistantOn(shopId);
   const partId = newId();
   await insert("Part", { id: partId, shopId, partNumber: "ISA-0015", description: "Isacord white", qtyOnHand: 0, priceCents: 900, costCents: 410, altNumbers: [], numberKeys: ["ISA0015"], kind: "THREAD", supplier: "Notions Marketing" });
   const supplierId = newId();

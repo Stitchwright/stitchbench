@@ -28,9 +28,9 @@ test.afterAll(async () => {
 test("Settings → Care tips: the starters, and remove with Undo", async ({ page }) => {
   await signIn(page, OWNER);
   await page.goto("/settings/care-tips");
-  const sewing = page.locator("section").filter({ has: page.getByRole("heading", { name: "For a sewing machine" }) });
+  const sewing = page.locator("section").filter({ has: page.getByRole("heading", { name: "For a machine" }) });
   await sewing.getByRole("button", { name: "Add the starter tips" }).click();
-  const list = page.getByLabel("Care tips for a sewing machine");
+  const list = page.getByLabel("Care tips for a machine");
   await expect(list).toContainText("Change the needle every 8 hours of sewing");
   await list.getByRole("listitem").first().getByRole("button", { name: "Remove" }).click();
   await expect(list).not.toContainText("Change the needle every 8 hours of sewing");
@@ -50,7 +50,7 @@ test("a ready ticket: draft the pickup sheet, save it, and it prints with the in
   await page.goto(`/tickets/${ticketId}/invoice`);
   await expect(page.getByText("What we did")).toBeVisible();
   await expect(page.getByText("We cleaned, oiled and retimed your machine.")).toBeVisible();
-  await expect(page.getByText("Caring for your sewing machine")).toBeVisible();
+  await expect(page.getByText("Caring for your machine")).toBeVisible();
   await expect(page.getByText("Change the needle every 8 hours of sewing, or when you start a new project.")).toBeVisible();
 });
 
