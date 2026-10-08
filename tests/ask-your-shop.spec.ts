@@ -16,7 +16,8 @@ test.beforeAll(async () => {
   await assistantOff(shopId);
   await sql(`UPDATE "Shop" SET "sellsRetail" = true WHERE id = $1`, [shopId]);
   const part = await insert<{ id: string }>("Part", { shopId, partNumber: `SPN-${RUN}`, description: fabric, kind: "FABRIC", unit: "yd", qtyOnHand: 10, priceCents: 1200, collection: "Kona Solids", numberKeys: [`SPN${RUN}`] });
-  const n = (await one<{ n: number }>(`SELECT COALESCE(MAX(number), 0)::int AS n FROM "Sale" WHERE "shopId" = $1`, [shopId]))!.n + 1;
+  // The shop's own counter hands the number out, so the register's next sale doesn't collide with this one.
+  const n = (await one<{ n: number }>(`UPDATE "Shop" SET "nextSaleNumber" = "nextSaleNumber" + 1 WHERE id = $1 RETURNING ("nextSaleNumber" - 1)::int AS n`, [shopId]))!.n;
   const sale = await insert<{ id: string }>("Sale", { shopId, number: n, subtotalCents: 360000, taxCents: 0, totalCents: 360000, taxRatePct: 0, tenders: JSON.stringify([{ method: "CASH", amountCents: 360000 }]) });
   await insert("SaleLine", { saleId: sale.id, partId: part.id, description: fabric, qty: 300, unit: "yd", unitPriceCents: 1200, kind: "FABRIC" });
 });
