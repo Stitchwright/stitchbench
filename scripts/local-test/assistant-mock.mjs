@@ -24,6 +24,11 @@ const answer = (rec) => {
   if (rec.system.startsWith("You turn a fabric shop's own numbers")) return JSON.stringify({ lines: [...rec.userText.matchAll(/\[(c\d+)\]/g)].map((m) => ({ ref: m[1], text: `In words: card ${m[1]}.` })) });
   if (rec.system.startsWith("You sort a customer's question")) return /open|hours/i.test(rec.userText) ? '{"topic":"hours","ticket":null}' : '{"topic":"person","ticket":null}';
   if (rec.system.startsWith("You look at photos of a used machine")) return "Light scratches on the bed, bobbin cover missing.";
+  // The packing-slip reader (tests/invoice-reader.spec.ts): the order's line at a higher cost, and one not on the order.
+  if (rec.system.startsWith("You read one page of a supplier's packing slip"))
+    return JSON.stringify({ lines: [{ itemNumber: "ISA-0015", description: "Isacord white", qty: 10, unitCost: 4.5 }, { itemNumber: "ISA-0020", description: "Isacord black", qty: 2, unitCost: 4.1 }], supplier: "Notions Marketing" });
+  // Thread match from a photo (tests/thread-photo.spec.ts).
+  if (rec.system.startsWith("You look at a photo of sewing thread")) return '{"colors":[{"hex":"#1f2f5c","name":"navy","where":"the thread"}]}';
   // Quilt from stock: the first fabric on the list for every part asked.
   if (rec.system.startsWith("You help a quilt shop pick")) {
     const roles = [...rec.userText.matchAll(/^- (.+): needs /gm)].map((m) => m[1]);

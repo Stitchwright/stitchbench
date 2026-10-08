@@ -30,22 +30,23 @@ test("without the Assistant: no Ask box on Reports", async ({ page }) => {
   await signIn(page, OWNER);
   await page.goto("/reports");
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
-  await expect(page.getByLabel("Ask your shop")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Ask your shop" })).toHaveCount(0);
 });
 
 test("ask a question: the program's report, worded, with Open this report", async ({ page }) => {
   await assistantOn(shopId);
   await signIn(page, OWNER);
   await page.goto("/reports");
-  await page.getByLabel("Ask your shop").fill("Which Kona sold best since spring?");
+  await page.getByRole("textbox", { name: "Ask your shop" }).fill("Which Kona sold best since spring?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   const answer = page.locator("[data-ask-answer]");
   await expect(answer).toContainText("The best seller was", { timeout: 60_000 });
   await expect(answer.getByRole("cell", { name: new RegExp(fabric) })).toBeVisible();
-  await expect(answer.getByRole("cell", { name: "$3,600.00" })).toBeVisible();
+  // Its own row (an earlier run's fabric can be on the list too); money() has no thousands commas.
+  await expect(answer.getByRole("row", { name: new RegExp(fabric) }).getByRole("cell", { name: "$3600.00" })).toBeVisible();
   await expect(answer.getByRole("link", { name: "Open this report" })).toHaveAttribute("href", "/fabric?tab=sells");
 
-  await page.getByLabel("Ask your shop").fill("How many unicorns came in?");
+  await page.getByRole("textbox", { name: "Ask your shop" }).fill("How many unicorns came in?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   await expect(answer).toContainText("I can't answer that from your reports yet", { timeout: 60_000 });
   await expect(answer).toContainText("Best sellers");
@@ -56,7 +57,7 @@ test("the switch off in Settings → Assistant: the box goes", async ({ page }) 
   await signIn(page, OWNER);
   await page.goto("/reports");
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
-  await expect(page.getByLabel("Ask your shop")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Ask your shop" })).toHaveCount(0);
   await sql(`DELETE FROM "AssistantSettings" WHERE "shopId" = $1`, [shopId]);
 });
 
