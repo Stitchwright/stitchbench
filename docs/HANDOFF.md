@@ -986,6 +986,11 @@ stores and pay-link specs need updating for the join code and the new Pay flow).
 start Docker, migrate the `stitchbench` dev DB, restart the test hub (now round-2 code), STITCH_TEST_BUILD=1 build in
 the foreground, run every spec one at a time (:3300 set, then the :3501 mail/text/Stripe set, then assistant with the
 Anthropic stand-in), fix, then the owner merges both to main. Stripe day needs 14 new prices (add-ons, bundle, stores).
+7-8 Oct night: the whole regression is green (a263760..56ae280): groups A (:3300, 58 specs), B (:3501 mail/text/Stripe,
+13 runs), C (9 AI specs with the stand-in), D (card reader, Shippo: scripts/local-test/.run/devices_run.sh). Four app
+bugs fixed on the way (missing spaces before JSX entities in 42 places with a scanning unit test; tax-holiday Undo; the
+back-order form; check-in blocked when messaging was set up without Marketing). Left: calendar's 4th test (after 9 pm
+Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in daytime before the merge.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
