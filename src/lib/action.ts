@@ -48,13 +48,17 @@ const isShownOnce = (v: unknown): v is ShownOnce => typeof v === "object" && v !
  */
 export function safe<A extends unknown[]>(fn: (...args: A) => Promise<unknown>, opts: { whileLapsed?: WhileLapsed } = {}) {
   return async (...args: A): Promise<ActionResult> => {
+    let user: Awaited<ReturnType<typeof actingUser>> = null;
     try {
-      const user = await actingUser();
+      user = await actingUser();
       if (!opts.whileLapsed) await lapseGuard(user);
       const out = await asCompany(user?.shopId, () => fn(...args));
       return isShownOnce(out) ? { ok: true, shown: out[SHOWN] } : isNoted(out) ? { ok: true, note: out[NOTED] } : { ok: true };
     } catch (e) {
       if (isUserError(e)) return { error: e.message };
+      // Anything else is a fault in the program: kept for the hub's error alerts (help-feedback-design.md 2), then thrown
+      // as before. Loaded only when it happens (check scripts import this file outside Next).
+      if (user) await import("@/lib/help").then((h) => h.recordActionError(user!, fn.name, e)).catch(() => {});
       throw e;
     }
   };

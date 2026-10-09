@@ -57,6 +57,9 @@ export const WHILE_LAPSED = [
   "deleteCustomer",
   "withdrawTextConsent",
   "markReplyHandled",
+  // The Help button and the error alerts (help-feedback-design.md): a read-only shop needs help most
+  "sendHelp",
+  "reportBrowserError",
   // Hub sync and the connection itself
   "syncCommunityHub",
   "joinCommunityHub",

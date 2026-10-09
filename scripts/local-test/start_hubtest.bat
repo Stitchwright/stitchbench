@@ -10,4 +10,6 @@ set PORT=3300
 set PLATFORM_ADMIN_EMAILS=bwattendorf@gmail.com,e2e@stitchbench.test
 set PARTNER_SYNC_SECONDS=20
 set FETCH_ALLOW_HOSTS=localhost:3400
+rem tests/help.spec.ts: /api/help/test-error throws a test error (404 without this)
+set HELP_TEST_ERRORS=1
 call npx next start -p 3300 > "%S%.run\app3300.log" 2>&1

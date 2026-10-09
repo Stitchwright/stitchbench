@@ -297,6 +297,7 @@ model Shop {
   consignSales      ConsignSale[]
   settlements       Settlement[]
   outbox            PartnerOutbox[]
+  helpOutbox        HelpOutbox[]
   giftCards         GiftCard[]
   books             BooksSettings?
   offsite           OffsiteSettings?
@@ -1839,6 +1840,29 @@ model PartnerOutbox {
   @@index([shopId, linkId, sentAt])
 }
 
+// What the Help button sent (help, idea, rating) and the errors the program noticed, waiting for the hub
+// (help-feedback-design.md section 3). Sent by the background sync; kept 30 days after sentAt; the picture goes once sent.
+model HelpOutbox {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind        String // help | idea | rating | error
+  // Everything but the picture: the words, stars, reply address, page, program, version, and an error's message and stack
+  payload     Json
+  picture     Bytes? // JPEG of the screen, when the person left it in
+  // Errors only: the same error on the same day is one row with a count (null for the other kinds)
+  fingerprint String?
+  day         String? // YYYY-MM-DD
+  count       Int       @default(1)
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  tries       Int       @default(0) // refusals by the hub (a 4xx other than 429); given up after 5
+  lastError   String?
+
+  @@unique([shopId, kind, fingerprint, day])
+  @@index([sentAt, createdAt])
+}
+
 // A machine a sewing shop took in for its partner repair shop. Same id on both sides: the sewing shop's copy keeps
 // its customer; the repair shop's copy points at the ticket it opened.
 model RepairJob {
@@ -2467,6 +2491,7 @@ model MessagingSettings {
   postalAddress      String?
   tzConfirmedAt      DateTime? // an admin confirmed Shop.timeZone (needed before any text goes out)
   tzConfirmedBy      String?
+  smsRegisteredAt    DateTime? // an admin ticked "We've registered" (10DLC or toll-free): the registration guide shrinks to one line
   quietStart         Int       @default(540) // 9:00, minutes after midnight, shop time
   quietEnd           Int       @default(1200) // 20:00
   noSundayMarketing  Boolean   @default(true)

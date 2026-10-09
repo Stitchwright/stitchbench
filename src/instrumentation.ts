@@ -1,3 +1,17 @@
+import type { Instrumentation } from "next";
+
+/**
+ * A page or route that failed on the server: its message and stack are remembered by digest for a few minutes, so when
+ * the page's error screen reports the digest (production browsers get nothing more) the error alert carries the real
+ * message (help-feedback-design.md 2). Server actions record their own errors in safe().
+ */
+export const onRequestError: Instrumentation.onRequestError = async (err, _request, context) => {
+  if (process.env.NEXT_RUNTIME !== "nodejs" || context.routeType !== "render") return;
+  const e = err as { digest?: string; message?: string; stack?: string };
+  const { rememberDigest } = await import("@/lib/help");
+  rememberDigest(e.digest, e);
+};
+
 // Runs once when the StitchBench server starts: keep this install in sync with the community hub, and (more often)
 // with its partner shops, whose repair status and orders people are waiting on; and send the messages that are due.
 export async function register() {

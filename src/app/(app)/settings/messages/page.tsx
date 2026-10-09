@@ -17,7 +17,7 @@ import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { ChannelStatusLine, channelStatus, MessagingTabs } from "@/components/messaging-tabs";
 import { EmailSettingsForm, LOCAL_ONLY_MESSAGE, TestSendForm, TextSettingsForm } from "@/components/messaging-settings-forms";
-import { addTestPhone, confirmTestPhone, confirmTimeZone, removeTestPhone } from "@/actions/messaging";
+import { addTestPhone, confirmTestPhone, confirmTimeZone, removeTestPhone, setSmsRegistered } from "@/actions/messaging";
 
 type Shop = { name: string; phone: string | null; address: string | null; email: string | null; timeZone: string };
 
@@ -116,6 +116,69 @@ function Registering({ ms, shop }: { ms: MessagingView; shop: Shop }) {
         </p>
       </div>
     </details>
+  );
+}
+
+/**
+ * Texting registration guide (help-feedback-design.md section 5): US carriers drop texts from unregistered business
+ * numbers, so the steps are shown until an admin ticks "We've registered"; then it is one line.
+ */
+function RegisterFirst({ ms, timeZone, canEdit }: { ms: MessagingView; timeZone: string; canEdit: boolean }) {
+  if (ms.smsRegisteredAt) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 text-sm" data-testid="sms-registered">
+        <span>
+          Registered for business texting (ticked {fmtDate(ms.smsRegisteredAt, timeZone)}).
+        </span>
+        {canEdit && (
+          <ActionForm action={setSmsRegistered} success="Saved">
+            <input type="hidden" name="registered" value="no" />
+            <Submit className="btn btn-sm">Not yet? Show the steps</Submit>
+          </ActionForm>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="rounded border-2 p-4 text-base" style={{ borderColor: "var(--thread)" }} data-testid="sms-register-guide">
+      <h3 className="mb-2 text-lg font-semibold">Before sending texts to customers</h3>
+      <p>
+        US carriers block texts from businesses that aren&apos;t registered. In your Twilio account, register for 10DLC (A2P) or verify a toll-free number;
+        it takes a few days.
+      </p>
+      <ol className="mt-3 list-decimal space-y-2 pl-6">
+        <li>
+          Sign in to your Twilio account at{" "}
+          <a className="link" href="https://console.twilio.com" target="_blank" rel="noopener noreferrer">
+            console.twilio.com
+          </a>
+          .
+        </li>
+        <li>
+          A local number (most shops): register for A2P 10DLC. Twilio asks for your business details first (the &quot;brand&quot;), then what you text
+          customers about (the &quot;campaign&quot;).{" "}
+          <a className="link" href="https://www.twilio.com/docs/messaging/compliance/a2p-10dlc" target="_blank" rel="noopener noreferrer">
+            Twilio&apos;s 10DLC steps
+          </a>
+        </li>
+        <li>
+          A toll-free number (800, 888 and the like): ask Twilio to verify it instead.{" "}
+          <a className="link" href="https://www.twilio.com/docs/messaging/compliance/toll-free/console-onboarding" target="_blank" rel="noopener noreferrer">
+            Twilio&apos;s toll-free steps
+          </a>
+        </li>
+        <li>Twilio asks how customers agree to texts and for sample messages: copy them from &quot;Registering your number&quot; further down this page.</li>
+        <li>When Twilio emails that it&apos;s approved, come back here and tick below.</li>
+      </ol>
+      {canEdit ? (
+        <ActionForm action={setSmsRegistered} success="Saved" className="mt-4">
+          <input type="hidden" name="registered" value="yes" />
+          <Submit className="btn btn-lg">&#10003; We&apos;ve registered</Submit>
+        </ActionForm>
+      ) : (
+        <p className="muted mt-3 text-sm">The shop owner or an admin ticks this once Twilio has approved it.</p>
+      )}
+    </div>
   );
 }
 
@@ -233,6 +296,7 @@ export default async function MessagesSetupPage() {
         <div className="space-y-4">
           <ChannelStatusLine status={smsStatus} />
           <p className="muted text-sm">Texts go out from your Twilio number. Make a Twilio account, buy a number, register it for business texting, and enter the account details here.</p>
+          <RegisterFirst ms={ms} timeZone={shop.timeZone} canEdit={canEdit} />
           <TimeZoneCheck ms={ms} shop={shop} canEdit={canEdit} />
           {canEdit ? (
             <TextSettingsForm

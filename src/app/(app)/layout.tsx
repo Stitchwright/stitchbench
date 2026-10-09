@@ -21,6 +21,8 @@ import { AppHeader } from "@/components/app-header";
 import { HubResetPrompt } from "@/components/hub-reset-prompt";
 import { activeStores, currentStore } from "@/lib/stores";
 import { StoreSwitch } from "@/components/store-switch";
+import { HelpButton } from "@/components/help-button";
+import { validEmail } from "@/lib/phone";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -152,7 +154,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
         </AppHeader>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-8">
+      <main className="min-w-0 flex-1 px-4 pt-5 pb-24 md:px-8 md:pt-8">
         {modules.moving ? (
           <MovingBar
             to={modules.moving.to}
@@ -170,6 +172,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
       {/* The Windows program's own window only: a password reset the owner asked for on their StitchHub account. */}
       <HubResetPrompt />
+      {/* Help, ideas and ratings (help-feedback-design.md 1); HELP_EMAIL, when set, is offered for anything urgent while
+          the install isn't on a hub yet. */}
+      <HelpButton program={appName()} email={user.email} connected={Boolean(hub?.installKey)} helpEmail={validEmail(process.env.HELP_EMAIL)} />
     </div>
   );
 }
