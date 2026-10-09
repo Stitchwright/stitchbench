@@ -66,6 +66,7 @@ export const MESSAGING_DEFAULTS: Omit<MessagingSettings, "shopId" | "updatedAt">
   postalAddress: null,
   tzConfirmedAt: null,
   tzConfirmedBy: null,
+  smsRegisteredAt: null,
   quietStart: 540,
   quietEnd: 1200,
   noSundayMarketing: true,

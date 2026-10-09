@@ -280,6 +280,13 @@ export const confirmTimeZone = safe(async function confirmTimeZone(fd: FormData)
   afterSave();
 });
 
+/** "We've registered" for business texting (10DLC or toll-free), or undone: the registration guide shrinks to one line. */
+export const setSmsRegistered = safe(async function setSmsRegistered(fd: FormData) {
+  const user = await admin();
+  await upsertSettings(user.shopId, { smsRegisteredAt: fd.get("registered") === "yes" ? new Date() : null });
+  afterSave();
+});
+
 type ConsentHistory = { code: string; text: string; from: string | null; to: string };
 
 export const saveMessageRules = safe(async function saveMessageRules(fd: FormData) {

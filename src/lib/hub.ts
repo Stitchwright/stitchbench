@@ -1034,6 +1034,11 @@ async function doSync(): Promise<SyncResult> {
     // Opted-in companies on the Windows program fetch the password resets their owner asked for on the hub (shown only
     // in the program's own window). Never stops the sync.
     await pullResetGrants(run).catch((e) => console.error("community hub: reset grants:", e instanceof Error ? e.message : e));
+    // What the Help button and the error alerts kept (help-feedback-design.md 3), whatever the install's scope. Never
+    // stops the sync; what didn't go waits for the next one.
+    await import("@/lib/help")
+      .then((m) => m.pushHelp())
+      .catch((e) => console.error("community hub: help items:", e instanceof Error ? e.message : e));
     // On the hub for partner shops only, or waiting for the account's email: nothing of the community's to sync.
     if (scope !== "member") {
       await writeState(run, { lastSyncAt: new Date(), lastError: null });
