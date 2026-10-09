@@ -53,7 +53,7 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 - [x] Generate the hub's signing key (Claude runs it and writes the private half to a file in your Documents, never
       into chat); you paste it into the hub's Railway variables; Claude adds the public line to the programs.
 - [x] Release both programs with that public key line, then merge and deploy the hub branch.
-- [ ] Comp every shop already on the hub (the hub's admin page), so nobody gets a surprise when billing opens.
+- [x] (Done 9 Oct 2026: only the owner's own shops were on the hub.) Comp every shop already on the hub (the hub's admin page), so nobody gets a surprise when billing opens.
 - [ ] Any time before 1 December: apply the Railway config (two commands, in `docs/HANDOFF.md` item 14).
 
 ## Week 2: ready for test shops and money
