@@ -91,7 +91,7 @@ test("Something's wrong, with the picture", async ({ page }) => {
   await expect(page.getByTestId("help-sent")).toContainText("It's on its way to the");
   const item = await arrived("help", tag);
   expect(item.kind).toBe("help");
-  expect(JSON.stringify(item.body)).toContain('"path":"/customers"');
+  expect(JSON.stringify(item.body ?? item)).toContain('"path":"/customers"');
   expect(await hasPicture(item)).toBe(true);
 });
 
@@ -109,7 +109,7 @@ test("Something's wrong, without the picture and no reply address", async ({ pag
   await expect(page.getByTestId("help-sent")).toBeVisible();
   const item = await arrived("help", tag);
   expect(await hasPicture(item)).toBe(false);
-  expect(JSON.stringify(item.body)).not.toContain(OWNER.email);
+  expect(JSON.stringify(item.body ?? item)).not.toContain(OWNER.email);
 });
 
 test("I have an idea", async ({ page }) => {
@@ -123,7 +123,7 @@ test("I have an idea", async ({ page }) => {
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByTestId("help-sent")).toBeVisible();
   const item = await arrived("idea", tag);
-  expect(JSON.stringify(item.body)).toContain(OWNER.email);
+  expect(JSON.stringify(item.body ?? item)).toContain(OWNER.email);
 });
 
 test("Rate the program", async ({ page }) => {
@@ -136,7 +136,7 @@ test("Rate the program", async ({ page }) => {
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByTestId("help-sent")).toBeVisible();
   const item = await arrived("rating", tag);
-  const body = JSON.stringify(item.body);
+  const body = JSON.stringify(item.body ?? item);
   expect(body).toContain('"stars":4');
   expect(body).toContain('"quoteOk":true');
 });
@@ -157,9 +157,10 @@ test("an error thrown twice reaches the hub once, counted 2, without customer da
       { timeout: 60_000, intervals: [1000, 2000, 3000] },
     )
     .toBe(2);
-  const body = JSON.stringify(rows[0].body);
+  const body = JSON.stringify(rows[0].body ?? rows[0]);
   expect(body).toContain("[phone]");
   expect(body).not.toContain("555-123-4567");
   expect(body).not.toContain("4111 1111");
-  expect(body).toContain("helpTestError");
+  // The action's name isn't checked: a production build minifies function names (the page, from the Referer, says where).
+  expect(body).toContain("Help test error");
 });

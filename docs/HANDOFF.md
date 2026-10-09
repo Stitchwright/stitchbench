@@ -1017,6 +1017,23 @@ Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in d
   container's SSH key (Docker volume `stitchbench-railway-ssh`) is registered on the account as "PC docker".
 - L6 closed as moot: both hosted services have 1 company, 0 listings, 0 market orders.
 
+## 2ao. 9 Oct 2026: Help button, ideas, ratings, error alerts; hub look (branches `help-feedback` in both repos, `hub-look` in StitchHub; not on main)
+
+- Design: `docs/plans/help-feedback-design.md`. Program: round Help button on every signed-in page (Something's wrong
+  with an optional screen picture, I have an idea, Rate the program), errors from safe() and the error pages recorded
+  (emails/phones/numbers stripped, one row per error per day with a count), `HelpOutbox` (migration
+  20261027000000_help_outbox, also `MessagingSettings.smsRegisteredAt`) sent by the sync; texting registration box in
+  Settings → Messages. Hub: `POST /v1/feedback`, migration 034, admin "Help & ideas", email to `FEEDBACK_EMAIL`
+  (set it on the hub's Railway service; unset = admin page only), error digest at most hourly.
+- Checked: tests/help.spec.ts 6 of 6 against the local hub and :3300; hub test/feedback.mjs, hops, terms pass; tsc,
+  eslint, migrate diff clean.
+- `hub-look` (StitchHub): one look for the public pages (src/look.mjs), home page rebuilt; terms, hops, takedown,
+  accounts tests pass. Not checked at phone width (Chrome wouldn't resize).
+- Restore drill (9 Oct): the 9 Oct 01:10 backup restored into a scratch database with every table count matching (one
+  extra AuditEntry, the restore's own); this PC's data is nearly empty, so repeat with a test shop's data.
+- To ship: merge `hub-look` and `help-feedback` into StitchHub main, `help-feedback` into StitchBench main, push (each
+  push deploys), set `FEEDBACK_EMAIL`, then new installers (1.7.1) for Windows.
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)
