@@ -54,6 +54,10 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
       into chat); you paste it into the hub's Railway variables; Claude adds the public line to the programs.
 - [x] Release both programs with that public key line, then merge and deploy the hub branch.
 - [x] (Done 9 Oct 2026: only the owner's own shops were on the hub.) Comp every shop already on the hub (the hub's admin page), so nobody gets a surprise when billing opens.
+- [ ] Uptime alerts (you, 10 min, free): make an account at uptimerobot.com, then **Add New Monitor** three times,
+      type HTTP(s), every 5 minutes, alert by email: `https://hub.stitchbench.app/health`,
+      `https://stitchshop-production.up.railway.app/api/health`, `https://stitchbench-production-e554.up.railway.app/api/health`.
+      You get an email when one stops answering and another when it's back.
 - [ ] Any time before 1 December: apply the Railway config (two commands, in `docs/HANDOFF.md` item 14).
 
 ## Week 2: ready for test shops and money
