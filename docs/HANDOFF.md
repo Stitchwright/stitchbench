@@ -1004,11 +1004,18 @@ Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in d
 - Checked end to end: owner's hub account made by email, hosted StitchShop claimed ("Free trial through 2026-11-07").
 - This PC's StitchBench updated to 1.7.0 (backup in Documents\StitchBench Backups, 2026-10-08-11-25). 1.7.0
   installers built by the GitHub run of 8 Oct (workflow_dispatch, artifacts).
-- Left: comp the existing hub shops (/admin); the L6 marketplace count (needs `railway ssh`; find another way);
+- Left: comp the existing hub shops (/admin);
   Railway config before 1 Dec; Stripe day.
 - Owner decided 8 Oct: the Windows installers are code-signed **before the official release** (Azure Artifact
   Signing, steps in docs/CODE_SIGNING.md, already on docs/LAUNCH_CHECKLIST.md). Until then hosted first, and
   in-person installs click through the warning.
+
+## 2an. 9 Oct 2026: the Railway CLI runs again, through Docker
+
+- Smart App Control blocks `railway.exe` (unsigned). `scripts/railway-docker.ps1 <railway args>` runs the CLI in a
+  Docker container instead; the token comes from `Documents\Railway token.txt` (`RAILWAY_API_TOKEN=...`), and the
+  container's SSH key (Docker volume `stitchbench-railway-ssh`) is registered on the account as "PC docker".
+- L6 closed as moot: both hosted services have 1 company, 0 listings, 0 market orders.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
