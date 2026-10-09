@@ -25,7 +25,8 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
 - [ ] Run the code review on `review-part2` (`git checkout review-part2`, then `/ultrareview`), and on the work since
       (Claude splits it to fit). Claude fixes the findings.
 - [x] Push to main and deploy both hosted services (the commands are in the chat when it's time).
-- [ ] Right after that deploy, at the PC's terminal (not over Remote Control), one read-only count for review item L6
+- [x] (Done 9 Oct 2026 through `scripts/railway-docker.ps1`: both services 1 company, 0 listings, 0 orders, so L6
+      is moot.) Right after that deploy, at the PC's terminal (not over Remote Control), one read-only count for review item L6
       (prints three numbers per service; send them to Claude; if every "with no company" is 0 the fix isn't needed):
       `railway ssh -p 10264d2c-c4d5-4f20-9604-4f72c672005b -e production -s stitchbench -- node scripts/hosted/count-unassigned-market.mjs`
       and the same with `-p 2426d0d0-b2af-4f64-bff8-1db1ee1305ae` and `-s stitchshop`.
