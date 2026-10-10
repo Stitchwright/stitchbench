@@ -2,6 +2,12 @@
 // scripts/release/publish-release.mjs (keep this file free of imports). Lines: short, warm, 90 characters at most.
 export const WHATS_NEW: { version: string; date: string; stitchbench: string[]; stitchshop: string[] }[] = [
   {
+    version: "1.7.2",
+    date: "2026-10-10",
+    stitchbench: ["A test of the one-button update (not a real release)."],
+    stitchshop: ["A test of the one-button update (not a real release)."],
+  },
+  {
     version: "1.7.1",
     date: "2026-10-10",
     stitchbench: [
