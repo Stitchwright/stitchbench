@@ -10,7 +10,7 @@ import { ActionForm, Submit } from "@/components/action-form";
 import { ListingCard } from "@/components/shop/listing-card";
 import { PatternYardage } from "@/components/pattern-yardage";
 import { PartFields } from "@/components/part-fields";
-import { addPartSource, moveStock, preferPartSource, removePartSource, updatePart } from "@/actions/parts";
+import { addPartSource, moveStock, preferPartSource, removePartSource, restorePartSource, updatePart } from "@/actions/parts";
 import { addPartToCrossRef } from "@/actions/xref";
 import { ActionButton } from "@/components/action-form";
 import { OfferPartForm } from "@/components/offer-part-form";
@@ -231,7 +231,7 @@ export default async function PartPage({ params, searchParams }: { params: Promi
                           Prefer
                         </ActionButton>
                       )}
-                      <ActionButton action={removePartSource.bind(null, p.id, s.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove supplier">
+                      <ActionButton action={removePartSource.bind(null, p.id, s.id)} undo={restorePartSource} className="btn btn-sm btn-danger" title="Remove supplier">
                         <Trash2 size={12} aria-label="Remove" />
                       </ActionButton>
                     </span>

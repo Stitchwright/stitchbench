@@ -39,7 +39,7 @@ import { claimLine } from "@/actions/warranty-claims";
 import { CLAIM_LABEL, ticketClaims } from "@/lib/warranty-claims";
 import { machinePlansFor } from "@/lib/units/plans";
 import { exemptCertificate } from "@/lib/tax-exempt";
-import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
+import { addLine, addPayment, setTicketTax, removeAccessory, removeLine, removePayment, restoreAccessory, restoreLine, restorePayment, saveAccessories, saveIntake, saveMeasurements, saveTension, saveTicketText } from "@/actions/tickets";
 import { saveNoteForShop } from "@/actions/repair-jobs";
 
 function inRange(v: number | null, min: number | null, max: number | null) {
@@ -492,7 +492,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                         <td className="num text-right">{money(lineTotal(l))}</td>
                         {canWork && (
                           <td className="no-print text-right">
-                            <ActionButton action={removeLine.bind(null, l.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove line">
+                            <ActionButton action={removeLine.bind(null, l.id)} undo={restoreLine} className="btn btn-sm btn-danger" title="Remove line">
                               <Trash2 size={12} aria-label="Remove" />
                             </ActionButton>
                           </td>
@@ -608,7 +608,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                     <span className="flex items-center gap-2">
                       <span className="num font-semibold">{money(p.amountCents)}</span>
                       {!p.reversesId && !reversed.has(p.id) && (
-                        <ActionButton action={removePayment.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove payment">
+                        <ActionButton action={removePayment.bind(null, p.id)} undo={restorePayment} className="btn btn-sm btn-danger" confirm={p.method === "GIFT" || p.method === "CREDIT" ? "Remove?" : undefined} title="Remove payment">
                           <Trash2 size={12} aria-label="Remove" />
                         </ActionButton>
                       )}
@@ -706,7 +706,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                           {a}
                         </label>
                         {canWork && (
-                          <ActionButton action={removeAccessory.bind(null, t.id, a)} className="btn btn-sm btn-danger" confirm="Remove?" title="Remove item">
+                          <ActionButton action={removeAccessory.bind(null, t.id, a)} undo={restoreAccessory} className="btn btn-sm btn-danger" title="Remove item">
                             <Trash2 size={12} aria-label="Remove" />
                           </ActionButton>
                         )}

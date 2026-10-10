@@ -3,14 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { isUserError, safe, UserError } from "@/lib/action";
+import { isUserError, safe, undoable, UserError } from "@/lib/action";
+import { stashUndo, takeUndo } from "@/lib/undo";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
 import { numberKey } from "@/lib/parts";
 import { withDisclosure } from "@/lib/part-labels";
 import { sameText } from "@/lib/input";
 import { lineTotal } from "@/lib/ticket-math";
 import { modelKey, money, str, ticketNo, toCents } from "@/lib/format";
-import { addPaymentFor, removePaymentFor } from "@/lib/payments";
+import { addPaymentFor, isCardPayment, removePaymentFor, restorePaymentFor } from "@/lib/payments";
 import { actorOf, audit } from "@/lib/audit";
 import type { LineKind, PaymentMethod, TicketStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -436,6 +437,25 @@ export const removeAccessory = safe(async function removeAccessory(ticketId: str
     },
   });
   refresh(ticketId);
+  // Where it stood in each list, and whether it had been handed back, so Undo puts it exactly there.
+  const at = t.accessories.indexOf(item);
+  if (at < 0) return;
+  return undoable("Item removed.", stashUndo(user, "accessory", { ticketId, item, at, returnedAt: t.accessoriesReturned.indexOf(item) }));
+});
+
+export const restoreAccessory = safe(async function restoreAccessory(token: string) {
+  const user = await requireUser();
+  const s = takeUndo<{ ticketId: string; item: string; at: number; returnedAt: number }>(user, "accessory", token);
+  const t = await ownTicket(user.shopId, s.ticketId, "work", user.role);
+  const put = (list: string[], at: number) => (list.includes(s.item) ? list : [...list.slice(0, at), s.item, ...list.slice(at)]);
+  await db.ticket.update({
+    where: { id: s.ticketId },
+    data: {
+      accessories: put(t.accessories, s.at),
+      ...(s.returnedAt >= 0 ? { accessoriesReturned: put(t.accessoriesReturned, s.returnedAt) } : {}),
+    },
+  });
+  refresh(s.ticketId);
 });
 
 // ---------- line items ----------
@@ -603,6 +623,48 @@ export const removeLine = safe(async function removeLine(lineId: string) {
     });
   }
   refresh(line.ticketId);
+  const { ticket, ...row } = line;
+  return undoable("Line removed.", stashUndo(user, "ticketline", { row, locationId: ticket.locationId }));
+});
+
+type LineSnapshot = {
+  id: string;
+  ticketId: string;
+  kind: LineKind;
+  description: string;
+  qty: number;
+  unitPriceCents: number;
+  taxable: boolean;
+  partId: string | null;
+  coveredPlanId: string | null;
+  coveredCents: number | null;
+  claimId: string | null;
+  createdAt: Date;
+};
+
+/** Undo for removeLine: the line comes back with its own id and fields; a part comes off the shelf again. */
+export const restoreLine = safe(async function restoreLine(token: string) {
+  const user = await requireUser();
+  const { row, locationId } = takeUndo<{ row: LineSnapshot; locationId: string | null }>(user, "ticketline", token);
+  // The same rules as taking it off: the shop's own ticket, still there, work allowed, a closed bill only for the owner or an admin.
+  const t = await ownTicket(user.shopId, row.ticketId, "work", user.role);
+  assertBillOpen(t, user);
+  if (await db.ticketLine.findUnique({ where: { id: row.id }, select: { id: true } })) throw new UserError("That line is already back.");
+  // A part deleted meanwhile leaves the line as free text (as a deleted part always has).
+  const part = row.partId ? await db.part.findFirst({ where: { id: row.partId, shopId: user.shopId }, select: { id: true } }) : null;
+  await db.$transaction(async (tx) => {
+    await tx.ticketLine.create({ data: { ...row, partId: part?.id ?? null } });
+    if (part) await moveStock(tx, { shopId: user.shopId, partId: part.id, locationId: locationId ?? t.locationId, qty: -row.qty, reason: "USED", ticketId: row.ticketId, userId: user.id, note: "Put back on the ticket" });
+    await audit(tx, actorOf(user), {
+      action: "ticketline.restore",
+      subjectType: "Ticket",
+      subjectId: row.ticketId,
+      subjectLabel: `Ticket #${ticketNo(t.number)}: ${row.description}`,
+      amountCents: lineTotal(row),
+      changes: { qty: [0, row.qty] },
+    });
+  });
+  refresh(row.ticketId);
 });
 
 // ---------- payments ----------
@@ -622,7 +684,26 @@ export const addPayment = safe.whileLapsed("addPayment")(async function addPayme
 export const removePayment = safe.whileLapsed("removePayment")(async function removePayment(paymentId: string) {
   // Taking a payment off a ticket is for the owner or an admin (like voiding a register sale).
   const user = await requireAdmin();
-  refresh(await removePaymentFor(user, paymentId));
+  const method = (await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } }, select: { method: true } }))?.method;
+  const ticketId = await removePaymentFor(user, paymentId);
+  refresh(ticketId);
+  revalidatePath("/sales");
+  // A gift card or store credit payment moved a card's balance too: no one-tap Undo for it (the page keeps its confirm).
+  if (!method || isCardPayment(method)) return;
+  return undoable("Payment removed.", stashUndo(user, "payment", { paymentId }));
+});
+
+/**
+ * Undo for removePayment. A payment is never deleted (removing writes a minus line pointing at it), so putting it back
+ * takes it again as a new payment, dated now, with the same method, amount and note (a house-account charge is made
+ * again), and the audit log shows both steps ("payment.restore": payment put back). Not offered for gift card or store
+ * credit payments.
+ */
+export const restorePayment = safe.whileLapsed("restorePayment")(async function restorePayment(token: string) {
+  const user = await requireAdmin();
+  const { paymentId } = takeUndo<{ paymentId: string }>(user, "payment", token);
+  const ticketId = await restorePaymentFor(user, paymentId);
+  refresh(ticketId);
   revalidatePath("/sales");
 });
 

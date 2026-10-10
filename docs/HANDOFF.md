@@ -1034,6 +1034,39 @@ Eastern) and scheduling-messaging's sign-up parts (after 10 pm): rerun once in d
 - To ship: merge `hub-look` and `help-feedback` into StitchHub main, `help-feedback` into StitchBench main, push (each
   push deploys), set `FEEDBACK_EMAIL`, then new installers (1.7.1) for Windows.
 
+## 2ap. 10 Oct 2026: ease of use (branch `ease-of-use` here, on top of `help-feedback`; `releases-replies` in StitchHub, on top of its `help-feedback`; not on main)
+
+Owner: "ease of use is going to be huge"; after this batch, no more features: launch work and getting customers.
+Design: `docs/plans/ease-of-use-design.md`.
+- **A new version is ready** (installed program only): `src/lib/updates.ts` asks the hub
+  (`GET /v1/releases/latest?flavor=`) at most every 6 hours in the background (never delays a page);
+  `update-banner.tsx` for owners/admins, **Update now** (`/program/update`, caught by desktop/main.mjs) or "use the
+  shop's main computer" on other devices. main.mjs asks the hub itself, downloads (https), checks size, sha256 and
+  the Ed25519 release signature (`desktop/update.mjs`, key in `desktop/release-key.mjs`, **still null: until the
+  owner runs `node scripts/release/make-release-key.mjs` and the public key is committed, updating refuses**), backs
+  up, runs the installer `/S --force-run` after an 8 s wait, quits. Tray: "Check for a new version". Publishing:
+  `scripts/release/publish-release.mjs` (README there); the hub stores the file in R2 (needs `R2_*` on the hub) or
+  takes `--url`. Untested for real: the first true run needs a 1.7.1 install and a published 1.7.2 (or a throwaway
+  version on a spare PC); `--force-run` relaunch not yet seen working.
+- **What's new**: `src/lib/whats-new.ts` (also the release notes), card on the home page once per person
+  (`User.whatsNewSeen`; people made before 10 Oct count as "saw 1.7.0"), Settings → What's new.
+- **Getting started**: six ticks from the shop's data on the home page (StitchBench) / register (StitchShop), owner
+  and admin, **Hide this list** (`Shop.gettingStartedHiddenAt`). Printing a tag isn't recorded, so it isn't a tick.
+- **Answers to Help**: hub admin "Write back" (saved, emailed to the reply address, item done); the sync pulls
+  `GET /v1/feedback/replies` into `HelpReply`; dot on the Help button, "We answered you" in the panel. Only shops
+  with a sent note in the last 30 days (HelpOutbox keeps them 30 days) or an earlier answer are asked.
+- **Undo** instead of a second "Remove?" tap: ticket lines, accessories, cash/card payments (gift card and store
+  credit keep the two taps), notes, photos, part suppliers, register cart lines (not after the sale is rung up).
+  Snapshots in server memory 2 minutes, per user and shop (`src/lib/undo.ts`): one process only, lost on restart
+  ("too long ago"). Not done: cross-refs, market listings, shared posts (hub round-trips), and about 15 rarer
+  removals with a confirm (appraisal photo, gift list item, co-op proof ...).
+- **Bigger text**: Settings → Text size (Normal / Large / Larger = 100 / 115 / 130 %), every role, `User.textSize`,
+  a cookie so the sign-in page matches; print views and `@media print` stay 100 %. Not looked at in a browser at
+  Larger beyond the spec.
+- Migrations: 20261028000000_ease_of_use, 20261029000000_text_size (StitchBench); 035_releases_replies (hub).
+- Tests changed for one-tap removal: tenant, roles; auth's twin test waits for the page before clearing cookies (a
+  late response put the session cookie back).
+
 ## 2p. The next test batch (what to run before trusting the pages)
 
 (How to run it on any machine, a cloud session included: `docs/TESTING.md`.)

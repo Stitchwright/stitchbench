@@ -14,7 +14,12 @@ export { UserError, isUserError };
  * `note`: shown instead of the form's fixed success words; `warn`: it worked, but says what staff must still do; `shown`:
  * something the person sees once and nowhere else (a new password, a reset link), from an action that returned shownOnce().
  */
-export type ActionResult = { ok: true; error?: undefined; note?: string; warn?: string; shown?: string } | { ok?: false; error: string; note?: undefined; warn?: undefined; shown?: undefined };
+export type ActionResult =
+  | { ok: true; error?: undefined; note?: string; warn?: string; shown?: string; undo?: UndoOffer }
+  | { ok?: false; error: string; note?: undefined; warn?: undefined; shown?: undefined; undo?: undefined };
+
+/** A removal that can be taken back for a few seconds: the words for the bar ("Line removed.") and the token its restore action takes. */
+export type UndoOffer = { text: string; token: string };
 
 const SHOWN = Symbol.for("stitchbench.shownOnce");
 type ShownOnce = { [SHOWN]: string };
@@ -35,6 +40,16 @@ export function noted(text: string): Noted {
   return { [NOTED]: text };
 }
 
+const UNDO = Symbol.for("stitchbench.undoable");
+type Undoable = { [UNDO]: UndoOffer };
+
+/** What a removal action returns (safe() passes it on): the bar says `text` with an Undo button that calls the restore action with `token`. */
+export function undoable(text: string, token: string): Undoable {
+  return { [UNDO]: { text, token } };
+}
+
+const isUndoable = (v: unknown): v is Undoable => typeof v === "object" && v !== null && typeof (v as Record<symbol, unknown>)[UNDO] === "object";
+
 const isNoted = (v: unknown): v is Noted => typeof v === "object" && v !== null && typeof (v as Record<symbol, unknown>)[NOTED] === "string";
 
 const isShownOnce = (v: unknown): v is ShownOnce => typeof v === "object" && v !== null && typeof (v as Record<symbol, unknown>)[SHOWN] === "string";
@@ -53,6 +68,7 @@ export function safe<A extends unknown[]>(fn: (...args: A) => Promise<unknown>, 
       user = await actingUser();
       if (!opts.whileLapsed) await lapseGuard(user);
       const out = await asCompany(user?.shopId, () => fn(...args));
+      if (isUndoable(out)) return { ok: true, undo: out[UNDO] };
       return isShownOnce(out) ? { ok: true, shown: out[SHOWN] } : isNoted(out) ? { ok: true, note: out[NOTED] } : { ok: true };
     } catch (e) {
       if (isUserError(e)) return { error: e.message };

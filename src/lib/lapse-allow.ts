@@ -40,6 +40,7 @@ export const WHILE_LAPSED = [
   // Payments, returns and voids
   "addPayment",
   "removePayment",
+  "restorePayment",
   "voidSale",
   // Finishing and closing what is open: partner repairs picked up, marketplace and partner orders moved along, web
   // orders handed over or cancelled, a customer's answer to an estimate written down
@@ -60,6 +61,11 @@ export const WHILE_LAPSED = [
   // The Help button and the error alerts (help-feedback-design.md): a read-only shop needs help most
   "sendHelp",
   "reportBrowserError",
+  // What's new, Getting started and the answers in Help (ease-of-use-design.md): about the screen, not the business
+  "dismissWhatsNew",
+  "hideGettingStarted",
+  "markHelpRepliesRead",
+  "setTextSize",
   // Hub sync and the connection itself
   "syncCommunityHub",
   "joinCommunityHub",

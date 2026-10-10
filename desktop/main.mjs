@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import crypto from "node:crypto";
 import http from "node:http";
+import https from "node:https";
 import { spawn } from "node:child_process";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
@@ -20,6 +21,8 @@ import { loadReference } from "./reference.mjs";
 import { ensureAppRole, APP_ROLE } from "./app-role.mjs";
 import { startLinksGate } from "./links-gate.mjs";
 import { findTailscale, tailscaleStatus, serveStatus, serveOn, serveOff, linkIn } from "./tailscale.mjs";
+import { isNewer, readRelease, verifyRelease, hashFile } from "./update.mjs";
+import { RELEASE_PUBLIC_KEY } from "./release-key.mjs";
 import { describeLogin, listLogins, loadBcrypt, MAX_LISTED, resetLogin } from "./reset-password.mjs";
 
 const HERE = import.meta.dirname;
@@ -1089,6 +1092,167 @@ async function removeMovedCompany() {
   }
 }
 
+/** The program's own link /program/update (the "Update now" button of the new-version banner). */
+function updateDoor(url) {
+  if (!isApp(url)) return false;
+  return new URL(url).pathname === "/program/update";
+}
+
+// ---------- updating the program (docs/plans/ease-of-use-design.md section 1) ----------
+
+let updating = false;
+
+function hubBase() {
+  return (process.env.DEFAULT_HUB_URL ?? "https://hub.stitchbench.app").replace(/\/+$/, "");
+}
+
+/** Downloads `url` (https only, up to 5 redirects) to `file`, reporting 0..1 progress. Rejects on anything odd. */
+function downloadTo(url, file, expectSize, onProgress, hops = 0) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      return reject(new Error("bad download address"));
+    }
+    if (u.protocol !== "https:") return reject(new Error("download address is not https"));
+    const req = https.get(u, { headers: { "User-Agent": `${NAME}/${app.getVersion()}` } }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        if (hops >= 5) return reject(new Error("too many redirects"));
+        return downloadTo(new URL(res.headers.location, u).href, file, expectSize, onProgress, hops + 1).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`download answered ${res.statusCode}`));
+      }
+      const out = fs.createWriteStream(file);
+      let got = 0;
+      res.on("data", (d) => {
+        got += d.length;
+        if (got > expectSize) req.destroy(new Error("file bigger than announced"));
+        else onProgress(got / expectSize);
+      });
+      res.on("error", reject);
+      out.on("error", reject);
+      out.on("finish", () => resolve(got));
+      res.pipe(out);
+    });
+    req.setTimeout(60_000, () => req.destroy(new Error("download timed out")));
+    req.on("error", reject);
+  });
+}
+
+/** A small window with a message while the new version downloads. */
+function progressWindow() {
+  const w = new BrowserWindow({
+    width: 440,
+    height: 150,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    autoHideMenuBar: true,
+    title: NAME,
+    icon: ICON,
+    parent: win ?? undefined,
+    webPreferences: { sandbox: true, contextIsolation: true },
+  });
+  const html = `<body style="font:22px Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#222">Downloading the new version…</body>`;
+  void w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+  return w;
+}
+
+async function updateFailed(reason) {
+  log("update failed:", reason);
+  win?.setProgressBar(-1);
+  await dialog.showMessageBox(win ?? undefined, {
+    type: "warning",
+    title: NAME,
+    message: "The update didn't work. Nothing was changed.",
+    detail: String(reason),
+    buttons: ["OK"],
+  });
+}
+
+/** Asks the hub for the latest release of this program; null when there is none. Throws on a failed call. */
+async function latestRelease() {
+  const res = await fetch(`${hubBase()}/v1/releases/latest?flavor=${FLAVOR}`, { signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json" } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`the update service answered ${res.status}`);
+  const r = readRelease(await res.json());
+  if (!r) throw new Error("the update service sent something unexpected");
+  return r;
+}
+
+/** Tray "Check for a new version" and the page's /program/update link. Asks the hub itself; nothing comes from the page. */
+async function updateProgram({ fromTray }) {
+  if (updating) return;
+  updating = true;
+  buildTray();
+  let tmp = "";
+  try {
+    let release;
+    try {
+      release = await latestRelease();
+    } catch (e) {
+      return await updateFailed(`Could not reach the update service (${e instanceof Error ? e.message : e}).`);
+    }
+    if (!release || !isNewer(release.version, app.getVersion())) {
+      log(`update check${fromTray ? " (tray)" : ""}: already on the newest version`);
+      await dialog.showMessageBox(win ?? undefined, { type: "info", title: NAME, message: "You have the newest version.", buttons: ["OK"] });
+      return;
+    }
+    const ask = await dialog.showMessageBox(win ?? undefined, {
+      type: "question",
+      title: NAME,
+      message: `Update ${NAME} now?`,
+      detail: "It saves a backup, closes, and opens again by itself in a minute or two. Tablets and other computers reconnect by themselves.",
+      buttons: ["Update now", "Not now"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (ask.response !== 0) return;
+    if (!RELEASE_PUBLIC_KEY) return await updateFailed("This copy can't check that the new version is genuine yet.");
+    if (!pool || maintenance) return await updateFailed("The program is busy with something else. Try again in a minute.");
+
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), `${FLAVOR}-update-`));
+    const exe = path.join(tmp, `${NAME}-Setup-${release.version}.exe`);
+    const pw = progressWindow();
+    try {
+      await downloadTo(release.url, exe, release.size, (f) => win?.setProgressBar(Math.min(0.99, f)));
+    } finally {
+      win?.setProgressBar(-1);
+      if (!pw.isDestroyed()) pw.destroy();
+    }
+    const got = await hashFile(exe);
+    if (got.size !== release.size) throw new Error("the downloaded file is the wrong size");
+    if (got.sha256 !== release.sha256) throw new Error("the downloaded file doesn't match");
+    if (!verifyRelease(RELEASE_PUBLIC_KEY, { flavor: FLAVOR, version: release.version, sha256: got.sha256, size: got.size }, release.signature)) {
+      throw new Error("the new version isn't signed by us");
+    }
+    const saved = await runBackup("before update", { prune: false });
+    if (!saved) throw new Error("the backup couldn't be made first");
+    log(`update ${app.getVersion()} -> ${release.version}: starting ${exe}`);
+    // Wait a few seconds so this program has closed (and let go of its files) before the installer starts; /S is the
+    // installer's silent mode and --force-run opens the program again afterwards.
+    const child = spawn("cmd.exe", ["/d", "/s", "/c", `"ping -n 9 127.0.0.1 >nul & "${exe}" /S --force-run"`], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    });
+    child.unref();
+    tmp = ""; // the installer still has to run from there
+    void quit();
+  } catch (e) {
+    await updateFailed(e instanceof Error ? e.message : e);
+  } finally {
+    updating = false;
+    buildTray();
+    if (tmp) fs.rm(tmp, { recursive: true, force: true }, () => {});
+  }
+}
+
 /** The program's own links on its pages: /move-in?choose=1 opens the file dialog, /move-in?home=1 goes back to the start page. */
 function moveDoor(url) {
   if (!isApp(url)) return null;
@@ -1159,6 +1323,11 @@ function guardSessions() {
     });
     if (contents.getType() === "window") {
       contents.on("will-navigate", (e, url) => {
+        if (updateDoor(url)) {
+          e.preventDefault();
+          void updateProgram({ fromTray: false });
+          return;
+        }
         const door = moveDoor(url);
         if (door) {
           e.preventDefault();
@@ -1264,6 +1433,7 @@ function buildTray() {
         click: () => resetPasswordDialog().catch((e) => dialog.showErrorBox(`${NAME}: reset a password`, String(e instanceof Error ? e.message : e))),
       },
       { type: "separator" },
+      { label: "Check for a new version", enabled: !updating && !maintenance && !!pool, click: () => void updateProgram({ fromTray: true }) },
       {
         label: "Start with Windows",
         type: "checkbox",

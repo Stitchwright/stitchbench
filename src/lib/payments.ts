@@ -18,7 +18,7 @@ const MAX_MONEY = 10_000_000;
  * whatever the module's state; money back (a minus amount) is the owner's or an admin's call. The payment and its audit
  * entry commit together.
  */
-export async function addPaymentFor(user: CurrentUser, ticketId: string, input: { amountCents: number | null; method: PaymentMethod; note: string | null; card?: string | null }): Promise<void> {
+export async function addPaymentFor(user: CurrentUser, ticketId: string, input: { amountCents: number | null; method: PaymentMethod; note: string | null; card?: string | null; putBack?: boolean }): Promise<void> {
   const ticket = await db.ticket.findFirst({ where: { id: ticketId, shopId: user.shopId }, select: { id: true, number: true, customerId: true } });
   if (!ticket) throw new UserError("Ticket not found.");
   const amount = input.amountCents;
@@ -47,15 +47,35 @@ export async function addPaymentFor(user: CurrentUser, ticketId: string, input: 
       await tx.payment.update({ where: { id: p.id }, data: { note } });
     }
     await audit(tx, actorOf(user), {
-      action: "payment.add",
+      action: input.putBack ? "payment.restore" : "payment.add",
       subjectType: "Ticket",
       subjectId: ticketId,
       subjectLabel: `Ticket #${ticketNo(ticket.number)}`,
       amountCents: amount,
       changes: { method: [null, input.method], payment: [null, p.id] },
-      reason: input.note,
+      reason: input.putBack ? ["Payment put back after it was removed", input.note].filter(Boolean).join(": ") : input.note,
     });
   });
+}
+
+/** A payment that spent or paid out a gift card or store credit: it can't be put back by a click (the card moved too). */
+export const isCardPayment = (method: PaymentMethod) => method === "GIFT" || method === "CREDIT";
+
+/**
+ * Undo for removePaymentFor: takes the same payment again (same method, amount and note, dated now) because a removed
+ * payment's own row stays, with the minus line that cancelled it. Owner or admin only, and only for a payment that was
+ * removed and is not a gift card or store credit one. The audit log gets "payment.restore". Returns the ticket's id.
+ */
+export async function restorePaymentFor(user: CurrentUser, paymentId: string): Promise<string> {
+  if (user.role === "TECH") throw new UserError("Only the shop owner or an admin can change this.");
+  const p = await db.payment.findFirst({ where: { id: paymentId, ticket: { shopId: user.shopId } } });
+  if (!p) throw new UserError("Payment not found.");
+  if (isCardPayment(p.method)) throw new UserError("A gift card or store credit payment can't be put back with one tap. Take it again in the Payments box.");
+  const removal = await db.payment.findFirst({ where: { reversesId: p.id, ticket: { shopId: user.shopId } }, select: { id: true } });
+  if (!removal) throw new UserError("That payment is already on the ticket.");
+  // Notes made by the removal itself ("Removed: ...") are on the minus line; the payment's own note is what comes back.
+  await addPaymentFor(user, p.ticketId, { amountCents: p.amountCents, method: p.method, note: p.note, putBack: true });
+  return p.ticketId;
 }
 
 /**

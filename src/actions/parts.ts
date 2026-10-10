@@ -5,7 +5,8 @@ import { matchWantsFor } from "@/lib/want-lists";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { isUserError, safe, UserError, type ActionResult } from "@/lib/action";
+import { isUserError, safe, undoable, UserError, type ActionResult } from "@/lib/action";
+import { stashUndo, takeUndo } from "@/lib/undo";
 import { openWaits } from "@/lib/part-waits";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireUser } from "@/lib/session";
@@ -276,7 +277,22 @@ export const addPartSource = safe(async function addPartSource(partId: string, f
 export const removePartSource = safe(async function removePartSource(partId: string, sourceId: string) {
   assertIds(partId, sourceId);
   const { id } = await ownPart(partId);
+  const user = await requireUser();
+  const src = await db.partSource.findFirst({ where: { id: sourceId, partId: id } });
   await db.partSource.deleteMany({ where: { id: sourceId, partId: id } });
+  revalidatePath(`/parts/${id}`);
+  if (src) return undoable("Supplier removed.", stashUndo(user, "partsource", src));
+});
+
+/** Undo for removePartSource: the supplier back with its own id, link, price, note and preferred mark. */
+export const restorePartSource = safe(async function restorePartSource(token: string) {
+  const user = await requireUser();
+  const s = takeUndo<{ id: string; partId: string; vendor: string; url: string | null; priceCents: number | null; note: string | null; preferred: boolean; createdAt: Date }>(user, "partsource", token);
+  const { id } = await ownPart(s.partId);
+  if (await db.partSource.findUnique({ where: { id: s.id }, select: { id: true } })) throw new UserError("That supplier is already back.");
+  // Only one supplier is preferred: if another took the mark meanwhile, this one comes back without it.
+  const preferred = s.preferred && !(await db.partSource.count({ where: { partId: id, preferred: true } }));
+  await db.partSource.create({ data: { ...s, partId: id, preferred } });
   revalidatePath(`/parts/${id}`);
 });
 

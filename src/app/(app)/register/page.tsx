@@ -18,6 +18,7 @@ import { entryFor } from "@/lib/assistant/ui";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { pullListItems } from "@/lib/quilt";
 import { FIRST_PHOTO, viewItem } from "@/lib/register-item";
+import { GettingStartedCard, WhatsNewCard } from "@/components/ease-cards";
 import { PageHeader } from "@/components/ui";
 import { Register } from "@/components/register";
 import { PartnerTodo } from "@/components/partner-todo";
@@ -30,7 +31,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const { booking, items } = await searchParams;
   const [shopRow, partners] = await Promise.all([
-    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true, houseAccountsOn: true } }),
+    db.shop.findUniqueOrThrow({ where: { id: user.shopId }, select: { sellsRetail: true, taxRatePct: true, houseAccountsOn: true, doesRepair: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
   ]);
   // More than one store (7.1, 7.5): this store's tax rate, name and limits; with one store nothing changes.
@@ -130,6 +131,13 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <TodaySlot user={user} place="register" />
       <EstimatesTodoSlot user={user} />
       <TodoLinesSlot user={user} />
+      {/* The home page of a shop without a repair bench (the dashboard sends it here). */}
+      {!shopRow.doesRepair && (
+        <>
+          <WhatsNewCard userId={user.id} />
+          <GettingStartedCard shopId={user.shopId} admin={user.role !== "TECH"} />
+        </>
+      )}
       <Register taxRatePct={shop.taxRatePct} hasPartners={partners > 0} canSell={user.role !== "TECH"} vac={vac} unitKinds={unitKinds} layaway={layaway} holiday={holiday} lenders={lenders} promotions={promotions} specialOrders={specialOrders} yardBreaks={yardBreaks} tradeInLessPct={(await tradeUpSettings(user.shopId)).lessPct} preload={preload} preloadItems={preloadItems} tradeNote={tradeNote} sellers={people} me={user.id} houseAccounts={shop.houseAccountsOn} cardReader={cardReader} threadPhoto={threadPhoto} store={here ? { name: here.name, limits: { refundCents: here.approveRefundCents, discountPct: here.approveDiscountPct } } : null} />
     </div>
   );

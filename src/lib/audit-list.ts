@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = {
   // Money
   "payment.add": { category: "money", label: "Payment taken on a ticket" },
   "payment.remove": { category: "money", label: "Payment taken off a ticket" },
+  "payment.restore": { category: "money", label: "Payment put back on a ticket (undo of a removal)" },
   "sale.void": { category: "money", label: "Sale voided" },
   "approval.code": { category: "money", label: "Refund or discount over the limit approved with a manager's code" },
   "approval.yes": { category: "money", label: "Refund or discount over the limit approved by the owner" },
@@ -58,8 +59,11 @@ export const AUDIT_ACTIONS = {
   "stock.transfer": { category: "stock", label: "Stock sent to or arrived from another store" },
   // Deletes
   "ticketline.remove": { category: "deletes", label: "Ticket line removed" },
+  "ticketline.restore": { category: "deletes", label: "Ticket line put back (undo of a removal)" },
   "photo.delete": { category: "deletes", label: "Machine photo deleted" },
+  "photo.restore": { category: "deletes", label: "Machine photo put back (undo of a delete)" },
   "note.delete": { category: "deletes", label: "Model note deleted" },
+  "note.restore": { category: "deletes", label: "Model note put back (undo of a delete)" },
   // Settings
   "books.settings": { category: "settings", label: "Bookkeeping names or choices changed" },
   "offsite.settings": { category: "settings", label: "Off-site backup switched on or off, or its key or place changed" },

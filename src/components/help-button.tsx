@@ -3,8 +3,10 @@
 // (section 2: window errors and rejected promises, at most 5 a page load). Not on print views; the public pages don't use
 // the (app) layout, so it never shows there.
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { reportBrowserError, sendHelp } from "@/actions/help";
+import { markHelpRepliesRead } from "@/actions/ease";
+import type { HelpReplyView } from "@/lib/help";
 
 type Choice = "help" | "idea" | "rating";
 
@@ -63,8 +65,17 @@ async function takePicture(): Promise<Blob | null> {
   }
 }
 
-export function HelpButton({ program, email, connected, helpEmail }: { program: string; email: string; connected: boolean; helpEmail: string | null }) {
+const KIND_WORDS: Record<string, string> = { help: "Something's wrong", idea: "Your idea", rating: "Your rating", error: "A problem we noticed" };
+
+export function HelpButton({ program, email, connected, helpEmail, replies = [] }: { program: string; email: string; connected: boolean; helpEmail: string | null; replies?: HelpReplyView[] }) {
   const pathname = usePathname();
+  const router = useRouter();
+  // Answers not read yet when the panel was opened stay under "We answered you" while it is open.
+  const [justRead, setJustRead] = useState<string[]>([]);
+  const [readAll, setReadAll] = useState(false);
+  const unread = replies.filter((r) => r.unread && !readAll);
+  const fresh = replies.filter((r) => justRead.includes(r.id));
+  const older = replies.filter((r) => !justRead.includes(r.id));
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null);
   const [text, setText] = useState("");
@@ -130,6 +141,16 @@ export function HelpButton({ program, email, connected, helpEmail }: { program: 
   function openPanel() {
     reset();
     setOpen(true);
+    // Opening the panel is reading the answers.
+    const ids = replies.filter((r) => r.unread).map((r) => r.id);
+    if (!ids.length || readAll) setJustRead([]);
+    if (ids.length && !readAll) {
+      setJustRead(ids);
+      setReadAll(true);
+      void markHelpRepliesRead()
+        .then(() => router.refresh())
+        .catch(() => {});
+    }
     setTimeout(() => firstRef.current?.focus(), 0);
   }
 
@@ -195,6 +216,15 @@ export function HelpButton({ program, email, connected, helpEmail }: { program: 
           data-testid="help-button"
         >
           Help
+          {unread.length > 0 && (
+            <span
+              className="absolute -top-1 -right-1 h-5 w-5 rounded-full border-2 border-white"
+              style={{ background: "var(--bad)" }}
+              data-testid="help-dot"
+              role="img"
+              aria-label="You have an answer"
+            />
+          )}
         </button>
       )}
       {open && (
@@ -225,6 +255,20 @@ export function HelpButton({ program, email, connected, helpEmail }: { program: 
             </div>
           ) : !choice ? (
             <div className="space-y-3">
+              {fresh.length > 0 && (
+                <div className="space-y-2 rounded-md border-2 p-3" style={{ borderColor: "var(--navy)" }} data-testid="help-answers">
+                  <h3 className="text-lg font-semibold">We answered you</h3>
+                  {fresh.map((r) => (
+                    <div key={r.id} className="space-y-1">
+                      <p className="muted text-sm">
+                        {KIND_WORDS[r.kind] ?? "Your note"}: &ldquo;{r.text.slice(0, 80)}
+                        {r.text.length > 80 ? "…" : ""}&rdquo;
+                      </p>
+                      <p className="text-base whitespace-pre-wrap">{r.reply}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button ref={firstRef} type="button" className={`${choiceBtn} btn-lg`} onClick={() => void pick("help")}>
                 Something&apos;s wrong
               </button>
@@ -234,6 +278,22 @@ export function HelpButton({ program, email, connected, helpEmail }: { program: 
               <button type="button" className={`${choiceBtn} btn-lg`} onClick={() => void pick("rating")}>
                 Rate the program
               </button>
+              {older.length > 0 && (
+                <details className="rounded-md border border-line p-3" data-testid="help-history">
+                  <summary className="min-h-12 cursor-pointer py-3 text-base font-semibold">Your notes and our answers</summary>
+                  <div className="space-y-3 pt-1">
+                    {older.map((r) => (
+                      <div key={r.id} className="space-y-1">
+                        <p className="muted text-sm">
+                          {KIND_WORDS[r.kind] ?? "Your note"}: &ldquo;{r.text.slice(0, 80)}
+                          {r.text.length > 80 ? "…" : ""}&rdquo;
+                        </p>
+                        <p className="text-base whitespace-pre-wrap">{r.reply}</p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               {!connected && (
                 <p className="muted text-sm">
                   Not connected to StitchHub yet: this will be sent once it is.
