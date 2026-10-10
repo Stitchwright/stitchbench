@@ -1042,8 +1042,9 @@ Design: `docs/plans/ease-of-use-design.md`.
   (`GET /v1/releases/latest?flavor=`) at most every 6 hours in the background (never delays a page);
   `update-banner.tsx` for owners/admins, **Update now** (`/program/update`, caught by desktop/main.mjs) or "use the
   shop's main computer" on other devices. main.mjs asks the hub itself, downloads (https), checks size, sha256 and
-  the Ed25519 release signature (`desktop/update.mjs`, key in `desktop/release-key.mjs`, **still null: until the
-  owner runs `node scripts/release/make-release-key.mjs` and the public key is committed, updating refuses**), backs
+  the Ed25519 release signature (`desktop/update.mjs`, public key in `desktop/release-key.mjs`, set 10 Oct (e537933);
+  the private key only in `Documents\StitchBench release key.txt`: back it up offline, a lost key means a new key
+  and a manual reinstall everywhere), backs
   up, runs the installer `/S --force-run` after an 8 s wait, quits. Tray: "Check for a new version". Publishing:
   `scripts/release/publish-release.mjs` (README there); the hub stores the file in R2 (needs `R2_*` on the hub) or
   takes `--url`. Untested for real: the first true run needs a 1.7.1 install and a published 1.7.2 (or a throwaway
