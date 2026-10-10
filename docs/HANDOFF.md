@@ -1067,6 +1067,16 @@ Design: `docs/plans/ease-of-use-design.md`.
 - Migrations: 20261028000000_ease_of_use, 20261029000000_text_size (StitchBench); 035_releases_replies (hub).
 - Tests changed for one-tap removal: tenant, roles; auth's twin test waits for the page before clearing cookies (a
   late response put the session cookie back).
+- **Merged and deployed 10 Oct** (hub main 588a753 with hub-look + releases-replies; StitchBench main 8613c41; both
+  hosted services redeployed and healthy). This PC's install is **1.7.1** (backup 2026-10-10-08-34-48). 1.7.1
+  installers: Actions run 38052382344 (until 17 Oct).
+- **Waiting on the owner** (LAUNCH_CHECKLIST Week 1): R2 on the hub (it reports `storage:false`), `FEEDBACK_EMAIL`,
+  the release key's offline backup. Then the update test: test 1.7.2 built from branch `update-test-1.7.2` (run
+  38053460550, until 17 Oct; never merge that branch), publish it with publish-release.mjs from that branch, the
+  owner presses Update now here; Smart App Control will block the unsigned installer at the last step; withdraw
+  1.7.2 afterwards.
+- CLAUDE.md is out of date on two lines (1.7.0 installed; "the railway CLI won't run": it runs through
+  `scripts/railway-docker.ps1`, 2an): change them when the owner agrees.
 
 ## 2p. The next test batch (what to run before trusting the pages)
 
