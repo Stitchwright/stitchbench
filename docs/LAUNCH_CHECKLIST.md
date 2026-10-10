@@ -59,6 +59,19 @@ the keyboard for anything that touches your accounts or deploys. Details for eve
       `https://stitchshop-production.up.railway.app/api/health`, `https://stitchbench-production-e554.up.railway.app/api/health`.
       You get an email when one stops answering and another when it's back.
 - [ ] Any time before 1 December: apply the Railway config (two commands, in `docs/HANDOFF.md` item 14).
+- [ ] `FEEDBACK_EMAIL` on the hub's Railway service (Variables): your address, so Help messages, ideas and ratings
+      reach your inbox too (without it they show only on the hub's admin page).
+- [ ] Back up `Documents\StitchBench release key.txt` off this PC (a USB stick kept away from the PC, or a secure
+      note in your password manager; never a cloud folder). Lost key = every shop reinstalls by hand.
+- [ ] The hub's file storage (you, 15 min, free; Claude can walk you through it): a Cloudflare account, an R2 bucket
+      `stitchhub`, an API token with Object Read & Write on it, then on the hub's Railway service the variables
+      `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. It keeps the program updates (and
+      later the off-site backups and manuals). This is the same Cloudflare account as Day 8's downloads.
+- [ ] Then the one-button update test (together, 20 min): Claude publishes the test 1.7.2 (built 10 Oct from branch
+      `update-test-1.7.2`; its installers are kept until 17 Oct, rebuild after) with
+      `scripts/release/publish-release.mjs`; you press **Update now** on this PC (on 1.7.1). Expected here: download,
+      genuine-check and backup work, then Smart App Control blocks the unsigned installer. The last step needs a PC
+      without Smart App Control, or the signed installers. Withdraw 1.7.2 on the hub's admin page afterwards.
 
 ## Week 2: ready for test shops and money
 
