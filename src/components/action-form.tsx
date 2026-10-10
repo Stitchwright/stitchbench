@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { unstable_rethrow } from "next/navigation";
 import { toast } from "sonner";
 import type { ActionResult } from "@/lib/action";
+import { showUndo } from "@/components/undo-bar";
 
 type Action = (formData: FormData) => Promise<ActionResult>;
 
@@ -94,6 +95,7 @@ export function ActionButton({
   confirm,
   success,
   title,
+  undo,
 }: {
   action: () => Promise<ActionResult>;
   children: React.ReactNode;
@@ -101,6 +103,8 @@ export function ActionButton({
   confirm?: string;
   success?: string;
   title?: string;
+  /** The restore action for a removal that returns an undo offer: the Undo bar calls it with the offer's token. */
+  undo?: (token: string) => Promise<ActionResult>;
 }) {
   const [pending, start] = useTransition();
   // Two-tap confirm instead of window.confirm: the first tap arms it (for 3 seconds), the second runs it.
@@ -125,7 +129,10 @@ export function ActionButton({
         start(async () => {
           const r = await runAction(action);
           if (r?.error) toast.error(r.error);
-          else if (r?.warn) toast.warning(r.warn, { duration: 8000 });
+          else if (r?.undo && undo) {
+            const token = r.undo.token;
+            showUndo(r.undo.text, () => runAction(() => undo(token)));
+          } else if (r?.warn) toast.warning(r.warn, { duration: 8000 });
           else if (r?.note) toast.success(r.note, { duration: 8000 });
           else if (success) toast.success(success);
         });

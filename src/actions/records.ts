@@ -4,7 +4,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { safe, undoable, UserError } from "@/lib/action";
+import { stashUndo, takeUndo } from "@/lib/undo";
 import { requireAdmin, requireUser, type CurrentUser } from "@/lib/session";
 import { modelKey, str } from "@/lib/format";
 import { assertId } from "@/lib/input";
@@ -121,7 +122,8 @@ async function requirePhotoWork(user: CurrentUser, p: { machineId: string; ticke
 
 export const deletePhoto = safe(async function deletePhoto(photoId: string) {
   const user = await requireUser();
-  const p = await db.machinePhoto.findFirst({ where: { id: photoId, shopId: user.shopId }, select: { id: true, machineId: true, ticketId: true } });
+  // The whole row, picture included (it is stored in the database, not as a file): kept in memory for the Undo bar.
+  const p = await db.machinePhoto.findFirst({ where: { id: photoId, shopId: user.shopId } });
   if (!p) throw new UserError("Photo not found.");
   await requirePhotoWork(user, p);
   const mach = await db.machine.findFirst({ where: { id: p.machineId, shopId: user.shopId }, select: { brand: true, model: true } });
@@ -131,6 +133,25 @@ export const deletePhoto = safe(async function deletePhoto(photoId: string) {
   });
   revalidatePath(`/machines/${p.machineId}`);
   if (p.ticketId) revalidatePath(`/tickets/${p.ticketId}`);
+  return undoable("Photo deleted.", stashUndo(user, "photo", p));
+});
+
+/** Undo for deletePhoto: the same photo, same id, back on the machine (and its ticket, if that is still there). */
+export const restorePhoto = safe(async function restorePhoto(token: string) {
+  const user = await requireUser();
+  const p = takeUndo<{ id: string; shopId: string; machineId: string; ticketId: string | null; caption: string | null; kind: PhotoKind; mime: string; data: Uint8Array; createdAt: Date }>(user, "photo", token);
+  // The same rules as deleting it: the shop's own machine, still there, and its module allowing work.
+  if (p.shopId !== user.shopId || !(await db.machine.findFirst({ where: { id: p.machineId, shopId: user.shopId }, select: { id: true } }))) throw new UserError("Machine not found.");
+  const ticketId = p.ticketId && (await db.ticket.findFirst({ where: { id: p.ticketId, shopId: user.shopId }, select: { id: true } })) ? p.ticketId : null;
+  await requirePhotoWork(user, { machineId: p.machineId, ticketId });
+  if (await db.machinePhoto.findUnique({ where: { id: p.id }, select: { id: true } })) throw new UserError("That photo is already back.");
+  const mach = await db.machine.findFirst({ where: { id: p.machineId, shopId: user.shopId }, select: { brand: true, model: true } });
+  await db.$transaction(async (tx) => {
+    await tx.machinePhoto.create({ data: { id: p.id, shopId: user.shopId, machineId: p.machineId, ticketId, caption: p.caption, kind: p.kind, mime: p.mime, data: p.data as Uint8Array<ArrayBuffer>, createdAt: p.createdAt } });
+    await audit(tx, actorOf(user), { action: "photo.restore", subjectType: "Machine", subjectId: p.machineId, subjectLabel: `Photo of ${mach ? `${mach.brand} ${mach.model}` : "a machine"}` });
+  });
+  revalidatePath(`/machines/${p.machineId}`);
+  if (ticketId) revalidatePath(`/tickets/${ticketId}`);
 });
 
 export const updatePhoto = safe(async function updatePhoto(photoId: string, formData: FormData) {
@@ -264,6 +285,23 @@ export const deleteNote = safe(async function deleteNote(noteId: string) {
   await db.$transaction(async (tx) => {
     await tx.modelNote.delete({ where: { id: noteId } });
     await audit(tx, actorOf(user), { action: "note.delete", subjectType: "ModelNote", subjectId: noteId, subjectLabel: `Note on ${n.modelLabel}: ${n.body.slice(0, 60)}` });
+  });
+  revalidatePath("/", "layout");
+  return undoable("Note deleted.", stashUndo(user, "note", n));
+});
+
+/** Undo for deleteNote: the note back with its own id, pin, author and date. */
+export const restoreNote = safe(async function restoreNote(token: string) {
+  const user = await requireUser();
+  const n = takeUndo<{ id: string; shopId: string; brand: string; modelKey: string; modelLabel: string; kind: NoteKind; body: string; pinned: boolean; authorId: string | null; createdAt: Date }>(user, "note", token);
+  if (n.shopId !== user.shopId) throw new UserError("Note not found.");
+  if (user.role === "TECH" && n.authorId !== user.id) throw new UserError("Only the author or an admin can put this note back.");
+  if (await db.modelNote.findUnique({ where: { id: n.id }, select: { id: true } })) throw new UserError("That note is already back.");
+  // A user removed meanwhile leaves the note without an author, as it would have.
+  const author = n.authorId ? await db.user.findFirst({ where: { id: n.authorId, shopId: user.shopId }, select: { id: true } }) : null;
+  await db.$transaction(async (tx) => {
+    await tx.modelNote.create({ data: { id: n.id, shopId: user.shopId, brand: n.brand, modelKey: n.modelKey, modelLabel: n.modelLabel, kind: n.kind, body: n.body, pinned: n.pinned, authorId: author?.id ?? null, createdAt: n.createdAt } });
+    await audit(tx, actorOf(user), { action: "note.restore", subjectType: "ModelNote", subjectId: n.id, subjectLabel: `Note on ${n.modelLabel}: ${n.body.slice(0, 60)}` });
   });
   revalidatePath("/", "layout");
 });

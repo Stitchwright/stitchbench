@@ -158,6 +158,8 @@ test("the same email in two companies: straight in with one password, a chooser 
     await page.goto("/login");
     await signIn(page, { email, password: "twin-pass-A-1234" });
     await expect(page.getByText("Choose a company")).toHaveCount(0);
+    // Let the first page finish: a response still on its way could set the session cookie again after the clear.
+    await page.waitForLoadState("networkidle");
     await page.context().clearCookies();
     // A wrong password: the same message as for any other login.
     await page.goto("/login");

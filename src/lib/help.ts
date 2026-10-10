@@ -293,3 +293,64 @@ async function sendWaiting(): Promise<number> {
 export async function helpWaiting(shopId: string) {
   return db.helpOutbox.count({ where: { shopId, sentAt: null, kind: { not: "error" }, tries: { lt: GIVE_UP_TRIES } } });
 }
+
+// ---------- our answers (ease-of-use-design.md 4) ----------
+
+const REPLIES_KEPT = 10;
+
+/** One answer as the hub sends it. */
+type HubReply = { id?: unknown; kind?: unknown; text?: unknown; reply?: unknown; repliedAt?: unknown };
+
+/**
+ * Asks the hub for answers to what each company here sent (GET /v1/feedback/replies?since=<newest we have>), and keeps
+ * them. Never throws: a hub that is busy, too old to know the route (404) or refusing this install just means no news.
+ */
+export async function pullHelpReplies(): Promise<number> {
+  try {
+    if (!(await hubJoined())) return 0;
+    // Only companies that have sent something here, or have an answer already: others have nothing to be answered.
+    const shops = await db.shop.findMany({ where: { OR: [{ helpOutbox: { some: { kind: { not: "error" } } } }, { helpReplies: { some: {} } }] }, select: { id: true }, take: 500 });
+    let got = 0;
+    for (const s of shops) {
+      const newest = await db.helpReply.findFirst({ where: { shopId: s.id }, orderBy: { repliedAt: "desc" }, select: { repliedAt: true } });
+      const q = newest ? `?since=${encodeURIComponent(newest.repliedAt.toISOString())}` : "";
+      let list: HubReply[];
+      try {
+        const r = await hubFetch(`/v1/feedback/replies${q}`, { shopRef: s.id, signal: AbortSignal.timeout(30_000) });
+        const j = (await r.json()) as unknown;
+        list = Array.isArray(j) ? (j as HubReply[]) : [];
+      } catch (e) {
+        const status = hubStatus(e);
+        if (status === 0 || status === 429 || status >= 500 || status === 401 || status === 403 || status === 404 || status === 408) break;
+        continue;
+      }
+      for (const x of list.slice(0, 100)) {
+        const hubId = typeof x.id === "string" || typeof x.id === "number" ? String(x.id).slice(0, 100) : "";
+        const reply = typeof x.reply === "string" ? x.reply.trim().slice(0, 8000) : "";
+        const at = typeof x.repliedAt === "string" ? new Date(x.repliedAt) : null;
+        if (!hubId || !reply || !at || Number.isNaN(at.getTime())) continue;
+        const data = { kind: typeof x.kind === "string" ? x.kind.slice(0, 20) : "help", text: typeof x.text === "string" ? x.text.slice(0, 300) : "", reply, repliedAt: at };
+        // A changed answer to the same note shows as new again.
+        const old = await db.helpReply.findUnique({ where: { shopId_hubId: { shopId: s.id, hubId } }, select: { reply: true } });
+        await db.helpReply.upsert({
+          where: { shopId_hubId: { shopId: s.id, hubId } },
+          create: { shopId: s.id, hubId, ...data },
+          update: old && old.reply !== reply ? { ...data, readAt: null } : data,
+        });
+        got++;
+      }
+    }
+    return got;
+  } catch (e) {
+    console.error("help: answers:", e instanceof Error ? e.message : e);
+    return 0;
+  }
+}
+
+export type HelpReplyView = { id: string; kind: string; text: string; reply: string; repliedAt: string; unread: boolean };
+
+/** The last 10 answers for a company, newest first, for the Help panel. */
+export async function helpReplies(shopId: string): Promise<HelpReplyView[]> {
+  const rows = await db.helpReply.findMany({ where: { shopId }, orderBy: { repliedAt: "desc" }, take: REPLIES_KEPT });
+  return rows.map((r) => ({ id: r.id, kind: r.kind, text: r.text, reply: r.reply, repliedAt: r.repliedAt.toISOString(), unread: !r.readAt }));
+}

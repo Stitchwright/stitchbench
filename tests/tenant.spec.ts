@@ -136,13 +136,11 @@ test("ticket actions replayed with the E2E shop's ids are refused", async () => 
 
   // The bill: a line and a payment, by their own ids.
   await withSwappedId(page, own.line, victim.line, async () => {
-    await button("Remove line").click();
-    await button("Remove line").click(); // the second tap confirms
+    await button("Remove line").click(); // one tap: removing a line has Undo, not a second tap
   });
   await expectRefused(page, "Line not found.");
   await withSwappedId(page, own.payment, victim.payment, async () => {
-    await button("Remove payment").click();
-    await button("Remove payment").click();
+    await button("Remove payment").click(); // one tap: a cash payment's removal has Undo, not a second tap
   });
   await expectRefused(page, "Payment not found.");
 
@@ -179,8 +177,7 @@ test("ticket actions replayed with the E2E shop's ids are refused", async () => 
   // The photo, by its id.
   await page.reload();
   await withSwappedId(page, own.photo, victim.photo, async () => {
-    await button("Delete photo").click();
-    await button("Delete photo").click();
+    await button("Delete photo").click(); // one tap: deleting a photo has Undo
   });
   await expectRefused(page, "Photo not found.");
 

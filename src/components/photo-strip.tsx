@@ -1,7 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { PhotoUpload } from "@/components/photo-upload";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
-import { deletePhoto, updatePhoto } from "@/actions/records";
+import { deletePhoto, restorePhoto, updatePhoto } from "@/actions/records";
 import { PHOTO_KINDS, PHOTO_KIND_LABEL } from "@/lib/constants";
 import type { PhotoKind } from "@/generated/prisma/enums";
 import { fmtDate } from "@/lib/format";
@@ -34,7 +34,7 @@ export function PhotoStrip({ machineId, ticketId, photos, timeZone }: { machineI
                   {p.caption && <p className="mt-1 text-xs">{p.caption}</p>}
                   <div className="mt-1 flex items-center justify-between gap-1">
                     <span className="muted text-xs">{fmtDate(p.createdAt, timeZone)}</span>
-                    <ActionButton action={deletePhoto.bind(null, p.id)} className="btn btn-sm btn-danger" confirm="Delete?" title="Delete photo">
+                    <ActionButton action={deletePhoto.bind(null, p.id)} undo={restorePhoto} className="btn btn-sm btn-danger" title="Delete photo">
                       <Trash2 size={12} aria-label="Delete" />
                     </ActionButton>
                   </div>

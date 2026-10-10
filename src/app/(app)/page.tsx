@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { IN_CUSTODY, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { money, ticketNo, fmtDate } from "@/lib/format";
 import { PageHeader, Section, StatusPill, Empty } from "@/components/ui";
+import { GettingStartedCard, WhatsNewCard } from "@/components/ease-cards";
 import { MarketTodo } from "@/components/market-todo";
 import { MarginFloorNotice } from "@/components/margin-floor-notice";
 import { PAID_ELSEWHERE } from "@/lib/sales";
@@ -88,6 +89,8 @@ export default async function Dashboard() {
           )
         }
       />
+      <WhatsNewCard userId={user.id} />
+      <GettingStartedCard shopId={shopId} admin={user.role !== "TECH"} />
       {user.role !== "TECH" && <MarginFloorNotice shopId={shopId} />}
 
       <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">

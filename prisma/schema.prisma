@@ -298,6 +298,8 @@ model Shop {
   settlements       Settlement[]
   outbox            PartnerOutbox[]
   helpOutbox        HelpOutbox[]
+  helpReplies       HelpReply[]
+  gettingStartedHiddenAt DateTime? // an owner or admin chose "Hide this list" (ease-of-use-design.md 3)
   giftCards         GiftCard[]
   books             BooksSettings?
   offsite           OffsiteSettings?
@@ -448,6 +450,10 @@ model User {
   // Sales commission (shop-features-round-2-design.md 9.7): { pct, on: "machines" | "all" }; {} for none
   commission     Json     @default("{}")
   createdAt      DateTime @default(now())
+  // The newest version whose "What's new" this person has seen (ease-of-use-design.md 2); null = never recorded
+  whatsNewSeen   String?
+  // Bigger text: "normal" | "large" | "larger"; null = normal
+  textSize       String?
 
   notes          ModelNote[]
   ticketsOpened  Ticket[]        @relation("TicketOpenedBy")
@@ -1861,6 +1867,24 @@ model HelpOutbox {
 
   @@unique([shopId, kind, fingerprint, day])
   @@index([sentAt, createdAt])
+}
+
+// Our answers to what a shop sent through the Help button, fetched from the hub at each sync (ease-of-use-design.md 4).
+// hubId is the hub's id for the item; readAt is set when someone opens the Help panel.
+model HelpReply {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hubId     String
+  kind      String // help | idea | rating | error
+  text      String // the first words of what they sent
+  reply     String
+  repliedAt DateTime
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([shopId, hubId])
+  @@index([shopId, repliedAt])
 }
 
 // A machine a sewing shop took in for its partner repair shop. Same id on both sides: the sewing shop's copy keeps

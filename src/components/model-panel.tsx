@@ -12,7 +12,7 @@ import { ServiceModes } from "@/components/service-modes";
 import { modeAnchor, modesLookup, withTestLinks } from "@/lib/service-modes";
 import { OpenSpecSource } from "@/components/local-manuals";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
-import { addNote, deleteNote, toggleNotePin } from "@/actions/records";
+import { addNote, deleteNote, restoreNote, toggleNotePin } from "@/actions/records";
 import { NOTE_LABEL } from "@/lib/constants";
 import type { EquipmentKind } from "@/lib/equipment/types";
 import { Section, modelHref } from "@/components/ui";
@@ -118,7 +118,7 @@ export async function Gotchas({ shopId, brand, model }: { shopId: string; brand:
               <ActionButton action={toggleNotePin.bind(null, n.id)} className="btn btn-sm" title={n.pinned ? "Unpin" : "Pin to top"}>
                 <Pin size={12} aria-label={n.pinned ? "Unpin" : "Pin"} className={n.pinned ? "text-thread" : ""} />
               </ActionButton>
-              <ActionButton action={deleteNote.bind(null, n.id)} className="btn btn-sm btn-danger" confirm="Delete?" title="Delete note">
+              <ActionButton action={deleteNote.bind(null, n.id)} undo={restoreNote} className="btn btn-sm btn-danger" title="Delete note">
                 <Trash2 size={12} aria-label="Delete" />
               </ActionButton>
             </div>

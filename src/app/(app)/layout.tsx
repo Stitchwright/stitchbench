@@ -22,15 +22,21 @@ import { HubResetPrompt } from "@/components/hub-reset-prompt";
 import { activeStores, currentStore } from "@/lib/stores";
 import { StoreSwitch } from "@/components/store-switch";
 import { HelpButton } from "@/components/help-button";
+import { UpdateBanner } from "@/components/update-banner";
+import { newVersionReady } from "@/lib/updates";
 import { validEmail } from "@/lib/phone";
+import { helpReplies } from "@/lib/help";
+import { TextSizeStyle } from "@/components/text-size-style";
+import { parseTextSize } from "@/lib/text-size";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [shop, hub, retailPartners, modules] = await Promise.all([
+  const [shop, hub, retailPartners, modules, me] = await Promise.all([
     db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true, hubStanding: true, hubStandingUntil: true, hubStandingNote: true, hopOn: true } }),
     db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
     getModules(user.shopId),
+    db.user.findUnique({ where: { id: user.id }, select: { textSize: true } }),
   ]);
   // More than one store (7.1): the store this computer is at, at the top of the menu; nothing shows with one store.
   const openStores = await activeStores(user.shopId);
@@ -81,6 +87,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen flex-col side:flex-row">
+      <TextSizeStyle size={parseTextSize(me?.textSize)} />
       {secureUrl && <meta name={SECURE_ADDRESS_META} content={secureUrl} />}
       <aside className="no-print border-b border-line bg-surface side:sticky side:top-0 side:h-screen side:overflow-y-auto side:w-60 side:shrink-0 side:border-r side:border-b-0">
         <AppHeader
@@ -166,6 +173,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ) : (
           lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />
         )}
+        {admin && (await newVersionReady().then((n) => n && <UpdateBanner program={appName()} version={n.version} notes={n.notes} />))}
         <GraceBanner items={grace} admin={admin} />
         {admin && shop && <PartnershipNotice note={partnershipNotice(shop)?.note ?? null} />}
         {children}
@@ -174,7 +182,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <HubResetPrompt />
       {/* Help, ideas and ratings (help-feedback-design.md 1); HELP_EMAIL, when set, is offered for anything urgent while
           the install isn't on a hub yet. */}
-      <HelpButton program={appName()} email={user.email} connected={Boolean(hub?.installKey)} helpEmail={validEmail(process.env.HELP_EMAIL)} />
+      <HelpButton program={appName()} email={user.email} connected={Boolean(hub?.installKey)} helpEmail={validEmail(process.env.HELP_EMAIL)} replies={await helpReplies(user.shopId)} />
     </div>
   );
 }

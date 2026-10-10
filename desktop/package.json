@@ -42,6 +42,8 @@
       "links-gate.mjs",
       "tailscale.mjs",
       "reset-password.mjs",
+      "update.mjs",
+      "release-key.mjs",
       "icon.png",
       "package.json",
       "node_modules/**/*"

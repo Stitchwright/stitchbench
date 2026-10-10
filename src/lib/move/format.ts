@@ -202,6 +202,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
   ManualOffer: "a company's offers to the hub's manual repository: they name files in this PC's library and uploads made by this install on the hub, so they stay with this copy",
   OffsiteRun: "this install's history of off-site backup runs",
   HelpOutbox: "what the Help button and the error alerts sent (or are about to send) to the hub from this install: the new install sends its own",
+  HelpReply: "our answers to what this install's Help button sent: fetched from the hub by this install, so the new install asks for its own",
 };
 
 /** "Table.column" for every column the file sets to null, as the header's leftOut list. */

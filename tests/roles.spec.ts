@@ -133,8 +133,7 @@ test("a tech can bill and take payment, but not refund, remove a payment or void
   await page.locator("#amount").fill("-5.00");
   await page.getByRole("button", { name: "Record payment" }).click();
   await expectRefused(page, "Only the shop owner or an admin can record a refund.");
-  await button("Remove payment").click();
-  await button("Remove payment").click(); // the second tap confirms
+  await button("Remove payment").click(); // one tap (removals have Undo now)
   await expectRefused(page, "Only the shop owner or an admin can change this.");
   const payments = await sql<{ amountCents: number }>(`SELECT "amountCents" FROM "Payment" WHERE "ticketId" = $1`, [ticketId]);
   expect(payments).toHaveLength(1);
@@ -178,7 +177,6 @@ test("status changes set the dates, and a collected ticket's bill is locked for 
 
   // The bill of a closed ticket is the owner's or an admin's to change.
   const linesBefore = await sql(`SELECT id FROM "TicketLine" WHERE "ticketId" = $1`, [ticketId]);
-  await button("Remove line").click();
   await button("Remove line").click();
   await expectRefused(page, "The ticket is closed: only the owner or an admin can change its bill.");
   await page.locator('input[name="price"][aria-label="Amount"]').fill("5.00");

@@ -27,6 +27,7 @@ import { giftCardByNumber, type GiftCardInfo } from "@/actions/gift-cards";
 import { GIFT_MAX_CENTS, GIFT_MIN_CENTS, looksLikeGiftCard, type Issued } from "@/lib/gift-card-number";
 import { beep, CAMERA_INSTEAD, useBarcodeCamera } from "@/components/barcode-camera";
 import { InsecureNotice } from "@/components/secure-page";
+import { showUndo } from "@/components/undo-bar";
 import { VacSupplyPicker } from "@/components/vac/supply-picker";
 import { ColorFinder } from "@/components/color-finder";
 import { RegisterGiftLists, type GiftListPick } from "@/components/register-gift-lists";
@@ -219,6 +220,25 @@ export function Register({
 }) {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
+  // Counts finished sales, so an Undo tapped after the sale was rung up doesn't put the line into the next one.
+  const saleNo = useRef(0);
+
+  /** Takes a line (and the other lines of its special order) off the sale; the Undo bar puts them back where they were. */
+  function removeCartLine(l: CartLine) {
+    const gone = (x: CartLine) => x.key === l.key || Boolean(l.specialOrderId && x.specialOrderId === l.specialOrderId);
+    const taken = cart.map((x, at) => ({ x, at })).filter(({ x }) => gone(x));
+    setCart((c) => c.filter((x) => !gone(x)));
+    const sale = saleNo.current;
+    showUndo("Line removed.", async () => {
+      if (saleNo.current !== sale) return { ok: false, error: "That sale is finished, so the line can't go back on it." };
+      setCart((c) => {
+        const next = [...c];
+        for (const { x, at } of taken) if (!next.some((y) => y.key === x.key)) next.splice(Math.min(at, next.length), 0, x);
+        return next;
+      });
+      return { ok: true };
+    });
+  }
   const [soldBy, setSoldBy] = useState(me);
 
   const [returnMode, setReturnMode] = useState(false);
@@ -433,6 +453,7 @@ export function Register({
   function rungUp(r: { saleId: string; number: number }) {
     pending.current = null;
     setDone({ id: r.saleId, number: r.number, change: 0, cards: [] });
+    saleNo.current++;
     setCart([]);
     setTenders([]);
     // The release's amount box may be editing a payment pressed first; the payments are gone with the sale.
@@ -907,6 +928,7 @@ export function Register({
       setShipTo("");
       setDone({ id: r.saleId, number: r.number, change: r.changeCents, cards: r.cards ?? [] });
       toast.success(`Sale #${r.number} done${r.changeCents ? `. Change: ${money(r.changeCents)}` : ""}`);
+      saleNo.current++;
       setCart([]);
       setTenders([]);
       setEditing(null);
@@ -1520,7 +1542,7 @@ export function Register({
                   </td>
                   <td className="num text-right">{money(lineNet(l))}</td>
                   <td>
-                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => setCart((c) => c.filter((x) => x.key !== l.key && !(l.specialOrderId && x.specialOrderId === l.specialOrderId)))}>
+                    <button type="button" className="btn btn-sm" aria-label={`Remove ${l.description}`} onClick={() => removeCartLine(l)}>
                       <Trash2 size={14} aria-hidden />
                     </button>
                   </td>

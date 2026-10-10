@@ -25,6 +25,8 @@ import { messagingView } from "@/lib/messaging/settings";
 import { ChannelStatusLine, channelStatus } from "@/components/messaging-tabs";
 import { MoveSection } from "./move-section";
 import { activeStores } from "@/lib/stores";
+import { TextSizePicker } from "@/components/text-size-picker";
+import { parseTextSize } from "@/lib/text-size";
 
 const d = (c: number) => (c / 100).toFixed(2);
 
@@ -201,6 +203,17 @@ export default async function SettingsPage() {
   return (
     <div className="max-w-4xl space-y-6">
       <PageHeader title="Settings" />
+
+      <Section title="Text size" id="text-size">
+        <p className="muted mb-3 text-sm">Makes the words, buttons and boxes bigger on every screen, for you only. It changes as soon as you tap one.</p>
+        <TextSizePicker current={parseTextSize((await db.user.findUnique({ where: { id: user.id }, select: { textSize: true } }))?.textSize)} />
+      </Section>
+
+      <Section title="What's new">
+        <Link href="/settings/whats-new" className="link text-sm">
+          See what has changed in each version
+        </Link>
+      </Section>
 
       <Section title="Account" id="account">
         <div className="space-y-2 text-sm">
@@ -662,7 +675,7 @@ export default async function SettingsPage() {
       )}
 
       {admin && (
-        <Section title="People">
+        <Section title="People" id="people">
           <p className="muted mb-3 text-sm">Everyone signs in with their own email and password. Techs can run tickets; admins can also change prices and people.</p>
           {logins?.over && (
             <p className="pill tone-wait mb-3 inline-block whitespace-normal" data-testid="solo-over">
