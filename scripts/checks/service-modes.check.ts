@@ -147,31 +147,37 @@ async function main() {
     ok(`card data for the NV1500D: ${nv.length} modes in order, steps, ${test.tests.length} tests, page ${test.page} with its picture`);
 
     // ---------- 6. a factory setting's "test mode 36" ----------
-    const s36 = await db.factorySetting.findFirstOrThrow({ where: { modelKeys: { has: "NV1500D" }, conditions: { contains: "test mode 36", mode: "insensitive" } } });
-    const link = findTestLink(s36.conditions, s36, await modesSharing(s36.modelKeys));
-    assert.ok(link, "the setting's text links");
-    assert.equal(s36.conditions!.slice(link.start, link.end).toLowerCase(), "test mode 36", "the link covers the words 'test mode 36'");
-    assert.equal(link.modeId, test.id, "to the NV1500D test mode");
-    assert.equal(codeNumber(test.tests[link.test!].code), "36", "at test 36");
-    assert.ok(link.title.includes(test.tests[link.test!].purpose), "its title says what test 36 does");
-    // On the machine page: settingsFor + modesFor, linked to the card's anchors on the same page.
-    const panel = withTestLinks(await settingsFor("Brother", "NV1500D"), nv, (l) => `#${modeAnchor(l.modeId, l.test)}`);
-    const linked = panel.find((p) => p.id === s36.id);
-    assert.equal(linked?.testLinks.conditions?.href, `#sm-${test.id}-t${link.test}`, "the machine page links it to the test's row in the card");
-    // The /specs list: every numbered reference whose model has a test mode with that number resolves to it.
-    const mentions = await db.factorySetting.findMany({ where: { conditions: { contains: "test mode", mode: "insensitive" } } });
-    const pool2 = await modesSharing(mentions.flatMap((m) => m.modelKeys));
-    let numbered = 0;
-    let resolved = 0;
-    for (const m of mentions) {
-      const l = findTestLink(m.conditions, m, pool2);
-      const n = /test\s+mode\s+(?:pattern\s+)?["'[#(]?(\d{1,3})\b/i.exec(m.conditions ?? "");
-      if (!l || !n) continue;
-      numbered += 1;
-      if (l.test != null) resolved += 1;
+    // The factory settings are among the manufacturers' reference data, which isn't in the public code: a checkout
+    // without factory_settings.json has no settings to link from.
+    if (!fs.existsSync(path.join(SEED_DIR, "factory_settings.json"))) {
+      console.log("  --  a factory setting's \"test mode 36\": skipped, prisma/seed-data/factory_settings.json isn't here (the manufacturers' reference data)");
+    } else {
+      const s36 = await db.factorySetting.findFirstOrThrow({ where: { modelKeys: { has: "NV1500D" }, conditions: { contains: "test mode 36", mode: "insensitive" } } });
+      const link = findTestLink(s36.conditions, s36, await modesSharing(s36.modelKeys));
+      assert.ok(link, "the setting's text links");
+      assert.equal(s36.conditions!.slice(link.start, link.end).toLowerCase(), "test mode 36", "the link covers the words 'test mode 36'");
+      assert.equal(link.modeId, test.id, "to the NV1500D test mode");
+      assert.equal(codeNumber(test.tests[link.test!].code), "36", "at test 36");
+      assert.ok(link.title.includes(test.tests[link.test!].purpose), "its title says what test 36 does");
+      // On the machine page: settingsFor + modesFor, linked to the card's anchors on the same page.
+      const panel = withTestLinks(await settingsFor("Brother", "NV1500D"), nv, (l) => `#${modeAnchor(l.modeId, l.test)}`);
+      const linked = panel.find((p) => p.id === s36.id);
+      assert.equal(linked?.testLinks.conditions?.href, `#sm-${test.id}-t${link.test}`, "the machine page links it to the test's row in the card");
+      // The /specs list: every numbered reference whose model has a test mode with that number resolves to it.
+      const mentions = await db.factorySetting.findMany({ where: { conditions: { contains: "test mode", mode: "insensitive" } } });
+      const pool2 = await modesSharing(mentions.flatMap((m) => m.modelKeys));
+      let numbered = 0;
+      let resolved = 0;
+      for (const m of mentions) {
+        const l = findTestLink(m.conditions, m, pool2);
+        const n = /test\s+mode\s+(?:pattern\s+)?["'[#(]?(\d{1,3})\b/i.exec(m.conditions ?? "");
+        if (!l || !n) continue;
+        numbered += 1;
+        if (l.test != null) resolved += 1;
+      }
+      assert.ok(numbered > 100 && resolved / numbered > 0.95, `numbered references resolve to a test: ${resolved} of ${numbered}`);
+      ok(`"test mode 36" on an NV1500D setting links to test 36 (machine page anchor and /specs); ${resolved} of ${numbered} numbered references with a mode resolve to a test`);
     }
-    assert.ok(numbered > 100 && resolved / numbered > 0.95, `numbered references resolve to a test: ${resolved} of ${numbered}`);
-    ok(`"test mode 36" on an NV1500D setting links to test 36 (machine page anchor and /specs); ${resolved} of ${numbered} numbered references with a mode resolve to a test`);
 
     // ---------- 7. the parser and the code comparison ----------
     const parse = (t: string) => {
