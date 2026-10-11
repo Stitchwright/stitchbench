@@ -570,8 +570,8 @@ maker-space time, print and cut jobs).
 
 ### Switching a feature on or off
 An owner or admin opens **Settings → Features** and presses **Switch on** beside it. Every feature starts off in a new
-company. Switching one off hides it again and deletes nothing: what is there stays to look at and export (its menu item
-stays, read-only), and work that came in before can still be finished. Switching it on again carries on where it was.
+company. Switching one off deletes nothing: what is there stays to look at and export (its menu item stays,
+read-only), and work that came in before can still be finished. Switching it on again carries on where it was.
 Each switch is in the audit log. There is nothing to paste and nothing to renew, and it works without the internet.
 
 **Updating from 1.7.** The first time 1.8 opens an existing company, its Features start as the modules it had working
