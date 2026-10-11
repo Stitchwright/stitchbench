@@ -102,7 +102,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           {!v.connected && <p className="muted">This program isn&apos;t connected to StitchHub. It works as it is, with every feature; a StitchHub account is free, and connects the shop to the community.</p>}
           {nag && (
             <p className="pill tone-wait inline-block whitespace-normal">
-              {program} has run here for {v.ageDays} days without a StitchHub account. Nothing stops, but please create one below (it&apos;s free) so StitchBench knows about this shop and can help
+              {program} has run here for {v.ageDays} days without a StitchHub account. Nothing stops, but please create one below (it is free) so StitchBench knows about this shop and can help
               when you ask.
             </p>
           )}
