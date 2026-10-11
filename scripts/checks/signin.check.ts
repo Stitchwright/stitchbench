@@ -10,7 +10,8 @@
 //   4. the per-address limit (I20) with TRUST_PROXY=true: the last X-Forwarded-For hop, 50 wrong from one address and
 //      then that address is refused, a known browser too; another address and no TRUST_PROXY are not
 //   5. a password reset during a flood: the link sets the password and ends every session (sessionVersion + 1); the
-//      browser it was used in (the cookie finishPasswordReset sets) gets in with the new password, not the old one
+//      browser that completed it (the cookie finishPasswordReset and allowHubReset set, at the new sessionVersion) gets
+//      in with the new password, not the old one
 //   6. sessionVersion (L42): signing out ends every session of that login and nobody else's; sign-in hands the new one out
 //   7. first-run sign-up (I20, I22): SETUP_TOKEN's first-company-only and the administrator's reserved address refused
 //      once a company exists, nothing made
@@ -22,7 +23,7 @@ import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/user-error";
-import { KNOWN_DEVICE_DAYS, knownDeviceCookie, knownDeviceCookieName, knownDeviceFor, withKnownDevice } from "@/lib/known-device";
+import { KNOWN_DEVICE_DAYS, knownDeviceCookie, knownDeviceCookieName, knownDeviceFor, knownDeviceValue, withKnownDevice } from "@/lib/known-device";
 import { checkSignIn, endEverySession, FREE_TRIES, PER_ADDRESS, PER_DEVICE, QUEUE_CAP } from "@/lib/sign-in";
 import { finishReset, issueResetLink } from "@/lib/password-reset";
 import { createShopWithOwner, RESERVED_EMAIL } from "@/lib/shops";
@@ -230,8 +231,9 @@ async function main() {
       assert.equal(resetEmail, ownerB);
       assert.equal(resetUserId, b.user.id);
       assert.equal((await db.user.findUniqueOrThrow({ where: { id: b.user.id } })).sessionVersion, svB + 1, "the reset ends every session");
-      // What finishPasswordReset sets in the browser that used the link (rememberThisDevice(userId)).
-      const resetBrowser = withKnownDevice(null, resetUserId, Date.now(), svB + 1);
+      // What finishPasswordReset sets in the browser that used the link, as allowHubReset does in the Windows program's
+      // window after StitchHub's reset (rememberThisDevice: an entry at the login's sessionVersion read back after the reset).
+      const resetBrowser = await knownDeviceValue(null, resetUserId);
       assert.equal(knownDeviceFor(oldBrowser, b.user.id, Date.now(), svB + 1), null, "a password change ends the standing of devices known before it");
       assert.ok(knownDeviceFor(resetBrowser, b.user.id, Date.now(), svB + 1));
       const after = await timed(signIn(ownerB, fresh, { device: resetBrowser }));

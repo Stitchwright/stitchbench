@@ -11,8 +11,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { appName, isPlatformAdmin, programVersion, shopKindOf } from "@/lib/shops";
-import { loadModules } from "@/lib/modules";
-import { PAID_MODULE_IDS } from "@/lib/module-info";
 import { encodeRow, LEFT_OUT, MOVE_FORMAT, MOVE_TABLES, MOVE_VERSION, moveFileName, PAGE, shopFilterSql, type MoveEnd, type MoveMeta, type MoveTable } from "./format";
 import { dropMoveToken, hubMoveView, hubPart, hubWarning, moveTokenFor, type HubMoveView } from "./hub-step";
 
@@ -108,8 +106,6 @@ export type MoveView = {
     finishedAt: Date | null;
     downloadedAt: Date | null;
   } | null;
-  /** Paid modules switched on by the hosted administrator: they need a key on the new side (design section 2, notes). */
-  needKeys: string[];
   fileName: string;
   /** The move's StitchHub token (package move-hub): whether this install is on a hub, whether the file carries a token, and why not. */
   hub: { onHub: boolean; hasToken: boolean; error: string | null };
@@ -120,9 +116,8 @@ export type MoveView = {
 /** Settings → Company's "Move this company" card. Another company's owner: "Company not found." */
 export async function moveView(user: Mover, shopId: string): Promise<MoveView> {
   const shop = await moveShop(user, shopId);
-  const [row, needKeys, hs, movedIn] = await Promise.all([
+  const [row, hs, movedIn] = await Promise.all([
     shop.movingAt ? db.companyMove.findFirst({ where: { shopId, direction: "export", status: { not: "cancelled" } }, orderBy: { startedAt: "desc" } }) : null,
-    adminModules(shopId),
     db.hubState.findUnique({ where: { id: 1 }, select: { url: true, installKey: true } }),
     hubMoveView(shopId),
   ]);
@@ -142,17 +137,10 @@ export async function moveView(user: Mover, shopId: string): Promise<MoveView> {
           downloadedAt: row.downloadedAt,
         }
       : null,
-    needKeys,
     fileName: moveFileName(shop.name),
     hub: { onHub: !!(hs?.url && hs.installKey), hasToken: !!row?.hubTokenSealed, error: row?.hubError ?? null },
     movedIn,
   };
-}
-
-/** Labels of the paid modules that are on here only by the hosted administrator's switch. */
-async function adminModules(shopId: string): Promise<string[]> {
-  const m = await loadModules(shopId);
-  return PAID_MODULE_IDS.filter((id) => m.states[id].active && m.states[id].source === "admin").map((id) => m.states[id].label);
 }
 
 // ---------- the file ----------
@@ -257,9 +245,8 @@ async function* pages(tx: Tx, t: MoveTable, shopId: string, noBytes = false): As
 }
 
 /** What the owner is told at export (design section 2's notes and section 6). */
-async function warningsFor(tx: Tx, shop: MoveShop, needKeys: string[]): Promise<string[]> {
+async function warningsFor(tx: Tx, shop: MoveShop): Promise<string[]> {
   const out: string[] = [];
-  for (const label of needKeys) out.push(`${label} is switched on here by the hosted administrator. On the new install it needs a license key.`);
   const [downloads, listings, orders] = await Promise.all([countOther(tx, "ManualDownload", shop.id), countOther(tx, "Listing", shop.id), countOther(tx, "MarketOrder", shop.id)]);
   if (downloads) out.push(`${downloads} manual download record${downloads === 1 ? "" : "s"} stay${downloads === 1 ? "s" : ""} here: they describe this install's manual library.`);
   if (listings || orders)
@@ -311,7 +298,6 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
   } else if (!moveId && shop.movingAt) {
     moveId = (await db.companyMove.findFirst({ where: { shopId, direction: "export", status: { not: "cancelled" } }, orderBy: { startedAt: "desc" }, select: { id: true } }))?.id ?? null;
   }
-  const needKeys = await adminModules(shopId);
   // A move (frozen, with its record) carries the hub's move token; a copy made without the freeze doesn't (it isn't a
   // move: a token in it would let any copy take the company on the hub).
   const isMove = !backup && !!moveId && !!shop.movingAt && !shop.movedOutAt;
@@ -361,7 +347,7 @@ export async function exportCompany(user: Mover, shopId: string, opts: ExportOpt
           shop: { id: shop.id, name: shop.name, kind: shopKindOf(shop) },
           hub,
           leftOut: [...LEFT_OUT],
-          warnings: [...(await warningsFor(tx, shop, needKeys)), ...(hubNote ? [hubNote] : [])],
+          warnings: [...(await warningsFor(tx, shop)), ...(hubNote ? [hubNote] : [])],
         };
         await lines.push(JSON.stringify(meta) + "\n");
         const tables: Record<string, number> = {};

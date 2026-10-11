@@ -1,60 +1,49 @@
 // Settings → Account (hub-accounts-billing-design.md 2.2 and 3.5): the company's StitchHub account (started from here
-// with the owner's email, or an existing one connected with a link code), the standing the hub last gave, what the
-// program's own key allows right now, the terms links and the reset opt-in. Owners only; everyone else reads.
+// with the owner's email, or an existing one connected with a link code), the standing the hub last gave, the terms
+// links and the reset opt-in. The program is free (free-software-design.md): only on the owner's hosted service, where
+// hosting is billed (HOSTING_BILLING=on), does this page show the hosting's standing. Owners only; everyone else reads.
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { accountView, linkCodeShown, NAG_AFTER_DAYS } from "@/lib/hub-account";
 import { isDraftTerms } from "@/lib/terms-version";
-import { fmtYmd, MODULE_SALES, planLabel, programName, type ModuleState } from "@/lib/module-info";
+import { NO_END } from "@/lib/license";
+import { endedDay, fmtYmd, programName, SETTINGS_FEATURES_HREF, type ModuleState } from "@/lib/module-info";
+import { hostingBilling } from "@/lib/modules";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { makeHubLinkCode, refreshHubStanding, setHubResetOptIn, startHubAccount } from "@/actions/account";
-import { planWords, SOLO_LOGINS } from "@/lib/plan";
 
 /** The hub's standing word in plain words. */
 const STANDING: Record<string, string> = {
+  free: "Free",
   trial: "Free trial",
-  active: "Subscribed",
+  active: "Paid",
   past_due: "Payment overdue",
   waived: "Free while partnered",
   comped: "Free, with the hub admin's compliments",
   lapsed: "Lapsed",
 };
 
-/** What the program's own key allows right now, from its module state. */
-function KeyLine({ s, program }: { s: ModuleState; program: string }) {
-  const plan = s.plan ? ` (${planLabel(s.plan)})` : "";
+/** The hosting's standing, from the program's own key (the owner's hosted service only). */
+function HostingLine({ s, program }: { s: ModuleState; program: string }) {
+  const until = s.lastDay && s.lastDay < NO_END ? fmtYmd(s.lastDay) : null;
   switch (s.status) {
     case "on":
-      return (
-        <span className="pill tone-ready">
-          Licensed through {s.lastDay ? fmtYmd(s.lastDay) : "no end date"}
-          {plan}
-        </span>
-      );
+      return <span className="pill tone-ready">{until ? `Hosting paid through ${until}` : "Hosting paid"}</span>;
     case "renew":
-      return (
-        <span className="pill tone-wait">
-          Licensed through {s.lastDay ? fmtYmd(s.lastDay) : "-"}
-          {plan}: a new key is due
-        </span>
-      );
+      return <span className="pill tone-wait">Hosting paid through {until ?? "-"}: the next payment is due</span>;
     case "grace":
       return (
         <span className="pill tone-bad">
-          Ended {s.lastDay ? fmtYmd(s.lastDay) : "-"}; keeps working until {s.graceLastDay ? fmtYmd(s.graceLastDay) : "-"}
+          Hosting ended {until ?? "-"}; keeps working until {s.graceLastDay ? fmtYmd(s.graceLastDay) : "-"}
         </span>
       );
     case "lapsed":
-      return (
-        <span className="pill tone-bad">
-          Read-only since {s.endedAt ? s.endedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : s.lastDay ? fmtYmd(s.lastDay) : "-"}
-        </span>
-      );
+      return <span className="pill tone-bad">Read-only since {endedDay(s)}</span>;
     default:
-      return <span className="pill tone-neutral">{program} works: no key is needed yet</span>;
+      return <span className="pill tone-neutral">{program} works here: nothing is due yet</span>;
   }
 }
 
@@ -71,40 +60,33 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const waiting = !!shop.hubAccountEmail && !shop.hubAccountVerified;
   const standingWord = shop.hubStanding ? (STANDING[shop.hubStanding] ?? shop.hubStanding) : null;
   const nag = v.neverConnected && v.ageDays >= NAG_AFTER_DAYS;
-  const askHref = MODULE_SALES.email
-    ? `mailto:${MODULE_SALES.email}?subject=${encodeURIComponent(`${program} account for ${shop.name}`)}&body=${encodeURIComponent(`Company ID: ${shop.id}\nCompany: ${shop.name}\n`)}`
-    : null;
+  const hosting = hostingBilling();
 
   return (
     <div className="max-w-3xl space-y-6">
-      <PageHeader title="Account" sub={`${shop.name}'s StitchHub account: who the program belongs to, and what it is licensed for.`} back={{ href: "/settings", label: "Settings" }} />
+      <PageHeader title="Account" sub={`${shop.name}'s StitchHub account: who the shop is on the community hub, the terms, and password help.`} back={{ href: "/settings", label: "Settings" }} />
 
       <Section title={`${program} for this company`}>
         <div className="space-y-2 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <KeyLine s={v.base} program={program} />
-            {v.base.source === "key" && v.base.keyId && <span className="muted text-xs">Key {v.base.keyId}</span>}
-            {v.base.source === "admin" && <span className="muted text-xs">Turned on by StitchBench</span>}
-          </div>
-          {v.plan && (
-            <p data-testid="plan">
-              Plan: <strong>{planWords(v.plan)}</strong>
-              {v.plan.plan === "solo" && (
-                <span className="muted">
-                  {" "}
-                  ({v.logins} of {SOLO_LOGINS} people with access
-                  {v.logins > SOLO_LOGINS ? ": everyone keeps working; adding or restoring anyone needs the Shop plan" : ""})
-                </span>
-              )}
-              . Switch between Solo and Shop on your StitchHub account{v.connected && v.mayManage ? ", then press Check again" : ""}.
+          {hosting ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <HostingLine s={v.base} program={program} />
+            </div>
+          ) : (
+            <p data-testid="free-line">
+              {program} is free: every feature, for every shop, with nothing to pay and no key to enter. Switch on the extras your shop uses in{" "}
+              <Link href={SETTINGS_FEATURES_HREF} className="link">
+                Settings → Features
+              </Link>
+              .
             </p>
           )}
-          {v.base.status === "lapsed" && (
+          {hosting && v.base.status === "lapsed" && (
             <p>
-              Everything stays here to look at, print and export; open work can be finished and payments taken. New tickets, sales and edits wait for a new key: it comes from your StitchHub account
-              below, or by email from StitchBench and is pasted in{" "}
-              <Link href="/settings/modules" className="link">
-                Settings → Add-ons
+              Everything stays here to look at, print and export; open work can be finished and payments taken. New tickets, sales and edits wait until the hosting is paid on your StitchHub
+              account below. Or take the company to the free Windows program:{" "}
+              <Link href="/settings#move" className="link">
+                Settings → Company
               </Link>
               .
             </p>
@@ -112,24 +94,16 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           {standingWord && (
             <p>
               StitchHub says: <strong>{standingWord}</strong>
-              {shop.hubStandingUntil && <> through {fmtYmd(shop.hubStandingUntil)}</>}. {shop.hubStandingNote}
+              {shop.hubStandingUntil && shop.hubStandingUntil < NO_END && <> through {fmtYmd(shop.hubStandingUntil)}</>}. {shop.hubStandingNote}
               {shop.hubStandingAt && <span className="muted"> (checked {fmtDateTime(shop.hubStandingAt, tz)})</span>}
             </p>
           )}
-          {v.connected && !standingWord && <p className="muted">The hub hasn&apos;t said where this company stands yet. It does at the next sync, or press Check again.</p>}
-          {!v.connected && <p className="muted">This program isn&apos;t connected to StitchHub. It works as it is; an account is only needed to subscribe or to be comped.</p>}
+          {v.connected && !standingWord && <p className="muted">The hub hasn&apos;t said anything about this company yet. It does at the next sync, or press Check again.</p>}
+          {!v.connected && <p className="muted">This program isn&apos;t connected to StitchHub. It works as it is, with every feature; a StitchHub account is free, and connects the shop to the community.</p>}
           {nag && (
             <p className="pill tone-wait inline-block whitespace-normal">
-              {program} has run here for {v.ageDays} days without a StitchHub account. Nothing stops, but please create one below so StitchBench knows about this shop
-              {askHref ? (
-                <>
-                  , or{" "}
-                  <a href={askHref} className="underline">
-                    ask StitchBench
-                  </a>
-                </>
-              ) : null}
-              .
+              {program} has run here for {v.ageDays} days without a StitchHub account. Nothing stops, but please create one below (it is free) so StitchBench knows about this shop and can help
+              when you ask.
             </p>
           )}
           <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -169,7 +143,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               </>
             )}
             <p>
-              Manage the account (billing, other shops, password) on{" "}
+              Manage the account (other shops, the password, and the Assistant or hosting if you have them) on{" "}
               <a href={`${v.hubUrl}/account`} target="_blank" rel="noreferrer" className="link">
                 {v.hubUrl.replace(/^https?:\/\//, "")}/account
               </a>
@@ -192,7 +166,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                 <a href={`${v.hubUrl}/account`} target="_blank" rel="noreferrer" className="underline">
                   your account page
                 </a>
-                ; subscribing a shop needs it.
+                .
               </p>
             )}
           </div>
@@ -203,7 +177,8 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             <ActionForm action={startHubAccount} success="Account started: check your email" className="space-y-3">
               <h3 className="font-semibold">Create your StitchHub account</h3>
               <p className="muted">
-                One account, with your email and a password, owns this shop on StitchHub. It is where you subscribe when the time comes, and it keeps this program&apos;s key current.{" "}
+                One account, with your email and a password, owns this shop on StitchHub. It&apos;s free. It is also where you can add the Assistant, or have SiteSentrix host the shop for
+                you.{" "}
                 {!v.connected && `Creating it also connects this program to ${v.hubUrl.replace(/^https?:\/\//, "")} (no invite needed).`}
               </p>
               <div className="field max-w-sm">

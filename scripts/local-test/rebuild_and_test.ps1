@@ -6,7 +6,7 @@ New-Item -ItemType Directory -Force $run | Out-Null
 $log = "$run\rebuild_and_test.log"
 "start $(Get-Date)" | Out-File $log -Encoding utf8
 Get-NetTCPConnection -LocalPort 3300 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false }
-Set-Location C:\Users\bwatt\stitchbench
+Set-Location (Resolve-Path "$PSScriptRoot\..\..")
 $env:NODE_OPTIONS = "--max-old-space-size=2048"
 # A test build: development license keys count against this machine's database (docs/TESTING.md), so the specs can switch modules on.
 $env:STITCH_TEST_BUILD = "1"

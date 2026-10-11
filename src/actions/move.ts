@@ -4,7 +4,7 @@
 // (package move-hub). Bodies: src/lib/move/export.ts, hub-step.ts, old-copy.ts. Every one works while the program is
 // read-only (safe.whileLapsed): a lapsed company may leave, Cancel is what lifts the move's own freeze, the old copy's
 // "The move is done" is made while it is frozen, re-pointing the hub is the connection itself, and deleting an old copy
-// is the administrator's (their own company's standing is beside the point, as with setCompanyModule).
+// is the administrator's (their own company's standing is beside the point, as with setHubWrites).
 import { revalidatePath } from "next/cache";
 import { safe } from "@/lib/action";
 import { cancelMove, confirmMovedOut, startMove } from "@/lib/move/export";

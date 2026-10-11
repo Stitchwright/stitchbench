@@ -1,5 +1,6 @@
-// What still works while the program itself is read-only (hub-accounts-billing-design.md 3.5 and decision 1): the
-// company's "base" key has lapsed, so new tickets, sales, parts and edits are refused, and only what is listed here
+// What still works while the program itself is read-only (hub-accounts-billing-design.md 3.5 and decision 1): on the
+// owner's hosted service, the company's hosting wasn't paid (HOSTING_BILLING=on, src/lib/modules.ts), or the company is
+// being moved to another install, so new tickets, sales, parts and edits are refused, and only what is listed here
 // goes through. Pure: no "server-only", no database. scripts/checks/base-license.check.ts asserts every name exists.
 //
 // Server actions wrapped with safe() are refused by default while lapsed; one named here passes `{ whileLapsed }` to
@@ -20,10 +21,7 @@ export const WHILE_LAPSED = [
   "makeHubLinkCode",
   "refreshHubStanding",
   "setHubResetOptIn",
-  // A key pasted from the hub's email (or the owner's) switches the program back on
-  "activateLicense",
-  // The hosted StitchBench administrator's switch and sharing mute (their own company's standing is beside the point)
-  "setCompanyModule",
+  // The hosted StitchBench administrator's sharing mute (their own company's standing is beside the point)
   "setHubWrites",
   // Bookkeeping names and the "exported through" day: no business record changes
   "saveBooksSettings",
@@ -77,7 +75,7 @@ export const WHILE_LAPSED = [
   "startCompanyMove",
   "cancelCompanyMove",
   // The hub's part of a move (package move-hub): the old copy's "The move is done" (it is frozen), "Re-point the hub"
-  // (the connection itself), and the administrator deleting an old copy 30 days on (as setCompanyModule)
+  // (the connection itself), and the administrator deleting an old copy 30 days on (as setHubWrites)
   "confirmCompanyMoved",
   "repointCompanyHub",
   "removeMovedCompany",
@@ -199,7 +197,7 @@ export const HAND_ALLOWED = [
  * skipped, as modules-design.md 6.4 does for Scheduling and Marketing).
  */
 // The StitchBench administrator's company import (/api/move/upload/*, the PC's /api/move/local) is outside the rule too:
-// it makes another company, and the administrator's own standing is beside the point (as with setCompanyModule). So is
+// it makes another company, and the administrator's own standing is beside the point (as with setHubWrites). So is
 // the tray's removal of a moved company's old copy (/api/move/remove): it deletes, it writes nothing. And StitchHub's
 // "Start a hosted shop" (/api/platform/companies): it makes another company, with the hub's token and no signed-in person.
 export const ALSO_ALLOWED = [

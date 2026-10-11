@@ -410,7 +410,8 @@ async function startServer() {
     cwd: APP_DIR,
     env: {
       ...process.env,
-      // The Windows program: license checks ignore ModuleGrant rows and refuse development keys (src/lib/modules.ts).
+      // The Windows program: license checks refuse development keys, and the program is never read-only for a key that
+      // ended, whatever HOSTING_BILLING says (src/lib/modules.ts).
       // After ...process.env on purpose, so the PC's own environment can't change it.
       STITCH_DESKTOP: "1",
       ELECTRON_RUN_AS_NODE: "1",

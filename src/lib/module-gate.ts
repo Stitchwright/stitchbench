@@ -1,6 +1,6 @@
 import "server-only";
-// The scheduling and messaging features' one door to the paid-modules platform (scheduling-messaging-design.md 6.1):
-// pages, actions and workers call these, never src/lib/modules.ts directly, so a change there is fixed in one file.
+// The scheduling and messaging features' one door to the add-on modules (scheduling-messaging-design.md 6.1): pages,
+// actions and workers call these, never src/lib/modules.ts directly, so a change there is fixed in one file.
 import { db } from "@/lib/db";
 import type { CurrentUser } from "@/lib/session";
 import { hasModule, loadModulesMany, navGates, requireModule, shopsWithModule } from "@/lib/modules";

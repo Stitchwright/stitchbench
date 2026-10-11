@@ -8,7 +8,7 @@ import { libraryDir } from "@/lib/library-dir";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { applyMovedOut, applyStanding, movedAnswer, type StandingAnswer } from "@/lib/hub-standing";
-// Used inside functions only (it imports this file back for hubFetch): the cycle is harmless, as modules.ts and license-signing.ts.
+// Used inside functions only (it imports this file back for hubFetch): the cycle is harmless.
 import { pullResetGrants } from "@/lib/hub-reset-grants";
 import { isDesktop } from "@/lib/modules";
 import { MOVE_CANCEL_PENDING } from "@/lib/move/format";

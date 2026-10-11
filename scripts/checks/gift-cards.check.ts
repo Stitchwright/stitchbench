@@ -317,6 +317,8 @@ async function main() {
     await addPaymentFor(l.user, ltk.id, { amountCents: 1000, method: "GIFT", note: null, card: lcard.number });
     const lpay = await db.payment.findFirstOrThrow({ where: { ticketId: ltk.id } });
     const day = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
+    // Read-only happens only where the owner's hosting is billed (HOSTING_BILLING=on, src/lib/modules.ts).
+    process.env.HOSTING_BILLING = "on";
     await grantDevLicense(l.shopId, ["base"], { from: day(60), until: day(20), grace: 14, plan: "m", issuedAt: new Date(Date.now() - 60 * 86_400_000) });
     await expectError("selling a card while read-only", () => completeSaleAs(l.user, { lines: [cardLine("new", 5000)], tenders: [cash(5000)] }), /read-only|ended|lapsed|subscription|key/i);
     await expectError("spending a card while read-only", () => completeSaleAs(l.user, { lines: [{ partId: lpart.id, description: "x", qty: 1, unitPriceCents: 1000, taxable: true }], tenders: [{ method: "GIFT", amountCents: 1000, cardNumber: lcard.number }] }), /read-only|ended|lapsed|subscription|key/i);
@@ -329,6 +331,7 @@ async function main() {
     void lout;
     await removePaymentFor(l.user, lpay.id);
     assert.equal(await db.giftCardEntry.count({ where: { cardId: lcard.cardId, reason: "VOID" } }), 1, "removing a card payment works while read-only");
+    delete process.env.HOSTING_BILLING;
     ok("read-only: selling, loading and spending a card are refused; cash payments, payouts and removing a payment go through");
 
     // ---------- tenant ----------

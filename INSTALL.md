@@ -14,6 +14,10 @@ for sewing and quilt shops, runs the same two ways: see [Installing StitchShop](
 
 Both can join the community hub, StitchHub (see [Joining the community hub](#joining-the-community-hub)).
 
+The factory specs (tension values and timing and adjustment settings, read out of the makers' manuals) come with the
+official Windows installers and the hosted service. They aren't part of the public code: a copy you build yourself
+works without them. See [The manufacturers' reference data](#the-manufacturers-reference-data).
+
 ---
 
 ## Option 1: Windows program
@@ -191,7 +195,7 @@ makes it up if it is missing and resets the role's password to it at every start
 
 ### You need
 - a [Railway](https://railway.com) account (about $5–10 a month for StitchBench and its database)
-- the StitchBench code (ask for access to the repository)
+- the StitchBench code: https://github.com/SiteSentrix/StitchBench (free and open source)
 - [Node.js 22+](https://nodejs.org) and the Railway CLI (`npm i -g @railway/cli`), or you can do it all in the
   Railway dashboard instead
 
@@ -220,7 +224,8 @@ variables on the StitchBench service, then **Settings → Networking → Generat
 
 On its first start, StitchBench creates the database tables and loads the factory specs and your owner login, so
 the site takes a few minutes to answer. Every start applies database updates first, then skips data that's already
-loaded.
+loaded. The factory specs are loaded only when the build has them: deployed from the public code, the site has none
+until `STITCH_DATA_TOKEN` is set (see [The manufacturers' reference data](#the-manufacturers-reference-data)).
 
 Then open the address from `railway domain`, sign in with `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD`, change
 your password in **Settings**, and add your people under **Settings → People**.
@@ -245,6 +250,9 @@ your password in **Settings**, and add your people under **Settings → People**
 | `PLATFORM_SMTP_URL`, `PLATFORM_MAIL_FROM` | optional: the mailbox the sign-in page's **Forgot your password?** sends its link from (`smtps://user:pass@host:465`, or `smtp://…:587` for STARTTLS), one use, one hour. Without them the page says to ask the administrator, who makes an owner a **Reset link** on the Companies page (staff are reset by their owner in Settings → People) |
 | `APP_URL` | optional: this site's own https address for those links (defaults to `PUBLIC_URL` unless `PUBLIC_LINKS_ONLY`, then Railway's public domain); never taken from a request |
 | `PLATFORM_API_TOKEN` | optional: 32+ random characters, the same variable on StitchHub (with `HOSTED_STITCHSHOP_URL` / `HOSTED_STITCHBENCH_URL` there pointing here). Lets a verified StitchHub account **Start a hosted shop**: the hub calls `POST /api/platform/companies` with it (https only, `TRUST_PROXY=true` on Railway), the company and its owner (the account's email) are made, show "Started from StitchHub" on Companies, and the owner chooses a password through a 24-hour link the hub shows once. Unset: the route doesn't exist |
+| `HOSTING_BILLING` | the owner's hosted services only, once their hosting is billed: `on` lets an unpaid hosting make a company read-only (see [Features](#features-the-add-on-modules)). Leave it unset anywhere else: the program is free and nothing else ever locks it |
+| `SOURCE_URL` | optional: where **Settings → About** links the source code (default https://github.com/SiteSentrix/StitchBench, at the deployed commit when Railway sets `RAILWAY_GIT_COMMIT_SHA`) |
+| `STITCH_DATA_TOKEN` | optional, read while building: a GitHub token that can read the manufacturers' reference data (see [The manufacturers' reference data](#the-manufacturers-reference-data)); each deploy then fetches it before building, and a fetch that fails stops the deploy. Unset: the site has no factory specs (data loaded by an earlier deploy stays). `STITCH_DATA_REPO` and `STITCH_DATA_REF` choose another repository or branch |
 
 ### Manuals on the hosted version
 The server can't see your PCs. Each tech connects their manuals folder once in the browser (**My manuals →
@@ -404,10 +412,10 @@ the program never deletes it for you.
 
 ## Your StitchHub account
 
-A shop owner can have an **account on StitchHub**: an email address and a password. The account owns the shop (or
-several, for a repair shop that hosts its quilt shops' StitchShop companies) and is where the shop subscribes when
-subscriptions open; until then every shop is on a free trial or comped by the hub admin, and nothing changes in the
-program. Staff logins inside the program are separate and stay as they are.
+A shop owner can have an **account on StitchHub**: an email address and a password. It is free, like the program. The
+account owns the shop on the hub (or several, for a repair shop that hosts its quilt shops' StitchShop companies), and
+it is where a shop adds the Assistant or has SiteSentrix host it, if it wants either. Staff logins inside the program are
+separate and stay as they are.
 
 **Settings → Account** (owners only) is where it happens:
 - **Create your StitchHub account**: your email, and a tick to accept the terms and privacy policy (both pages are on
@@ -416,17 +424,17 @@ program. Staff logins inside the program are separate and stay as they are.
   part of this, with no invite. If the address already has an account, the hub says so: use the next door.
 - **I already have an account**: **Show a link code** gives a 10-character code good for 15 minutes. Sign in on the hub
   (the link is on the page) and type it under **Connect a shop**. This needs the program to be on the hub already.
-- The page shows what the hub last said about the shop (trial, comped, last day) and what the program itself is
-  licensed for, with **Check again** to ask the hub now. The hub tells the program at every sync; the program's own key
-  arrives the same way once billing exists and needs no pasting.
+- The page says the program is free (or, on the owner's hosted service once hosting is billed, how the hosting stands)
+  and shows what the hub last said about the shop, with **Check again** to ask the hub now. The hub tells the program at
+  every sync; the Assistant's key arrives the same way and needs no pasting.
 - The Windows program also offers **Allow a password reset from my StitchHub account** (off by default; a later
   version uses it).
 
-**If the program's key ever lapses** (a subscription that ended and its 14 days of grace ran out) the program becomes
-**read-only**: every page, print and export still works, open tickets can be finished and closed, payments, returns
-and voids go through, backups and syncs run; new tickets, sales, parts and edits wait for a new key, which comes from
-the account at the next sync (or by email from StitchBench, pasted under Settings → Modules). Nothing is deleted. A
-program that never connects to any hub keeps working as it always has.
+**Only on the owner's hosted service**, once its hosting is billed (`HOSTING_BILLING=on`), an unpaid hosting (its 14 days
+of grace over) makes the company **read-only**: every page, print and export still works, open tickets can be finished
+and closed, payments, returns and voids go through, backups and syncs run; new tickets, sales, parts and edits wait until
+the hosting is paid, and the company can move to the free Windows program at any time. Nothing is deleted. The Windows
+program and a server of your own never become read-only for anything the hub says.
 
 **A forgotten owner password on the Windows program**: the tray menu's **Reset a password...** lists the logins; pick
 one and a new password is made and shown once, on the shop PC's own screen. It needs the PC and nothing else.
@@ -437,7 +445,8 @@ one and a new password is made and shown once, on the shop PC's own screen. It n
 
 A company can move from one install to another and keep everything: from the hosted service to a shop PC (or its
 own Railway), from a shop PC to the hosted service, or from one PC to a new one. Everything comes with the same ids,
-so tickets, photos, partner records, license keys and the StitchHub connection carry on as they were.
+so tickets, photos, partner records, the features switched on, the Assistant's key and the StitchHub connection carry
+on as they were.
 
 **On the install the company leaves** (the owner, **Settings → Company → Move this company**):
 1. Read what the file holds (everything: customers, machines, tickets, photos, parts and stock, sales, messages and
@@ -471,8 +480,8 @@ Twilio auth token (Settings → Messages → Texts), the Stripe secret key and w
 the webhook address is the new install's now), and estimate links still waiting for a customer's answer (send them
 again from the ticket). Email and texts stay off and marketing is on hold until then. Online booking and the online
 shop answer at the new install's address: give customers the new link (if another company there already uses the
-booking address, it is cleared and you choose a new one). Modules the hosted administrator switched on need a license
-key on a Windows PC: ask for one before you move. The manual library is the PC's folder, not in the file: copy
+booking address, it is cleared and you choose a new one). The company's Features come with it, switched on as they
+were. The manual library is the PC's folder, not in the file: copy
 `C:\Manuals` to the new PC, or connect the folder again on the hosted service.
 
 **StitchHub.** When the company was on a hub, the new install hands the hub the move token right after the import:
@@ -548,108 +557,67 @@ QuickBooks Online's journal-entry template as we know it: have your bookkeeper t
 
 ---
 
-## Paid modules
+## Features (the add-on modules)
 
-StitchBench's extra modules (Vac Shop, Small Appliance Repair, Scheduling, Marketing) are sold by StitchBench,
-monthly or yearly. The program itself stays the same; a module is turned on by a **key**: about 350 characters
-starting `SB1.`, made for one company and emailed to the shop.
+StitchBench and StitchShop are free and open source (AGPL-3.0), every part of them, on the Windows program, on your own
+server and on the hosted service. The extra parts for particular kinds of work are free too, and each company switches
+on the ones it uses, so its screens show only what it needs: **Vac Shop** (vacuum repairs, the bag, belt and filter
+finder, vacuums for sale with warranties and trade-ins, bags-due reminders, central vac installs), **Small Appliance
+Repair** (stand mixers, 3D printers and other small appliances), **Scheduling** (classes, appointments, staff shifts,
+pickup runs with partner shops, online booking), **Marketing** (campaigns, service reminders, review requests,
+not-picked-up notices, customer import) and **Maker Shop** (supplies reminders for printer and cutter owners,
+maker-space time, print and cut jobs).
 
-### Adding a key (the shop)
-Go to **Settings → Modules**, paste the key (or the whole email it came in) in the box and press **Add key**. That is
-all. It works without the internet, on the Windows program and on a hosted copy alike. The page shows each module's
-state (on, renewal due, grace period, ended), the key's last day and who it was issued to. A key is bound to the
-Company ID shown on that page: it does nothing for another company, and a changed key is refused as damaged.
+### Switching a feature on or off
+An owner or admin opens **Settings → Features** and presses **Switch on** beside it. Every feature starts off in a new
+company. Switching one off deletes nothing: what is there stays to look at and export (its menu item stays,
+read-only), and work that came in before can still be finished. Switching it on again carries on where it was.
+Each switch is in the audit log. There is nothing to paste and nothing to renew, and it works without the internet.
 
-### Rollout checklist (the owner, before the first release with modules)
-1. **Sales contact.** Fill `MODULE_SALES.email` (and `url`, if there is a pricing page) in `src/lib/module-info.ts`.
-   While it is empty, the app shows no "Ask about it" link, only "Ask StitchBench about it."
-2. **Owner key.** Run `npm run license:keygen -- --kid k1` on your PC. It writes `~/.stitchbench/license-k1.pem`
-   (encrypted with the passphrase you type) and prints a `k1: { x: "…", scope: "any" },` line. Paste that line into
-   `LICENSE_PUBLIC_KEYS` in `src/lib/license-keys.ts`, commit, and release (Railway and new installers). Until a
-   release carries the line, no pasted key works anywhere except on a development server.
-3. **Hosting key** (required on the hosted app before modules are released there: it signs the Companies page's
-   switch, and its presence turns test keys off). Run `npm run license:keygen -- --kid h1 --hosted`, commit the
-   printed `h1` line, and set two Railway variables on the hosted service: `LICENSE_HOSTED_KEY` (the printed base64)
-   and `LICENSE_HOSTED_KID=h1`. The first time a server process needs the hosting key, it logs one line if the
-   variable doesn't match the compiled `h1`: "LICENSE_HOSTED_KEY doesn't match kid h1 in license-keys.ts: the
-   Companies switch can't turn modules on." It keeps running either way.
-4. **Selling a module.** The shop presses "Ask about Vac Shop" in Settings → Modules, which emails you with the
-   Company ID filled in. Paste that email into `npm run license` (it asks the rest step by step), then send the shop
-   the email file it writes.
-5. **Self-hosted shops** (their own Railway project, or the Windows program) use pasted keys only. Their Companies
-   page explains this; the switch there is for the hosted StitchBench alone.
+**Updating from 1.7.** The first time 1.8 opens an existing company, its Features start as the modules it had working
+(from the license keys it held, and on the hosted service from the administrator's switch), so nothing a shop used
+disappears; a module that had ended starts switched off from the day it ended, its records still there. The same
+happens for a company moved in from an older program, or restored from a backup made before 1.8. From then on only
+Settings → Features decides; keys for those modules change nothing.
 
-### The command-line tools
-All of them live in `scripts/license/` and run from the repo folder. Only `dev.ts --grant` and `resign-grants.ts`
-touch a database.
+### The Assistant
+The Assistant (drafts, likely causes and plate reading, on request) isn't one of the free features: every question goes
+to an AI service, which costs money. A shop adds it on its StitchHub account; its key arrives with the hub's sync and
+the hub counts its calls. Settings → Features says how to get it, and Settings → Assistant shows its switches and
+everything it was asked.
 
-| Command | |
-|---|---|
-| `npm run license:keygen -- --kid k1` | the owner's signing key, encrypted; `--out <file>` to put it elsewhere (never inside the repo) |
-| `npm run license:keygen -- --kid h1 --hosted` | the hosting key, plain, plus the `LICENSE_HOSTED_KEY` value for Railway |
-| `npm run license:keygen -- --dev` | the development key `scripts/license/dev-key.json` (committed on purpose) |
-| `npm run license` | asks step by step: Company ID (or the shop's pasted email), name, modules, plan, start date, email, note |
-| `npm run license -- --shop <Company ID> --name "…" --modules vac,appliance --plan monthly\|yearly\|trial` | one key from flags; also `--from`, `--until`, `--grace`, `--email`, `--note`, `--key <pem>`, `--log <csv>` |
-| `npm run license -- --trial --shop <Company ID> --modules vac` | 14 days from today, no grace |
-| `npm run license -- --renew <keyId or Company ID>` | the next period of that customer's latest key: same name, modules, plan and anchor day |
-| `npm run license -- --due 30` | keys ending within 30 days with no later key, each with its `--renew` command |
-| `npm run license -- --renew-due 7` | `--renew` for every one of those within 7 days |
-| `npm run license -- --resend <keyId>` | prints that key and its email again, from the log |
-| `npm run license -- --check <key>` | decodes a key and verifies it against `src/lib/license-keys.ts` |
-| `npm run license -- --retire-list k1` | the `retired` entry for `k1` (last day and allow list) from the log |
-| `npx tsx --conditions=react-server scripts/license/dev.ts --grant <Company ID> --modules vac --from … --until …` | inserts a development key straight into a local database (for tests) |
-| `railway run npx tsx --conditions=react-server scripts/license/resign-grants.ts` | re-signs the hosted switch rows after a hosting key rotation (below) |
+### The program's own key, and read-only
+A StitchHub account may still send the program a key of its own. It changes nothing on the Windows program or on your own
+server. Only on the owner's hosted service, once its hosting is billed (`HOSTING_BILLING=on`), does an unpaid hosting make
+a company **read-only** after its grace period: every page, print and export still works, open tickets can be finished,
+payments, returns and voids go through; new tickets, sales and edits wait until the hosting is paid. The company can
+always move to the free Windows program instead (see [Moving a company](#moving-a-company)). A company being moved is
+read-only in the same way, everywhere, until the move is done or cancelled.
 
-Renewals keep the customer's **anchor day**: a key that started Jan 31 renews to Feb 27, then Mar 30, then Apr 29, so
-the date never drifts. `--until` can override the last day; `--grace` the days after it (default 14, trial 0).
-
-### Where the files live
-- `~/.stitchbench/license-<kid>.pem`: your signing key, encrypted with a passphrase. The passphrase is asked for
-  each time (nothing is echoed), or read from `STITCH_LICENSE_PASSPHRASE`. Back up the file and keep the passphrase
-  somewhere else (a password manager): anyone with both can make keys. `issue` picks the newest `.pem` whose kid is
-  in `license-keys.ts` and not retired; `--key` names one explicitly.
-- `~/.stitchbench/licenses.csv`: the sales log, one row per key (issued, keyId, companyId, name, email, modules,
-  plan, from, until, grace, anchor, note, key). `--due`, `--renew`, `--resend` and `--retire-list` read it.
-  `STITCH_LICENSE_LOG` or `--log` points elsewhere.
-- `~/.stitchbench/keys/<date>-<keyId>-<name>.txt`: the ready-to-send email for each key.
-
-### Rotating a signing key, and if one leaks
-Kids are never deleted from `license-keys.ts`: a deleted kid turns every key it signed into "needs a newer version".
-A kid is **retired** instead, keeping its public key:
-`k1: { x: "…", scope: "any", retired: { lastDay: "2027-09-30" } }`. A key from that kid whose last day is later is
-refused ("This key was replaced").
-
-- **Normal rotation** (a new PC, or a new key every few years): make `k2` with keygen and add its line in a release;
-  keep signing with `k1` for about 12 months, until offline Windows installs have updated; then sign with `k2` and
-  retire `k1` with `lastDay` = the latest last day `k1` signed (from the sales log).
-- **If your private key leaks:** release with `k2` added and `k1` retired with the whole entry printed by
-  `npm run license -- --retire-list k1`. Its `allow` list holds the hash of every genuine key in the log, so your
-  customers' keys keep working to their end dates while forged ones fail, even backdated ones. Issue `k2` keys at each
-  renewal. A PC that hasn't updated yet shows "needs a newer version" on a `k2` key, which tells the shop what to do.
-- **Hosting key rotation** (or a leak of it): release with `h2` added (keep `h1`); set the Railway variables
-  `LICENSE_HOSTED_KEY` and `LICENSE_HOSTED_KID=h2` (rows signed with `h1` keep counting, because the server still
-  holds a genuine hosting key); run `railway run npx tsx --conditions=react-server scripts/license/resign-grants.ts`,
-  which re-signs the newest "on" row of every company and module with `h2` (same last day and grace, note
-  "re-signed h1→h2", by "system"; running it twice changes nothing); in a later release, retire `h1` with `lastDay` =
-  that day.
+### Source code
+**Settings → About** links the program's source code (AGPL section 13): `SOURCE_URL`, by default
+https://github.com/SiteSentrix/StitchBench, at the exact commit a hosted service was built from when Railway sets
+`RAILWAY_GIT_COMMIT_SHA`. Under the AGPL, anyone who changes the program and lets others use it over a network offers them
+the changed source the same way.
 
 ### Test builds
 `STITCH_TEST_BUILD=1 npm run build` makes a build that accepts **development keys** (signed with the committed
-`scripts/license/dev-key.json`), for the Playwright specs and local testing. The value is fixed when the app is built
-(`next.config.ts`), so a normal build can't be put into test mode at run time. Even a test build accepts development
-keys only with no `LICENSE_HOSTED_KEY`, against a database on the same machine (`localhost`), and not on the Windows
-program, so the variable changes nothing on the hosted app. When it is on, the server logs
-`TEST BUILD: development license keys are accepted` once, and Settings → Modules shows every admin a "Test build"
-pill. `next dev` and the check scripts (`npm run check scripts/checks/<name>.check.ts`) accept development keys too.
+`scripts/license/dev-key.json`), for the Playwright specs that need the Assistant, and local testing. The value is fixed
+when the app is built (`next.config.ts`), so a normal build can't be put into test mode at run time. Even a test build
+accepts development keys only against a database on the same machine (`localhost`), and not on the Windows program.
+When it is on, the server logs `TEST BUILD: development license keys are accepted` once. `next dev` and the check
+scripts (`npm run check scripts/checks/<name>.check.ts`) accept development keys too;
+`npx tsx --conditions=react-server scripts/license/dev.ts --grant <Company ID> --modules assistant` puts one straight
+into a local database.
 
 ---
 
 ## Messages (email and texts to customers)
 
-With the **Marketing** module on, a shop can email and text its customers: "your machine is ready", estimate approval
-by link, uncollected-machine notices, class and appointment confirmations and reminders, service-due and review
-requests, and campaigns. With the **Scheduling** module on it gets the calendar, classes, appointments, staff shifts
-and partner pickup runs. Everything below is set up by an owner or admin in **Settings → Messages**; nothing is sent
+A shop can email and text its customers: "your machine is ready", the parts-in notice and estimate approval by link
+always; with **Marketing** switched on (Settings → Features, free) also uncollected-machine notices, class and
+appointment confirmations and reminders, service-due and review requests, and campaigns. With **Scheduling** switched on
+it gets the calendar, classes, appointments, staff shifts and partner pickup runs. Everything below is set up by an owner or admin in **Settings → Messages**; nothing is sent
 until email or texts are switched on there.
 
 ### Email
@@ -739,6 +707,30 @@ All optional. The Windows program sets the ones it needs from its settings file.
 | `STRIPE_WEBHOOK_SECRET` | | the signing secret of that platform webhook |
 | `STRIPE_API_BASE` | `https://api.stripe.com` | tests only: the Stripe mock |
 
+## The manufacturers' reference data
+
+The factory specs StitchBench shows (upper and bobbin tension values, timing and adjustment settings) are read out of
+the makers' manuals. They aren't part of the public code, and neither are the owner's manual-library list and the hub's
+starting set of manual links: all of it is kept in a private repository. The official Windows installers and the hosted
+service include it. A copy you build yourself from the public code works the same without it, except that no factory
+specs are shown. A program or site that had them keeps them when it is updated with a build that doesn't.
+
+If you have access to the data (the owner, or someone the owner gave a token to), make a GitHub fine-grained personal
+access token that can only read that repository's contents (GitHub → Settings → Developer settings → Fine-grained
+tokens: the data repository only, Contents: read-only) and give it to the build as `STITCH_DATA_TOKEN`:
+
+- **Railway:** a variable on the app service. Railway hands service variables to the build, and every deploy fetches
+  the data before building.
+- **The Windows installers on GitHub:** a repository secret named `STITCH_DATA_TOKEN` (Settings → Secrets and
+  variables → Actions).
+- **A build on your own PC:** `STITCH_DATA_TOKEN=<token> node scripts/data/fetch-reference-data.mjs` puts the files in
+  `prisma/seed-data/` (`npm run build` runs it too, and so does `node desktop/prepare-app.mjs`).
+
+It takes the files from `sitesentrix/stitchbench-data` on its `main` branch; `STITCH_DATA_REPO` and `STITCH_DATA_REF`
+choose another repository or branch. With the token set, a download that fails stops the build, so an official build
+never goes out without the data by accident. Without it, the build says in one line that it has no reference data and
+carries on. Keep the token secret, like a password: whoever holds it can read the data.
+
 ## For maintainers
 
 ### Building the installers on GitHub
@@ -746,14 +738,16 @@ The **Windows installers** workflow (`.github/workflows/installers.yml`) builds 
 and `StitchShop Setup <version>.exe` on GitHub's Windows machines: **Actions → Windows installers → Run workflow**
 (or push a tag like `v1.4.1`), then download them from the run's **Artifacts** (kept 7 days). Set the version in
 `desktop/package.json` first. From the command line: `gh workflow run installers.yml`, then
-`gh run download <run id> -n installers`.
+`gh run download <run id> -n installers`. The workflow fetches the manufacturers' reference data first, with the
+repository secret `STITCH_DATA_TOKEN` (see [The manufacturers' reference data](#the-manufacturers-reference-data)).
 
 ### Building the Windows installer
 ```bash
 npm install
+STITCH_DATA_TOKEN=<token> node scripts/data/fetch-reference-data.mjs   # the factory specs, if you have access
 cd desktop
 npm install
-node prepare-app.mjs                 # builds the app into desktop/server (with the database migrations)
+node prepare-app.mjs                 # builds the app into desktop/server (with the database migrations and the reference data, if fetched)
 npm run installer                    # → desktop/dist/StitchBench Setup <version>.exe
 npm run installer:stitchshop         # → desktop/dist-stitchshop/StitchShop Setup <version>.exe (same program, StitchShop name and defaults)
 ```
@@ -798,7 +792,8 @@ any database updates and new reference data by itself.
 
 ### Reloading factory specs into a program
 The program loads the specs, factory settings and manual list that ship with it by itself. To load a newer set
-from the repo without a new version, take the program's database address from `dbPort` in
+without a new version, fetch it first (`STITCH_DATA_TOKEN=<token> node scripts/data/fetch-reference-data.mjs`, see
+[The manufacturers' reference data](#the-manufacturers-reference-data)), take the program's database address from `dbPort` in
 `%APPDATA%\StitchBench\config.json` and `dbPassword` in `%APPDATA%\StitchBench\secrets.json`
 (`postgresql://stitchbench:<dbPassword>@127.0.0.1:<dbPort>/stitchbench`), then run:
 ```bash

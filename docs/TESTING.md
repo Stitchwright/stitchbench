@@ -23,7 +23,8 @@ Everything here is in the repo. Nothing needs the owner's PC except the Windows-
    equipment-lines, vacuum-kind, abandon, restore-optouts, messaging-core, worker, notices, estimate-links,
    audiences, campaigns, classes, appointments, register-bookings, shifts, partner-runs, vac-finder, vac-units,
    bags-due, vac-installs, modules-crossover, part-waits, online-booking, online-shop (starts the Stripe mock itself).
-3. **Playwright specs** against a **test build** (dev license keys work; the Companies page can switch modules on).
+3. **Playwright specs** against a **test build** (dev license keys work, for the Assistant's specs; the specs switch
+   a company's Features on in the database, `tests/helpers/modules.ts`).
 
 ## The test build and its servers
 
@@ -37,7 +38,7 @@ TWILIO_MOCK_PORT=3402 node scripts/test-mail/twilio-mock.mjs &
 STRIPE_MOCK_PORT=3403 STRIPE_MOCK_WEBHOOK_BASE=http://localhost:3501/api/shop/stripe node scripts/test-mail/stripe-mock.mjs &
 
 # the server (background)
-PLATFORM_ADMIN_EMAILS=bwattendorf@gmail.com,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526 \
+PLATFORM_ADMIN_EMAILS=you@example.com,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526 \
 TWILIO_API_BASE=http://127.0.0.1:3402 STRIPE_API_BASE=http://127.0.0.1:3403 MESSAGE_WORKER_SECONDS=5 \
 READY_NOTICE_DELAY_SECONDS=1 PUBLIC_URL=http://localhost:3501 npx next start -p 3501 &
 
@@ -58,9 +59,10 @@ SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581 TWILIO_MOCK_PORT=3402 STRIPE_MOCK_PORT=3
 npx playwright test tests/<name>.spec.ts --workers 1
 ```
 
-Order that has run clean (2 Oct 2026): smoke, modules-basics, notices, estimate-links, campaigns, classes, calendar,
-register-bookings, shifts, appliances, vac-shop, modules-lapse, scheduling-messaging, parts-in, online-booking,
-online-shop, then two-servers and partner-runs with their extras below.
+Order that has run clean (2 Oct 2026; modules-basics and modules-lapse, which tested selling, gave way to features in
+1.8): smoke, features, notices, estimate-links, campaigns, classes, calendar, register-bookings, shifts, appliances,
+vac-shop, scheduling-messaging, parts-in, online-booking, online-shop, then two-servers and partner-runs with their
+extras below.
 
 - **campaigns**: its text-campaign test runs only between **12:00 and 20:00 Eastern** (a marketing text to a US
   number waits until it is 9:00 in every mainland zone, so noon Eastern). Outside that it skips itself.
@@ -79,7 +81,7 @@ online-shop, then two-servers and partner-runs with their extras below.
 - `E2E_KEEP=1` leaves a spec's throwaway company behind after a run (classes, campaigns, register-bookings,
   partner-runs, parts-in, online-booking, online-shop), to look at the rows when something fails. Delete it afterwards:
   `DELETE FROM "Shop" WHERE name LIKE '<prefix> %'`.
-- The specs read and write the database directly through `pg` with `DATABASE_URL`; `modules-lapse` also runs
+- The specs read and write the database directly through `pg` with `DATABASE_URL`; the Assistant's specs also run
   `scripts/license/dev.ts --grant`, so the spec process needs `DATABASE_URL` too (`.env` covers it).
 
 ## Before pushing

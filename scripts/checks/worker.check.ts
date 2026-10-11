@@ -20,8 +20,7 @@ import { messageRun, OFF_MESSAGE, runMessages, sendOneNow, type MessageRunResult
 import type { Channel, MessageKind } from "@/lib/messaging/types";
 import { shopsWith } from "@/lib/module-gate";
 import { addDays, ymdOf, zonedTime } from "@/lib/zoned";
-import { grantDevLicense } from "../license/dev";
-import { checkShop, cleanup, clearKick, messagingFor, withMock, withSink, type CheckShop, type MessagingOverrides, type MockHandle, type SinkHandle } from "./lib";
+import { checkShop, cleanup, clearKick, messagingFor, switchFeatures, withMock, withSink, type CheckShop, type MessagingOverrides, type MockHandle, type SinkHandle } from "./lib";
 
 const NY = "America/New_York";
 const MIN = 60_000;
@@ -499,7 +498,7 @@ async function held() {
   ok("a company without Marketing: the ready notice goes (base); its other rows stay QUEUED (held, untouched, listed by status QUEUED)");
 
   // Switching the module on releases them.
-  await grantDevLicense(s.shopId, ["marketing"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+  await switchFeatures(s.shopId, ["marketing"]);
   assert.deepEqual(await shopsWith("marketing", [s.shopId]), [s.shopId], "Marketing is on now");
   await run(s, NOON_ISH);
   assert.equal(await db.outMessage.count({ where: { shopId: s.shopId, status: "SENT", kind: "class_notice" } }), 2, "held rows go once the module is on");
@@ -533,7 +532,7 @@ async function optOutWhileModuleOff() {
   const st = await settingsOf(s.shopId);
   assert.ok(st.inboundAt && now.getTime() - st.inboundAt.getTime() < DAY, "the read watermark moved up to today");
   // Even with the module back on and a new text queued, the number can't be texted.
-  await grantDevLicense(s.shopId, ["marketing"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+  await switchFeatures(s.shopId, ["marketing"]);
   const again = await queueToCustomer(db, { shopId: s.shopId, customerId: c, kind: "ready", channels: ["sms"], content: content("after"), dedupeKey: "after", sendAfter: new Date(now.getTime() - HOUR) });
   clearKick();
   assert.deepEqual(again.skipped, [{ channel: "sms", reason: "opted_out" }]);

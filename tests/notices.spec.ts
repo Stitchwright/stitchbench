@@ -92,7 +92,7 @@ test("email is set up for the company (no Marketing: the setup is in the base)",
 test("without Marketing, campaigns are refused", async ({ browser }) => {
   const page = await login(browser, owner);
   await page.goto("/campaigns/new");
-  await expect(page.getByText("Marketing isn't turned on for this company.")).toBeVisible();
+  await expect(page.getByText("Marketing isn't switched on for this company.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Save/ })).toHaveCount(0);
   await page.context().close();
 });

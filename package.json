@@ -1,9 +1,11 @@
 {
   "name": "stitchbench",
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/data/fetch-reference-data.mjs",
     "build": "prisma generate && next build",
     "start": "npm run release && next start",
     "release": "prisma migrate deploy && tsx prisma/seed.ts --if-empty",
@@ -16,8 +18,6 @@
     "e2e": "playwright test",
     "test:unit": "tsx --conditions=react-server --test \"src/**/*.test.ts\" \"tests/unit/*.test.ts\"",
     "e2e:setup": "tsx scripts/e2e-setup.ts",
-    "license": "tsx scripts/license/issue.ts",
-    "license:keygen": "tsx scripts/license/keygen.ts",
     "check": "tsx --conditions=react-server",
     "postinstall": "node scripts/copy-pdf-worker.mjs",
     "mail:sink": "node scripts/test-mail/smtp-sink.mjs",

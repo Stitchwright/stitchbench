@@ -209,6 +209,10 @@ const FIXUPS = [
   // Re-read every text reply since the newest one in the backup, and hold marketing until an admin has checked opt-outs.
   { sql: `UPDATE "MessagingSettings" SET "inboundAt" = NULL, "inboundIncomplete" = 0, "marketingHoldAt" = $1`, params: () => [new Date()] },
   `UPDATE "Ticket" SET "pickupReadyAt" = "readyAt" WHERE status = 'READY_FOR_PICKUP' AND "pickupReadyAt" IS NULL`,
+  // 20261030000000_shop_features: a backup from before Settings → Features has no features, and its companies would come
+  // back with every one off; instead its license keys (restored with it) decide once where they start, as at the update
+  // to 1.8 (src/lib/modules.ts).
+  { before: "20261030000000_shop_features", sql: `UPDATE "Shop" SET "featuresSetUpAt" = NULL` },
 ];
 
 /** Whether a fix-up applies to a backup whose manifest says this: ungated ones always, gated ones before their migration. */
@@ -249,8 +253,8 @@ async function restoreNow(pool, dir, flavor) {
     }
     const here = await backedUpTables(client);
     // Keys survive a restore. License can't be left out of the TRUNCATE (Postgres refuses to truncate Shop while License
-    // references it), so the keys the PC holds are kept aside and merged back after the load: a key pasted after the
-    // backup was made comes back, a backup from before modules keeps the keys, and one the backup already has is
+    // references it), so the keys the PC holds are kept aside and merged back after the load: a key that arrived after
+    // the backup was made comes back, a backup from before modules keeps the keys, and one the backup already has is
     // skipped. Keys verify themselves and are bound to their company, so merging them can't add anything not bought.
     const keepLicenses = here.includes("License");
     if (keepLicenses) await client.query(`CREATE TEMP TABLE "_keep_License" ON COMMIT DROP AS SELECT * FROM "License"`);

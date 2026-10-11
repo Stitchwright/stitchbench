@@ -1,7 +1,8 @@
 // Settings -> Stores (shop-features-round-2-design.md 7.1 and 7.5): a company with one store sees one plain choice, "Add
 // a second store"; with more, each store's details, who works where, which store the online shop sells from, the
-// refund and discount limits, the owner's daily summary and her approval code. Owners add and close stores (each extra
-// store is on the bill, $25 a month); owners and admins change the details.
+// refund and discount limits, the owner's daily summary and her approval code. Owners add and close stores (the program
+// charges nothing for them; on the owner's hosting each store is hosted like the first, free-software-design.md
+// section 7, decision 9); owners and admins change the details.
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
@@ -88,7 +89,7 @@ function JoinSection({ show }: { show: boolean }) {
         <summary className="link cursor-pointer text-sm">You run another company on StitchBench too?</summary>
         <p className="muted mt-2 mb-3 text-sm">
           Joining it brings its items, customers, gift cards, tickets and sales in as a store of this company (its tickets and sales are numbered on from this company&apos;s). It
-          can&apos;t be undone. Its own StitchHub subscription is then yours to cancel.
+          can&apos;t be undone.
         </p>
         <p className="text-sm font-semibold">1. In the other company</p>
         <p className="muted mb-3 text-sm">Sign in to it, open Settings, Stores, and tap Make a join code there. Then come back here.</p>
@@ -161,7 +162,6 @@ export default async function StoresPage() {
                 <input id="add-name" name="name" required className="input" placeholder="Florida" />
               </div>
               <DetailFields prefix="add" s={{ address: null, phone: null, timeZone: shop.timeZone, taxRatePct: shop.taxRatePct, hours: null, receiptFooter: null }} />
-              <p className="muted col-span-full text-sm">Each store after the first is $25 a month ($250 a year), added to your StitchHub bill.</p>
               <div className="col-span-full">
                 <Submit>Add the store</Submit>
               </div>
@@ -363,7 +363,6 @@ export default async function StoresPage() {
               <input id="add-name" name="name" required className="input" />
             </div>
             <DetailFields prefix="add" s={{ address: null, phone: null, timeZone: shop.timeZone, taxRatePct: shop.taxRatePct, hours: null, receiptFooter: null }} />
-            <p className="muted col-span-full text-sm">Each store after the first is $25 a month ($250 a year), added to your StitchHub bill.</p>
             <div className="col-span-full">
               <Submit className="btn">Add the store</Submit>
             </div>

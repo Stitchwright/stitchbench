@@ -14,7 +14,9 @@ import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } from "../src/
  * The reference sets that ship with StitchBench. Loaded the same way as the Windows program's desktop/reference.mjs:
  * the whole set in one transaction (rows no longer shipped removed, the rest inserted or updated), and a hash of the
  * file recorded as the table's comment (seed:<hash>). Deploys (--if-empty) skip a set whose comment matches, so a
- * release with corrected or added specs reaches hosted installs, and a first load cut off halfway is finished.
+ * release with corrected or added specs reaches hosted installs, and a first load cut off halfway is finished. A set
+ * whose file isn't here is left as it is, never emptied: the manufacturers' sets aren't in the public code (an official
+ * build fetches them, scripts/data/fetch-reference-data.mjs), and a copy built without them keeps what it loaded before.
  */
 const SETS = [
   { name: "Tension specs", table: "TensionSpec", file: "tension_specs.json" },
@@ -28,7 +30,7 @@ async function loadSet(s: (typeof SETS)[number], force: boolean) {
   try {
     text = readFileSync(join(__dirname, "seed-data", s.file), "utf8");
   } catch {
-    console.log(`${s.name}: no ${s.file}; skipping.`);
+    console.log(`${s.name}: no ${s.file} in this build; skipping (the table is left as it is).`);
     return;
   }
   const mark = `seed:${createHash("sha256").update(text).digest("hex").slice(0, 16)}`;

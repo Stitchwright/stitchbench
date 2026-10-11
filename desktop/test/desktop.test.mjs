@@ -136,6 +136,36 @@ test("restore: license keys pasted after the backup come back, and the equipment
   }
 });
 
+test("restore: a backup's Features come back as saved; one from before Settings → Features has its keys decide them again", { skip }, async () => {
+  const t = await shop();
+  try {
+    const shopRow = async () => (await t.pool.query(`SELECT "featuresSetUpAt" FROM "Shop" WHERE id = 'shop1'`)).rows[0];
+    const features = async () => (await t.pool.query(`SELECT module, enabled FROM "ShopFeature" WHERE "shopId" = 'shop1' ORDER BY module`)).rows.map((r) => `${r.module}:${r.enabled}`);
+    assert.ok((await shopRow()).featuresSetUpAt, "a company made on this version is set up when it is made");
+    await t.pool.query(`INSERT INTO "ShopFeature" ("shopId", module, enabled, "byName") VALUES ('shop1', 'vac', true, 'Ann'), ('shop1', 'marketing', false, 'Ann')`);
+    const dir = await backup(t.pool, t.backups);
+
+    // After the backup: Scheduling switched on, Vac Shop off. The restore puts the backup's choices back.
+    await t.pool.query(`INSERT INTO "ShopFeature" ("shopId", module, enabled) VALUES ('shop1', 'scheduling', true)`);
+    await t.pool.query(`UPDATE "ShopFeature" SET enabled = false WHERE module = 'vac'`);
+    await restore(t.pool, dir);
+    assert.deepEqual(await features(), ["marketing:false", "vac:true"]);
+    assert.ok((await shopRow()).featuresSetUpAt, "still set up: nothing to work out again");
+
+    // The same backup presented as one from before shop_features (no ShopFeature table, an older last migration): its
+    // companies' Features are worked out again from their keys at the first load (featuresSetUpAt null), never all off.
+    const file = path.join(dir, "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.ok(manifest.lastMigration >= "20261030000000_shop_features");
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, lastMigration: "20261029000000_text_size", tables: manifest.tables.filter((x) => x.name !== "ShopFeature") }));
+    await restore(t.pool, dir);
+    assert.deepEqual(await features(), [], "an older backup has no features");
+    assert.equal((await shopRow()).featuresSetUpAt, null, "so its keys decide them at the first load, as at the update to 1.8");
+  } finally {
+    await t.done();
+  }
+});
+
 test("restore: opt-outs and consent recorded after the backup stay, restored marketing is cancelled, notices requeued, marketing on hold", { skip }, async () => {
   const t = await shop();
   // Times as the UTC wall clock Prisma writes into TIMESTAMP(3) columns (backup.mjs compares the backup's time the same way).
@@ -271,12 +301,17 @@ test("backups: StitchBench and StitchShop keep theirs apart, and each refuses th
   }
 });
 
-test("reference data: loaded once, reloaded when the shipped file changes, and a restore leaves it alone", { skip }, async () => {
+// The tension specs are among the manufacturers' reference data, which isn't in the public code (INSTALL.md): a checkout
+// without them skips this test rather than failing.
+const SPECS = path.join(ROOT, "prisma", "seed-data", "tension_specs.json");
+const noSpecs = fs.existsSync(SPECS) ? false : "prisma/seed-data/tension_specs.json isn't here (the manufacturers' reference data, kept out of the public code)";
+
+test("reference data: loaded once, reloaded when the shipped file changes, and a restore leaves it alone", { skip: skip || noSpecs }, async () => {
   const t = await shop();
   try {
     const shipped = path.join(t.dir, "seed-data");
     fs.mkdirSync(shipped);
-    const specs = JSON.parse(fs.readFileSync(path.join(ROOT, "prisma", "seed-data", "tension_specs.json"), "utf8"));
+    const specs = JSON.parse(fs.readFileSync(SPECS, "utf8"));
     const write = (rows) => fs.writeFileSync(path.join(shipped, "tension_specs.json"), JSON.stringify(rows));
     const loaded = [];
     const log = (m) => loaded.push(m);
@@ -297,6 +332,43 @@ test("reference data: loaded once, reloaded when the shipped file changes, and a
     assert.ok(!readManifest(dir).manifest.tables.some((x) => x.name === "TensionSpec"));
     await restore(t.pool, dir);
     assert.equal(await rows(), specs.length - 1, "a restore doesn't put older reference data back");
+  } finally {
+    await t.done();
+  }
+});
+
+test("reference data: a set this build doesn't ship (or ships empty or cut off) leaves the loaded rows alone", { skip }, async () => {
+  const t = await shop();
+  try {
+    const dir = (name) => {
+      const d = path.join(t.dir, name);
+      fs.mkdirSync(d);
+      return d;
+    };
+    const rows = async () => (await t.pool.query(`SELECT count(*)::int AS n FROM "TensionSpec"`)).rows[0].n;
+    const mark = async () => (await t.pool.query(`SELECT obj_description('"TensionSpec"'::regclass, 'pg_class') AS c`)).rows[0].c;
+    const earlier = dir("earlier");
+    const made = [1, 2, 3].map((i) => ({ id: `chk${i}`, category: "Sewing", brand: "Check", models: `CHK${i}`, modelKeys: [`CHK${i}`], sourceFile: "check.pdf" }));
+    fs.writeFileSync(path.join(earlier, "tension_specs.json"), JSON.stringify(made));
+    await loadReference(t.pool, earlier, { library: false, log: quiet });
+    assert.equal(await rows(), 3);
+    const loaded = await mark();
+
+    // A build without the manufacturers' data (the public code): no file at all.
+    await loadReference(t.pool, dir("none"), { library: false, log: quiet });
+    assert.equal(await rows(), 3, "a missing file empties nothing");
+    assert.equal(await mark(), loaded);
+    const empty = dir("empty");
+    fs.writeFileSync(path.join(empty, "tension_specs.json"), "[]");
+    await loadReference(t.pool, empty, { library: false, log: quiet });
+    assert.equal(await rows(), 3, "nor does an empty list");
+    const cut = dir("cut");
+    fs.writeFileSync(path.join(cut, "tension_specs.json"), JSON.stringify(made).slice(0, 40));
+    const logged = [];
+    await loadReference(t.pool, cut, { library: false, log: (...a) => logged.push(a.join(" ")) });
+    assert.equal(await rows(), 3, "nor a file cut off halfway");
+    assert.equal(await mark(), loaded);
+    assert.ok(logged.some((l) => l.includes("TensionSpec not loaded")), "which is logged");
   } finally {
     await t.done();
   }

@@ -185,7 +185,7 @@ async function main() {
     await expectError("B covers A's line", () => coverLineFor(user(b), t3.lines[0].id, null), /not found/);
     await expectError("B changes A's plan", () => savePlanFor(user(b), planId, form({ name: "Mine", months: "12" })), /not found/);
     await expectError("B sells A's plan", () => preparePlanLine({ shopId: b.shopId, role: "OWNER", customerId: null, unitIdsOnSale: [] }, { planId, machineId: own.id }, 1, 0), /isn't on sale/);
-    await expectError("B uses A's unit's classes", () => applyClassCreditAs(user(b), e3.id, u1), /not found|isn't turned on/);
+    await expectError("B uses A's unit's classes", () => applyClassCreditAs(user(b), e3.id, u1), /not found|isn't switched on/);
     assert.deepEqual(await classCreditsFor(b.shopId, cust.id), []);
     assert.deepEqual(await listMakerTerms(b.shopId), []);
     assertUnchanged("tenant", before, await snapshot(a.shopId, ["StockUnit", "MachinePlan", "ServicePlan", "MakerWarranty"]));

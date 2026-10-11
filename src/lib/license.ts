@@ -1,4 +1,7 @@
 // License keys: format, signing, verification and the entitlement maths (pure: no "server-only", no database). See docs/plans/modules-design.md sections 3 and 5; checked by scripts/checks/license.check.ts.
+// Since 1.8 a key decides only the Assistant and, where the owner's hosting is billed, the program itself; the five trade
+// modules are free and switched on in Settings → Features (free-software-design.md). The keys a company held before 1.8
+// still decide, once, where its Features start (src/lib/modules.ts).
 import crypto from "node:crypto";
 
 // "base" is the program itself (hub-accounts-billing-design.md 3.5): off means fully working, lapsed means read-only.
@@ -12,22 +15,11 @@ export type Retired = { lastDay: string; allow?: string[] };
 export type PublicKeys = Record<string, { x: string; scope: KeyScope; retired?: Retired }>;
 /** m monthly, y yearly, a administrator switch, t trial, c comped by the hub admin, w waived while partnered; any other short word is a plan a newer version knows. */
 export type Plan = string;
-/**
- * `l` and `fs` are optional and only StitchHub signs them (hub keys from the two-plan price list, 3 Oct 2026): `l` the
- * login plan ("solo": up to two people signed in; "shop": everyone) and `fs` true for a founding shop's price. A key
- * without `l` limits nothing.
- */
-export type LicensePayload = { v: 1; k: string; id: string; s: string; n: string; m: string[]; p: Plan; f: string; u: string; g: number; t: string; l?: string; fs?: boolean };
+/** A hub key may carry more fields (an older hub's login plan `l` and founding price `fs`): they verify, and nothing reads them. */
+export type LicensePayload = { v: 1; k: string; id: string; s: string; n: string; m: string[]; p: Plan; f: string; u: string; g: number; t: string };
 export type Verified = { ok: true; payload: LicensePayload; scope: KeyScope; kid: string } | { ok: false; reason: string };
 
-export type LoginPlan = "solo" | "shop";
-/** The login plan a key names, or null for a key that names none (an older hub's, an emailed one, the administrator's switch). */
-export function loginPlanOf(p: Pick<LicensePayload, "l">): LoginPlan | null {
-  return p.l === "solo" || p.l === "shop" ? p.l : null;
-}
-
 export const NO_END = "2099-12-31";
-export const TRIAL_DAYS = 14;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 export const validYmd = (s: unknown): s is string => typeof s === "string" && YMD.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 
@@ -98,10 +90,10 @@ export function verifyLicense(text: string, keys: PublicKeys): Verified {
 
 /**
  * Which verified keys count where. Pasted keys: "any" and "hub" (StitchHub's own signing key: its keys arrive with the
- * sync and are stored like pasted ones; and "dev" on a development server). Admin switch rows: "hosted", only on a
- * server that holds a genuine hosting key itself (hostedSigner() matched its compiled public half), so a copy of the
- * hosted database on any other server switches nothing on; "dev" on a development server. A hub key never counts as
- * the Companies switch.
+ * sync and are stored like pasted ones; and "dev" on a development server). Admin switch rows (the hosted Companies
+ * switch before 1.8, read once when a company's Features are first worked out): "hosted", only on a server that holds a
+ * genuine hosting key itself, so a copy of the hosted database on any other server switches nothing on; "dev" on a
+ * development server. A hub key never counts as the Companies switch.
  */
 export function acceptScope(scope: KeyScope, use: "pasted" | "grant", ctx: { devAllowed: boolean; hostedHeld: boolean }) {
   if (scope === "dev") return ctx.devAllowed;
@@ -122,18 +114,6 @@ export function dayStartIn(ymd: string, timeZone: string) {
   return new Date(t);
 }
 export const addDaysYmd = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-/**
- * Last day of a plan that starts on `from`: the day before the next period starts. Monthly and yearly periods start on
- * the anchor day (the first key's day of the month; clamped to short months), so renewals don't drift. Trial: 14 days.
- */
-export function planLastDay(from: string, plan: "m" | "y" | "t", anchorDay?: number) {
-  if (plan === "t") return addDaysYmd(from, TRIAL_DAYS - 1);
-  const [y, m, d] = from.split("-").map(Number);
-  const months = plan === "y" ? 12 : 1;
-  const days = new Date(Date.UTC(y, m - 1 + months + 1, 0)).getUTCDate();
-  const next = new Date(Date.UTC(y, m - 1 + months, Math.min(anchorDay ?? d, days))).toISOString().slice(0, 10);
-  return addDaysYmd(next, -1);
-}
 
 export type Window = { module: string; from: Date; until: Date; graceUntil: Date; plan: Plan; keyId: string; issuedAt: Date; lastDay: string; graceLastDay: string; source: "key" | "admin" };
 /** One window per module on a verified key: the start of `f` to the end of `u` in shop time, then `g` days of grace. */

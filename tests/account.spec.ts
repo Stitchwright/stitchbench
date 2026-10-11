@@ -1,7 +1,8 @@
 // Settings → Account end to end (hub-accounts-billing-design.md section 7, package 2 base-license): a company's owner
 // creates the StitchHub account from the program (door 1), sets the password from the hub's email, and the page then
-// shows the account verified and the standing the hub gave (a free trial with its last day); a second company on the
-// same install shows a link code (door 2), typed in on the hub under "Connect a shop".
+// shows the account verified and the standing the hub gave; the program is free throughout (free-software-design.md),
+// with no key to wait for; a second company on the same install shows a link code (door 2), typed in on the hub under
+// "Connect a shop".
 //   Runs on a TEST BUILD (the :3501 server of docs/TESTING.md) whose install is joined to the local test hub
 //   (scripts/local-test/start_hub.bat on :3200, the stitchhub repo on a branch with accounts). The hub runs with
 //   MAIL_DEV_LOG=true (start_hub.bat sets it) and no SMTP_URL, so the set-password link is printed to its log file,
@@ -78,14 +79,14 @@ test.afterAll(async () => {
   await hub?.close();
 });
 
-test("door 1: the owner creates the account, sets the password from the hub's email, and the page shows verified and the trial", async ({ browser }) => {
+test("door 1: the owner creates the account, sets the password from the hub's email, and the page shows verified and the hub's word", async ({ browser }) => {
   const page = await login(browser, ownerA);
   await page.goto("/settings/account");
   await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await expect(page.getByText("Create your StitchHub account")).toBeVisible();
   await expect(page.getByTestId("company-id")).toHaveText(made[0]);
-  // Not connected to any account yet: the program works without one.
-  await expect(page.getByText(/works: no key is needed yet/)).toBeVisible();
+  // Not connected to any account yet: the program works without one, free.
+  await expect(page.getByTestId("free-line")).toContainText("is free: every feature, for every shop");
 
   const logFrom = fs.statSync(HUB_LOG).size;
   await expect(page.getByLabel("Your email")).toHaveValue(ownerA.email);
@@ -119,16 +120,12 @@ test("door 1: the owner creates the account, sets the password from the hub's em
   await page.getByRole("button", { name: "Check again" }).click();
   await expect(page.getByText("Checked with StitchHub")).toBeVisible();
   await expect(page.getByText("verified", { exact: true })).toBeVisible();
-  await expect(page.getByText(/StitchHub says:/)).toContainText(/Free trial/);
-  await expect(page.getByText(/StitchHub says:/)).toContainText(/through [A-Z][a-z]{2} \d{1,2}, \d{4}/);
-  const after = await one<{ hubAccountVerified: boolean; hubStanding: string | null; hubStandingUntil: string | null }>(
-    `SELECT "hubAccountVerified", "hubStanding", "hubStandingUntil" FROM "Shop" WHERE id = $1`,
-    [made[0]],
-  );
-  expect(after).toMatchObject({ hubAccountVerified: true, hubStanding: "trial" });
-  expect(after?.hubStandingUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  // Today's hub signs no key yet: the program itself stays as it was (off = working).
-  await expect(page.getByText(/works: no key is needed yet/)).toBeVisible();
+  await expect(page.getByText(/StitchHub says:/)).toContainText(/Free/);
+  const after = await one<{ hubAccountVerified: boolean; hubStanding: string | null }>(`SELECT "hubAccountVerified", "hubStanding" FROM "Shop" WHERE id = $1`, [made[0]]);
+  expect(after?.hubAccountVerified).toBe(true);
+  expect(after?.hubStanding).toBeTruthy();
+  // Whatever key the hub sends, the program stays free and fully working (a key counts only where hosting is billed).
+  await expect(page.getByTestId("free-line")).toContainText("is free");
   await page.context().close();
 });
 
@@ -153,20 +150,21 @@ test("door 2: a second company shows a link code; typed in on the hub it joins t
   await expect(hp.locator("#shopRows")).toContainText(companyB);
   await hp.close();
 
-  // Back in the program, the second company sees the account and its own trial.
+  // Back in the program, the second company sees the account and its own standing.
   await page.goto("/settings/account");
   await page.getByRole("button", { name: "Check again" }).click();
   await expect(page.getByText("Checked with StitchHub")).toBeVisible();
   await expect(page.getByText(`Account: ${ownerA.email}`)).toBeVisible();
   await expect(page.getByText("verified", { exact: true })).toBeVisible();
-  await expect(page.getByText(/StitchHub says:/)).toContainText(/Free trial/);
+  await expect(page.getByText(/StitchHub says:/)).toContainText(/Free/);
   const b = await one<{ hubAccountEmail: string | null; hubAccountVerified: boolean; hubStanding: string | null }>(
     `SELECT "hubAccountEmail", "hubAccountVerified", "hubStanding" FROM "Shop" WHERE id = $1`,
     [made[1]],
   );
-  expect(b).toMatchObject({ hubAccountEmail: ownerA.email, hubAccountVerified: true, hubStanding: "trial" });
+  expect(b).toMatchObject({ hubAccountEmail: ownerA.email, hubAccountVerified: true });
+  expect(b?.hubStanding).toBeTruthy();
   // Company A's row is untouched by B's connection.
   const a = await one<{ hubAccountEmail: string | null; hubStanding: string | null }>(`SELECT "hubAccountEmail", "hubStanding" FROM "Shop" WHERE id = $1`, [made[0]]);
-  expect(a).toMatchObject({ hubAccountEmail: ownerA.email, hubStanding: "trial" });
+  expect(a?.hubAccountEmail).toBe(ownerA.email);
   await page.context().close();
 });

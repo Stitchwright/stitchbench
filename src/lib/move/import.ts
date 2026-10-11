@@ -422,6 +422,10 @@ function prepare(t: MoveTable, line: MoveRow, plan: Plan, now: Date): Record<str
     // The secrets are null in the file already; the online shop waits for its Stripe keys; this copy came in by a move.
     Object.assign(row, { shopOn: false, movingAt: null, movedOutAt: null, movedTo: null, movedInAt: now, movedFrom: fromText(plan.meta) });
     if (plan.slugTaken) row.bookingSlug = null;
+    // A file from before 1.8 has no Features: the company's own keys (in the file) decide, once, where they start
+    // (src/lib/modules.ts), as for every company an update to 1.8 finds. Left to the column's default, it would start
+    // with every one off.
+    if (!("featuresSetUpAt" in row)) row.featuresSetUpAt = null;
   }
   if (t.t === "MessagingSettings") {
     // Off until the mail password / Twilio token are entered again; marketing held and text replies re-read, as a restore does.

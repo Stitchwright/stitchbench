@@ -1,6 +1,7 @@
 // Tenant section of the modules foundation (modules-design.md section 13.1 and acceptance item 6): companies A and B
-// both have Vac Shop and Small Appliance Repair; B calls the foundation's lib bodies, gates and stubs with A's ids and
-// gets "not found", false, null or [], and A's rows don't change.
+// both have Vac Shop and Small Appliance Repair switched on (Settings → Features); B calls the foundation's lib bodies,
+// gates and stubs with A's ids and gets "not found", false, null or [], B's own switches leave A's alone, and A's rows
+// don't change.
 //   npx tsx --conditions=react-server scripts/checks/modules-tenant.check.ts
 // Throwaway companies "Check <run> A" / " B", removed at the end. Exit code non-zero on the first failing assertion.
 import "dotenv/config";
@@ -10,15 +11,15 @@ import { convertMachineKindFor } from "@/lib/equipment/convert";
 import { machineWorkable, ticketWorkable } from "@/lib/equipment/gate";
 import { saveIntakeFor, saveReadingsFor } from "@/lib/equipment/ticket-data";
 import { modelKey } from "@/lib/format";
-import { addDaysYmd } from "@/lib/license";
-import { activateLicenseFor } from "@/lib/licenses";
 import { loadModules } from "@/lib/modules";
 import { listInstalls } from "@/lib/vac/installs";
 import { listUnits, unitDetail } from "@/lib/units/units";
-import { grantDevLicense } from "../license/dev";
+import { switchFeatures } from "./lib";
 import { assertUnchanged, expectNotFound, makeCompany, removeCompany, RUN, snapshot } from "./tenant";
 
 const TABLES = ["Shop", "User", "License", "ModuleGrant", "Machine", "Ticket", "ServiceItem"];
+/** A company's Features as JSON (the table has no id to order snapshot() by). */
+const featuresOf = async (shopId: string) => JSON.stringify(await db.shopFeature.findMany({ where: { shopId }, orderBy: { module: "asc" } }));
 
 let steps = 0;
 const ok = (label: string) => {
@@ -36,10 +37,8 @@ async function main() {
   const a = await makeCompany(`Check ${RUN} A`);
   const b = await makeCompany(`Check ${RUN} B`);
   try {
-    // From yesterday (UTC): a key dated today in UTC hasn't started yet in a shop zone west of it until the evening.
-    const from = addDaysYmd(new Date().toISOString().slice(0, 10), -1);
-    const keyA = await grantDevLicense(a.shopId, ["vac", "appliance"], { from });
-    await grantDevLicense(b.shopId, ["vac", "appliance"], { from });
+    await switchFeatures(a.shopId, ["vac", "appliance"]);
+    await switchFeatures(b.shopId, ["vac", "appliance"]);
     for (const c of [a, b]) {
       const m = await loadModules(c.shopId);
       assert.equal(m.states.vac.active, true);
@@ -61,6 +60,7 @@ async function main() {
 
     const before = await snapshot(a.shopId, TABLES);
     const bBefore = await snapshot(b.shopId, TABLES);
+    const aFeatures = await featuresOf(a.shopId);
 
     await expectNotFound("saveReadingsFor(B, A's ticket)", () => saveReadingsFor(b.user, ticket.id, form({ "found:suction": "10", "left:suction": "20" })));
     await expectNotFound("saveIntakeFor(B, A's ticket)", () => saveIntakeFor(b.user, ticket.id, form({ "f:bagged": "Bagless", "f:bagType": "changed" })));
@@ -85,19 +85,18 @@ async function main() {
     await expectNotFound("listInstalls(B)", () => listInstalls(b.shopId));
     ok("unitDetail null, listUnits [], listInstalls [] (the stubs)");
 
-    await expectNotFound("activateLicenseFor(B, A's key)", () => activateLicenseFor(b.user, form({ key: keyA })));
-    await assert.rejects(activateLicenseFor(b.user, form({ key: `Hi,\n\nhere is your key:\n${keyA}\n\nThanks` })), (e: unknown) => {
-      assert.ok(e instanceof Error && e.message.includes("This key is for another company"), String(e));
-      assert.ok(e instanceof Error && e.message.includes(a.shopId), "it names the key's Company ID");
-      return true;
-    });
-    assert.equal(await db.license.count({ where: { shopId: b.shopId } }), 1, "B gained no key");
-    assert.equal(await db.license.count({ where: { shopId: a.shopId } }), 1);
-    ok("activateLicenseFor(B, A's key): This key is for another company");
-
     assertUnchanged("company A", before, await snapshot(a.shopId, TABLES));
     assertUnchanged("company B", bBefore, await snapshot(b.shopId, TABLES));
     ok("A's rows (and B's) unchanged");
+
+    // B's Features are its own: B switching Vac Shop off leaves A's on, and A's rows as they were.
+    await switchFeatures(b.shopId, ["vac"], false);
+    assert.equal((await loadModules(b.shopId)).states.vac.active, false);
+    assert.equal((await loadModules(a.shopId)).states.vac.active, true, "A's Vac Shop is still on");
+    assert.equal(await ticketWorkable(a.shopId, ticket.id), true);
+    assertUnchanged("company A", before, await snapshot(a.shopId, TABLES));
+    assert.equal(await featuresOf(a.shopId), aFeatures, "A's Features rows unchanged");
+    ok("B's switch changes nothing of A's");
 
     console.log(`modules-tenant.check: ${steps} steps passed (run ${RUN})`);
   } finally {

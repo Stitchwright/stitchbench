@@ -1,41 +1,46 @@
-// What a page says when its module is off or has ended (modules-design.md section 6.6). Server components.
+// What a page says when its module is off or switched off (modules-design.md section 6.6). Server components. The five
+// trade modules are free and switched on in Settings → Features; the Assistant is added on the StitchHub account.
 import Link from "next/link";
-import { db } from "@/lib/db";
-import { endedDay, fmtYmd, MODULES, salesMailto, SETTINGS_MODULES_HREF, type ModuleId, type ModuleState } from "@/lib/module-info";
+import { endedDay, fmtYmd, isFeatureId, MODULES, SETTINGS_ACCOUNT_HREF, SETTINGS_FEATURES_HREF, type ModuleId, type ModuleState } from "@/lib/module-info";
 import { getModules } from "@/lib/modules";
 
-type Shop = { id: string; name: string };
+/** Where an owner or admin gets the module: Settings → Features (free), or the StitchHub account (the Assistant). */
+function GetIt({ state, again }: { state: ModuleState; again?: boolean }) {
+  if (isFeatureId(state.id)) {
+    return (
+      <span>
+        {again ? "To start new work, switch it on again in " : "It's free: switch it on in "}
+        <Link href={SETTINGS_FEATURES_HREF} className="link">
+          Settings → Features
+        </Link>
+        .
+      </span>
+    );
+  }
+  return (
+    <span>
+      Add it on your{" "}
+      <Link href={SETTINGS_ACCOUNT_HREF} className="link">
+        StitchHub account
+      </Link>
+      .
+    </span>
+  );
+}
 
-/** A card for an off or ended module; null while it is active. `what` names the page's records ("Your vacuums for sale"). */
-export function ModuleNotice({ state, what, admin = false, shop }: { state: ModuleState; what?: string; admin?: boolean; shop: Shop }) {
+/** A card for an off or switched-off module; null while it is active. `what` names the page's records ("Your vacuums for sale"). */
+export function ModuleNotice({ state, what, admin = false }: { state: ModuleState; what?: string; admin?: boolean }) {
   if (state.active) return null;
   const { label, blurb } = MODULES[state.id];
+  const feature = isFeatureId(state.id);
   if (state.status === "lapsed") {
-    const renew = salesMailto("renew", label, shop);
     return (
       <div className="card card-pad text-sm" role="status">
         <p>
-          <strong>{state.switchedOff ? `${label} was switched off on ${endedDay(state)}.` : `${label} ended on ${endedDay(state)}.`}</strong> {what ?? "Everything here"} stays here to
-          look at and export, and work that came in before then can be finished.
+          <strong>{state.switchedOff ? `${label} was switched off on ${endedDay(state)}.` : `${label} ended on ${endedDay(state)}.`}</strong> {what ?? "Everything here"} stays here to look at
+          and export, and work that came in before then can be finished.
         </p>
-        {admin ? (
-          <p className="mt-2 flex flex-wrap items-center gap-2">
-            <span>
-              To start new work, renew it in{" "}
-              <Link href={SETTINGS_MODULES_HREF} className="link">
-                Settings → Add-ons
-              </Link>
-              .
-            </span>
-            {renew && (
-              <a href={renew} className="btn btn-sm">
-                Renew {label}
-              </a>
-            )}
-          </p>
-        ) : (
-          <p className="mt-2">Ask the shop owner to renew it.</p>
-        )}
+        <p className="mt-2">{admin ? <GetIt state={state} again /> : feature ? "Ask the shop owner or an admin to switch it on again." : "Ask the shop owner about it."}</p>
       </div>
     );
   }
@@ -48,39 +53,18 @@ export function ModuleNotice({ state, what, admin = false, shop }: { state: Modu
       </div>
     );
   }
-  const ask = salesMailto("ask", label, shop);
   return (
     <div className="card card-pad text-sm" role="status">
       <p>
-        <strong>{label} isn&apos;t turned on for this company.</strong> {blurb}
+        <strong>{feature ? `${label} isn't switched on for this company.` : `${label} isn't turned on for this company.`}</strong> {blurb}
       </p>
-      {admin ? (
-        <p className="mt-2 flex flex-wrap items-center gap-2">
-          <span>
-            To add it, see{" "}
-            <Link href={SETTINGS_MODULES_HREF} className="link">
-              Settings → Add-ons
-            </Link>
-            .
-          </span>
-          {ask ? (
-            <a href={ask} className="btn btn-sm">
-              Ask about {label}
-            </a>
-          ) : (
-            <span className="muted">Ask StitchBench about it.</span>
-          )}
-        </p>
-      ) : (
-        <p className="mt-2">Ask the shop owner about it.</p>
-      )}
+      <p className="mt-2">{admin ? <GetIt state={state} /> : feature ? "Ask the shop owner or an admin to switch it on in Settings → Features." : "Ask the shop owner about it."}</p>
     </div>
   );
 }
 
-/** The same, loading its own state and shop. */
+/** The same, loading its own state. */
 export async function ModuleNoticeFor({ shopId, module, what, admin }: { shopId: string; module: ModuleId; what?: string; admin?: boolean }) {
-  const [mods, shop] = await Promise.all([getModules(shopId), db.shop.findUnique({ where: { id: shopId }, select: { id: true, name: true } })]);
-  if (!shop) return null;
-  return <ModuleNotice state={mods.states[module]} what={what} admin={admin} shop={shop} />;
+  const mods = await getModules(shopId);
+  return <ModuleNotice state={mods.states[module]} what={what} admin={admin} />;
 }

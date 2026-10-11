@@ -186,11 +186,14 @@ async function main() {
     const lc = await db.customer.create({ data: { shopId: l.shopId, name: "Lapsed Customer" } });
     await giveStoreCreditAs(l.user, lc.id, 3000, "before it lapsed");
     const day = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
+    // Read-only happens only where the owner's hosting is billed (HOSTING_BILLING=on, src/lib/modules.ts).
+    process.env.HOSTING_BILLING = "on";
     await grantDevLicense(l.shopId, ["base"], { from: day(60), until: day(20), grace: 14, plan: "m", issuedAt: new Date(Date.now() - 60 * 86_400_000) });
     await expectError("spending credit while read-only", () => completeSaleAs(l.user, { customerId: lc.id, lines: [{ partId: lpart.id, description: "x", qty: 1, unitPriceCents: 1000, taxable: true }], tenders: [{ method: "CREDIT", amountCents: 1000 }] }), /read-only|ended|lapsed|subscription|key/i);
     const lr = await completeSaleAs(l.user, { customerId: lc.id, lines: [{ partId: lpart.id, description: "x", qty: -1, unitPriceCents: 1000, taxable: true }], tenders: [{ method: "CREDIT", amountCents: -1000 }] });
     assert.ok(lr.saleId, "a return onto store credit goes through while read-only");
     assert.equal((await db.giftCard.findFirstOrThrow({ where: { shopId: l.shopId, customerId: lc.id } })).balanceCents, 4000);
+    delete process.env.HOSTING_BILLING;
     ok("read-only: spending credit is refused; a return onto store credit is allowed");
 
     // ---------- tenant ----------

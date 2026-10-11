@@ -59,19 +59,13 @@ export async function MoveSection({ user, timeZone }: { user: CurrentUser; timeZ
           )}
           <p>
             Take this company to another StitchBench or StitchShop: the shop PC, your own server, or the hosted service. The move file holds everything this company holds, with the same ids, so
-            partner links, license keys and the StitchHub connection carry on: customers, machines, tickets, photos, parts and stock, sales, messages and consent records, classes, appointments,
+            partner links, the features you use and the StitchHub connection carry on: customers, machines, tickets, photos, parts and stock, sales, messages and consent records, classes, appointments,
             shifts, online orders, partner records and every login (with its password hash). <strong>Keep the file as you would a backup:</strong> whoever has it has the shop.
           </p>
           <p>
             Left out, to enter again on the new side: {LEFT_OUT_WORDS.join("; ")}. The manual library is the PC&apos;s folder, not in the file. Marketplace listings and orders come back from the hub
             after the move.
           </p>
-          {v.needKeys.length > 0 && (
-            <p className="tone-wait card card-pad">
-              {v.needKeys.join(" and ")} {v.needKeys.length === 1 ? "is" : "are"} switched on here by the hosted administrator. On the new install {v.needKeys.length === 1 ? "it" : "they"} need a
-              license key: ask for one before you move.
-            </p>
-          )}
           <p>
             From the moment you confirm, this copy is <strong>read-only</strong>: everyone can still look things up, finish open work and take payments, but nothing new is written here, so nothing
             entered after the file was taken can be lost. Cancel the move at any time to carry on here. Once the company is running on the new install, this copy stays read-only; delete it after 30

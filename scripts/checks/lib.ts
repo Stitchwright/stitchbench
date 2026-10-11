@@ -1,5 +1,6 @@
 // Helpers every scheduling / messaging check script shares (scheduling-messaging-design.md section 16.2):
 //   checkShop({ retail?, repair?, modules?, tz? })   a throwaway company "Check <run>" with an OWNER login and its modules
+//   switchFeatures(shopId, modules, on?, at?)        add-ons switched on (or off) as in Settings → Features
 //   linkPair(repairShopId, retailShopId)             a PartnerLink pair with one id
 //   withSink() / withMock()                          the SMTP sink and the Twilio mock, in this process, on ephemeral ports
 //   messagingFor(shopId, { email?, sms? })           message settings pointing at them, secrets sealed
@@ -10,7 +11,7 @@ import type { MessagingSettings } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { seal } from "@/lib/messaging/secrets";
 import { MESSAGING_DEFAULTS } from "@/lib/messaging/settings";
-import { grantDevLicense } from "../license/dev";
+import type { FeatureId } from "@/lib/module-info";
 import { startSmtpSink } from "../test-mail/smtp-sink.mjs";
 import { startTwilioMock } from "../test-mail/twilio-mock.mjs";
 import { makeCompany, removeCompany, RUN, type CheckCompany } from "./tenant";
@@ -22,10 +23,25 @@ const made: string[] = [];
 let n = 0;
 
 /**
+ * Add-ons switched on (or off) for a company, as an owner does in Settings → Features (src/lib/features.ts, whose
+ * action needs a request): the rows src/lib/modules.ts reads, written straight. Switched off, a module is read-only from
+ * `at` on (default now): work that came in before then can still be finished.
+ */
+export async function switchFeatures(shopId: string, modules: FeatureId[], on = true, at = new Date()): Promise<void> {
+  for (const id of modules) {
+    await db.shopFeature.upsert({
+      where: { shopId_module: { shopId, module: id } },
+      create: { shopId, module: id, enabled: on, changedAt: at, byName: "check" },
+      update: { enabled: on, changedAt: at, byName: "check" },
+    });
+  }
+}
+
+/**
  * A throwaway company named "Check <run>" (then "Check <run> B", "C", ...) with an OWNER login (check-<run>-<n>@stitchbench.test).
- * `retail` and `repair` choose what it does (neither: a repair shop; both: both). `modules` are switched on with a dev
- * license key that started two days ago, so it counts in any zone. `tz` is the shop's time zone (default America/New_York,
- * so a check's clock arithmetic doesn't depend on the machine).
+ * `retail` and `repair` choose what it does (neither: a repair shop; both: both). `modules` are switched on in its
+ * Features. `tz` is the shop's time zone (default America/New_York, so a check's clock arithmetic doesn't depend on the
+ * machine).
  */
 export async function checkShop(o: { retail?: boolean; repair?: boolean; modules?: MessagingModule[]; tz?: string } = {}): Promise<CheckShop> {
   const kind = o.retail && o.repair ? "both" : o.retail ? "retail" : "repair";
@@ -34,7 +50,7 @@ export async function checkShop(o: { retail?: boolean; repair?: boolean; modules
   const c = await makeCompany(name, { kind });
   made.push(c.shopId);
   await db.shop.update({ where: { id: c.shopId }, data: { timeZone: o.tz ?? "America/New_York" } });
-  if (o.modules?.length) await grantDevLicense(c.shopId, o.modules, { from: new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10) });
+  if (o.modules?.length) await switchFeatures(c.shopId, o.modules);
   return { ...c, name };
 }
 

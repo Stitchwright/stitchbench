@@ -1,8 +1,8 @@
 // Vacuums for sale (modules-design.md 10.c, package vac-sales-warranty): receiving, a sale through the register's own
 // completeSaleAs / voidSaleAs (the hooks run inside its transaction with real Sale and SaleLine rows), a return, the
 // voids in both orders, the whole-sale discount share, trade-ins (new, and of a vacuum sold here, with its void putting
-// the sale back exactly), the warranty in shop time, the module gate on a lapsed company, the TECH price rule, the
-// abandoned-ticket path, the register lookups, and the tenant section.
+// the sale back exactly), the warranty in shop time, the module gate on a company that switched Vac Shop off, the TECH
+// price rule, the abandoned-ticket path, the register lookups, and the tenant section.
 //   npm run check scripts/checks/vac-units.check.ts
 import "dotenv/config";
 import assert from "node:assert/strict";
@@ -15,9 +15,8 @@ import type { CurrentUser } from "@/lib/session";
 import { prepareUnitLines, registerUnitHits } from "@/lib/units/sale-units";
 import type { TradeInInput } from "@/lib/units/types";
 import { listUnits, receiveUnitsFor, recordRegistrationFor, setUnitOffSaleFor, unitDetail, unitFromAbandonedFor, unitsForSaleFor, unitsToReturnFor, updateUnitFor, warrantyEnd } from "@/lib/units/units";
-import { addDays, dayStart, ymdOf, zonedTime } from "@/lib/zoned";
-import { grantDevLicense } from "../license/dev";
-import { checkShop, cleanup, type CheckShop } from "./lib";
+import { dayStart, ymdOf, zonedTime } from "@/lib/zoned";
+import { checkShop, cleanup, switchFeatures, type CheckShop } from "./lib";
 import { assertUnchanged, expectNotFound, snapshot } from "./tenant";
 
 const NY = "America/New_York";
@@ -222,9 +221,8 @@ async function main() {
     assert.deepEqual(await registerUnitHits({ shopId: lapsed.shopId, q: "x", mode: "search" }), []);
     ok("the register finds in-stock units by serial and by brand / model words");
 
-    // Gate: a lapsed company can take a return but not sell or trade in; its lookups for sale are empty.
-    const today = ymdOf(new Date(), "UTC");
-    await grantDevLicense(lapsed.shopId, ["vac"], { from: addDays(today, -400), until: addDays(today, -300), grace: 14 });
+    // Gate: a company that switched Vac Shop off can take a return but not sell or trade in; its lookups for sale are empty.
+    await switchFeatures(lapsed.shopId, ["vac"], false, new Date(Date.now() - 300 * 86_400_000));
     assert.equal((await loadModules(lapsed.shopId)).states.vac.status, "lapsed");
     const lc = await db.customer.create({ data: { shopId: lapsed.shopId, name: "Late Buyer" } });
     const lm = await db.machine.create({ data: { shopId: lapsed.shopId, customerId: lc.id, brand: "Sebo", model: "X4", modelKey: "X4", serial: "SX4-1", equipment: "VACUUM", kind: "vacuum" } });
@@ -233,8 +231,8 @@ async function main() {
     await db.saleLine.update({ where: { id: lsale.lines[0].id }, data: { stockUnitId: lu.id } });
     const lu2 = await db.stockUnit.create({ data: { shopId: lapsed.shopId, machineId: (await db.machine.create({ data: { shopId: lapsed.shopId, brand: "Sebo", model: "X4", modelKey: "X4", serial: "SX4-2", equipment: "VACUUM", kind: "vacuum" } })).id, status: "IN_STOCK", condition: "NEW", priceCents: 80000 } });
     const gate = (lines: Parameters<typeof prepareUnitLines>[0]["lines"], role: "OWNER" | "TECH" = "OWNER") => prepareUnitLines({ shopId: lapsed.shopId, role, customerId: lc.id, lines });
-    await expectError("lapsed sale", () => gate([{ stockUnitId: lu2.id, tradeIn: null, qty: 1, unitPriceCents: 80000, taxable: true }]), /ended on/);
-    await expectError("lapsed trade-in", () => gate([{ stockUnitId: null, tradeIn, qty: -1, unitPriceCents: 1000, taxable: false }]), /ended on/);
+    await expectError("lapsed sale", () => gate([{ stockUnitId: lu2.id, tradeIn: null, qty: 1, unitPriceCents: 80000, taxable: true }]), /switched off/);
+    await expectError("lapsed trade-in", () => gate([{ stockUnitId: null, tradeIn, qty: -1, unitPriceCents: 1000, taxable: false }]), /switched off/);
     const ret = await gate([{ stockUnitId: lu.id, tradeIn: null, qty: -1, unitPriceCents: 80000, taxable: true }]);
     assert.equal(ret.size, 1);
     assert.equal(ret.get(0)?.qty, -1);

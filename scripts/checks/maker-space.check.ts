@@ -14,8 +14,7 @@ import { bookAs, saveApptTypeAs } from "@/lib/appointment-actions";
 import { setCertifiedFor } from "@/lib/longarm";
 import { mergeCustomersFor } from "@/lib/merge";
 import { ymdOf } from "@/lib/zoned";
-import { grantDevLicense } from "../license/dev";
-import { checkShop, cleanup, type CheckShop } from "./lib";
+import { checkShop, cleanup, switchFeatures, type CheckShop } from "./lib";
 import { expectNotFound } from "./tenant";
 
 let steps = 0;
@@ -66,7 +65,7 @@ async function main() {
     assert.deepEqual(await certificationsOf(a.shopId, mae.id), [], "the longarm's own button takes the certification off too");
     await setCertifiedFor(user(a), mae.id, true);
     assert.deepEqual((await certificationsOf(a.shopId, mae.id)).map((c) => c.equipment), ["Longarm"]);
-    await grantDevLicense(a.shopId, ["maker"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    await switchFeatures(a.shopId, ["maker"]);
     await setCertificationFor(user(a), mae.id, "laser", true);
     await setCertificationFor(user(a), mae.id, "Laser", true);
     assert.deepEqual((await certificationsOf(a.shopId, mae.id)).map((c) => c.equipment), ["Laser", "Longarm"], "once a machine");

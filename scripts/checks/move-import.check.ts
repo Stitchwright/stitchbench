@@ -24,11 +24,13 @@ import { seal } from "@/lib/messaging/secrets";
 import { encodeRow, MOVE_TABLES, MOVE_VERSION, shopFilterSql, UPLOAD_CHUNK, type MoveEnd, type MoveMeta, type MoveTable } from "@/lib/move/format";
 import { exportCompany } from "@/lib/move/export";
 import { importCompany, ONE_COMPANY, ONLY_ADMIN, spoolDir } from "@/lib/move/import";
+import { loadModules } from "@/lib/modules";
 import { importJob, type ImportJob } from "@/lib/move/import-jobs";
 import { discardUpload, finishUpload, IMPORT_NOT_FOUND, putChunk, recentImports, startUpload, uploadView } from "@/lib/move/upload";
 import { DOOR_SHUT, moveToken, pcImportOpen, startPcImport, takeMoveToken } from "@/lib/move/local";
 import type { CurrentUser } from "@/lib/session";
 import { ownKey } from "@/lib/partner-keys";
+import { grantDevLicense } from "../license/dev";
 import { checkShop, cleanup, linkPair, messagingFor, withMock, withSink, type CheckShop } from "./lib";
 import { removeCompany, RUN } from "./tenant";
 
@@ -201,6 +203,9 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.partnerFailure.create({ data: { shopId, key: `${linkId}:2`, linkId, type: "job.update", data: { x: 1 }, error: "bad" } });
   await db.partnerRun.create({ data: { id: `pr${RUN}`, shopId, linkId, ownerSide: "repair", startsAt: new Date(now + day), collect: [`rj${RUN}`], deliver: [], collected: [], delivered: [] } });
   await db.moduleGrant.create({ data: { shopId, module: "vac", mode: "on", byEmail: "admin@stitchbench.test", note: "trial" } });
+  // The Assistant's key, and one for Vac Shop as a company from before 1.8 held it (it decides nothing once the company's
+  // Features are set up, and a file from before 1.8 starts its Features from it).
+  await grantDevLicense(shopId, ["assistant", "vac"], { from: new Date(now - 2 * day).toISOString().slice(0, 10) });
   const campaign = await db.campaign.create({ data: { shopId, name: "Fall sale", channel: "email", body: "Hello", audience: { all: true } } });
   await db.outMessage.create({
     data: { shopId, customerId: cust.id, channel: "email", purpose: "notice", kind: "ready", address: "mona@example.test", body: "Ready.", status: "SENT", ticketId: ticket.id, sentAt: new Date(now) },
@@ -527,6 +532,23 @@ async function main() {
     assert.equal(sameSummary.shopId, a.shopId, "a login email used by another company no longer refuses the import");
     assert.equal(await db.user.count({ where: { email: b.user.email } }), 2, "the address now has a login in two companies");
     assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: b.user.id } }), bLoginBefore, "the other company's login is untouched");
+    await removeCompany(a.shopId);
+    // A file from before 1.8 (no ShopFeature rows, no featuresSetUpAt on its Shop row): the keys in the file decide, once,
+    // where the company's Features start, as for every company the update to 1.8 finds (never "every one off").
+    const older = edit((l) => {
+      change(l, "Shop", (r) => delete r.featuresSetUpAt);
+      const dropped = l.filter((x) => x.startsWith(`{"t":"ShopFeature"`)).length;
+      for (let i = l.length - 1; i > 0; i--) if (l[i].startsWith(`{"t":"ShopFeature"`)) l.splice(i, 1);
+      l[l.length - 1] = JSON.stringify({ ...end, rows: end.rows - dropped, tables: { ...end.tables, ShopFeature: 0 } });
+    });
+    assert.equal((await importCompany(put(older), { by: "operator" })).shopId, a.shopId);
+    assert.equal((await db.shop.findUniqueOrThrow({ where: { id: a.shopId } })).featuresSetUpAt, null, "not set up yet: its keys decide at the first load");
+    const fromKeys = (await loadModules(a.shopId)).states;
+    assert.ok(fromKeys.vac.active, "Vac Shop on: the key in the file had it working");
+    assert.ok(!fromKeys.marketing.active && !fromKeys.scheduling.active, "Marketing and Scheduling off: no key in the file had them");
+    assert.ok(fromKeys.assistant.active, "the Assistant: its key, as always");
+    assert.ok((await db.shop.findUniqueOrThrow({ where: { id: a.shopId } })).featuresSetUpAt, "set up by that first load");
+    ok("a move file from before 1.8: the company's Features start as its keys in the file had them working");
     await removeCompany(a.shopId);
     n0 = await counts();
     // A login with a reserved (platform administrator) address would make an administrator on import: refused.

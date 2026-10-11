@@ -4,10 +4,11 @@ import { isInstallAdmin, requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
-import { getModules } from "@/lib/modules";
-import { loginNotice } from "@/lib/plan";
+import { getModules, hostingBilling } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
-import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
+import { NO_END } from "@/lib/license";
+import { endedDay, FEATURE_IDS, fmtYmd, SETTINGS_ACCOUNT_HREF, SETTINGS_FEATURES_HREF } from "@/lib/module-info";
+import { appName, programVersion, sourceUrl } from "@/lib/shops";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
@@ -47,22 +48,6 @@ function ForSelect({ id, value, kinds }: { id: string; value: string | null; kin
       </select>
     </>
   );
-}
-
-/** One short line for the Settings overview: "Vac Shop: on until Sep 30, 2027". */
-function moduleLine(s: ModuleState) {
-  const day = s.lastDay ? fmtYmd(s.lastDay) : null;
-  switch (s.status) {
-    case "on":
-    case "renew":
-      return `${s.label}: on until ${day ?? "no end date"}`;
-    case "grace":
-      return `${s.label}: ended ${day ?? ""}, working until ${s.graceLastDay ? fmtYmd(s.graceLastDay) : "-"}`;
-    case "lapsed":
-      return `${s.label}: ${s.switchedOff ? "switched off" : "ended"} ${day ?? ""}`.trimEnd();
-    default:
-      return null;
-  }
 }
 
 /** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
@@ -174,19 +159,22 @@ export default async function SettingsPage() {
   const checklist = shop.checklistItems?.length ? shop.checklistItems : DEFAULT_CHECKLIST;
   const openStores = await activeStores(user.shopId);
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
-  // The paid modules; the program's own key is Settings → Account's.
-  const moduleLines = PAID_MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
+  // The features this company switched on (Settings → Features: every one is free).
+  const featuresOn = FEATURE_IDS.filter((id) => modules.states[id].active).map((id) => modules.states[id].label);
+  // The program's own key matters only where the owner's hosting is billed: there it is the hosting's standing.
   const base = modules.states.base;
-  const baseLine =
-    base.status === "lapsed"
-      ? `Read-only since ${endedDay(base)}: new tickets, sales and edits wait for a new key`
+  const hosting = hostingBilling();
+  const accountLine = shop.hubAccountEmail ? `StitchHub account: ${shop.hubAccountEmail}${shop.hubAccountVerified ? "" : " (waiting for the email)"}` : "No StitchHub account yet (it's free)";
+  const baseLine = !hosting
+    ? accountLine
+    : base.status === "lapsed"
+      ? `Read-only since ${endedDay(base)}: the hosting isn't paid, so new tickets, sales and edits wait`
       : base.status === "grace"
-        ? `Licensed through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}, working until ${base.graceLastDay ? fmtYmd(base.graceLastDay) : "-"}`
-        : base.status === "off"
-          ? shop.hubAccountEmail
-            ? `StitchHub account: ${shop.hubAccountEmail}${shop.hubAccountVerified ? "" : " (waiting for the email)"}`
-            : "No StitchHub account yet"
-          : `Licensed through ${base.lastDay ? fmtYmd(base.lastDay) : "no end date"}`;
+        ? `Hosting paid through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}; it keeps working until ${base.graceLastDay ? fmtYmd(base.graceLastDay) : "-"}`
+        : base.status === "off" || (base.lastDay ?? "") >= NO_END
+          ? accountLine
+          : `Hosting paid through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}`;
+  const version = programVersion();
   // The "For" select offers the kinds new work may use, plus any kind an item already names (so it can be read and changed).
   const usedKinds = new Set(services.map((s) => s.equipmentKind).filter(Boolean));
   const usableKeys = new Set(kinds.usable.map((k) => k.key));
@@ -197,8 +185,6 @@ export default async function SettingsPage() {
   // Messages (scheduling-messaging-design.md 8.3): the channel status lines, for admins. In the base since 7 Oct 2026
   // (pricing-review-2026-10.md): the ready, parts-in and estimate messages go out through this setup without Marketing.
   const messaging = admin ? await messagingView(user.shopId) : null;
-  // The Solo plan's two logins (src/lib/plan.ts): a notice for the people who manage People, never a lock.
-  const logins = admin ? await loginNotice(user.shopId) : null;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -209,17 +195,29 @@ export default async function SettingsPage() {
         <TextSizePicker current={parseTextSize((await db.user.findUnique({ where: { id: user.id }, select: { textSize: true } }))?.textSize)} />
       </Section>
 
-      <Section title="What's new">
-        <Link href="/settings/whats-new" className="link text-sm">
-          See what has changed in each version
-        </Link>
+      <Section title={`About ${appName()}`} id="about">
+        <div className="space-y-2 text-sm">
+          <p>
+            {appName()}
+            {version ? (/^\d+\.\d+\.\d+$/.test(version) ? ` version ${version}` : ` (build ${version})`) : ""} is free and open source software, under the GNU AGPL version 3:
+            every feature, for every shop. SiteSentrix, who makes it, can host it for you or help you set it up, if you want that.
+          </p>
+          <p className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link href="/settings/whats-new" className="link">
+              See what has changed in each version
+            </Link>
+            <a href={sourceUrl()} target="_blank" rel="noreferrer" className="link" data-testid="source-code">
+              Source code
+            </a>
+          </p>
+        </div>
       </Section>
 
       <Section title="Account" id="account">
         <div className="space-y-2 text-sm">
           <p>{baseLine}.</p>
           <Link href={SETTINGS_ACCOUNT_HREF} className="link">
-            Your StitchHub account and what {base.label} is licensed for
+            {hosting ? "Your StitchHub account and the hosting" : "Your StitchHub account"}
           </Link>
         </div>
       </Section>
@@ -264,19 +262,15 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      <Section title="Add-ons" id="modules">
+      <Section title="Features" id="features">
         <div className="space-y-2 text-sm">
-          {moduleLines.length ? (
-            <ul className="space-y-1">
-              {moduleLines.map((l) => (
-                <li key={l}>{l}</li>
-              ))}
-            </ul>
+          {featuresOn.length ? (
+            <p>Switched on: {featuresOn.join(", ")}.</p>
           ) : (
-            <p className="muted">No modules are on. Vac Shop, Small Appliance Repair, Scheduling and Marketing can be added.</p>
+            <p className="muted">None switched on yet. Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop are free: switch on the ones your shop uses.</p>
           )}
-          <Link href={SETTINGS_MODULES_HREF} className="link">
-            Add-ons and license keys
+          <Link href={SETTINGS_FEATURES_HREF} className="link">
+            {admin ? "Switch features on or off" : "See the features"}
           </Link>
           <div>
             <Link href="/settings/booking" className="link">
@@ -677,25 +671,6 @@ export default async function SettingsPage() {
       {admin && (
         <Section title="People" id="people">
           <p className="muted mb-3 text-sm">Everyone signs in with their own email and password. Techs can run tickets; admins can also change prices and people.</p>
-          {logins?.over && (
-            <p className="pill tone-wait mb-3 inline-block whitespace-normal" data-testid="solo-over">
-              This company is on the Solo plan, which includes two people signed in, and {logins.active} people have access. Everyone keeps working and nothing is locked or lost.
-              To add someone or restore access, switch to the Shop plan on your StitchHub account (
-              <Link href={SETTINGS_ACCOUNT_HREF} className="underline">
-                Settings → Account
-              </Link>
-              ), or remove someone&apos;s access first.
-            </p>
-          )}
-          {logins?.full && (
-            <p className="muted mb-3 text-sm" data-testid="solo-full">
-              The Solo plan includes two people signed in, and both are in use. To add someone, switch to the Shop plan on your StitchHub account (
-              <Link href={SETTINGS_ACCOUNT_HREF} className="link">
-                Settings → Account
-              </Link>
-              ).
-            </p>
-          )}
           <ul className="mb-4 divide-y divide-line text-sm">
             {users.map((u) => (
               <li key={u.id} className="py-2">

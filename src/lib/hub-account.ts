@@ -11,7 +11,6 @@ import { adoptInstall, checkHubUrl, claimShopNow, formerInstall, hubDefaultUrl, 
 import { applyStanding, type StandingAnswer } from "@/lib/hub-standing";
 import type { ModuleState } from "@/lib/module-info";
 import { getModules, isDesktop } from "@/lib/modules";
-import { activeLogins, companyPlan, type CompanyPlan } from "@/lib/plan";
 import type { CurrentUser } from "@/lib/session";
 import { appName, isPlatformAdmin, programVersion, shopKindOf } from "@/lib/shops";
 import { compareTermsVersions, validTermsVersion } from "@/lib/terms-version";
@@ -217,10 +216,8 @@ export type AccountView = {
     hubResetOptIn: boolean;
     termsVersion: string | null;
   };
+  /** The program's own key: it matters only where the owner's hosting is billed (always "off" elsewhere). */
   base: ModuleState;
-  /** The login plan the program's key names (Solo or Shop; null: none named, no limit), and the active logins now. */
-  plan: CompanyPlan | null;
-  logins: number;
   /** The hub this install is on (or would join): for the terms links and the "sign in on the hub" link. */
   hubUrl: string;
   hubName: string | null;
@@ -239,7 +236,7 @@ export type AccountView = {
 
 /** Everything Settings → Account shows for the signed-in user's company. */
 export async function accountView(user: CurrentUser): Promise<AccountView> {
-  const [shop, s, modules, plan, logins] = await Promise.all([
+  const [shop, s, modules] = await Promise.all([
     db.shop.findUnique({
       where: { id: user.shopId },
       select: {
@@ -259,8 +256,6 @@ export async function accountView(user: CurrentUser): Promise<AccountView> {
     }),
     hubState(),
     getModules(user.shopId),
-    companyPlan(user.shopId),
-    activeLogins(user.shopId),
   ]);
   if (!shop) throw new UserError("Company not found.");
   const connected = Boolean(s?.url && s.installKey);
@@ -276,8 +271,6 @@ export async function accountView(user: CurrentUser): Promise<AccountView> {
   return {
     shop,
     base: modules.states.base,
-    plan,
-    logins,
     hubUrl,
     hubName: s?.hubName ?? null,
     connected,

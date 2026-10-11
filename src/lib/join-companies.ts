@@ -7,9 +7,9 @@ import "server-only";
 // company's tickets, sales and orders are numbered on from the first's (ticket 51 becomes 1051), an item number both
 // use gets the store's name ("BN-2 (Florida)"), a login whose email the first already has is kept for the history but
 // switched off. Customers that look the same are listed after, for the existing customer merge (never merged by
-// itself). The second company is left closed ("joined into ..."), with what can't move (its licence keys, partner
-// shops, settings, audit log): its StitchHub subscription is the owner's to cancel; the first company's bill counts
-// the extra store. Partnerships with other shops must be ended first (they belong to the second company on the hub).
+// itself). The second company is left closed ("joined into ..."), with what can't move (its features and licence
+// keys, partner shops, settings, audit log): the first company's own Settings → Features decide for the store.
+// Partnerships with other shops must be ended first (they belong to the second company on the hub).
 import crypto from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
@@ -20,7 +20,7 @@ import { MOVE_TABLES } from "@/lib/move/format";
 import { ensureMainStore } from "@/lib/stores";
 import { sameText } from "@/lib/input";
 
-/** Tables that stay with the second company: its own settings, licence keys, partnerships, hub hops and audit log. */
+/** Tables that stay with the second company: its own settings, features, licence keys, partnerships, hub hops and audit log. */
 const STAY = new Set([
   "Shop",
   "Location",
@@ -30,6 +30,7 @@ const STAY = new Set([
   "AuditEntry",
   "MessagingSettings",
   "AssistantSettings",
+  "ShopFeature",
   "License",
   "ModuleGrant",
   "PartnerKey",

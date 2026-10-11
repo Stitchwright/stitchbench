@@ -59,6 +59,7 @@ export type MoveTable = {
 export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "Shop", key: "id", leftOut: ["stripeKeySealed", "stripeWebhookSealed", "statusKeyHash", "statusKeyAt", "shippoKeySealed"], cleared: ["movingAt", "movedOutAt", "movedTo", "movedInAt", "movedFrom"] },
   { t: "User", key: "id" },
+  { t: "ShopFeature", key: '"module"' }, // the add-ons the company switched on or off (Settings → Features, one row per module)
   { t: "BooksSettings", key: '"shopId"' }, // the bookkeeping export's names (one row per company)
   { t: "OffsiteSettings", key: '"shopId"', leftOut: ["bucket"] }, // off-site backup: on or off, target, the public key; the own-bucket settings (a secret sealed under the install's key) are left out
   { t: "OffsiteObject", key: "id" }, // the company's index of its off-site store: photos are not sent again after a move

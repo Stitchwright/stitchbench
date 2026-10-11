@@ -71,7 +71,7 @@ export default async function NewTicket({ searchParams }: { searchParams: Promis
         // The kind's module is off or has ended (or the kind was taken off "What you repair"): no new work in it.
         <div className="space-y-3">
           {blocked ? (
-            <ModuleNotice state={blocked} what={`Every ${noun} already here`} admin={user.role !== "TECH"} shop={shop} />
+            <ModuleNotice state={blocked} what={`Every ${noun} already here`} admin={user.role !== "TECH"} />
           ) : (
             <div className="card card-pad text-sm" role="status">
               <strong>{kind.plural} aren&apos;t checked in here any more.</strong>{" "}What&apos;s already here stays to look at and finish.
