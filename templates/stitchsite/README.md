@@ -14,8 +14,8 @@ npm run verify    # typecheck, lint, build and a check of every internal link
 Every address, price and name the pages use is in `src/lib/site.ts`. `stitchshop.app` forwards to `/stitchshop/`
 through `functions/_middleware.js` (Cloudflare Pages).
 
-The programs themselves are free software: https://github.com/{{ORG}}/stitchbench (StitchBench and StitchShop) and
-https://github.com/{{ORG}}/stitchhub (the community hub).
+The programs themselves are free software: https://github.com/{{ORG}}/StitchBench (StitchBench and StitchShop) and
+https://github.com/{{ORG}}/StitchHub (the community hub).
 
 ## License
 

@@ -3,8 +3,8 @@
 1. Read `stitchbench/HANDOFF.md` first: what is done, what is half done, the owner's decisions (don't re-ask them) and
    the order to work in. Plans are in `stitchbench/plans/`; the security review is in `stitchbench/round3/` (private:
    never copy findings into the public repositories, issues or pull requests).
-2. Repositories: the code is public at github.com/{{ORG}}/stitchbench (StitchBench and StitchShop, one codebase;
-   StitchShop is a build flavor), github.com/{{ORG}}/stitchhub (the community hub) and github.com/{{ORG}}/stitchsite
+2. Repositories: the code is public at github.com/{{ORG}}/StitchBench (StitchBench and StitchShop, one codebase;
+   StitchShop is a build flavor), github.com/{{ORG}}/StitchHub (the community hub) and github.com/{{ORG}}/StitchSite
    (the website). This repository and `{{ORG}}/stitchbench-data` (the manufacturers' reference data) are private.
    `main` in each code repository is what's deployed: a push to main is a deploy.
 3. Where things run: hub https://hub.stitchbench.app (also https://stitchhub-production.up.railway.app; Railway project

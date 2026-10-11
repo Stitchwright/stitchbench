@@ -14,7 +14,7 @@ OUT="${OUT:-$KIT/out}"
 BENCH_REF="${BENCH_REF:-origin/main}"
 HUB_REF="${HUB_REF:-origin/main}"
 SITE_REF="${SITE_REF:-origin/master}"
-export ORG="${ORG:-sitesentrix}"
+export ORG="${ORG:-SiteSentrix}"
 export HOLDER="${HOLDER:-SiteSentrix}"
 export CONTACT="${CONTACT:-bwattendorfdev@gmail.com}"
 export YEAR="${YEAR:-2026}"
@@ -65,7 +65,7 @@ set_license_field() { # package.json SPDX: adds or replaces "license", keeps the
 
 relink() { # repo: links to the old personal account's repositories point at the organization
   { grep -rlIZ --exclude-dir=node_modules -e "github.com/bwattendorf/" "$OUT/public/$1" 2>/dev/null || true; } |
-    xargs -0 -r perl -pi -e 's{github\.com/bwattendorf/(stitchhub|stitchbench|stitchsite)}{github.com/$ENV{ORG}/$1}g'
+    xargs -0 -r perl -pi -e 's{github\.com/bwattendorf/(stitchhub|stitchbench|stitchsite)}{"github.com/$ENV{ORG}/" . {stitchhub => "StitchHub", stitchbench => "StitchBench", stitchsite => "StitchSite"}->{$1}}ge'
 }
 
 # ---------- stitchbench (StitchBench and StitchShop) ----------
