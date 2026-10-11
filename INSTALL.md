@@ -195,7 +195,7 @@ makes it up if it is missing and resets the role's password to it at every start
 
 ### You need
 - a [Railway](https://railway.com) account (about $5–10 a month for StitchBench and its database)
-- the StitchBench code (ask for access to the repository)
+- the StitchBench code: https://github.com/SiteSentrix/StitchBench (free and open source)
 - [Node.js 22+](https://nodejs.org) and the Railway CLI (`npm i -g @railway/cli`), or you can do it all in the
   Railway dashboard instead
 
