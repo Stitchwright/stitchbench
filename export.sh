@@ -46,10 +46,10 @@ to_notes() { # repo path...: move paths out of the public copy into notes/<repo>
   done
 }
 
-add_common() { # repo license-name
-  LICENSE_NAME="$2" fill "$T/common/SECURITY.md" >"$OUT/public/$1/SECURITY.md"
-  LICENSE_NAME="$2" fill "$T/common/CONTRIBUTING.md" >"$OUT/public/$1/CONTRIBUTING.md"
-  fill "$T/common/TRADEMARKS.md" >"$OUT/public/$1/TRADEMARKS.md"
+add_common() { # repo license-name: SECURITY, CONTRIBUTING and TRADEMARKS, unless the repository has its own
+  for f in SECURITY CONTRIBUTING TRADEMARKS; do
+    [ -e "$OUT/public/$1/$f.md" ] || LICENSE_NAME="$2" fill "$T/common/$f.md" >"$OUT/public/$1/$f.md"
+  done
 }
 
 set_license_field() { # package.json SPDX: adds or replaces "license", keeps the file's 2-space layout
