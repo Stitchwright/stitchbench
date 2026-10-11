@@ -120,6 +120,5 @@ export const joinCompany = safe(async function joinCompany(formData: FormData) {
   if (r.renamedItems) bits.push(`${r.renamedItems} item numbers both used now end in (${r.storeName}).`);
   if (r.loginsOff) bits.push(`${r.loginsOff} ${r.loginsOff === 1 ? "login" : "logins"} both had were kept for the history and switched off.`);
   if (r.maybeSame.length) bits.push(`${r.maybeSame.length} customers may be the same person at both: see the list below.`);
-  bits.push("Cancel the other company's StitchHub subscription on your account page.");
   return noted(bits.join(" "));
 });
