@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { writeNotices } from "./third-party-notices.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const out = path.join(import.meta.dirname, "server");
@@ -48,6 +49,11 @@ const rename = (dir) => {
   }
 };
 rename(out);
+
+// The licenses of everything shipped with the program (THIRD_PARTY_NOTICES.txt beside the server): several ask for it.
+const { version } = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "package.json"), "utf8"));
+const notices = writeNotices(out, import.meta.dirname, version);
+console.log(`third-party notices: ${notices.count} packages`);
 
 const size = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).reduce((s, e) => s + (e.isDirectory() ? size(path.join(dir, e.name)) : fs.statSync(path.join(dir, e.name)).size), 0);
