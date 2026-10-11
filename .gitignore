@@ -51,6 +51,15 @@ next-env.d.ts
 /src/generated
 !.env.example
 
+# The manufacturers' reference data, read out of OEM manuals: it lives in a private repository, not in the public code
+# (INSTALL.md, "The manufacturers' reference data"). scripts/data/fetch-reference-data.mjs downloads it for official
+# builds; ignored so a copy fetched into a clone of the public code is never committed there. Already tracked: stays.
+/prisma/seed-data/factory_settings.json
+/prisma/seed-data/tension_specs.json
+/prisma/seed-data/library_docs.json
+/prisma/seed-data/hub_links.json
+/prisma/seed-data/.*.part
+
 # playwright
 /test-results
 /playwright-report
