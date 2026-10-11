@@ -11,7 +11,6 @@ import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { makeHubLinkCode, refreshHubStanding, setHubResetOptIn, startHubAccount } from "@/actions/account";
-import { planWords, SOLO_LOGINS } from "@/lib/plan";
 
 /** The hub's standing word in plain words. */
 const STANDING: Record<string, string> = {
@@ -86,19 +85,6 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             {v.base.source === "key" && v.base.keyId && <span className="muted text-xs">Key {v.base.keyId}</span>}
             {v.base.source === "admin" && <span className="muted text-xs">Turned on by StitchBench</span>}
           </div>
-          {v.plan && (
-            <p data-testid="plan">
-              Plan: <strong>{planWords(v.plan)}</strong>
-              {v.plan.plan === "solo" && (
-                <span className="muted">
-                  {" "}
-                  ({v.logins} of {SOLO_LOGINS} people with access
-                  {v.logins > SOLO_LOGINS ? ": everyone keeps working; adding or restoring anyone needs the Shop plan" : ""})
-                </span>
-              )}
-              . Switch between Solo and Shop on your StitchHub account{v.connected && v.mayManage ? ", then press Check again" : ""}.
-            </p>
-          )}
           {v.base.status === "lapsed" && (
             <p>
               Everything stays here to look at, print and export; open work can be finished and payments taken. New tickets, sales and edits wait for a new key: it comes from your StitchHub account
