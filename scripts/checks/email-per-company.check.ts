@@ -245,7 +245,7 @@ async function main() {
     assert.ok(!/in \d+ companies/.test(soloMail), "one login: the usual mail");
     ok("reset: one mail names each company (plain, with the warning) and has one link per login; each link resets only its own login; one login keeps the usual mail");
 
-    // The Solo plan holds two active logins: clear the extra ones made above before adding people.
+    // Back to the owner alone in each company before adding people below.
     await db.user.deleteMany({ where: { shopId: { in: [a.shopId, b.shopId] }, id: { notIn: [a.user.id, b.user.id] } } });
 
     // ---------- 7. the administrator's reserved address ----------
