@@ -1,14 +1,16 @@
 import "server-only";
-// The gating API for paid modules (modules-design.md section 6.1). Only this file reads License and ModuleGrant rows,
-// and every stored key is verified from its text each time: nothing in the database can switch a module on by itself.
+// The gating API for the add-on modules (modules-design.md section 6.1). Since 1.8 (free-software-design.md, 11 Oct
+// 2026) every module but the Assistant is free: Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop
+// are on while the company has switched them on in Settings → Features (ShopFeature), and nothing else counts. The
+// Assistant is still bought, so a license key decides it, as does the program's own key ("base").
+// Only this file reads License and ModuleGrant rows, and every stored key is verified from its text each time: nothing
+// in the database can switch the Assistant on by itself.
 import { cache } from "react";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
-import { acceptScope, adminPosition, effectiveNow, resolveStatus, verifyLicense, windows, type AdminPosition, type GrantRow, type LicensePayload, type Verified, type Window } from "@/lib/license";
+import { acceptScope, adminPosition, effectiveNow, resolveStatus, statusAt, verifyLicense, windows, type AdminPosition, type GrantRow, type Verified, type Window } from "@/lib/license";
 import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";
-import { baseWritable, blockedMessage, canWrite, isModuleId, MODULE_IDS, MODULES, toNavGates, type KeyView, type ModuleId, type Modules, type ModuleState, type NavGate } from "@/lib/module-info";
-// license-signing imports isDesktop / devKeysAllowed from here; each file uses the other only inside functions, so the cycle is harmless.
-import { hostedSigner } from "@/lib/license-signing";
+import { baseWritable, blockedMessage, canWrite, FEATURE_IDS, isFeatureId, MODULE_IDS, MODULES, toNavGates, type FeatureId, type ModuleId, type Modules, type ModuleState, type NavGate } from "@/lib/module-info";
 
 export const isDesktop = () => process.env.STITCH_DESKTOP === "1";
 
@@ -22,9 +24,9 @@ export function localDatabase(): boolean {
   }
 }
 
-/** Where development keys (scripts/license/dev-key.json) count: never on the Windows program or a server holding a hosting key. */
+/** Where development keys (scripts/license/dev-key.json) count: never on the Windows program or a production server. */
 export const devKeysAllowed = () => {
-  if (process.env.STITCH_DESKTOP === "1" || process.env.LICENSE_HOSTED_KEY) return false;
+  if (process.env.STITCH_DESKTOP === "1") return false;
   // next dev and check scripts.
   if (process.env.NODE_ENV !== "production") return true;
   // A test build (STITCH_TEST_BUILD=1 at build time, inlined by next.config.ts), run against a database on this machine.
@@ -54,18 +56,19 @@ function verifyMemo(text: string): Verified {
   return v;
 }
 
-/** The only caller of verifyLicense in the app: memoised verification, then acceptScope for this use (section 3.4). */
+/**
+ * The only caller of verifyLicense in the app: memoised verification, then acceptScope for this use (section 3.4). No
+ * server holds a hosting key any more (the Companies switch is gone), so a "hosted" key never counts.
+ */
 export function verifyFor(text: string, use: "pasted" | "grant"): Verified {
   const v = verifyMemo(text);
   if (!v.ok) return v;
-  if (!acceptScope(v.scope, use, { devAllowed: devKeysAllowed(), hostedHeld: hostedSigner()?.scope === "hosted" })) {
+  if (!acceptScope(v.scope, use, { devAllowed: devKeysAllowed(), hostedHeld: false })) {
     return {
       ok: false,
       reason:
         v.scope === "hosted"
-          ? use === "pasted"
-            ? "That key is for the hosted StitchBench's own use. Ask for a key to paste."
-            : "This server holds no hosting key for this switch."
+          ? "That key was for the hosted StitchBench's own use."
           : v.scope === "dev"
             ? "This is a test key. It only works on a test copy of StitchBench."
             : "That key can't be used as the administrator's switch.",
@@ -74,142 +77,135 @@ export function verifyFor(text: string, use: "pasted" | "grant"): Verified {
   return v;
 }
 
-type LicenseRow = { id: string; shopId: string; keyId: string; key: string; addedBy: string | null; source: string; createdAt: Date };
-
-function keyView(row: LicenseRow, v: Verified, shopId: string, now: Date, tz: string): { view: KeyView; payload: LicensePayload | null } {
-  if (!v.ok) {
-    return {
-      view: {
-        rowId: row.id,
-        keyId: row.keyId,
-        modules: [],
-        plan: null,
-        from: null,
-        lastDay: null,
-        graceLastDay: null,
-        issuedTo: null,
-        addedBy: row.addedBy,
-        addedAt: row.createdAt,
-        source: row.source,
-        state: "not-valid",
-        reason: v.reason,
-      },
-      payload: null,
-    };
-  }
-  const p = v.payload;
-  const ws = windows(p, tz, "key");
-  const w = ws[0];
-  const base = {
-    rowId: row.id,
-    keyId: p.id,
-    modules: p.m,
-    plan: p.p,
-    from: p.f,
-    lastDay: p.u,
-    graceLastDay: w?.graceLastDay ?? null,
-    issuedTo: p.n,
-    addedBy: row.addedBy,
-    addedAt: row.createdAt,
-    source: row.source,
-    reason: null as string | null,
-  };
-  if (p.s !== shopId) return { view: { ...base, state: "other-company", reason: `For Company ID ${p.s}` }, payload: null };
-  const state: KeyView["state"] = w && w.from > now ? "future" : w && now >= w.graceUntil ? "ended" : "current";
-  return { view: { ...base, state }, payload: p };
-}
-
-function toState(id: ModuleId, r: ReturnType<typeof resolveStatus>, pos: AdminPosition | null, tz: string): ModuleState {
-  const best: Window | null = r.best;
-  const switchedOff = r.status === "lapsed" && pos?.offAt != null && (best == null || best.graceUntil <= pos.offAt || best.issuedAt <= pos.offAt);
-  const offDay = pos?.offAt ? ymdIn(pos.offAt, tz) : null;
-  return {
-    id,
-    label: MODULES[id].label,
-    status: r.status,
-    active: canWrite(r.status),
-    lastDay: switchedOff && offDay ? offDay : (best?.lastDay ?? null),
-    graceLastDay: switchedOff ? null : (best?.graceLastDay ?? null),
-    startsOn: r.startsAt ? ymdIn(r.startsAt, tz) : null,
-    endedAt: r.status === "lapsed" ? r.endedAt : null,
-    plan: best?.plan ?? null,
-    source: best?.source ?? null,
-    keyId: best?.keyId ?? null,
-    switchedOff,
-  };
-}
-
 function ymdIn(d: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-/** Every company's modules in three queries, whatever the number of companies (section 6.1). */
+/** A module a key decides (the Assistant, the program itself), from that key's windows. */
+function keyState(id: ModuleId, r: ReturnType<typeof statusAt>, tz: string): ModuleState {
+  const best: Window | null = r.best;
+  return {
+    id,
+    label: MODULES[id].label,
+    status: r.status,
+    active: canWrite(r.status),
+    lastDay: best?.lastDay ?? null,
+    graceLastDay: best?.graceLastDay ?? null,
+    startsOn: r.startsAt ? ymdIn(r.startsAt, tz) : null,
+    endedAt: r.status === "lapsed" ? r.endedAt : null,
+    source: best ? "key" : null,
+    keyId: best?.keyId ?? null,
+    switchedOff: false,
+  };
+}
+
+type FeatureRow = { shopId: string; module: string; enabled: boolean; changedAt: Date };
+
+/**
+ * A feature, from the company's own switch: on; switched off (lapsed from that moment, so work that came in before can
+ * be finished and the records stay readable); or never switched on (off).
+ */
+function featureState(id: FeatureId, row: FeatureRow | undefined): ModuleState {
+  const on = row?.enabled === true;
+  const off = row != null && !row.enabled;
+  return {
+    id,
+    label: MODULES[id].label,
+    status: on ? "on" : off ? "lapsed" : "off",
+    active: on,
+    lastDay: null,
+    graceLastDay: null,
+    startsOn: null,
+    endedAt: off ? row.changedAt : null,
+    source: "feature",
+    keyId: null,
+    switchedOff: off,
+  };
+}
+
+/** Who carried a company's working add-ons over from its keys, as Settings → Features shows it. */
+export const FROM_KEYS = "Your license keys";
+
+type LicenseRow = { shopId: string; key: string };
+
+/**
+ * A company from before 1.8 (Shop.featuresSetUpAt null): its Features start as the add-ons its keys and the hosted
+ * switch had working at that moment, judged exactly as 1.7 judged them, so nothing a shop uses disappears with the
+ * update. A module that had ended (its grace over, or switched off by the administrator) starts switched off from the
+ * day it ended, so its records stay readable and the work from before then can still be finished, as before. Done once
+ * per company: the first load to claim the company writes its rows; a later key changes nothing.
+ */
+async function setUpFromKeys(shops: { id: string; timeZone: string }[], licenses: LicenseRow[], at: Date | undefined, desktop: boolean): Promise<void> {
+  const grants = desktop
+    ? []
+    : await db.moduleGrant.findMany({ where: { shopId: { in: shops.map((s) => s.id) } }, select: { id: true, shopId: true, module: true, mode: true, key: true, createdAt: true } });
+  const real = new Date();
+  for (const shop of shops) {
+    const good = licenses
+      .filter((l) => l.shopId === shop.id)
+      .map((l) => verifyFor(l.key, "pasted"))
+      .filter((v): v is Extract<Verified, { ok: true }> => v.ok && v.payload.s === shop.id);
+    const now = at ?? effectiveNow(real, good.map((v) => new Date(v.payload.t)), desktop).now;
+    const rows: { shopId: string; module: FeatureId; enabled: boolean; changedAt: Date; byName: string }[] = [];
+    for (const id of FEATURE_IDS) {
+      const ws = good.flatMap((v) => windows(v.payload, shop.timeZone, "key")).filter((w) => w.module === id);
+      let pos: AdminPosition | null = null;
+      const g: GrantRow[] = grants.filter((r) => r.shopId === shop.id && r.module === id);
+      if (g.length) {
+        pos = adminPosition(g);
+        if (pos.onKey) {
+          const gv = verifyFor(pos.onKey, "grant");
+          if (gv.ok && gv.payload.s === shop.id && gv.payload.m.includes(id)) ws.push(...windows(gv.payload, shop.timeZone, "admin").filter((w) => w.module === id));
+        }
+      }
+      const r = resolveStatus(ws, now, pos);
+      if (canWrite(r.status)) rows.push({ shopId: shop.id, module: id, enabled: true, changedAt: real, byName: FROM_KEYS });
+      else if (r.status === "lapsed") rows.push({ shopId: shop.id, module: id, enabled: false, changedAt: r.endedAt ?? real, byName: FROM_KEYS });
+    }
+    const claimed = await db.$transaction(async (tx) => {
+      // The row lock: a second load of the same company waits here, then finds it set up and writes nothing.
+      const { count } = await tx.shop.updateMany({ where: { id: shop.id, featuresSetUpAt: null }, data: { featuresSetUpAt: real } });
+      // A switch the company already made (it can't have, before this, but a check or an import might) is kept.
+      if (count && rows.length) await tx.shopFeature.createMany({ data: rows, skipDuplicates: true });
+      return count > 0;
+    });
+    if (claimed) console.info(`[features] ${JSON.stringify({ company: shop.id, fromKeys: rows.filter((r) => r.enabled).map((r) => r.module), ended: rows.filter((r) => !r.enabled).map((r) => r.module) })}`);
+  }
+}
+
+/** Every company's modules in a few queries, whatever the number of companies (section 6.1). */
 export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = {}): Promise<Map<string, Modules>> {
   const ids = [...new Set(shopIds)];
   const out = new Map<string, Modules>();
   if (!ids.length) return out;
   const desktop = isDesktop();
-  const [shops, licenses, grants] = await Promise.all([
-    db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true, movingAt: true, movedTo: true, movedOutAt: true } }),
-    db.license.findMany({
-      where: { shopId: { in: ids } },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, shopId: true, keyId: true, key: true, addedBy: true, source: true, createdAt: true },
-    }),
-    desktop
-      ? Promise.resolve([] as { id: string; shopId: string; module: string; mode: string; key: string | null; createdAt: Date }[])
-      : db.moduleGrant.findMany({ where: { shopId: { in: ids } }, select: { id: true, shopId: true, module: true, mode: true, key: true, createdAt: true } }),
+  const [shops, licenses] = await Promise.all([
+    db.shop.findMany({ where: { id: { in: ids } }, select: { id: true, timeZone: true, movingAt: true, movedTo: true, movedOutAt: true, featuresSetUpAt: true } }),
+    db.license.findMany({ where: { shopId: { in: ids } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { shopId: true, key: true } }),
   ]);
+  const fresh = shops.filter((s) => !s.featuresSetUpAt);
+  if (fresh.length) await setUpFromKeys(fresh, licenses, opts.now, desktop);
+  const features = await db.shopFeature.findMany({ where: { shopId: { in: ids } }, select: { shopId: true, module: true, enabled: true, changedAt: true } });
   const real = new Date();
-  const isTest = testBuild();
+  testBuild(); // says so in the log, once, on a test build
   for (const shop of shops) {
-    const rows = licenses.filter((l) => l.shopId === shop.id);
-    const checked = rows.map((row) => ({ row, v: verifyFor(row.key, "pasted") }));
-    const good = checked.filter((c): c is { row: LicenseRow; v: Extract<Verified, { ok: true }> } => c.v.ok && c.v.payload.s === shop.id);
-    const eff = opts.now
-      ? { now: opts.now, floor: null, clockBehind: false }
-      : effectiveNow(
-          real,
-          good.map((c) => new Date(c.v.payload.t)),
-          desktop,
-        );
-    const now = eff.now;
-    const keys = checked.map((c) => keyView(c.row, c.v, shop.id, now, shop.timeZone).view);
-    const unknown = new Set<string>();
-    const keyWindows: Window[] = [];
-    for (const c of good) {
-      for (const w of windows(c.v.payload, shop.timeZone, "key")) {
-        if (isModuleId(w.module)) keyWindows.push(w);
-        else unknown.add(w.module);
-      }
-    }
+    const good = licenses
+      .filter((l) => l.shopId === shop.id)
+      .map((l) => verifyFor(l.key, "pasted"))
+      .filter((v): v is Extract<Verified, { ok: true }> => v.ok && v.payload.s === shop.id);
+    const now = opts.now ?? effectiveNow(real, good.map((v) => new Date(v.payload.t)), desktop).now;
+    const keyWindows = good.flatMap((v) => windows(v.payload, shop.timeZone, "key"));
     const states = {} as Record<ModuleId, ModuleState>;
     for (const id of MODULE_IDS) {
-      const ws = keyWindows.filter((w) => w.module === id);
-      let pos: AdminPosition | null = null;
-      if (!desktop) {
-        const g: GrantRow[] = grants.filter((r) => r.shopId === shop.id && r.module === id);
-        if (g.length) {
-          pos = adminPosition(g);
-          if (pos.onKey) {
-            const gv = verifyFor(pos.onKey, "grant");
-            if (gv.ok && gv.payload.s === shop.id && gv.payload.m.includes(id)) ws.push(...windows(gv.payload, shop.timeZone, "admin").filter((w) => w.module === id));
-          }
-        }
-      }
-      states[id] = toState(id, resolveStatus(ws, now, pos), pos, shop.timeZone);
+      if (isFeatureId(id)) states[id] = featureState(id, features.find((f) => f.shopId === shop.id && f.module === id));
+      else states[id] = keyState(id, statusAt(keyWindows.filter((w) => w.module === id), now), shop.timeZone);
     }
     out.set(shop.id, {
       shopId: shop.id,
       now,
-      clockBehind: eff.clockBehind,
-      floor: eff.floor,
       states,
-      keys,
-      testBuild: isTest,
-      unknownModules: [...unknown].sort(),
       moving: shop.movingAt ? { at: shop.movingAt, to: shop.movedTo, outAt: shop.movedOutAt } : null,
     });
   }
@@ -229,7 +225,7 @@ export async function moduleState(shopId: string, id: ModuleId): Promise<ModuleS
   return (await getModules(shopId)).states[id];
 }
 
-/** New work allowed (on, renew or grace). */
+/** New work allowed (a feature switched on; a key on, due to renew, or in grace). */
 export async function hasModule(shopId: string, id: ModuleId): Promise<boolean> {
   return (await moduleState(shopId, id)).active;
 }
@@ -271,22 +267,4 @@ export async function shopsWithModule(id: ModuleId, shopIds?: string[]): Promise
     }
   }
   return out;
-}
-
-/** Companies page: the newest switch rows with their decoded last day (never the key text). */
-export async function grantHistory(limit: number): Promise<{ at: Date; shopId: string; module: string; mode: string; lastDay: string | null; byEmail: string; note: string | null }[]> {
-  if (isDesktop()) return [];
-  const rows = await db.moduleGrant.findMany({
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit,
-    select: { createdAt: true, shopId: true, module: true, mode: true, key: true, byEmail: true, note: true },
-  });
-  return rows.map((r) => {
-    let lastDay: string | null = null;
-    if (r.key) {
-      const v = verifyMemo(r.key);
-      if (v.ok) lastDay = v.payload.u;
-    }
-    return { at: r.createdAt, shopId: r.shopId, module: r.module, mode: r.mode, lastDay, byEmail: r.byEmail, note: r.note };
-  });
 }

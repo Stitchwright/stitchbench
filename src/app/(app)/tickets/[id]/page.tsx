@@ -176,7 +176,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
       {!canWork &&
         (blocked ? (
-          <ModuleNotice state={blocked} what={`This ${isSite ? "install" : "ticket"}`} admin={user.role !== "TECH"} shop={t.shop} />
+          <ModuleNotice state={blocked} what={`This ${isSite ? "install" : "ticket"}`} admin={user.role !== "TECH"} />
         ) : (
           <div className="card card-pad text-sm" role="status">
             This record was made by a newer version of StitchBench. Update the program to change it.

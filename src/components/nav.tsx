@@ -42,7 +42,8 @@ import {
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
-// module: a paid module's item, shown while the module is on (or read-only with a lock once it has ended), hidden otherwise.
+// module: an add-on's item, shown while the module is on (or read-only with a lock once it is switched off, or the
+// Assistant's key has ended), hidden otherwise.
 // stores: only with more than one store (shop-features-round-2-design.md section 7).
 type Item = { href: string; label: string; icon: LucideIcon; repair?: boolean; retail?: boolean; partners?: boolean; module?: ModuleId; admin?: boolean; hop?: boolean; stores?: boolean };
 

@@ -190,7 +190,7 @@ export default async function EquipmentSettings() {
     <div className="max-w-4xl space-y-6">
       <PageHeader title="What you repair" sub="The kinds of things you check in, and what each one asks for." back={{ href: "/settings", label: "Settings" }} />
       {!shown ? (
-        <ModuleNotice state={mods.states.appliance} admin={admin} shop={shop} />
+        <ModuleNotice state={mods.states.appliance} admin={admin} />
       ) : (
         <>
           <Section title="Check-in opens on">

@@ -1,7 +1,9 @@
-// Checks src/lib/license.ts (pure: no database), every case under "Companion files" in docs/plans/modules-design.md:
-// signing and verifying, wrapped and pasted keys, every tamper, v2 and unknown plans, retired kids and the leak case,
-// scopes, anchored renewals and trials, day starts in America/Chicago, on / renew / grace / lapsed, the administrator's
-// switch sequences, the Windows clock floor, and finishing work after a module ends.
+// Checks src/lib/license.ts (pure: no database), the cases under "Companion files" in docs/plans/modules-design.md that
+// 1.8 still uses: signing and verifying, wrapped keys, every tamper, v2 and unknown plans, retired kids and the leak
+// case, scopes, day starts in America/Chicago, on / renew / grace / lapsed, the Windows clock floor, and finishing work
+// after a module ends. Keys decide the Assistant (and the program itself where hosting is billed); the administrator's
+// switch sequences still decide, once, where the Features of a company from before 1.8 start (src/lib/modules.ts).
+// The plan and trial maths went with the key tools (free-software-design.md section 2).
 //   npx tsx scripts/checks/license.check.ts
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -16,7 +18,6 @@ import {
   newKeyId,
   NO_END,
   payloadHash,
-  planLastDay,
   renewNoticeDays,
   resolveStatus,
   statusAt,
@@ -265,28 +266,6 @@ check("validYmd and addDaysYmd", () => {
   assert.equal(addDaysYmd("2026-10-01", 13), "2026-10-14");
 });
 
-check("anchored monthly renewals don't drift: Jan 31 -> Feb 27, Feb 28 -> Mar 30, Mar 31 -> Apr 29", () => {
-  assert.equal(planLastDay("2026-01-31", "m"), "2026-02-27");
-  assert.equal(planLastDay("2026-02-28", "m", 31), "2026-03-30");
-  assert.equal(planLastDay("2026-03-31", "m", 31), "2026-04-29");
-  assert.equal(planLastDay("2026-04-30", "m", 31), "2026-05-30");
-  assert.equal(planLastDay("2026-05-31", "m", 31), "2026-06-29");
-  // Without the anchor the period would creep: Feb 28 -> Mar 27.
-  assert.equal(planLastDay("2026-02-28", "m"), "2026-03-27");
-  assert.equal(planLastDay("2026-10-01", "m"), "2026-10-31");
-  assert.equal(planLastDay("2026-11-01", "m", 1), "2026-11-30");
-  assert.equal(planLastDay("2026-12-15", "m"), "2027-01-14");
-  assert.equal(planLastDay("2024-01-30", "m"), "2024-02-28"); // leap year: Feb 29 is the next start
-});
-
-check("yearly periods and the 14-day trial", () => {
-  assert.equal(planLastDay("2026-10-01", "y"), "2027-09-30");
-  assert.equal(planLastDay("2024-02-29", "y"), "2025-02-27");
-  assert.equal(planLastDay("2025-02-28", "y", 29), "2026-02-27");
-  assert.equal(planLastDay("2026-10-01", "t"), "2026-10-14");
-  assert.equal(planLastDay("2026-12-25", "t"), "2027-01-07");
-});
-
 check("day starts in America/Chicago: standard time, daylight time, the DST changes, a year end", () => {
   assert.equal(dayStartIn("2026-01-01", TZ).toISOString(), "2026-01-01T06:00:00.000Z");
   assert.equal(dayStartIn("2026-07-01", TZ).toISOString(), "2026-07-01T05:00:00.000Z");
@@ -382,7 +361,7 @@ check("monthly: the 3-day reminder", () => {
 });
 
 check("trial: 14 days, no grace, 3-day notice, then lapsed at once", () => {
-  const trial = windows({ ...base, id: "TRIAL000", p: "t", f: "2026-10-01", u: planLastDay("2026-10-01", "t"), g: 0 }, TZ, "key").filter((w) => w.module === "vac");
+  const trial = windows({ ...base, id: "TRIAL000", p: "t", f: "2026-10-01", u: "2026-10-14", g: 0 }, TZ, "key").filter((w) => w.module === "vac");
   assert.equal(trial[0].lastDay, "2026-10-14");
   assert.equal(status(trial, "2026-10-05T12:00:00Z").status, "on");
   assert.equal(status(trial, "2026-10-13T12:00:00Z").status, "renew");
@@ -581,4 +560,4 @@ check("workable: always while on, renew or grace; after it ends only tickets ope
   assert.equal(workable(off, at("2026-12-05T12:00:00Z")), false);
 });
 
-console.log(`license.check: ${passed} checks passed (signing, pasting, tampers, versions, retired kids, scopes, dates, statuses, the switch, the clock floor, workable).`);
+console.log(`license.check: ${passed} checks passed (signing, wrapped keys, tampers, versions, retired kids, scopes, dates, statuses, the switch, the clock floor, workable).`);

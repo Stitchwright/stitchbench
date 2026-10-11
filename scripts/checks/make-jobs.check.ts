@@ -15,8 +15,7 @@ import { answerByToken, createEstimateLink } from "@/lib/estimate-links";
 import { unseal } from "@/lib/messaging/secrets";
 import { voidSaleAs } from "@/lib/register-sale";
 import { customerDeletePlan } from "@/lib/merge";
-import { grantDevLicense } from "../license/dev";
-import { checkShop, cleanup, type CheckShop } from "./lib";
+import { checkShop, cleanup, switchFeatures, type CheckShop } from "./lib";
 import { expectNotFound } from "./tenant";
 
 let steps = 0;
@@ -68,7 +67,7 @@ async function main() {
 
     // 2. The gate, then taking a job.
     await expectError("no Maker Shop", () => createJobFor(user(a), fd(base)), /Maker Shop/);
-    await grantDevLicense(a.shopId, ["maker"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    await switchFeatures(a.shopId, ["maker"]);
     const file = new File([new Uint8Array([1, 2, 3, 4])], "stand.3mf", { type: "model/3mf" });
     const j1 = await createJobFor(user(a), fd({ ...base, file }));
     let v = (await jobView(a.shopId, j1.id))!;
@@ -135,7 +134,7 @@ async function main() {
     ok("files: unavailable past their days, deleted (the name kept); an open job blocks deleting the customer");
 
     // 7. Tenant.
-    await grantDevLicense(b.shopId, ["maker"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    await switchFeatures(b.shopId, ["maker"]);
     await expectNotFound("B moves A's job", () => setJobStatusFor(user(b), j2.id, "WORKING"));
     await expectNotFound("B collects A's job", () => collectJobFor(user(b), j1.id, fd({ method: "CASH" })));
     await expectNotFound("B turns down A's job", () => turnDownFor(user(b), j2.id, "no"));

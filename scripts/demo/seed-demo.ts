@@ -1,5 +1,5 @@
 // A reusable demo company for showing StitchShop: "Bobbin & Bolt Quilt Co.", an invented quilt shop that also services
-// sewing and embroidery machines, with every add-on module on and about a month of believable history.
+// sewing and embroidery machines, with the add-ons it shows switched on and about a month of believable history.
 //   npx tsx scripts/demo/seed-demo.ts            make it (running it again resets it: the old demo company is deleted first)
 //   npx tsx scripts/demo/seed-demo.ts --remove   delete the demo company and everything in it
 // Login: demo@stitchshop.test, password DEMO_PASSWORD or demo-password-1. Every date is worked out from today, so a re-run
@@ -60,7 +60,6 @@ async function run() {
   const { modelKey, brandKey } = await import("../../src/lib/format");
   const { dayStartIn, addDaysYmd } = await import("../../src/lib/license");
   const { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } = await import("../../src/lib/service-menu");
-  const { grantDevLicense } = await import("../license/dev");
   void brandKey;
 
   try {
@@ -134,8 +133,8 @@ async function run() {
     const priya = await mkUser("priya.nair@example.com", "Priya Nair", "ADMIN");
     const gus = await mkUser("gus.okafor@example.com", "Gus Okafor", "TECH");
 
-    // Every add-on module, with a development key (it counts on a test build against a database on this PC).
-    await grantDevLicense(shopId, ["vac", "appliance", "scheduling", "marketing"], { from: dayYmd(-30), until: dayYmd(335) });
+    // The add-ons it shows, switched on in its Features (free, Settings → Features), as the owner would.
+    await db.shopFeature.createMany({ data: (["vac", "appliance", "scheduling", "marketing"] as const).map((module) => ({ shopId, module, enabled: true, changedAt: ago(30), byName: "Marlene Hartwell" })) });
 
     // ---------- customers ----------
     type C = { key: string; name: string; phone?: string; email?: string; address?: string; notes?: string; notify?: string };

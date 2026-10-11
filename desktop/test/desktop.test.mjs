@@ -136,6 +136,36 @@ test("restore: license keys pasted after the backup come back, and the equipment
   }
 });
 
+test("restore: a backup's Features come back as saved; one from before Settings → Features has its keys decide them again", { skip }, async () => {
+  const t = await shop();
+  try {
+    const shopRow = async () => (await t.pool.query(`SELECT "featuresSetUpAt" FROM "Shop" WHERE id = 'shop1'`)).rows[0];
+    const features = async () => (await t.pool.query(`SELECT module, enabled FROM "ShopFeature" WHERE "shopId" = 'shop1' ORDER BY module`)).rows.map((r) => `${r.module}:${r.enabled}`);
+    assert.ok((await shopRow()).featuresSetUpAt, "a company made on this version is set up when it is made");
+    await t.pool.query(`INSERT INTO "ShopFeature" ("shopId", module, enabled, "byName") VALUES ('shop1', 'vac', true, 'Ann'), ('shop1', 'marketing', false, 'Ann')`);
+    const dir = await backup(t.pool, t.backups);
+
+    // After the backup: Scheduling switched on, Vac Shop off. The restore puts the backup's choices back.
+    await t.pool.query(`INSERT INTO "ShopFeature" ("shopId", module, enabled) VALUES ('shop1', 'scheduling', true)`);
+    await t.pool.query(`UPDATE "ShopFeature" SET enabled = false WHERE module = 'vac'`);
+    await restore(t.pool, dir);
+    assert.deepEqual(await features(), ["marketing:false", "vac:true"]);
+    assert.ok((await shopRow()).featuresSetUpAt, "still set up: nothing to work out again");
+
+    // The same backup presented as one from before shop_features (no ShopFeature table, an older last migration): its
+    // companies' Features are worked out again from their keys at the first load (featuresSetUpAt null), never all off.
+    const file = path.join(dir, "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.ok(manifest.lastMigration >= "20261030000000_shop_features");
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, lastMigration: "20261029000000_text_size", tables: manifest.tables.filter((x) => x.name !== "ShopFeature") }));
+    await restore(t.pool, dir);
+    assert.deepEqual(await features(), [], "an older backup has no features");
+    assert.equal((await shopRow()).featuresSetUpAt, null, "so its keys decide them at the first load, as at the update to 1.8");
+  } finally {
+    await t.done();
+  }
+});
+
 test("restore: opt-outs and consent recorded after the backup stay, restored marketing is cancelled, notices requeued, marketing on hold", { skip }, async () => {
   const t = await shop();
   // Times as the UTC wall clock Prisma writes into TIMESTAMP(3) columns (backup.mjs compares the backup's time the same way).

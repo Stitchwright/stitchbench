@@ -8,13 +8,12 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import type { CurrentUser } from "@/lib/session";
-import { MODULES, PAID_MODULE_IDS } from "@/lib/module-info";
+import { FEATURE_IDS, MODULES } from "@/lib/module-info";
 import { getModules } from "@/lib/modules";
 import { receiveUnitsFor } from "@/lib/units/units";
 import { completeSaleAs } from "@/lib/register-sale";
 import { markSuppliesCalledFor, runningLowAt, sendSuppliesRemindersFor, snoozeSuppliesFor, stopSuppliesFor, suppliesDue, suppliesStillWanted } from "@/lib/supplies-due";
-import { grantDevLicense } from "../license/dev";
-import { checkShop, cleanup, type CheckShop } from "./lib";
+import { checkShop, cleanup, switchFeatures, type CheckShop } from "./lib";
 import { expectNotFound } from "./tenant";
 
 let steps = 0;
@@ -50,7 +49,7 @@ async function main() {
   const pace = runningLowAt([new Date("2026-02-01T12:00:00Z"), new Date("2026-03-03T12:00:00Z"), new Date("2026-04-02T12:00:00Z")], sold, 42);
   assert.deepEqual([pace.from, pace.gapDays, pace.at.toISOString()], ["her pace", 30, "2026-05-02T12:00:00.000Z"]);
   assert.equal(runningLowAt([new Date("2026-02-01T12:00:00Z"), new Date("2026-02-02T12:00:00Z")], sold, 42).gapDays, 14, "a gap is at least two weeks");
-  assert.ok(PAID_MODULE_IDS.includes("maker") && MODULES.maker.label === "Maker Shop", "the Maker Shop module");
+  assert.ok((FEATURE_IDS as readonly string[]).includes("maker") && MODULES.maker.label === "Maker Shop", "the Maker Shop module");
   ok("running low: her own pace (at least two weeks), six weeks after her last, or after the machine's sale; the Maker Shop module is listed");
 
   const a = await checkShop({ retail: true });
@@ -60,7 +59,7 @@ async function main() {
     // 2. Without the module.
     assert.equal((await getModules(a.shopId)).states.maker.active, false);
     await expectError("no Maker Shop", () => markSuppliesCalledFor(user(a), "cxxxxxxxxxxxxxxxxxxxxxxxx"), /Maker Shop/);
-    await grantDevLicense(a.shopId, ["maker"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    await switchFeatures(a.shopId, ["maker"]);
     assert.equal((await getModules(a.shopId)).states.maker.active, true);
 
     // 3. The list.
@@ -115,7 +114,7 @@ async function main() {
     ok("the send needs Marketing and an owner or admin; a queued reminder is cancelled once she buys filament");
 
     // 6. Tenant.
-    await grantDevLicense(b.shopId, ["maker"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    await switchFeatures(b.shopId, ["maker"]);
     await expectNotFound("B marks A's machine", () => markSuppliesCalledFor(user(b), rows[0].machineId));
     await expectNotFound("B snoozes A's machine", () => snoozeSuppliesFor(user(b), rows[0].machineId));
     assert.deepEqual(await suppliesDue(b.shopId), []);

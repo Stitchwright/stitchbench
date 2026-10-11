@@ -40,10 +40,10 @@ export default async function MakerSpacePage() {
     <MakerFrame title="Maker-space time" tab="space" what="Maker-space time" sub="Customers book your own laser or 3D printer by the hour once they are certified on it. Material they use is rung up at the register with the booking." {...s}>
       {scheduling !== "on" && (
         <p className="card card-pad text-base">
-          Booking by the hour uses the calendar, which is the Scheduling module.{" "}
+          Booking by the hour uses the calendar, which comes with Scheduling.{" "}
           {s.admin && (
-            <Link href="/settings/modules" className="link">
-              See Settings → Modules
+            <Link href="/settings/features" className="link">
+              Switch Scheduling on in Settings → Features
             </Link>
           )}
         </p>

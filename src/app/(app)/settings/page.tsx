@@ -6,7 +6,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
-import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
+import { endedDay, FEATURE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_FEATURES_HREF } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
@@ -46,22 +46,6 @@ function ForSelect({ id, value, kinds }: { id: string; value: string | null; kin
       </select>
     </>
   );
-}
-
-/** One short line for the Settings overview: "Vac Shop: on until Sep 30, 2027". */
-function moduleLine(s: ModuleState) {
-  const day = s.lastDay ? fmtYmd(s.lastDay) : null;
-  switch (s.status) {
-    case "on":
-    case "renew":
-      return `${s.label}: on until ${day ?? "no end date"}`;
-    case "grace":
-      return `${s.label}: ended ${day ?? ""}, working until ${s.graceLastDay ? fmtYmd(s.graceLastDay) : "-"}`;
-    case "lapsed":
-      return `${s.label}: ${s.switchedOff ? "switched off" : "ended"} ${day ?? ""}`.trimEnd();
-    default:
-      return null;
-  }
 }
 
 /** Joining StitchHub, the community server: manual links, shared notes and photos, figure snapshots. */
@@ -173,19 +157,12 @@ export default async function SettingsPage() {
   const checklist = shop.checklistItems?.length ? shop.checklistItems : DEFAULT_CHECKLIST;
   const openStores = await activeStores(user.shopId);
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
-  // The paid modules; the program's own key is Settings → Account's.
-  const moduleLines = PAID_MODULE_IDS.map((id) => moduleLine(modules.states[id])).filter((l): l is string => l != null);
+  // The features this company switched on (Settings → Features: every one is free).
+  const featuresOn = FEATURE_IDS.filter((id) => modules.states[id].active).map((id) => modules.states[id].label);
+  // The program's own key: only a lapsed one says anything here.
   const base = modules.states.base;
-  const baseLine =
-    base.status === "lapsed"
-      ? `Read-only since ${endedDay(base)}: new tickets, sales and edits wait for a new key`
-      : base.status === "grace"
-        ? `Licensed through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}, working until ${base.graceLastDay ? fmtYmd(base.graceLastDay) : "-"}`
-        : base.status === "off"
-          ? shop.hubAccountEmail
-            ? `StitchHub account: ${shop.hubAccountEmail}${shop.hubAccountVerified ? "" : " (waiting for the email)"}`
-            : "No StitchHub account yet"
-          : `Licensed through ${base.lastDay ? fmtYmd(base.lastDay) : "no end date"}`;
+  const accountLine = shop.hubAccountEmail ? `StitchHub account: ${shop.hubAccountEmail}${shop.hubAccountVerified ? "" : " (waiting for the email)"}` : "No StitchHub account yet (it's free)";
+  const baseLine = base.status === "lapsed" ? `Read-only since ${endedDay(base)}: new tickets, sales and edits wait` : accountLine;
   // The "For" select offers the kinds new work may use, plus any kind an item already names (so it can be read and changed).
   const usedKinds = new Set(services.map((s) => s.equipmentKind).filter(Boolean));
   const usableKeys = new Set(kinds.usable.map((k) => k.key));
@@ -216,7 +193,7 @@ export default async function SettingsPage() {
         <div className="space-y-2 text-sm">
           <p>{baseLine}.</p>
           <Link href={SETTINGS_ACCOUNT_HREF} className="link">
-            Your StitchHub account and what {base.label} is licensed for
+            Your StitchHub account
           </Link>
         </div>
       </Section>
@@ -261,19 +238,15 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      <Section title="Add-ons" id="modules">
+      <Section title="Features" id="features">
         <div className="space-y-2 text-sm">
-          {moduleLines.length ? (
-            <ul className="space-y-1">
-              {moduleLines.map((l) => (
-                <li key={l}>{l}</li>
-              ))}
-            </ul>
+          {featuresOn.length ? (
+            <p>Switched on: {featuresOn.join(", ")}.</p>
           ) : (
-            <p className="muted">No modules are on. Vac Shop, Small Appliance Repair, Scheduling and Marketing can be added.</p>
+            <p className="muted">None switched on yet. Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop are free: switch on the ones your shop uses.</p>
           )}
-          <Link href={SETTINGS_MODULES_HREF} className="link">
-            Add-ons and license keys
+          <Link href={SETTINGS_FEATURES_HREF} className="link">
+            Switch features on or off
           </Link>
           <div>
             <Link href="/settings/booking" className="link">

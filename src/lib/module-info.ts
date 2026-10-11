@@ -1,5 +1,6 @@
-// What the paid modules are called and how their state is shown (pure: safe in client components, the CLI and checks).
-// The state itself is worked out by src/lib/modules.ts (server). modules-design.md section 5.3.
+// What the add-on modules are called and how their state is shown (pure: safe in client components and checks). The
+// state itself is worked out by src/lib/modules.ts (server). modules-design.md section 5.3; since 1.8 the five trade
+// modules are free and switched on in Settings → Features (free-software-design.md section 7, decision 6).
 import { MODULE_IDS, type ModuleId, type ModuleStatus } from "./license";
 
 export { MODULE_IDS };
@@ -10,44 +11,20 @@ export type ModuleState = {
   label: string; // "Vac Shop"
   status: ModuleStatus;
   active: boolean; // on | renew | grace: new work allowed
-  lastDay: string | null; // "2027-09-30" of the best window (the admin's off day when switched off)
+  lastDay: string | null; // a key's: "2027-09-30" of the best window
   graceLastDay: string | null; // "2027-10-14"
   startsOn: string | null; // a later key that hasn't started: "2026-10-01"
-  endedAt: Date | null; // lapsed: when new work stopped (section 5.2)
-  plan: string | null; // m | y | a | t | a newer plan word
-  source: "key" | "admin" | null;
+  endedAt: Date | null; // lapsed: when new work stopped (section 5.2), or when the feature was switched off
+  /** feature: Settings → Features decides (the five trade modules); key: a license key (the Assistant, the program itself). */
+  source: "feature" | "key" | null;
   keyId: string | null;
-  switchedOff: boolean; // lapsed because of the admin's "off"
-};
-
-export type KeyView = {
-  rowId: string;
-  keyId: string;
-  modules: string[];
-  plan: string | null;
-  from: string | null;
-  lastDay: string | null;
-  graceLastDay: string | null;
-  issuedTo: string | null;
-  addedBy: string | null;
-  addedAt: Date;
-  /** pasted (Settings → Modules, or a key from the hub's email) or hub (fetched with the sync, replaced by the hub's next one). */
-  source: string;
-  state: "current" | "future" | "ended" | "not-valid" | "other-company";
-  reason: string | null;
+  switchedOff: boolean; // a feature switched off in Settings → Features (lapsed: work already in can be finished)
 };
 
 export type Modules = {
   shopId: string;
   now: Date;
-  clockBehind: boolean;
-  floor: Date | null;
   states: Record<ModuleId, ModuleState>;
-  keys: KeyView[];
-  /** devKeysAllowed() in a production build (section 3.3), for the Settings pill. */
-  testBuild: boolean;
-  /** Module names on verified keys that this version doesn't know ("needs a newer version of StitchBench"). */
-  unknownModules: string[];
   /**
    * The company is being moved to another install (company-move-design.md section 7): Shop.movingAt is set, and this copy
    * is read-only through the same gate as a lapsed program key, whatever the key says. Null when not moving.
@@ -69,7 +46,7 @@ export function programName(): "StitchShop" | "StitchBench" {
 export const SETTINGS_ACCOUNT_HREF = "/settings/account";
 
 export const MODULES: Record<ModuleId, { label: string; blurb: string; href: string }> = {
-  // The program itself (hub-accounts-billing-design.md 3.5): its key comes from StitchHub with the sync, or by email.
+  // The program itself (hub-accounts-billing-design.md 3.5): its key comes from StitchHub with the sync.
   base: {
     label: programName(),
     href: SETTINGS_ACCOUNT_HREF,
@@ -110,8 +87,14 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
 
 export const isModuleId = (s: unknown): s is ModuleId => typeof s === "string" && (MODULE_IDS as readonly string[]).includes(s);
 
-/** The paid modules: everything but the program itself (Settings → Modules lists these; the program's own state is on Settings → Account). */
-export const PAID_MODULE_IDS = MODULE_IDS.filter((id) => id !== "base");
+/**
+ * The add-ons every company may switch on or off in Settings → Features, free (free-software-design.md section 7,
+ * decision 6): off until the shop chooses one, so its screens stay simple. Not the program itself, and not the
+ * Assistant, which a key from StitchHub still decides (it is bought on the StitchHub account).
+ */
+export const FEATURE_IDS = ["vac", "appliance", "scheduling", "marketing", "maker"] as const satisfies readonly ModuleId[];
+export type FeatureId = (typeof FEATURE_IDS)[number];
+export const isFeatureId = (s: unknown): s is FeatureId => typeof s === "string" && (FEATURE_IDS as readonly string[]).includes(s);
 
 /**
  * What the program's own key allows (hub-accounts-billing-design.md 3.5). "off" (no key ever: an install that never
@@ -126,20 +109,6 @@ export function readOnlyMessage(s: ModuleState, admin = true): string {
   return `${programName()} for this company is read-only since ${endedDay(s)}. You can look at and export everything, finish open work and take payments.${admin ? " Subscribe in Settings → Account." : " Ask the shop owner about its StitchHub account."}`;
 }
 
-/**
- * Who sells modules (INSTALL.md, "Paid modules"): StitchBench's public contact address, which the "Ask about / Renew"
- * links and Settings → Account mail. Never a personal address: this code is published. `url`: a pricing page, if any.
- */
-export const MODULE_SALES = { email: "bwattendorfdev@gmail.com", url: "" };
-
-/** mailto: link for "Ask about {label}" / "Renew {label}", or null while MODULE_SALES.email is empty. */
-export function salesMailto(kind: "ask" | "renew", label: string, shop: { id: string; name: string }): string | null {
-  if (!MODULE_SALES.email) return null;
-  const subject = `StitchBench ${label} for ${shop.name}`;
-  const body = `${kind === "renew" ? "Please send my renewal key.\n\n" : ""}Company ID: ${shop.id}\nCompany: ${shop.name}\nModule: ${label}\nMonthly or yearly: \n`;
-  return `mailto:${MODULE_SALES.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 export type NavGate = "on" | "readonly" | "hidden";
 
 /** active -> on, lapsed -> readonly, off -> hidden (pure). */
@@ -152,8 +121,7 @@ export function toNavGates(m: Modules): Record<ModuleId, NavGate> {
   return out;
 }
 
-export const SETTINGS_MODULES_HREF = "/settings/modules";
-export const MODULE_SALES_NOTE = "Add-ons are sold by StitchBench, monthly or yearly. After you pay, you get a key by email. Paste it here. It works without the internet.";
+export const SETTINGS_FEATURES_HREF = "/settings/features";
 
 export function canWrite(status: ModuleStatus): boolean {
   return status === "on" || status === "renew" || status === "grace";
@@ -166,7 +134,7 @@ export function fmtYmd(ymd: string): string {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
 }
 
-/** The day a lapsed module ended, as shown ("Sep 30, 2027"): the admin's off day or the key's last day. */
+/** The day a lapsed module ended, as shown ("Sep 30, 2027"): the day it was switched off, or the key's last day. */
 export function endedDay(s: ModuleState): string {
   if (s.switchedOff && s.endedAt) return s.endedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   return s.lastDay ? fmtYmd(s.lastDay) : s.endedAt ? s.endedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
@@ -175,17 +143,19 @@ export function endedDay(s: ModuleState): string {
 /** The message requireModule / requireEquipment throw (modules-design.md section 6.6). */
 export function blockedMessage(s: ModuleState, admin: boolean): string {
   const { label } = MODULES[s.id];
-  if (s.id === "base") {
-    // The program itself: "off" never blocks, so the only refusal is the read-only one.
-    if (s.status === "lapsed") return readOnlyMessage(s, admin);
-    return `${label} isn't licensed for this company yet.${admin ? " See Settings → Account." : " Ask the shop owner."}`;
+  // The program itself: "off" never blocks, so the only refusal is the read-only one.
+  if (s.id === "base") return readOnlyMessage(s, admin);
+  if (isFeatureId(s.id)) {
+    if (s.status === "lapsed") {
+      return `${label} was switched off for this company on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.${admin ? " To start new work, switch it on again in Settings → Features." : " Ask the shop owner or an admin to switch it on again."}`;
+    }
+    return `${label} isn't switched on for this company.${admin ? " It's free: switch it on in Settings → Features." : " Ask the shop owner or an admin to switch it on in Settings → Features."}`;
   }
-  if (s.status === "lapsed") {
-    if (s.switchedOff) return `${label} was switched off for this company on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.`;
-    return `${label} ended on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.${admin ? " To start new work, renew it in Settings → Add-ons." : " Ask the shop owner to renew it."}`;
-  }
+  // The Assistant: bought on the company's StitchHub account, its key arrives with the sync.
+  const getIt = admin ? " Add it on your StitchHub account (Settings → Account)." : " Ask the shop owner about it.";
+  if (s.status === "lapsed") return `${label} ended on ${endedDay(s)}. You can still look at and export what's there.${getIt}`;
   if (s.status === "off" && s.startsOn) return `${label} starts on ${fmtYmd(s.startsOn)}.`;
-  return `${label} isn't turned on for this company.${admin ? " An owner can add it in Settings → Add-ons." : " Ask the shop owner about it."}`;
+  return `${label} isn't on for this company.${getIt}`;
 }
 
 /** write when canWrite; read when lapsed, or off with records; none when off without records. */
@@ -193,24 +163,4 @@ export function pageGate(s: ModuleState, hasRecords = false): "write" | "read" |
   if (canWrite(s.status)) return "write";
   if (s.status === "lapsed" || hasRecords) return "read";
   return "none";
-}
-
-/** m "monthly", y "yearly", a "switched on by StitchBench", t "trial", c "free (comped)", w "free while partnered", other: the word. */
-export function planLabel(plan: string | null): string {
-  switch (plan) {
-    case "m":
-      return "monthly";
-    case "y":
-      return "yearly";
-    case "a":
-      return "switched on by StitchBench";
-    case "t":
-      return "trial";
-    case "c":
-      return "free (comped)";
-    case "w":
-      return "free while partnered";
-    default:
-      return plan ?? "";
-  }
 }

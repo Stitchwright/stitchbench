@@ -1,7 +1,8 @@
 // The cross-module gate points (modules-design.md 12.4 and package modules-crossover), with a throwaway company that
-// has Vac Shop and Marketing on: the bags_due copy, a queued bags-due message cancelled after "Stop reminders", an
-// install's estimate approved by link becoming Booked, what still works after Vac Shop ends (a pre-lapse estimate
-// approval, closing out, the refusals), {machine} on installs, the install on the calendar, and service due's skip.
+// has Vac Shop and Marketing switched on: the bags_due copy, a queued bags-due message cancelled after "Stop reminders",
+// an install's estimate approved by link becoming Booked, what still works after Vac Shop is switched off in Settings →
+// Features (an estimate approval for a ticket from before, closing out, the refusals), {machine} on installs, the
+// install on the calendar, and service due's skip.
 //   npm run check scripts/checks/modules-crossover.check.ts
 import "dotenv/config";
 import assert from "node:assert/strict";
@@ -24,7 +25,7 @@ import { changeTicketStatus } from "@/lib/ticket-status";
 import { sendBagRemindersFor, stopBagsFor } from "@/lib/vac/bags-due";
 import { createSiteJob } from "@/lib/vac/installs";
 import { addDays, dayStart, ymdOf } from "@/lib/zoned";
-import { checkShop, cleanup, clearKick, messagingFor, withSink, type CheckShop } from "./lib";
+import { checkShop, cleanup, clearKick, messagingFor, switchFeatures, withSink, type CheckShop } from "./lib";
 
 const NY = "America/New_York";
 const DAY = 86_400_000;
@@ -119,16 +120,16 @@ async function main() {
     assert.ok(dueVac && dueVac.equipment === "VACUUM");
     assert.equal(await canWorkOn(shopId, "VACUUM"), true);
 
-    // 4-5. Vac Shop ends: a pre-lapse ticket's approval still moves it to the bench; closing out works; new work is refused.
+    // 4-5. Vac Shop switched off: an earlier ticket's approval still moves it to the bench; closing out works; new work is refused.
     const waiting = await vacTicket(shopId, cust.id, "WAITING_CUSTOMER_OK", { intakeAt: new Date(Date.now() - 2 * DAY) });
     const open = await vacTicket(shopId, cust.id, "ON_BENCH", { intakeAt: new Date(Date.now() - 2 * DAY) });
     const closed = await vacTicket(shopId, cust.id, "COLLECTED", { intakeAt: new Date(Date.now() - 2 * DAY), closedAt: new Date(Date.now() - DAY) });
-    await db.moduleGrant.create({ data: { shopId, module: "vac", mode: "off", byEmail: "check@stitchbench.test" } });
+    await switchFeatures(shopId, ["vac"], false);
     assert.equal((await loadModules(shopId)).states.vac.status, "lapsed");
     await recordEstimateAnswerAs(user(a), "ticket", waiting.id, { answer: "APPROVED", via: "phone", note: null });
     assert.equal((await db.ticket.findUniqueOrThrow({ where: { id: waiting.id } })).status, "ON_BENCH");
     await expectError("sendEstimate on a collected vacuum ticket", () => sendEstimateAs(user(a), "ticket", closed.id, { email: true, sms: false, note: null }), /switched off|ended on/);
-    // Closing out an open pre-lapse ticket: the action's ownTicket(..., "close") skips the work gate, and the status change itself goes through.
+    // Closing out an open ticket from before: the action's ownTicket(..., "close") skips the work gate, and the status change itself goes through.
     const ctx = await hookContext(shopId, a.user.name);
     const tOpen = await db.ticket.findUniqueOrThrow({ where: { id: open.id } });
     const changed = await db.$transaction((tx) => changeTicketStatus(tx, tOpen, "COLLECTED", new Date(), 90, ctx));
@@ -138,13 +139,13 @@ async function main() {
     await expectError("a new vacuum check-in", () => requireModule(user(a), "vac"), /switched off|ended on/);
     assert.equal(await usableKind(shopId, "vacuum"), null);
     assert.equal(await canWorkOn(shopId, "VACUUM"), false, "service due's scheduler skips vacuums now (canWorkOn)");
-    // A new quote after the end stays where it is when approved: the answer is recorded, the status isn't moved.
+    // A new quote after the switch-off stays where it is when approved: the answer is recorded, the status isn't moved.
     const late = await vacTicket(shopId, cust.id, "WAITING_CUSTOMER_OK");
     await recordEstimateAnswerAs(user(a), "ticket", late.id, { answer: "APPROVED", via: "phone", note: null });
     const tLate = await db.ticket.findUniqueOrThrow({ where: { id: late.id } });
     assert.equal(tLate.status, "WAITING_CUSTOMER_OK");
     assert.equal(tLate.estimateAnswer, "APPROVED");
-    ok("after Vac Shop ends: a pre-lapse approval moves the ticket to the bench, a collected ticket can't be sent an estimate, closing out works, new work is refused, a post-lapse approval records the answer only");
+    ok("after Vac Shop is switched off: an earlier ticket's approval moves it to the bench, a collected ticket can't be sent an estimate, closing out works, new work is refused, a later approval records the answer only");
   } finally {
     clearKick();
     if (prior === undefined) delete process.env.PUBLIC_URL;

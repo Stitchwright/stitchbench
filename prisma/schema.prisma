@@ -261,6 +261,10 @@ model Shop {
   // Shop hops (shop-features-round-2-design.md 4.6): off until the shop turns it on (Settings, Selling); then the Shop hop
   // page shows in the menu.
   hopOn                    Boolean       @default(false)
+  // Settings → Features (free-software-design.md section 7, decision 6): when this company's Features were worked out. A
+  // company made from 1.8 on starts with every one off. Null: a company from before 1.8 (or restored or moved in from an
+  // older program); the first time 1.8 loads it, the add-ons its keys had working are switched on (src/lib/modules.ts).
+  featuresSetUpAt          DateTime?     @default(now())
   createdAt                DateTime      @default(now())
 
   users             User[]
@@ -305,7 +309,9 @@ model Shop {
   offsite           OffsiteSettings?
   offsiteObjects    OffsiteObject[]
   offsiteRuns       OffsiteRun[]
-  // Paid modules
+  // The add-on modules: the company's own switches (Settings → Features), and the keys (the Assistant's, and those a
+  // company held before 1.8)
+  features          ShopFeature[]
   licenses          License[]
   moduleGrants      ModuleGrant[]
   equipmentKinds    ShopEquipmentKind[]
@@ -2062,12 +2068,27 @@ model PartnerFailure {
 }
 
 // ============================================================
-// Paid modules (src/lib/modules.ts): Vac Shop, Small Appliance Repair, Scheduling, Marketing. A module is on while a
-// license key the company pasted (its signature checked again on every look) or the administrator's switch on the
-// hosted app says so. Switching off never deletes anything: records stay to look at and export; new work stops.
+// The add-on modules (src/lib/modules.ts): Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop are
+// free (free-software-design.md, 11 Oct 2026) and on while the company has switched them on in Settings → Features.
+// The Assistant is on while a license key from StitchHub says so (its signature checked again on every look). Switching
+// off never deletes anything: records stay to look at and export; new work stops.
 // ============================================================
 
-// A license key pasted in Settings -> Modules. Only `key` counts: it is verified from its text every time it is read.
+// One add-on the company switched on, or switched off at changedAt (work that came in before then can be finished). No
+// row: never switched on. byName: who did it ("Your license keys" for the move to 1.8: what the keys had working).
+model ShopFeature {
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  module    String // vac | appliance | scheduling | marketing | maker (FEATURE_IDS in src/lib/module-info.ts)
+  enabled   Boolean
+  changedAt DateTime @default(now())
+  byName    String?
+
+  @@id([shopId, module])
+}
+
+// A license key: StitchHub's (the Assistant's, and the program's own key, which matters only where hosting is billed),
+// or one pasted before 1.8. Only `key` counts: it is verified from its text every time it is read.
 model License {
   id        String   @id @default(cuid())
   shopId    String
@@ -2076,8 +2097,8 @@ model License {
   key       String // the whole key as pasted: SB1.<payload>.<signature>
   addedBy   String? // name of the person who pasted it
   addedById String? // their User id
-  // pasted: Settings → Modules (or the owner's emailed key); hub: fetched from StitchHub with the sync, one hub row per
-  // company, replaced by the hub's next key and removed when the hub revokes it (hub-accounts-billing-design.md 3.5)
+  // pasted: Settings → Modules before 1.8 (or the owner's emailed key); hub: fetched from StitchHub with the sync,
+  // replaced by the hub's next key and removed when the hub revokes it (hub-accounts-billing-design.md 3.5)
   source    String   @default("pasted")
   createdAt DateTime @default(now())
 
@@ -2085,10 +2106,11 @@ model License {
   @@index([shopId, source])
 }
 
-// The StitchBench administrator's switch for one company's module (Companies screen, hosted app only). Rows are history;
-// only rows newer than the newest "none" (keys decide) count: the newest "on" (a key signed with the hosting key) adds
-// its dates, the newest "off" ends every key issued before it (src/lib/license.ts adminPosition). Ignored by the Windows
-// program.
+// The StitchBench administrator's switch for one company's module on the hosted app, before 1.8 (the Companies screen
+// had it; the rows stay, and older move files carry them). Read once, with the keys, when a company from before 1.8 is
+// first loaded (src/lib/modules.ts): only rows newer than the newest "none" (keys decide) counted, the newest "on" (a key
+// signed with the hosting key) added its dates, the newest "off" ended every key issued before it (src/lib/license.ts
+// adminPosition). Ignored by the Windows program.
 model ModuleGrant {
   id        String   @id @default(cuid())
   shopId    String

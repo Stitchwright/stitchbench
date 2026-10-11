@@ -1,8 +1,11 @@
 import "server-only";
 // Whether this company may write to the community hub (links, cross-references, shared posts), and the name its
-// writes carry. The StitchBench administrator switches a company's writes off from Companies (Shop.hubWritesOff).
+// writes carry. The StitchBench administrator switches a company's writes off from Companies (Shop.hubWritesOff); the
+// action wrapper is src/actions/companies.ts.
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
+import type { CurrentUser } from "@/lib/session";
 
 /**
  * Throws when the company's hub writes are switched off. Otherwise returns the byName to send: "{user} ({company})"
@@ -14,4 +17,13 @@ export async function requireHubWrites(user: { shopId: string; name: string }): 
   // Being moved (company-move-design.md section 7): nothing written to the hub from the copy that is leaving.
   if (shop?.movingAt) throw new UserError("This company is being moved to another install, so nothing is shared to the hub from here. Cancel the move in Settings → Company to carry on here.");
   return companies > 1 && shop ? `${user.name} (${shop.name})` : user.name;
+}
+
+/** Companies: the administrator switches one company's writes to the hub off, or back on. */
+export async function setHubWritesFor(admin: CurrentUser, shopId: string, off: boolean) {
+  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true } });
+  if (!shop) throw new UserError("Company not found.");
+  await db.shop.update({ where: { id: shop.id }, data: { hubWritesOff: off === true } });
+  console.info(`[hub] ${JSON.stringify({ company: shop.id, writesOff: off === true, by: admin.email })}`);
+  revalidatePath("/companies");
 }

@@ -33,7 +33,7 @@ export function VacFrame({ title, sub, tab, state, shop, gate, admin, what, need
     return (
       <div className="space-y-4">
         <PageHeader title={title} />
-        <ModuleNotice state={state} admin={admin} shop={shop} />
+        <ModuleNotice state={state} admin={admin} />
       </div>
     );
   }
@@ -41,7 +41,7 @@ export function VacFrame({ title, sub, tab, state, shop, gate, admin, what, need
     <div className="space-y-4">
       <PageHeader title={title} sub={sub} />
       <VacTabs active={tab} />
-      {gate === "read" && <ModuleNotice state={state} what={what} admin={admin} shop={shop} />}
+      {gate === "read" && <ModuleNotice state={state} what={what} admin={admin} />}
       {needsRegister && !shop.sellsRetail && (
         <p className="card card-pad text-sm">
           Selling vacuums, bags and trade-ins happens at the Register.{" "}

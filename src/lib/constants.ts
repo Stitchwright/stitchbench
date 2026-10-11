@@ -153,7 +153,7 @@ export const ORDER_STATUS_LABEL: Record<string, string> = {
   CANCELLED: "Cancelled",
 };
 
-// ---------- paid modules (modules-design.md section 2.5) ----------
+// ---------- the add-on modules (modules-design.md section 2.5) ----------
 
 // Central vac installs (Ticket.jobType SITE) use the ticket statuses under these names (like JOB_STATUS_LABEL).
 export const SITE_STATUS_ORDER: TicketStatus[] = ["WAITING_CUSTOMER_OK", "AT_SHOP_AWAITING_PICKUP", "WAITING_PARTS", "ON_BENCH", "COLLECTED", "RETURNED_UNREPAIRED"];

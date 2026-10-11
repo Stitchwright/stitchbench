@@ -1,8 +1,9 @@
 import "server-only";
 // What the hub says about a company's standing, written down (hub-accounts-billing-design.md 2.4 and 3.5). The words
-// (standing, last day, message, the account's email) go to the Shop row for Settings → Account to show. Only the key
-// changes what the program allows: it is verified like a pasted one and kept as the company's single "hub" License row,
-// replaced by the hub's next key; a key the hub revokes goes, and only if the hub issued it (never a pasted one).
+// (standing, last day, message, the account's email) go to the Shop row for Settings → Account to show. Only the keys
+// change what the program allows, and since 1.8 only two things: the Assistant, and the program itself
+// (src/lib/modules.ts). The program's key is verified like a pasted one and kept as the company's single "hub" License
+// row, replaced by the hub's next key; a key the hub revokes goes, and only if the hub issued it (never a pasted one).
 import { db } from "@/lib/db";
 import { validYmd } from "@/lib/license";
 import { verifyFor } from "@/lib/modules";
@@ -13,35 +14,19 @@ export type StandingAnswer = {
   standing?: string | null;
   lastDay?: string | null;
   message?: string | null;
-  /**
-   * The login plan (a hub from the two-plan price list on): solo | shop, with the interval and founding for a
-   * subscription. Not stored: the same plan rides in the signed key (payload l and fs), which is what src/lib/plan.ts
-   * reads, offline too; the words above already name it for Settings → Account.
-   */
-  plan?: string | null;
-  interval?: string | null;
-  founding?: boolean | null;
   key?: string | null;
   /**
-   * Keys for add-on modules the company bought on the hub (the Assistant: its own subscription, module "assistant"; from
-   * round 2 on also Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop, alone or as the bundle's one key). Verified like the base key and kept as hub rows of their own: the hub's newest
-   * replaces the older one, and the base key's arrival never takes them away (nor theirs the base key).
+   * Keys for add-on modules from the hub (the Assistant: its own subscription, module "assistant"; an older hub also
+   * sold Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop, alone or as the bundle's one key). Verified
+   * like the base key and kept as hub rows of their own: the hub's newest replaces the older one, and the base key's
+   * arrival never takes them away (nor theirs the base key). Only the Assistant's still counts; the trade modules' keys
+   * are kept as the hub sent them and decide nothing (Settings → Features does).
    */
   moduleKeys?: string[] | null;
   revokeKeyIds?: string[] | null;
   /** The hub's terms version in force and the one the company's account accepted (a hub from package terms-launch on). */
   terms?: { version?: string | null; accepted?: string | null } | null;
 };
-
-/**
- * The real-partnership rule's notice (hub README, "The real-partnership rule"): a quilt shop's waiver in its 30-day grace
- * is standing "waived" with a last day (the grace's end) and the hub's friendly words as the note; a waiver that holds has
- * no last day. Words only: the key decides what the program allows, and nothing here locks anything.
- */
-export function partnershipNotice(s: { hubStanding: string | null; hubStandingUntil: string | null; hubStandingNote: string | null }): { until: string; note: string } | null {
-  if (s.hubStanding !== "waived" || !s.hubStandingUntil || !s.hubStandingNote) return null;
-  return { until: s.hubStandingUntil, note: s.hubStandingNote };
-}
 
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 
@@ -116,8 +101,8 @@ export async function applyMovedOut(shopId: string, m: MovedAway): Promise<void>
 }
 
 /**
- * The add-on modules the hub sells (the hub's src/addons.mjs: the Assistant, and Vac Shop, Small Appliance Repair,
- * Scheduling, Marketing and Maker Shop, each alone or all five in the bundle's one key).
+ * The add-on modules the hub may send keys for (the hub's src/addons.mjs: the Assistant, and from an older hub Vac Shop,
+ * Small Appliance Repair, Scheduling, Marketing and Maker Shop, each alone or all five in the bundle's one key).
  */
 const ADDON_MODULES = ["assistant", "vac", "appliance", "scheduling", "marketing", "maker"] as const;
 

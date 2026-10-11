@@ -39,6 +39,7 @@ import {
 } from "@/lib/move/format";
 import { cancelMove, exportCompany, moveView, startMove, type Mover } from "@/lib/move/export";
 import type { CurrentUser } from "@/lib/session";
+import { grantDevLicense } from "../license/dev";
 import { checkShop, cleanup, linkPair, messagingFor, withSink, type CheckShop } from "./lib";
 import { assertUnchanged, expectNotFound, snapshot } from "./tenant";
 
@@ -95,6 +96,8 @@ async function main() {
   await withSink();
   const a = await checkShop({ retail: true, repair: true, modules: ["marketing"] });
   const b = await checkShop({ retail: true, repair: true, modules: ["marketing"] });
+  // The Assistant's key goes with the company too (Marketing is a Feature: a ShopFeature row).
+  await grantDevLicense(a.shopId, ["assistant"]);
   let who: CurrentUser | null = null;
   lapseUserFrom(async () => who);
   try {
@@ -239,6 +242,7 @@ async function main() {
       "SaleLine",
       "PartnerLink",
       "PartnerSeen",
+      "ShopFeature",
       "License",
       "MessagingSettings",
       "OutMessage",
@@ -339,7 +343,6 @@ async function main() {
     assert.equal(view.move?.id, moveId);
     assert.equal(view.move?.status, "ready");
     assert.equal(view.shop.movingAt?.getTime(), frozen.movingAt.getTime());
-    assert.deepEqual(view.needKeys, []);
     ok("the freeze: Shop.movingAt makes the base gate, safe() and lapseGuard refuse with the moving message; workers skip it; hub writes refuse; a second start is refused; B is untouched");
 
     // The download while frozen: progress and the done mark on the move record; the file's Shop row isn't frozen.

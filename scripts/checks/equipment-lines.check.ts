@@ -15,7 +15,7 @@ import { accessoryBoxText, readAccessoryBox, readListBox, readQuestionRows, slug
 import { shopKinds, usableKind } from "@/lib/equipment/shop";
 import { saveCheckInKindFor, saveEquipmentKindFor, setKindActiveFor } from "@/lib/equipment/shop-kinds";
 import type { FieldDef } from "@/lib/equipment/types";
-import { grantDevLicense } from "../license/dev";
+import { switchFeatures } from "./lib";
 import { makeCompany, removeCompany, RUN } from "./tenant";
 
 let steps = 0;
@@ -149,9 +149,8 @@ async function main() {
   const a = await makeCompany(`Check ${RUN} A`);
   const b = await makeCompany(`Check ${RUN} B`);
   try {
-    const from = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
-    await grantDevLicense(a.shopId, ["appliance"], { from });
-    await grantDevLicense(b.shopId, ["appliance"], { from });
+    await switchFeatures(a.shopId, ["appliance"]);
+    await switchFeatures(b.shopId, ["appliance"]);
     const espresso = { label: "Espresso machine", noun: "espresso machine", types: "Semi-automatic\nSuper-automatic", brands: "Gaggia\nBreville", accessories: "* Power cord\nPortafilter", checklist: "Descaled\nGroup gasket checked" };
     const key = await saveEquipmentKindFor(a.user, null, form({ ...espresso, "q.key": ["", "", ""], "q.label": ["Boiler type", "", ""], "q.type": ["select", "text", "text"], "q.options": ["Single, Dual", "", ""], "q.on": ["machine", "machine", "machine"], active: "on" }));
     assert.equal(key, "espresso-machine");

@@ -28,7 +28,6 @@ export function MakerFrame({
   sub,
   tab,
   state,
-  shop,
   gate,
   admin,
   what,
@@ -39,7 +38,6 @@ export function MakerFrame({
   sub?: React.ReactNode;
   tab: MakerTab;
   state: Awaited<ReturnType<typeof makerPageState>>["state"];
-  shop: { id: string; name: string; sellsRetail: boolean };
   gate: "write" | "read" | "none";
   admin: boolean;
   what?: string;
@@ -50,7 +48,7 @@ export function MakerFrame({
     return (
       <div className="space-y-4">
         <PageHeader title={title} />
-        <ModuleNotice state={state} admin={admin} shop={shop} />
+        <ModuleNotice state={state} admin={admin} />
       </div>
     );
   }
@@ -64,7 +62,7 @@ export function MakerFrame({
           </Link>
         ))}
       </nav>
-      {gate === "read" && <ModuleNotice state={state} what={what} admin={admin} shop={shop} />}
+      {gate === "read" && <ModuleNotice state={state} what={what} admin={admin} />}
       {children}
     </div>
   );

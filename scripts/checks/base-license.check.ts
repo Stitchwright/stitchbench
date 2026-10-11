@@ -1,6 +1,6 @@
 // The program's own license, the "base" module (hub-accounts-billing-design.md 3.5, package base-license):
 //   1. the key verifies and gates: the hub scope counts as pasted and never as the Companies switch; a dev key for
-//      "base" switches it on; the read-only message
+//      "base" verifies; the read-only message
 //   2. off = working: a company with no key at all is judged writable everywhere
 //   3. lapsed = read-only: safe() refuses an unlisted action and lets an allow-listed one through, the by-hand rules
 //      (a sale refused, a return and a void allowed), /api/photos' 403, public booking paused, the message worker skips
@@ -12,6 +12,8 @@
 //      a person's calls and every safe() action, never the background sync) and the hub's 403 for another company's
 //      row in the person's words
 //   5. tenant: company B learns and changes nothing of A's
+//   6. the Assistant's key from the hub (moduleKeys), apart from the program's
+//   7. an older hub's keys for the trade add-ons: kept as it sent them, and they switch nothing on (Settings → Features does)
 //   npm run check scripts/checks/base-license.check.ts
 // Shares the dev database: throwaway companies "Check <run>" (removed at the end); the HubState row and every company's
 // hub fields are put back as they were. Nothing is mailed (the mock has no mail).
@@ -250,7 +252,6 @@ async function main() {
       tenders: [{ method: "CASH", amountCents: 300 }],
       clientKey: `chk-${RUN}-s2-000000`,
     });
-    assert.match(blockedMessage(m.states.base, true), /isn't licensed/);
     ok("off = working: safe() passes, booking open, the worker runs the company, a sale rings up");
 
     // ---------- 3. lapsed = read-only ----------
@@ -443,8 +444,7 @@ async function main() {
     assert.deepEqual(rows, [{ keyId: payloadOf(key1).id, source: "hub", addedBy: "StitchHub" }]);
     m = await loadModules(a.shopId);
     assert.equal(m.states.base.status, "on");
-    assert.equal(m.states.base.plan, "t");
-    assert.equal(m.keys.find((k) => k.keyId === payloadOf(key1).id)?.source, "hub");
+    assert.equal(m.states.base.keyId, payloadOf(key1).id);
     shopA = await db.shop.findUniqueOrThrow({ where: { id: a.shopId } });
     assert.equal(shopA.hubAccountVerified, true);
     ok("pending → member; the hub's key is stored as the one hub row and switches the program on");
@@ -544,7 +544,7 @@ async function main() {
     assert.equal(bView.shop.hubAccountEmail, null);
     assert.equal(bView.base.status, "off");
     await applyStanding(b.shopId, { standing: "comped", key: key1, revokeKeyIds: [payloadOf(key1).id] });
-    assert.equal(await db.license.count({ where: { shopId: b.shopId } }), 1, "A's key sent to B is ignored (B keeps its scheduling key only)");
+    assert.equal(await db.license.count({ where: { shopId: b.shopId } }), 0, "A's key sent to B is ignored (B holds no key: its Scheduling and Marketing are Features)");
     assert.equal(await db.license.count({ where: { shopId: b.shopId, source: "hub" } }), 0);
     const linksBefore = mock.links.length;
     await linkCodeFor(b.user);
@@ -582,8 +582,9 @@ async function main() {
     assert.equal(await db.license.count({ where: { shopId: b.shopId, keyId: idOf(asK2) } }), 0, "the hub can take back an Assistant key it issued (a refund)");
     ok("moduleKeys: the Assistant's key kept apart from the program's, replaced by the next, checked for company and module, never over a pasted key");
 
-    // ---------- 7. the trade add-ons from the hub (moduleKeys: vac, appliance, scheduling, marketing, maker, the bundle) ----------
-    // The hub sells each add-on self-serve and signs its key with the module id; the bundle's one key names all five.
+    // ---------- 7. the trade add-ons from an older hub (moduleKeys: vac, appliance, scheduling, marketing, maker, the bundle) ----------
+    // A hub from before 1.8 sold each add-on and signed its key with the module id; the bundle's one key names all five.
+    // The keys are kept as it sent them (they decided where a company from before 1.8 started), and switch nothing on.
     await db.license.deleteMany({ where: { shopId: b.shopId, source: "hub", NOT: { keyId: idOf(baseK2) } } });
     const vacK = modKey(["vac"], 30);
     const makerK = modKey(["maker"], 30);
@@ -591,15 +592,20 @@ async function main() {
     await applyStanding(b.shopId, { standing: "active", moduleKeys: [asK3, vacK, makerK] });
     assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK3), idOf(vacK), idOf(makerK)].sort(), "single add-on keys kept beside the Assistant's");
     const m7 = (await loadModules(b.shopId)).states;
-    assert.ok(m7.vac.active && m7.vac.keyId === idOf(vacK) && m7.maker.active && m7.maker.keyId === idOf(makerK), "Vac Shop and Maker Shop on from the hub's keys");
+    assert.ok(!m7.vac.active && !m7.maker.active && m7.vac.source === "feature", "Vac Shop and Maker Shop stay as Settings → Features has them: off");
     const bundleK = modKey(["vac", "appliance", "scheduling", "marketing", "maker"], 365);
     await applyStanding(b.shopId, { standing: "active", key: baseK2, moduleKeys: [asK3, bundleK] });
     assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK3), idOf(bundleK)].sort(), "the bundle's key replaces the single ones; the base key stays");
     const m7b = (await loadModules(b.shopId)).states;
-    assert.ok(["vac", "appliance", "scheduling", "marketing", "maker"].every((id) => m7b[id as keyof typeof m7b].active), "the bundle turns all five on");
+    // B switched Scheduling and Marketing on in its Features (checkShop above); the bundle's key adds nothing to that.
+    assert.deepEqual(
+      (["vac", "appliance", "scheduling", "marketing", "maker"] as const).filter((id) => m7b[id].active),
+      ["scheduling", "marketing"],
+      "the bundle turns none of the five on: B's own switches decide",
+    );
     await applyStanding(b.shopId, { standing: "active", moduleKeys: [modKey(["base", "vac"], 30), modKey(["nonsense"], 30), modKey(["marketing"], 30, a.shopId)] });
     assert.deepEqual(await hubKeyIds(), [idOf(baseK2), idOf(asK3), idOf(bundleK)].sort(), "a key carrying base, an unknown module or another company's is ignored");
-    ok("moduleKeys: trade add-on keys (single and the bundle) kept, replaced by the next set, base and foreign keys ignored");
+    ok("moduleKeys: trade add-on keys (single and the bundle) kept and replaced by the next set, switching nothing on; base and foreign keys ignored");
 
     if (savedAdmins === undefined) delete process.env.PLATFORM_ADMIN_EMAILS;
     else process.env.PLATFORM_ADMIN_EMAILS = savedAdmins;

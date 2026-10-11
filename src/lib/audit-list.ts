@@ -72,6 +72,7 @@ export const AUDIT_ACTIONS = {
   "hub.usage": { category: "settings", label: "Sharing of parts used switched on or off" },
   "shop.details": { category: "settings", label: "Shop details changed" },
   "feeds.settings": { category: "settings", label: "Google and Facebook feeds switched on or off" },
+  "feature.switch": { category: "settings", label: "A feature switched on or off (Settings → Features)" },
   "store.add": { category: "settings", label: "Store added" },
   "store.change": { category: "settings", label: "Store details changed, closed or opened again" },
   "store.join": { category: "data", label: "A separate company joined in as a store" },

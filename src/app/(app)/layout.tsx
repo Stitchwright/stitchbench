@@ -10,13 +10,12 @@ import { signOut } from "@/auth";
 import { appName, isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
 import { getModules } from "@/lib/modules";
-import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
+import { endedDay, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
 import { messagingView } from "@/lib/messaging/settings";
-import { GraceBanner, LapsedBar, ModulePills, MovingBar, PartnershipNotice, type GraceItem, type RenewPill } from "@/components/module-banner";
+import { LapsedBar, MovingBar } from "@/components/module-banner";
 import { SECURE_ADDRESS_META, secureAddress } from "@/lib/secure-address";
 import { deleteFrom } from "@/lib/move/format";
-import { partnershipNotice } from "@/lib/hub-standing";
 import { AppHeader } from "@/components/app-header";
 import { HubResetPrompt } from "@/components/hub-reset-prompt";
 import { activeStores, currentStore } from "@/lib/stores";
@@ -32,7 +31,7 @@ import { parseTextSize } from "@/lib/text-size";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const [shop, hub, retailPartners, modules, me] = await Promise.all([
-    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true, hubStanding: true, hubStandingUntil: true, hubStandingNote: true, hopOn: true } }),
+    db.shop.findUnique({ where: { id: user.shopId }, select: { id: true, name: true, doesRepair: true, sellsRetail: true, timeZone: true, hopOn: true } }),
     db.hubState.findUnique({ where: { id: 1 }, select: { discordUrl: true, installKey: true, scope: true } }),
     db.partnerLink.count({ where: { shopId: user.shopId, side: "retail" } }),
     getModules(user.shopId),
@@ -44,7 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const doesRepair = shop?.doesRepair ?? true;
   const admin = user.role !== "TECH";
   // Nav gates: the modules' own state, then Scheduling / Marketing as the data says (a company with records of a
-  // module that ended still sees the item, read-only).
+  // module that is switched off still sees the item, read-only).
   const gates = { ...toNavGates(modules), ...(await dataGates(user.shopId)) };
   // Marketing, unless hidden: customer replies nobody has handled (the Messages badge) and a paused channel (the pill).
   const [replies, ms] =
@@ -52,31 +51,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pausePill = ms?.emailPausedAt ? "Email paused: fix in Settings" : ms?.smsPausedAt ? "Texts paused: fix in Settings" : null;
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
-  // Paid modules: a quiet renewal pill for admins, and a banner for everyone while a module is in its grace period.
-  // Layouts don't re-render on navigation, so these may be one navigation stale; the pages and actions are the real gates.
-  const shopRef = { id: user.shopId, name: shop?.name ?? "" };
-  const pills: RenewPill[] = admin
-    ? MODULE_IDS.filter((id) => modules.states[id].status === "renew").map((id) => ({
-        id,
-        label: modules.states[id].label,
-        lastDay: fmtYmd(modules.states[id].lastDay ?? "").replace(/, \d{4}$/, ""),
-        base: id === "base",
-      }))
-    : [];
-  const grace: GraceItem[] = MODULE_IDS.filter((id) => modules.states[id].status === "grace").map((id) => {
-    const s = modules.states[id];
-    const graceEnd = s.graceLastDay ? Date.parse(`${s.graceLastDay}T23:59:59Z`) : modules.now.getTime();
-    return {
-      label: s.label,
-      lastDay: fmtYmd(s.lastDay ?? ""),
-      graceLastDay: fmtYmd(s.graceLastDay ?? ""),
-      daysLeft: Math.max(0, Math.ceil((graceEnd - modules.now.getTime()) / 86_400_000)),
-      renewHref: id === "base" ? null : salesMailto("renew", s.label, shopRef),
-      base: id === "base",
-    };
-  });
   // The program itself has lapsed (hub-accounts-billing-design.md 3.5): a bar on every page for every role; the nav
-  // keeps every item, since the pages are read-only.
+  // keeps every item, since the pages are read-only. Layouts don't re-render on navigation, so it may be one navigation
+  // stale; the pages and actions are the real gates.
   const base = modules.states.base;
   const lapsedSince = base.status === "lapsed" ? endedDay(base) : null;
 
@@ -127,7 +104,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           pausePill={pausePill}
           hopOn={shop?.hopOn ?? false}
         />
-        <ModulePills items={pills} />
         {offline && (
           <div className="px-4 pb-2">
             <span
@@ -174,8 +150,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           lapsedSince && <LapsedBar program={base.label} since={lapsedSince} admin={admin} />
         )}
         {admin && (await newVersionReady().then((n) => n && <UpdateBanner program={appName()} version={n.version} notes={n.notes} />))}
-        <GraceBanner items={grace} admin={admin} />
-        {admin && shop && <PartnershipNotice note={partnershipNotice(shop)?.note ?? null} />}
         {children}
       </main>
       {/* The Windows program's own window only: a password reset the owner asked for on their StitchHub account. */}
