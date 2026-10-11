@@ -37,7 +37,7 @@ TWILIO_MOCK_PORT=3402 node scripts/test-mail/twilio-mock.mjs &
 STRIPE_MOCK_PORT=3403 STRIPE_MOCK_WEBHOOK_BASE=http://localhost:3501/api/shop/stripe node scripts/test-mail/stripe-mock.mjs &
 
 # the server (background)
-PLATFORM_ADMIN_EMAILS=bwattendorf@gmail.com,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526 \
+PLATFORM_ADMIN_EMAILS=you@example.com,e2e@stitchbench.test SMTP_ALLOW_HOSTS=127.0.0.1:2526 \
 TWILIO_API_BASE=http://127.0.0.1:3402 STRIPE_API_BASE=http://127.0.0.1:3403 MESSAGE_WORKER_SECONDS=5 \
 READY_NOTICE_DELAY_SECONDS=1 PUBLIC_URL=http://localhost:3501 npx next start -p 3501 &
 

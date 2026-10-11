@@ -126,8 +126,11 @@ export function readOnlyMessage(s: ModuleState, admin = true): string {
   return `${programName()} for this company is read-only since ${endedDay(s)}. You can look at and export everything, finish open work and take payments.${admin ? " Subscribe in Settings → Account." : " Ask the shop owner about its StitchHub account."}`;
 }
 
-/** Who sells modules. The owner fills these in before the first release (INSTALL.md, "Paid modules"). */
-export const MODULE_SALES = { email: "bwattendorf@gmail.com", url: "" };
+/**
+ * Who sells modules (INSTALL.md, "Paid modules"): StitchBench's public contact address, which the "Ask about / Renew"
+ * links and Settings → Account mail. Never a personal address: this code is published. `url`: a pricing page, if any.
+ */
+export const MODULE_SALES = { email: "bwattendorfdev@gmail.com", url: "" };
 
 /** mailto: link for "Ask about {label}" / "Renew {label}", or null while MODULE_SALES.email is empty. */
 export function salesMailto(kind: "ask" | "renew", label: string, shop: { id: string; name: string }): string | null {
