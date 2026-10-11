@@ -11,6 +11,10 @@ Nothing has been charged yet: Stripe was never switched on (HUB `src/billing.mjs
 the field are the comps the hub signed on 9 Oct for the owner's own shops (the PC on 1.7.1 and the two hosted
 services); k1 and h1 were never compiled in (SB `src/lib/license-keys.ts:12-13`).
 
+**Status, 11 Oct 2026:** package 1 built (stitchhub pull request #4, branch `open-source-launch`, with the hub's
+security fixes) and package 2 built (stitchbench branch `free-for-all`, version 1.8.0, on top of pull request #12).
+Packages 3, 4 and 5 are next. Owner, until both are deployed: keep every shop's comp "forever", and keep Stripe closed.
+
 Paths: SB = stitchbench, HUB = stitchhub, SITE = stitchsite.
 
 ## 1. The one risk, and the safe order
