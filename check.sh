@@ -33,7 +33,8 @@ block "the owner's PC paths" 'C:[\\/]+Users[\\/]+bwatt' -i
 block "links to private Claude sessions or artifacts" 'claude\.ai/(artifact|code/session|chat)/'
 block "the owner's password files (outside the release scripts)" '(StitchHub|StitchShop hosted|StitchBench hosted) admin\.txt' --exclude-dir=release
 block "people and businesses from the outreach notes" '\bDenise\b|Andi Barney|Sewing Doc Academy|Machine Repair Guy|\bWes:'
-block "reviewer notes (outside the tests, which use them as samples)" '\[(LAWYER|OWNER)(/(LAWYER|OWNER))*:' --exclude-dir=test
+# A real note says something; "[LAWYER: ...]" is how the code and docs describe the format.
+block "reviewer notes (outside the tests, which use them as samples)" '\[(LAWYER|OWNER)(/(LAWYER|OWNER))*: *[^. ]' --exclude-dir=test
 block "income goals" 'income goal|[0-9]+ and [0-9]+ paying shops'
 for f in factory_settings tension_specs library_docs hub_links; do
   if [ -e "$OUT/public/stitchbench/prisma/seed-data/$f.json" ]; then echo "BLOCK  $f.json is in the public copy"; bad=1; fi
