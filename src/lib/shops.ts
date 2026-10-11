@@ -40,6 +40,20 @@ export function programVersion(): string | null {
   return process.env.STITCH_VERSION?.trim() || process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || null;
 }
 
+/** Where the program's source code is published (free and open source, AGPL-3.0-only). SOURCE_URL overrides it. */
+export const SOURCE_URL = "https://github.com/SiteSentrix/StitchBench";
+
+/**
+ * The "Source code" link (AGPL section 13: everyone using the hosted service is offered the source of what it runs):
+ * SOURCE_URL, or the public repository, at the very commit a hosted service was built from when Railway says which.
+ */
+export function sourceUrl(): string {
+  const set = process.env.SOURCE_URL?.trim();
+  const base = (set && /^https?:\/\//.test(set) ? set : SOURCE_URL).replace(/\/+$/, "");
+  const commit = process.env.RAILWAY_GIT_COMMIT_SHA?.trim();
+  return commit && /^[0-9a-f]{7,40}$/i.test(commit) ? `${base}/tree/${commit}` : base;
+}
+
 /**
  * A new company with its owner login. Repair shops start with the service menu names but no prices; they set their own.
  * A sewing / quilt shop (kind "retail") gets the StitchShop register instead of the repair bench.

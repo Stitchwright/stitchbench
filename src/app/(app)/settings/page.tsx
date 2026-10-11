@@ -8,6 +8,7 @@ import { getModules, hostingBilling } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
 import { NO_END } from "@/lib/license";
 import { endedDay, FEATURE_IDS, fmtYmd, SETTINGS_ACCOUNT_HREF, SETTINGS_FEATURES_HREF } from "@/lib/module-info";
+import { appName, programVersion, sourceUrl } from "@/lib/shops";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
@@ -173,6 +174,7 @@ export default async function SettingsPage() {
         : base.status === "off" || (base.lastDay ?? "") >= NO_END
           ? accountLine
           : `Hosting paid through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}`;
+  const version = programVersion();
   // The "For" select offers the kinds new work may use, plus any kind an item already names (so it can be read and changed).
   const usedKinds = new Set(services.map((s) => s.equipmentKind).filter(Boolean));
   const usableKeys = new Set(kinds.usable.map((k) => k.key));
@@ -193,10 +195,22 @@ export default async function SettingsPage() {
         <TextSizePicker current={parseTextSize((await db.user.findUnique({ where: { id: user.id }, select: { textSize: true } }))?.textSize)} />
       </Section>
 
-      <Section title="What's new">
-        <Link href="/settings/whats-new" className="link text-sm">
-          See what has changed in each version
-        </Link>
+      <Section title={`About ${appName()}`} id="about">
+        <div className="space-y-2 text-sm">
+          <p>
+            {appName()}
+            {version ? (/^\d+\.\d+\.\d+$/.test(version) ? ` version ${version}` : ` (build ${version})`) : ""} is free and open source software, under the GNU AGPL version 3:
+            every feature, for every shop. SiteSentrix, who makes it, can host it for you or help you set it up, if you want that.
+          </p>
+          <p className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link href="/settings/whats-new" className="link">
+              See what has changed in each version
+            </Link>
+            <a href={sourceUrl()} target="_blank" rel="noreferrer" className="link" data-testid="source-code">
+              Source code
+            </a>
+          </p>
+        </div>
       </Section>
 
       <Section title="Account" id="account">
