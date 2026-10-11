@@ -1,11 +1,18 @@
-# StitchBench
+# StitchBench and StitchShop
 
-A repair bench for sewing, embroidery, longarm and industrial machine techs.
+Free, open-source shop software for sewing machine repair. **StitchBench** is the repair bench for sewing, embroidery,
+longarm and industrial machine techs. **StitchShop** is the same program set up for a sewing or quilt shop: it runs the
+counter and works hand in hand with the shop's repair partner. Every feature is free for every shop, the extras for
+particular kinds of work too (Vac Shop, Small Appliance Repair, Scheduling, Marketing, Maker Shop), switched on per shop
+in **Settings → Features**. Made by SiteSentrix.
 
-**Install it:** see **[INSTALL.md](INSTALL.md)**. It runs either as a Windows program on the shop PC (no monthly
-cost) or hosted on Railway. It is free and open source (AGPL-3.0): every feature, for every shop. The extras for
-particular kinds of work (Vac Shop, Small Appliance Repair, Scheduling, Marketing, Maker Shop) are free too, switched on
-per shop in **Settings → Features**.
+**Get it:**
+- **On the shop PC**, free: the Windows program ([INSTALL.md](INSTALL.md)).
+- **Hosted**, with nothing to install and backups and updates looked after: https://stitchbench.app.
+- **On your own server** (Railway): [INSTALL.md](INSTALL.md).
+
+Website: https://stitchbench.app · Community hub: [StitchHub](https://github.com/SiteSentrix/StitchHub) ·
+License: [AGPL-3.0](LICENSE)
 
 - **Machines by model and serial.** Every machine that comes in gets a page with:
   - photos by type: check-in condition, inside the machine, wiring and connectors, parts, after repair
@@ -40,8 +47,8 @@ per shop in **Settings → Features**.
   - tech notes and photos
   - manual figure snapshots
 
-  There's also a Community chat link to the group's Discord. The hub's server code is public:
-  https://github.com/bwattendorf/stitchhub.
+  There's also a Community chat link to the group's Discord. The hub is free and open source too:
+  https://github.com/SiteSentrix/StitchHub.
 - **Sales log** by date range, with CSV export.
 - **Messages**: email and texts to customers through the shop's own mail account and Twilio number: "it's ready"
   notices and estimate approval by link, and with *Marketing* switched on in Settings → Features also
@@ -178,3 +185,26 @@ specs above.
   nightly backups.
 - **Errors:** server actions return `{ error }` for problems the user can fix (`src/lib/action.ts`), shown as
   toasts.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome: CONTRIBUTING.md. Security problems: SECURITY.md (please report them
+privately, not as issues).
+
+## License
+
+Copyright (C) 2026 SiteSentrix.
+
+StitchBench and StitchShop are free software: you can use, change and share them under the terms of the GNU Affero
+General Public License, version 3 (LICENSE). They come with no warranty. If you run a changed copy as a service for
+other people, the license asks you to offer those people its source code (Settings → About has the link; set
+`SOURCE_URL` to your copy).
+
+- **Reference data.** The tension specs, factory settings and manual list read out of the manufacturers' manuals are
+  not part of this repository or its license ([INSTALL.md](INSTALL.md#the-manufacturers-reference-data)). The
+  official installers and the hosted service include them.
+- **Names and logos:** StitchBench, StitchShop and StitchHub aren't covered by the license (TRADEMARKS.md).
+- **Other people's code:** the Windows program lists every package it ships, with its license, in
+  `THIRD_PARTY_NOTICES.txt`.
+- `scripts/license/dev-key.json` is a development signing key, published on purpose: keys it signs only work on a
+  development or test copy, never on the Windows program or the hosted service.
