@@ -36,16 +36,19 @@ Variables: `ORG` (sitesentrix), `HOLDER` (SiteSentrix: set it to the exact legal
 **1. Merge the fixes first** (Claude prepares them on branches named `before-public`): the hub's security fixes and
 StitchBench's. Merge and deploy as usual, and give the hub a day.
 
-**2. Make the organization** (5 minutes): on github.com, your picture → Your organizations → New organization →
-Free → name `sitesentrix`.
+**2. The organization and its repositories** (done 11 Oct 2026): organization `SiteSentrix` with `StitchBench`,
+`StitchHub` and `StitchSite` (public, the code) and `notes` and `stitchbench-data` (private for good). Delete
+`StitchShop` (its code is StitchBench's) and `StitchFoundry`. For the organization's front page, add a public repository
+named `.github`: the kit writes its `profile/README.md`. The Claude GitHub app is installed on the organization.
 
-**3. Let Claude and Railway in.** Install the Claude GitHub app on the organization with access to all repositories
-(https://github.com/apps/claude/installations/select_target → sitesentrix). Railway asks to install its own GitHub app
-on the organization the first time you pick one of its repositories (step 7): allow it.
+**3. Who pushes what.** A session that holds the old repositories can't also hold the new ones of the same name, so:
+this session (or any with the old repositories) runs `COMMIT=1 ./export.sh`, pushes `out/notes` and `out/data` to their
+repositories, and pushes the three code folders' commits to `notes` as branches `publish/StitchBench`,
+`publish/StitchHub` and `publish/StitchSite`. A fresh session started on the SiteSentrix repositories then fetches
+each `publish/` branch from `notes`, runs `./check.sh` on it once more, pushes it to its repository's `main`, and
+deletes the `publish/` branches.
 
-**4. Five empty repositories**, all **Private** for now and with nothing in them (no README, no license):
-`stitchbench`, `stitchhub`, `stitchsite`, `notes`, `stitchbench-data`. Tell Claude; Claude runs the export, checks it
-and pushes each one.
+**4. The About boxes:** `templates/about.md` has the description, website and topics for each public repository.
 
 **5. A token for the reference data:** github.com → Settings → Developer settings → Fine-grained tokens → Generate:
 resource owner `sitesentrix`, only the `stitchbench-data` repository, Contents read-only, one year (put a reminder in
@@ -67,8 +70,7 @@ stranger's pull request can never deploy with your variables.
 new repositories into `stitchbench`, `stitchhub` and `notes`, copy each `.env` across from the old folder, and run
 `npm ci`. The installed program isn't touched.
 
-**9. Go public** (the repositories `stitchbench`, `stitchhub` and `stitchsite` only; never `notes` or
-`stitchbench-data`): Settings → General → Danger zone → Change visibility → Public. Then, in each: Settings → Code
+**9. Public settings** (StitchBench, StitchHub and StitchSite; never `notes` or `stitchbench-data`). In each: Settings → Code
 security → turn on private vulnerability reporting, secret scanning and push protection; Settings → Actions → General →
 "Require approval for all external contributors" for workflows from forks; Settings → Rules → protect `main` from
 force pushes and deletion.

@@ -84,7 +84,8 @@ fill "$T/stitchbench/CLAUDE.md" >"$B/CLAUDE.md"
 cp "$T/stitchbench/AGENTS.md" "$B/AGENTS.md"
 cp "$SRC/stitchhub/LICENSE" "$B/LICENSE" # the canonical AGPL-3.0 text
 add_common stitchbench "GNU Affero General Public License, version 3"
-fill "$T/stitchbench/README-license.md" >>"$B/README.md"
+# The README carries its own License section once the repository has one; until then the kit adds it.
+grep -q "^## License" "$B/README.md" || fill "$T/stitchbench/README-license.md" >>"$B/README.md"
 set_license_field "$B/package.json" AGPL-3.0-only
 set_license_field "$B/desktop/package.json" AGPL-3.0-only
 # The installer's publisher (Windows "Apps" list) is the company now. appId stays: changing it would make the next
@@ -113,6 +114,10 @@ perl -pi -e 's/^export const COMPANY_NAME = ".*";/export const COMPANY_NAME = "$
 fill "$T/common/TRADEMARKS.md" >"$S/TRADEMARKS.md"
 relink stitchsite
 
+# ---------- the organization's front page (a public repository named .github) ----------
+mkdir -p "$OUT/org-profile/profile"
+fill "$T/org-profile/README.md" >"$OUT/org-profile/profile/README.md"
+
 # ---------- private: notes and data ----------
 fill "$T/notes/README.md" >"$OUT/notes/README.md"
 fill "$T/notes/CLAUDE.md" >"$OUT/notes/CLAUDE.md"
@@ -123,11 +128,12 @@ echo
 
 if [ "${COMMIT:-}" = 1 ]; then
   : "${AUTHOR_NAME:?set AUTHOR_NAME}" "${AUTHOR_EMAIL:?set AUTHOR_EMAIL (the GitHub noreply address)}"
-  for d in "$OUT"/public/* "$OUT/notes" "$OUT/data"; do
+  for d in "$OUT"/public/* "$OUT/notes" "$OUT/data" "$OUT/org-profile"; do
     name=$(basename "$d")
     case "$name" in
       notes) first="Notes: the work log, plans and drafts moved out of the code repositories" ;;
       data) first="Reference data: the manual-derived files moved out of the public code" ;;
+      org-profile) first="The organization's front page" ;;
       *) first="$name: first public commit" ;;
     esac
     git -C "$d" init -q -b main
