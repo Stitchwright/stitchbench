@@ -1373,7 +1373,21 @@ accounts and billing: design first).
 
 ## 4. Owner decisions already made (don't re-ask)
 
-- **Prices reviewed 7 Oct 2026: every recommendation in `docs/plans/pricing-review-2026-10.md` taken.** Solo $25/$250,
+- **Free software, 11 Oct 2026 (replaces every price decision below, and the selling parts of the modules, hub
+  billing and Assistant designs):** StitchBench, StitchShop and StitchHub are free and open source under AGPL-3.0-only,
+  published by SiteSentrix (GitHub organization SiteSentrix); every feature and module free for everyone, switched on
+  per shop in Settings → Features. Money comes from hosting, support and YouTube; the hub stays free. Hosting $25 a
+  month or $250 a year per location, every feature, 30 days free without a card; a dedicated copy at cost (about $10
+  extra). Unpaid hosting: 14 days' grace, read-only, export and move to Windows always open, data deleted 90 days after
+  lapsing (two emails first). Support: Help button free; $99 setup and import help; help sessions by the hour for any
+  shop; email help included with hosting; sold through Stripe Payment Links on the site. The Assistant: included with
+  hosting, $15 a month (300 calls, $10 top-ups) for other shops. No founding prices (test-month shops get 12 months of
+  hosting free); no partnership waiver; off-site backups included with hosting, 5 GB free for Windows shops; extra
+  stores free on Windows, charged like the first location on hosting. Clean history for the public repositories, the
+  names kept as trademarks (TRADEMARKS.md), no CLA. Design and build order: `docs/plans/free-software-design.md`; the
+  publishing kit: branch `open-source-kit`. Until the hub's "free for all" package is deployed: comp every shop
+  "forever" with the add-ons, and don't open Stripe.
+- **Prices reviewed 7 Oct 2026 (superseded on 11 Oct, above): every recommendation in `docs/plans/pricing-review-2026-10.md` taken.** Solo $25/$250,
   Shop $45/$450 unchanged; each extra store $25/$250 (with multi-store); founding $15/$30 closes at 25 shops or 6 months
   after paid launch; the ready-for-pickup text and the estimate-approval link move into the base (out of Marketing);
   Maker Shop module $10, the all-add-ons bundle (five) $30/$300; Assistant $15 with $10 top-ups, outside the bundle; a

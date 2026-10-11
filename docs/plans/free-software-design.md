@@ -134,26 +134,26 @@ only the hub's has 5.2a). SB `docs/legal/README.md:81-118`: rewrite. The lawyer 
 Order: 0, 1, 2, then 3 and 5 side by side, then 4. The open-source switch itself (new repositories, private notes and
 data) is separate: the kit on branch `open-source-kit`.
 
-## 7. Questions for the owner (recommended answers first)
+## 7. Decided 11 Oct 2026 (the owner took every recommended answer)
 
-1. **Hosting price.** Recommended: one price per location, $25 a month or $250 a year, every login and every feature,
+1. **Hosting price:** one price per location, $25 a month or $250 a year, every login and every feature,
    30 days free without a card. A dedicated copy stays "at cost, about $10 extra".
-2. **Unpaid hosting.** Recommended: as today: 14 days' grace, then read-only, with export and "move to the Windows
+2. **Unpaid hosting:** as today: 14 days' grace, then read-only, with export and "move to the Windows
    program" always open (the program is free, so nobody is stuck); the data is deleted 90 days after it lapses, after
    two emails.
-3. **Support.** Recommended: the Help button stays free (best effort). Paid: setup and import help $99 once (as today)
+3. **Support:** the Help button stays free (best effort). Paid: setup and import help $99 once (as today)
    and help sessions by the hour for any shop, Windows, self-hosted or hosted; email help included with hosting. Sold
    with Stripe Payment Links on the website, no new code.
-4. **The Assistant** (about $1-2 a shop a month at 300 calls). Recommended: included with hosting; other shops buy it as
+4. **The Assistant** (about $1-2 a shop a month at 300 calls): included with hosting; other shops buy it as
    before ($15 a month for 300 calls through the hub, $10 top-ups); later, an option to use the shop's own Anthropic key.
-5. **Founding prices.** Recommended: drop them (nothing was sold); test-month shops get 12 months of hosting free if
+5. **Founding prices:** dropped (nothing was sold); test-month shops get 12 months of hosting free if
    they use hosting.
-6. **Modules.** Recommended: every module free, switched on per shop in Settings → Features, off until chosen, so
+6. **Modules:** every module free, switched on per shop in Settings → Features, off until chosen, so
    screens stay simple (ease-of-use principle).
-7. **Partnership waiver.** Recommended: drop it. A quilt shop runs StitchShop free on its own PC, or pays hosting like
+7. **Partnership waiver:** dropped. A quilt shop runs StitchShop free on its own PC, or pays hosting like
    anyone (its repair shop may pay for it).
-8. **Off-site backups** (25 GB a company on the owner's R2). Recommended: included with hosting; Windows shops get
+8. **Off-site backups** (25 GB a company on the owner's R2): included with hosting; Windows shops get
    5 GB free.
-9. **Extra stores.** Recommended: free on Windows and self-hosted; on hosting each location is charged like the first.
-10. **Open source details.** Decided: AGPL-3.0-only, clean history, the names kept as trademarks (TRADEMARKS.md).
-    Recommended: no CLA or sign-off; contributions come in under the same license.
+9. **Extra stores:** free on Windows and self-hosted; on hosting each location is charged like the first.
+10. **Open source details:** AGPL-3.0-only, clean history, the names kept as trademarks (TRADEMARKS.md),
+    no CLA or sign-off; contributions come in under the same license.
