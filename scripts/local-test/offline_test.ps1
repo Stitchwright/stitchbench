@@ -44,7 +44,7 @@ function Run-Phase($phase) {
   return $true
 }
 
-Set-Location C:\Users\bwatt\stitchbench
+Set-Location (Resolve-Path "$PSScriptRoot\..\..")
 if (-not $NoBuild) {
   $env:NODE_OPTIONS = "--max-old-space-size=2048"
   $b = npx next build 2>&1 | Out-String

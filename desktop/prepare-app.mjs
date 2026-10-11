@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { writeNotices } from "./third-party-notices.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const out = path.join(import.meta.dirname, "server");
@@ -18,11 +19,17 @@ fs.cpSync(standalone, out, { recursive: true });
 fs.cpSync(path.join(root, ".next", "static"), path.join(out, ".next", "static"), { recursive: true });
 fs.cpSync(path.join(root, "public"), path.join(out, "public"), { recursive: true });
 fs.cpSync(path.join(root, "prisma", "migrations"), path.join(out, "migrations"), { recursive: true });
-// Reference data the program loads at start (reference.mjs); the hub's own seed files stay behind.
+// Reference data the program loads at start (reference.mjs); the hub's own seed files stay behind. The manufacturers'
+// sets aren't in the public code: an official build fetches them first (scripts/data/fetch-reference-data.mjs), and a
+// build without them works, with no factory specs shown (reference.mjs leaves a set it isn't given as it is).
 fs.mkdirSync(path.join(out, "seed-data"), { recursive: true });
+const missing = [];
 for (const f of ["tension_specs.json", "factory_settings.json", "service_modes.json", "library_docs.json"]) {
-  fs.copyFileSync(path.join(root, "prisma", "seed-data", f), path.join(out, "seed-data", f));
+  const from = path.join(root, "prisma", "seed-data", f);
+  if (fs.existsSync(from)) fs.copyFileSync(from, path.join(out, "seed-data", f));
+  else missing.push(f);
 }
+if (missing.length) console.log(`reference data: not in prisma/seed-data, so not in this build: ${missing.join(", ")}`);
 
 // Never ship the developer's .env (database password, auth secret); the program passes its own settings.
 for (const f of fs.readdirSync(out)) if (f.startsWith(".env")) fs.rmSync(path.join(out, f));
@@ -42,6 +49,11 @@ const rename = (dir) => {
   }
 };
 rename(out);
+
+// The licenses of everything shipped with the program (THIRD_PARTY_NOTICES.txt beside the server): several ask for it.
+const { version } = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "package.json"), "utf8"));
+const notices = writeNotices(out, import.meta.dirname, version);
+console.log(`third-party notices: ${notices.count} packages`);
 
 const size = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).reduce((s, e) => s + (e.isDirectory() ? size(path.join(dir, e.name)) : fs.statSync(path.join(dir, e.name)).size), 0);

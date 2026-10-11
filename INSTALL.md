@@ -14,6 +14,10 @@ for sewing and quilt shops, runs the same two ways: see [Installing StitchShop](
 
 Both can join the community hub, StitchHub (see [Joining the community hub](#joining-the-community-hub)).
 
+The factory specs (tension values and timing and adjustment settings, read out of the makers' manuals) come with the
+official Windows installers and the hosted service. They aren't part of the public code: a copy you build yourself
+works without them. See [The manufacturers' reference data](#the-manufacturers-reference-data).
+
 ---
 
 ## Option 1: Windows program
@@ -191,7 +195,7 @@ makes it up if it is missing and resets the role's password to it at every start
 
 ### You need
 - a [Railway](https://railway.com) account (about $5–10 a month for StitchBench and its database)
-- the StitchBench code (ask for access to the repository)
+- the StitchBench code: https://github.com/SiteSentrix/StitchBench (free and open source)
 - [Node.js 22+](https://nodejs.org) and the Railway CLI (`npm i -g @railway/cli`), or you can do it all in the
   Railway dashboard instead
 
@@ -220,7 +224,8 @@ variables on the StitchBench service, then **Settings → Networking → Generat
 
 On its first start, StitchBench creates the database tables and loads the factory specs and your owner login, so
 the site takes a few minutes to answer. Every start applies database updates first, then skips data that's already
-loaded.
+loaded. The factory specs are loaded only when the build has them: deployed from the public code, the site has none
+until `STITCH_DATA_TOKEN` is set (see [The manufacturers' reference data](#the-manufacturers-reference-data)).
 
 Then open the address from `railway domain`, sign in with `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD`, change
 your password in **Settings**, and add your people under **Settings → People**.
@@ -245,6 +250,7 @@ your password in **Settings**, and add your people under **Settings → People**
 | `PLATFORM_SMTP_URL`, `PLATFORM_MAIL_FROM` | optional: the mailbox the sign-in page's **Forgot your password?** sends its link from (`smtps://user:pass@host:465`, or `smtp://…:587` for STARTTLS), one use, one hour. Without them the page says to ask the administrator, who makes an owner a **Reset link** on the Companies page (staff are reset by their owner in Settings → People) |
 | `APP_URL` | optional: this site's own https address for those links (defaults to `PUBLIC_URL` unless `PUBLIC_LINKS_ONLY`, then Railway's public domain); never taken from a request |
 | `PLATFORM_API_TOKEN` | optional: 32+ random characters, the same variable on StitchHub (with `HOSTED_STITCHSHOP_URL` / `HOSTED_STITCHBENCH_URL` there pointing here). Lets a verified StitchHub account **Start a hosted shop**: the hub calls `POST /api/platform/companies` with it (https only, `TRUST_PROXY=true` on Railway), the company and its owner (the account's email) are made, show "Started from StitchHub" on Companies, and the owner chooses a password through a 24-hour link the hub shows once. Unset: the route doesn't exist |
+| `STITCH_DATA_TOKEN` | optional, read while building: a GitHub token that can read the manufacturers' reference data (see [The manufacturers' reference data](#the-manufacturers-reference-data)); each deploy then fetches it before building, and a fetch that fails stops the deploy. Unset: the site has no factory specs (data loaded by an earlier deploy stays). `STITCH_DATA_REPO` and `STITCH_DATA_REF` choose another repository or branch |
 
 ### Manuals on the hosted version
 The server can't see your PCs. Each tech connects their manuals folder once in the browser (**My manuals →
@@ -739,6 +745,30 @@ All optional. The Windows program sets the ones it needs from its settings file.
 | `STRIPE_WEBHOOK_SECRET` | | the signing secret of that platform webhook |
 | `STRIPE_API_BASE` | `https://api.stripe.com` | tests only: the Stripe mock |
 
+## The manufacturers' reference data
+
+The factory specs StitchBench shows (upper and bobbin tension values, timing and adjustment settings) are read out of
+the makers' manuals. They aren't part of the public code, and neither are the owner's manual-library list and the hub's
+starting set of manual links: all of it is kept in a private repository. The official Windows installers and the hosted
+service include it. A copy you build yourself from the public code works the same without it, except that no factory
+specs are shown. A program or site that had them keeps them when it is updated with a build that doesn't.
+
+If you have access to the data (the owner, or someone the owner gave a token to), make a GitHub fine-grained personal
+access token that can only read that repository's contents (GitHub → Settings → Developer settings → Fine-grained
+tokens: the data repository only, Contents: read-only) and give it to the build as `STITCH_DATA_TOKEN`:
+
+- **Railway:** a variable on the app service. Railway hands service variables to the build, and every deploy fetches
+  the data before building.
+- **The Windows installers on GitHub:** a repository secret named `STITCH_DATA_TOKEN` (Settings → Secrets and
+  variables → Actions).
+- **A build on your own PC:** `STITCH_DATA_TOKEN=<token> node scripts/data/fetch-reference-data.mjs` puts the files in
+  `prisma/seed-data/` (`npm run build` runs it too, and so does `node desktop/prepare-app.mjs`).
+
+It takes the files from `sitesentrix/stitchbench-data` on its `main` branch; `STITCH_DATA_REPO` and `STITCH_DATA_REF`
+choose another repository or branch. With the token set, a download that fails stops the build, so an official build
+never goes out without the data by accident. Without it, the build says in one line that it has no reference data and
+carries on. Keep the token secret, like a password: whoever holds it can read the data.
+
 ## For maintainers
 
 ### Building the installers on GitHub
@@ -746,14 +776,16 @@ The **Windows installers** workflow (`.github/workflows/installers.yml`) builds 
 and `StitchShop Setup <version>.exe` on GitHub's Windows machines: **Actions → Windows installers → Run workflow**
 (or push a tag like `v1.4.1`), then download them from the run's **Artifacts** (kept 7 days). Set the version in
 `desktop/package.json` first. From the command line: `gh workflow run installers.yml`, then
-`gh run download <run id> -n installers`.
+`gh run download <run id> -n installers`. The workflow fetches the manufacturers' reference data first, with the
+repository secret `STITCH_DATA_TOKEN` (see [The manufacturers' reference data](#the-manufacturers-reference-data)).
 
 ### Building the Windows installer
 ```bash
 npm install
+STITCH_DATA_TOKEN=<token> node scripts/data/fetch-reference-data.mjs   # the factory specs, if you have access
 cd desktop
 npm install
-node prepare-app.mjs                 # builds the app into desktop/server (with the database migrations)
+node prepare-app.mjs                 # builds the app into desktop/server (with the database migrations and the reference data, if fetched)
 npm run installer                    # → desktop/dist/StitchBench Setup <version>.exe
 npm run installer:stitchshop         # → desktop/dist-stitchshop/StitchShop Setup <version>.exe (same program, StitchShop name and defaults)
 ```
@@ -798,7 +830,8 @@ any database updates and new reference data by itself.
 
 ### Reloading factory specs into a program
 The program loads the specs, factory settings and manual list that ship with it by itself. To load a newer set
-from the repo without a new version, take the program's database address from `dbPort` in
+without a new version, fetch it first (`STITCH_DATA_TOKEN=<token> node scripts/data/fetch-reference-data.mjs`, see
+[The manufacturers' reference data](#the-manufacturers-reference-data)), take the program's database address from `dbPort` in
 `%APPDATA%\StitchBench\config.json` and `dbPassword` in `%APPDATA%\StitchBench\secrets.json`
 (`postgresql://stitchbench:<dbPassword>@127.0.0.1:<dbPort>/stitchbench`), then run:
 ```bash
