@@ -1,6 +1,8 @@
 @echo off
 rem Local StitchHub for testing (dev Postgres, test secrets). Link checker off so tests don't hit real sites.
-cd /d C:\Users\bwatt\stitchhub
+rem The stitchhub folder beside this repository's folder; set HUB_DIR to use another.
+if not defined HUB_DIR set HUB_DIR=%~dp0..\..\..\stitchhub
+cd /d "%HUB_DIR%"
 set DATABASE_URL=postgresql://stitchbench:stitchbench@localhost:5433/stitchhub_test
 set ADMIN_TOKEN=local-test-admin-token-123
 set JOIN_KEY=join-local-test

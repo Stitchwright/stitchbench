@@ -1,7 +1,7 @@
 # Update the StitchBench installed on this PC in place (Smart App Control blocks unsigned installers):
 # server files from desktop\server, the program files from desktop\, and the version number. Then start it again.
 param([string]$Version = "1.5.0")
-$repo = "C:\Users\bwatt\stitchbench"
+$repo = (Resolve-Path "$PSScriptRoot\..\..").Path
 $inst = "$env:LOCALAPPDATA\Programs\StitchBench"
 if (-not (Test-Path "$inst\StitchBench.exe")) { throw "StitchBench isn't installed at $inst" }
 if (-not (Test-Path "$repo\desktop\server\server.js")) { throw "Run prepare-app first (desktop\server is missing)" }
