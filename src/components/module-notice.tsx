@@ -38,7 +38,7 @@ export function ModuleNotice({ state, what, admin = false }: { state: ModuleStat
       <div className="card card-pad text-sm" role="status">
         <p>
           <strong>{state.switchedOff ? `${label} was switched off on ${endedDay(state)}.` : `${label} ended on ${endedDay(state)}.`}</strong> {what ?? "Everything here"} stays here to look at
-          and export{feature ? ", and work that came in before then can be finished" : ""}.
+          and export, and work that came in before then can be finished.
         </p>
         <p className="mt-2">{admin ? <GetIt state={state} again /> : feature ? "Ask the shop owner or an admin to switch it on again." : "Ask the shop owner about it."}</p>
       </div>
