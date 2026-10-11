@@ -1,7 +1,7 @@
 {
   "name": "stitchbench-desktop",
   "productName": "StitchBench",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "StitchBench (repair bench) or StitchShop (sewing / quilt shop counter) for the shop PC: runs the app and its database, and serves it to every device on the shop network.",
   "author": "Timing & Tension",
   "private": true,
