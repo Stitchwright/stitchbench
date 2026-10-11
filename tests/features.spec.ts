@@ -64,11 +64,11 @@ test("the owner adds three people (no two-login limit); a tech sees the list wit
   const page = await login(browser, owner);
   for (const t of techs) {
     await page.goto("/settings#people");
-    await page.getByLabel("Name", { exact: true }).fill(t.name);
-    await page.getByLabel("Email", { exact: true }).fill(t.email);
-    await page.getByLabel("Temporary password (8+ characters)").fill(t.password);
+    await page.locator("#u-name").fill(t.name);
+    await page.locator("#u-email").fill(t.email);
+    await page.locator("#u-pw").fill(t.password);
     await page.getByRole("button", { name: "Add person" }).click();
-    await expect(page.getByText("Account created. Give them the temporary password.")).toBeVisible();
+    await expect(page.locator("li", { hasText: t.email })).toBeVisible();
   }
   const people = await sql<{ n: string }>(`SELECT count(*)::text AS n FROM "User" WHERE "shopId" = $1 AND active`, [shopId]);
   expect(people[0].n).toBe("4");
