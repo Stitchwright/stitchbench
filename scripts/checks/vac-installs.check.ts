@@ -1,8 +1,8 @@
 // Central vac installs (modules-design.md 10.d, package central-vac-installs): createSiteJob / createInstallFor make
 // a SITE ticket, its TicketSite and the power unit (or the placeholder), quoteFirst starts at Quote sent, the bench
 // query leaves installs out, siteJobsBetween answers for the day and nothing for a company without Vac Shop, the SITE
-// status list, saveSiteFor / setPowerUnitFor, the lapsed module (an install booked before the end can still be
-// changed; a new one is refused), and the tenant section.
+// status list, saveSiteFor / setPowerUnitFor, Vac Shop switched off (an install booked before can still be changed; a
+// new one is refused), and the tenant section.
 //   npm run check scripts/checks/vac-installs.check.ts
 import "dotenv/config";
 import assert from "node:assert/strict";
@@ -14,7 +14,7 @@ import { loadModules } from "@/lib/modules";
 import type { CurrentUser } from "@/lib/session";
 import { createInstallFor, createSiteJob, INSTALL_CHECKLIST, listInstalls, saveSiteFor, setPowerUnitFor, siteJobsBetween, siteOf, UNIT_TBD } from "@/lib/vac/installs";
 import { addDays, dayStart, ymdOf } from "@/lib/zoned";
-import { checkShop, cleanup, type CheckShop } from "./lib";
+import { checkShop, cleanup, switchFeatures, type CheckShop } from "./lib";
 import { assertUnchanged, expectNotFound, snapshot } from "./tenant";
 
 const NY = "America/New_York";
@@ -165,15 +165,16 @@ async function main() {
     assert.equal(await siteRows(), sitesBefore);
     ok("tenant: B's calls with A's install answer 'Install not found.' and A's rows are unchanged");
 
-    // 8. Vac Shop switched off for A: the install booked before can still be changed; a new one is refused.
-    await db.moduleGrant.create({ data: { shopId: a.shopId, module: "vac", mode: "off", byEmail: "check@stitchbench.test" } });
+    // 8. Vac Shop switched off for A in Settings → Features: the install booked before can still be changed; a new one
+    // is refused.
+    await switchFeatures(a.shopId, ["vac"], false);
     const m = await loadModules(a.shopId);
     assert.equal(m.states.vac.status, "lapsed");
     await saveSiteFor(user(a), t1.id, form({ address: "12 Oak St, rear" }));
     assert.equal((await siteOf(a.shopId, t1.id))?.address, "12 Oak St, rear");
     await expectError("new install after the end", () => createInstallFor(user(a), form({ customerId: cust.id })), /switched off|ended on/);
     assert.equal((await siteJobsBetween(a.shopId, dayStart(today, NY), dayStart(addDays(today, 30), NY))).length, 0, "t1 is unscheduled now; the lapsed company's records would still show");
-    ok("after Vac Shop ends: an install booked before can still be changed, a new one is refused");
+    ok("after Vac Shop is switched off: an install booked before can still be changed, a new one is refused");
   } finally {
     await cleanup();
   }
