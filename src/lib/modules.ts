@@ -133,7 +133,7 @@ function featureState(id: FeatureId, row: FeatureRow | undefined): ModuleState {
   };
 }
 
-/** Who carried a company's working add-ons over from its keys, as Settings → Features shows it. */
+/** The byName of the rows the move to 1.8 writes (Settings → Features says "as your license keys had it"). */
 export const FROM_KEYS = "Your license keys";
 
 type LicenseRow = { shopId: string; key: string };

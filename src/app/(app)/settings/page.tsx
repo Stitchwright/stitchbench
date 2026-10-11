@@ -270,7 +270,7 @@ export default async function SettingsPage() {
             <p className="muted">None switched on yet. Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop are free: switch on the ones your shop uses.</p>
           )}
           <Link href={SETTINGS_FEATURES_HREF} className="link">
-            Switch features on or off
+            {admin ? "Switch features on or off" : "See the features"}
           </Link>
           <div>
             <Link href="/settings/booking" className="link">

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
-import { getModules } from "@/lib/modules";
+import { FROM_KEYS, getModules } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
 import { FEATURE_IDS, MODULES, programName, SETTINGS_ACCOUNT_HREF } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
@@ -58,7 +58,8 @@ export default async function FeaturesPage() {
 
       <Section title="Features">
         <p className="muted mb-3 text-sm">
-          Switching one off hides it again and deletes nothing: what is already there stays to look at and export, and work that came in before can be finished.
+          Switching one off deletes nothing: what is already there stays to look at and export (its menu item stays, read-only), and work that came in before can be
+          finished. Switch it on again any time.
           {!admin && " The shop owner or an admin switches these on and off."}
         </p>
         <ul className="divide-y divide-line">
@@ -76,7 +77,8 @@ export default async function FeaturesPage() {
                   {row && (
                     <p className="muted text-xs">
                       {row.enabled ? "Switched on" : "Switched off"} {fmtDate(row.changedAt, shop.timeZone)}
-                      {row.byName ? ` by ${row.byName}` : ""}
+                      {/* Carried over at the update to 1.8 (src/lib/modules.ts), or switched here by a person. */}
+                      {row.byName === FROM_KEYS ? ", as your license keys had it" : row.byName ? ` by ${row.byName}` : ""}
                     </p>
                   )}
                 </div>
