@@ -3,7 +3,9 @@
 A repair bench for sewing, embroidery, longarm and industrial machine techs.
 
 **Install it:** see **[INSTALL.md](INSTALL.md)**. It runs either as a Windows program on the shop PC (no monthly
-cost) or hosted on Railway.
+cost) or hosted on Railway. It is free and open source (AGPL-3.0): every feature, for every shop. The extras for
+particular kinds of work (Vac Shop, Small Appliance Repair, Scheduling, Marketing, Maker Shop) are free too, switched on
+per shop in **Settings → Features**.
 
 - **Machines by model and serial.** Every machine that comes in gets a page with:
   - photos by type: check-in condition, inside the machine, wiring and connectors, parts, after repair
@@ -41,11 +43,12 @@ cost) or hosted on Railway.
   There's also a Community chat link to the group's Discord. The hub's server code is public:
   https://github.com/bwattendorf/stitchhub.
 - **Sales log** by date range, with CSV export.
-- **Messages** (paid module *Marketing*): email and texts to customers through the shop's own mail account and
-  Twilio number: "it's ready" notices, estimate approval by link, uncollected-machine notices and letters, service-due
-  and review requests, and campaigns to chosen groups; consent, STOP and unsubscribe handled by the book.
-- **Scheduling** (paid module *Scheduling*): a day and week calendar, appointment types with shared resources (two
-  longarms), classes with seats, waiting lists, rosters and reminders, class and appointment fees rung up at the
+- **Messages**: email and texts to customers through the shop's own mail account and Twilio number: "it's ready"
+  notices and estimate approval by link, and with *Marketing* switched on in Settings → Features also
+  uncollected-machine notices and letters, service-due and review requests, and campaigns to chosen groups; consent,
+  STOP and unsubscribe handled by the book.
+- **Scheduling** (switched on in Settings → Features): a day and week calendar, appointment types with shared resources
+  (two longarms), classes with seats, waiting lists, rosters and reminders, class and appointment fees rung up at the
   register, staff shifts, and pickup runs planned with a partner shop.
 
 ## StitchShop: sewing and quilt shops, and their repair shop
@@ -116,10 +119,10 @@ Two smaller suites run without the app or a browser (the Checks workflow runs bo
   `src/**/*.test.ts`).
 - **Check scripts** `scripts/checks/*.check.ts`, run one at a time with `npm run check scripts/checks/<name>.check.ts`
   against the dev database: each makes a throwaway company (`Check <run>`), drives the library code with a user, and
-  removes what it made. They cover modules and licenses, the messaging core and worker, notices, estimate links,
-  audiences, campaigns, classes, appointments, register bookings, shifts and partner runs. The ones that send start the
-  **SMTP sink** (`npm run mail:sink`, `scripts/test-mail/smtp-sink.mjs`) and the **Twilio mock** (`npm run sms:mock`,
-  `scripts/test-mail/twilio-mock.mjs`) on ephemeral ports themselves.
+  removes what it made. They cover Features and the Assistant's key, the messaging core and worker, notices, estimate
+  links, audiences, campaigns, classes, appointments, register bookings, shifts and partner runs. The ones that send
+  start the **SMTP sink** (`npm run mail:sink`, `scripts/test-mail/smtp-sink.mjs`) and the **Twilio mock**
+  (`npm run sms:mock`, `scripts/test-mail/twilio-mock.mjs`) on ephemeral ports themselves.
 - The Windows program's database code (migrations, reference data, backup and restore) runs against a scratch
   Postgres whose user is a superuser: `cd desktop && npm ci --ignore-scripts`, then
   `TEST_DATABASE_URL=postgresql://user:password@localhost:5433/postgres npm test`.
@@ -145,10 +148,11 @@ Opt-in suites (each skips itself unless its variables are set):
   port> TWILIO_API_BASE=http://127.0.0.1:<mock port> MESSAGE_WORKER_SECONDS=5 READY_NOTICE_DELAY_SECONDS=1
   PUBLIC_URL=http://localhost:<port>`; the spec process gets `SMTP_SINK_PORT`, `SMTP_SINK_HTTP`, `TWILIO_MOCK_PORT`
   and the same `PUBLIC_URL`. Each spec makes its own company from the Companies page (the E2E user must be in
-  `PLATFORM_ADMIN_EMAILS`) and removes it. `tests/partner-runs.spec.ts` needs `HUB_URL` as well. The modules specs
-  (`vac-shop`, `appliances`, `modules-lapse`, `modules-basics`) run on the same test build; `modules-lapse` runs
-  `scripts/license/dev.ts --grant` and needs `DATABASE_URL` in the spec process. `scheduling-messaging` walks both
-  modules together, and `two-servers` needs a second server on the same database (`E2E_SECOND_URL`).
+  `PLATFORM_ADMIN_EMAILS`) and removes it. `tests/partner-runs.spec.ts` needs `HUB_URL` as well. The specs for the
+  add-ons (`features`, `vac-shop`, `appliances`) run on the same test build; the specs switch a company's Features on in
+  the database (`tests/helpers/modules.ts`), and the Assistant's specs run `scripts/license/dev.ts --grant`, so the spec
+  process needs `DATABASE_URL`. `scheduling-messaging` walks Scheduling and Marketing together, and `two-servers` needs
+  a second server on the same database (`E2E_SECOND_URL`).
 - When several feature packages are built at once, each gets its own git worktree, database (`stitchbench_feat_<key>`)
   and ports (package number n: sink 2525+n, mock 3401+n, server 3500+n), so builds, workers and test servers never
   share anything (design section 16.3).
