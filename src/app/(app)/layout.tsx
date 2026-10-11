@@ -51,9 +51,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pausePill = ms?.emailPausedAt ? "Email paused: fix in Settings" : ms?.smsPausedAt ? "Texts paused: fix in Settings" : null;
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
-  // The program itself has lapsed (hub-accounts-billing-design.md 3.5): a bar on every page for every role; the nav
-  // keeps every item, since the pages are read-only. Layouts don't re-render on navigation, so it may be one navigation
-  // stale; the pages and actions are the real gates.
+  // The hosting wasn't paid (hub-accounts-billing-design.md 3.5; only where HOSTING_BILLING=on, src/lib/modules.ts): a
+  // bar on every page for every role; the nav keeps every item, since the pages are read-only. Layouts don't re-render on
+  // navigation, so it may be one navigation stale; the pages and actions are the real gates.
   const base = modules.states.base;
   const lapsedSince = base.status === "lapsed" ? endedDay(base) : null;
 

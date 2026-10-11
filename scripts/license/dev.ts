@@ -1,9 +1,9 @@
 // Development license keys for check scripts and Playwright specs (modules-design.md section 4, dev.ts). Signed with
 // scripts/license/dev-key.json, which is in the repo on purpose: such keys count only where devKeysAllowed() is true
 // (next dev, check scripts, a local test build), never on the Windows program or a production server. Since 1.8 a key
-// decides only the Assistant and the program itself; the five trade modules are switched on in Settings → Features
-// (scripts/checks/lib.ts switchFeatures for the checks). A key for one of them still decides where the Features of a
-// company from before 1.8 start (src/lib/modules.ts).
+// decides only the Assistant, and the program itself where the owner's hosting is billed (HOSTING_BILLING=on); the five
+// trade modules are switched on in Settings → Features (scripts/checks/lib.ts switchFeatures for the checks). A key for
+// one of them still decides where the Features of a company from before 1.8 start (src/lib/modules.ts).
 //
 //   npx tsx --conditions=react-server scripts/license/dev.ts --grant <Company ID> --modules assistant --from 2025-08-01 --until 2026-09-06 [--grace 14]
 //

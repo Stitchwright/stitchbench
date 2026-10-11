@@ -2,7 +2,8 @@ import "server-only";
 // The gating API for the add-on modules (modules-design.md section 6.1). Since 1.8 (free-software-design.md, 11 Oct
 // 2026) every module but the Assistant is free: Vac Shop, Small Appliance Repair, Scheduling, Marketing and Maker Shop
 // are on while the company has switched them on in Settings → Features (ShopFeature), and nothing else counts. The
-// Assistant is still bought, so a license key decides it, as does the program's own key ("base").
+// Assistant is still bought, so a license key decides it, as does the program's own key ("base"), but only where the
+// owner's hosting is billed (HOSTING_BILLING=on): anywhere else nothing ever makes a company read-only but a move.
 // Only this file reads License and ModuleGrant rows, and every stored key is verified from its text each time: nothing
 // in the database can switch the Assistant on by itself.
 import { cache } from "react";
@@ -13,6 +14,13 @@ import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";
 import { baseWritable, blockedMessage, canWrite, FEATURE_IDS, isFeatureId, MODULE_IDS, MODULES, toNavGates, type FeatureId, type ModuleId, type Modules, type ModuleState, type NavGate } from "@/lib/module-info";
 
 export const isDesktop = () => process.env.STITCH_DESKTOP === "1";
+
+/**
+ * The owner's hosted services, once their hosting is billed (free-software-design.md section 7, decision 2): only there
+ * does the program's own key count, so a hosting left unpaid makes the company read-only. Never on the Windows program,
+ * whatever its PC's environment says, and never on a self-hosted server (the variable isn't set there).
+ */
+export const hostingBilling = () => !isDesktop() && process.env.HOSTING_BILLING === "on";
 
 /** The host of DATABASE_URL is this machine. */
 export function localDatabase(): boolean {
@@ -189,6 +197,7 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
   if (fresh.length) await setUpFromKeys(fresh, licenses, opts.now, desktop);
   const features = await db.shopFeature.findMany({ where: { shopId: { in: ids } }, select: { shopId: true, module: true, enabled: true, changedAt: true } });
   const real = new Date();
+  const billing = hostingBilling();
   testBuild(); // says so in the log, once, on a test build
   for (const shop of shops) {
     const good = licenses
@@ -200,6 +209,8 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
     const states = {} as Record<ModuleId, ModuleState>;
     for (const id of MODULE_IDS) {
       if (isFeatureId(id)) states[id] = featureState(id, features.find((f) => f.shopId === shop.id && f.module === id));
+      // Hosting isn't billed here: the program's own key changes nothing, so the program is always fully working ("off").
+      else if (id === "base" && !billing) states[id] = keyState(id, statusAt([], now), shop.timeZone);
       else states[id] = keyState(id, statusAt(keyWindows.filter((w) => w.module === id), now), shop.timeZone);
     }
     out.set(shop.id, {
@@ -252,8 +263,8 @@ export async function moduleResponse(shopId: string, id: ModuleId, admin = true)
 }
 
 /**
- * Workers: the shops (all on the install, or the given ones) where the module is active now. A company whose program
- * key has lapsed (base read-only, hub-accounts-billing-design.md 3.5), or that is being moved to another install
+ * Workers: the shops (all on the install, or the given ones) where the module is active now. A company that is
+ * read-only (its hosting unpaid, hub-accounts-billing-design.md 3.5), or that is being moved to another install
  * (company-move-design.md section 7), is skipped for every module, as it is for new work.
  */
 export async function shopsWithModule(id: ModuleId, shopIds?: string[]): Promise<string[]> {

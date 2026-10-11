@@ -1,5 +1,6 @@
-// What still works while the program itself is read-only (hub-accounts-billing-design.md 3.5 and decision 1): the
-// company's "base" key has lapsed, so new tickets, sales, parts and edits are refused, and only what is listed here
+// What still works while the program itself is read-only (hub-accounts-billing-design.md 3.5 and decision 1): on the
+// owner's hosted service, the company's hosting wasn't paid (HOSTING_BILLING=on, src/lib/modules.ts), or the company is
+// being moved to another install, so new tickets, sales, parts and edits are refused, and only what is listed here
 // goes through. Pure: no "server-only", no database. scripts/checks/base-license.check.ts asserts every name exists.
 //
 // Server actions wrapped with safe() are refused by default while lapsed; one named here passes `{ whileLapsed }` to

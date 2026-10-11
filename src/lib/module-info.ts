@@ -46,7 +46,8 @@ export function programName(): "StitchShop" | "StitchBench" {
 export const SETTINGS_ACCOUNT_HREF = "/settings/account";
 
 export const MODULES: Record<ModuleId, { label: string; blurb: string; href: string }> = {
-  // The program itself (hub-accounts-billing-design.md 3.5): its key comes from StitchHub with the sync.
+  // The program itself (hub-accounts-billing-design.md 3.5): its key comes from StitchHub with the sync, and only counts
+  // where the owner's hosting is billed (HOSTING_BILLING=on, src/lib/modules.ts).
   base: {
     label: programName(),
     href: SETTINGS_ACCOUNT_HREF,
@@ -97,16 +98,19 @@ export type FeatureId = (typeof FEATURE_IDS)[number];
 export const isFeatureId = (s: unknown): s is FeatureId => typeof s === "string" && (FEATURE_IDS as readonly string[]).includes(s);
 
 /**
- * What the program's own key allows (hub-accounts-billing-design.md 3.5). "off" (no key ever: an install that never
- * connected to a hub) is fully working, not off; only "lapsed" makes the company read-only.
+ * What the program's own key allows (hub-accounts-billing-design.md 3.5). "off" (no key, or anywhere hosting isn't
+ * billed: the Windows program, a self-hosted server) is fully working; only "lapsed" makes the company read-only.
  */
 export function baseWritable(status: ModuleStatus): boolean {
   return status === "off" || canWrite(status);
 }
 
-/** The message every refused write carries while the program is read-only (the design's wording, with the day it happened). */
+/**
+ * The message every refused write carries while the program is read-only: only on the owner's hosted service, when its
+ * hosting wasn't paid (HOSTING_BILLING=on). The company can always leave for the free Windows program.
+ */
 export function readOnlyMessage(s: ModuleState, admin = true): string {
-  return `${programName()} for this company is read-only since ${endedDay(s)}. You can look at and export everything, finish open work and take payments.${admin ? " Subscribe in Settings → Account." : " Ask the shop owner about its StitchHub account."}`;
+  return `${programName()} for this company is read-only since ${endedDay(s)}. You can look at and export everything, finish open work and take payments.${admin ? " Pay for the hosting on your StitchHub account (Settings → Account), or move the company to the free Windows program (Settings → Company)." : " Ask the shop owner."}`;
 }
 
 export type NavGate = "on" | "readonly" | "hidden";

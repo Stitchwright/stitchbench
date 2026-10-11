@@ -1,13 +1,15 @@
 // Settings → Account (hub-accounts-billing-design.md 2.2 and 3.5): the company's StitchHub account (started from here
 // with the owner's email, or an existing one connected with a link code), the standing the hub last gave, the terms
-// links and the reset opt-in. The program is free (free-software-design.md). Owners only; everyone else reads.
+// links and the reset opt-in. The program is free (free-software-design.md): only on the owner's hosted service, where
+// hosting is billed (HOSTING_BILLING=on), does this page show the hosting's standing. Owners only; everyone else reads.
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { accountView, linkCodeShown, NAG_AFTER_DAYS } from "@/lib/hub-account";
 import { isDraftTerms } from "@/lib/terms-version";
 import { NO_END } from "@/lib/license";
-import { fmtYmd, programName, SETTINGS_FEATURES_HREF } from "@/lib/module-info";
+import { endedDay, fmtYmd, programName, SETTINGS_FEATURES_HREF, type ModuleState } from "@/lib/module-info";
+import { hostingBilling } from "@/lib/modules";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
@@ -24,6 +26,27 @@ const STANDING: Record<string, string> = {
   lapsed: "Lapsed",
 };
 
+/** The hosting's standing, from the program's own key (the owner's hosted service only). */
+function HostingLine({ s, program }: { s: ModuleState; program: string }) {
+  const until = s.lastDay && s.lastDay < NO_END ? fmtYmd(s.lastDay) : null;
+  switch (s.status) {
+    case "on":
+      return <span className="pill tone-ready">{until ? `Hosting paid through ${until}` : "Hosting paid"}</span>;
+    case "renew":
+      return <span className="pill tone-wait">Hosting paid through {until ?? "-"}: the next payment is due</span>;
+    case "grace":
+      return (
+        <span className="pill tone-bad">
+          Hosting ended {until ?? "-"}; keeps working until {s.graceLastDay ? fmtYmd(s.graceLastDay) : "-"}
+        </span>
+      );
+    case "lapsed":
+      return <span className="pill tone-bad">Read-only since {endedDay(s)}</span>;
+    default:
+      return <span className="pill tone-neutral">{program} works here: nothing is due yet</span>;
+  }
+}
+
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ code?: string; until?: string }> }) {
   const user = await requireUser();
   const [v, sp] = await Promise.all([accountView(user), searchParams]);
@@ -37,6 +60,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const waiting = !!shop.hubAccountEmail && !shop.hubAccountVerified;
   const standingWord = shop.hubStanding ? (STANDING[shop.hubStanding] ?? shop.hubStanding) : null;
   const nag = v.neverConnected && v.ageDays >= NAG_AFTER_DAYS;
+  const hosting = hostingBilling();
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -44,13 +68,29 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
 
       <Section title={`${program} for this company`}>
         <div className="space-y-2 text-sm">
-          <p data-testid="free-line">
-            {program} is free: every feature, for every shop, with nothing to pay and no key to enter. Switch on the extras your shop uses in{" "}
-            <Link href={SETTINGS_FEATURES_HREF} className="link">
-              Settings → Features
-            </Link>
-            .
-          </p>
+          {hosting ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <HostingLine s={v.base} program={program} />
+            </div>
+          ) : (
+            <p data-testid="free-line">
+              {program} is free: every feature, for every shop, with nothing to pay and no key to enter. Switch on the extras your shop uses in{" "}
+              <Link href={SETTINGS_FEATURES_HREF} className="link">
+                Settings → Features
+              </Link>
+              .
+            </p>
+          )}
+          {hosting && v.base.status === "lapsed" && (
+            <p>
+              Everything stays here to look at, print and export; open work can be finished and payments taken. New tickets, sales and edits wait until the hosting is paid on your StitchHub
+              account below. Or take the company to the free Windows program:{" "}
+              <Link href="/settings#move" className="link">
+                Settings → Company
+              </Link>
+              .
+            </p>
+          )}
           {standingWord && (
             <p>
               StitchHub says: <strong>{standingWord}</strong>

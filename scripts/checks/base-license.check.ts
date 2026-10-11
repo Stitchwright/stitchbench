@@ -1,10 +1,12 @@
-// The program's own license, the "base" module (hub-accounts-billing-design.md 3.5, package base-license):
+// The program's own license, the "base" module (hub-accounts-billing-design.md 3.5, package base-license). Since 1.8 the
+// program is free and its key counts only where the owner's hosting is billed (HOSTING_BILLING=on, set from group 3 on):
 //   1. the key verifies and gates: the hub scope counts as pasted and never as the Companies switch; a dev key for
 //      "base" verifies; the read-only message
 //   2. off = working: a company with no key at all is judged writable everywhere
-//   3. lapsed = read-only: safe() refuses an unlisted action and lets an allow-listed one through, the by-hand rules
-//      (a sale refused, a return and a void allowed), /api/photos' 403, public booking paused, the message worker skips
-//      the company; and the allow-list's names all exist
+//   3. lapsed = read-only, only with HOSTING_BILLING=on (without it a lapsed key changes nothing): safe() refuses an
+//      unlisted action and lets an allow-listed one through, the by-hand rules (a sale refused, a return and a void
+//      allowed), /api/photos' 403, public booking paused, the message worker skips the company; and the allow-list's
+//      names all exist
 //   4. the hub, mocked by a tiny HTTP server in this process: door 1 from a never-joined install (pending → member),
 //      "send it again", 409 and 503 in words, every company claimed with the new fields, the hub's key stored as the
 //      one hub row, replaced, revoked (pasted keys untouched), a key for another company ignored, no key = keep what
@@ -31,7 +33,7 @@ import { lapseUserFrom } from "@/lib/lapse-guard";
 import { BY_HAND, HAND_ALLOWED, WHILE_LAPSED } from "@/lib/lapse-allow";
 import { acceptScope, addDaysYmd, encodeLicense, newKeyId, verifyLicense, type LicensePayload, type PublicKeys } from "@/lib/license";
 import { blockedMessage, MODULES, programName, readOnlyMessage } from "@/lib/module-info";
-import { loadModules, shopsWithModule, verifyFor } from "@/lib/modules";
+import { hostingBilling, loadModules, shopsWithModule, verifyFor } from "@/lib/modules";
 import { hubFetch, hubState, syncHub } from "@/lib/hub";
 import { accountView, linkCodeFor, refreshStandingFor, requireAccountOwner, setResetOptInFor, startHubAccountFor, TERMS_VERSION } from "@/lib/hub-account";
 import { applyStanding } from "@/lib/hub-standing";
@@ -254,21 +256,27 @@ async function main() {
     });
     ok("off = working: safe() passes, booking open, the worker runs the company, a sale rings up");
 
-    // ---------- 3. lapsed = read-only ----------
+    // ---------- 3. lapsed = read-only, only where hosting is billed ----------
     const lapsedKey = await grantDevLicense(a.shopId, ["base"], { from: addDaysYmd(today(), -60), until: addDaysYmd(today(), -20), grace: 14, plan: "m", issuedAt: new Date(Date.now() - 60 * DAY) });
+    assert.equal(hostingBilling(), false);
+    m = await loadModules(a.shopId);
+    assert.equal(m.states.base.status, "off", "without HOSTING_BILLING=on a lapsed key changes nothing");
+    assert.equal(await baseWritable(a.shopId), true);
+    assert.deepEqual(await plain(), { ok: true });
+    process.env.HOSTING_BILLING = "on";
     m = await loadModules(a.shopId);
     assert.equal(m.states.base.status, "lapsed");
     assert.ok(m.states.base.endedAt);
     assert.equal(await baseWritable(a.shopId), false);
     const msg = readOnlyMessage(m.states.base, true);
-    assert.match(msg, new RegExp(`^${programName()} for this company is read-only since .* Subscribe in Settings → Account\\.$`));
+    assert.match(msg, new RegExp(`^${programName()} for this company is read-only since .* Pay for the hosting on your StitchHub account \\(Settings → Account\\), or move the company to the free Windows program \\(Settings → Company\\)\\.$`));
     assert.equal(blockedMessage(m.states.base, true), msg);
     assert.match(readOnlyMessage(m.states.base, false), /Ask the shop owner/);
     await expectError("requireBaseWritable", () => requireBaseWritable(a.user), /read-only since/);
     const r403 = await baseResponse(a.shopId);
     assert.equal(r403?.status, 403);
     assert.match(await r403!.text(), /read-only since/);
-    ok("a lapsed base: read-only message, requireBaseWritable throws, route handlers get a 403");
+    ok("a lapsed base: nothing without HOSTING_BILLING=on; with it, the read-only message, requireBaseWritable throws, route handlers get a 403");
 
     who = a.user;
     calls = 0;
@@ -611,6 +619,7 @@ async function main() {
     else process.env.PLATFORM_ADMIN_EMAILS = savedAdmins;
     console.log(`base-license.check: ${steps} steps passed (run ${RUN}; mock hub ${mock.url})`);
   } finally {
+    delete process.env.HOSTING_BILLING;
     if (savedDefault === undefined) delete process.env.DEFAULT_HUB_URL;
     else process.env.DEFAULT_HUB_URL = savedDefault;
     // The hub connection and every company's hub fields go back as they were.

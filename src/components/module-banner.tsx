@@ -1,5 +1,5 @@
-// The bars at the top of every page while a company is read-only: it is being moved to another install, or its
-// program key has lapsed. Nothing else ends: the add-ons are free (Settings → Features).
+// The bars at the top of every page while a company is read-only: it is being moved to another install, or (only on
+// the owner's hosted service, HOSTING_BILLING=on) its hosting wasn't paid. Nothing else ends: the add-ons are free.
 import Link from "next/link";
 import { SETTINGS_ACCOUNT_HREF } from "@/lib/module-info";
 
@@ -41,21 +41,26 @@ export function MovingBar({ to, since, movedOn, deleteOn, admin }: { to: string 
 }
 
 /**
- * The program itself has lapsed (hub-accounts-billing-design.md 3.5): one bar at the top of every page, for every role,
- * saying what still works and where the key comes from. The nav keeps every item: the pages are read-only.
+ * The hosting wasn't paid (hub-accounts-billing-design.md 3.5; only where HOSTING_BILLING=on): one bar at the top of
+ * every page, for every role, saying what still works and the two ways on: pay for the hosting, or take the company to
+ * the free Windows program. The nav keeps every item: the pages are read-only.
  */
 export function LapsedBar({ program, since, admin }: { program: string; since: string; admin: boolean }) {
   return (
     <div className="no-print card card-pad tone-bad mb-4 text-sm" role="status" data-testid="lapsed-bar">
       <strong>
-        {program} for this company is read-only since {since}.
+        {program} for this company is read-only since {since}: its hosting isn&apos;t paid.
       </strong>{" "}
-      You can look at and export everything, finish open work and take payments; new tickets, sales and edits wait for a new key.{" "}
+      You can look at and export everything, finish open work and take payments; new tickets, sales and edits wait.{" "}
       {admin ? (
         <>
-          Subscribe or check your standing in{" "}
+          Pay for the hosting in{" "}
           <Link href={SETTINGS_ACCOUNT_HREF} className="underline">
             Settings → Account
+          </Link>
+          , or move the company to the free Windows program from{" "}
+          <Link href="/settings#move" className="underline">
+            Settings → Company
           </Link>
           .
         </>

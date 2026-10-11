@@ -1,9 +1,10 @@
 import "server-only";
 // What the hub says about a company's standing, written down (hub-accounts-billing-design.md 2.4 and 3.5). The words
 // (standing, last day, message, the account's email) go to the Shop row for Settings → Account to show. Only the keys
-// change what the program allows, and since 1.8 only two things: the Assistant, and the program itself
-// (src/lib/modules.ts). The program's key is verified like a pasted one and kept as the company's single "hub" License
-// row, replaced by the hub's next key; a key the hub revokes goes, and only if the hub issued it (never a pasted one).
+// change what the program allows, and since 1.8 only two things: the Assistant, and the program itself where the
+// owner's hosting is billed (src/lib/modules.ts). The program's key is verified like a pasted one and kept as the
+// company's single "hub" License row, replaced by the hub's next key; a key the hub revokes goes, and only if the hub
+// issued it (never a pasted one).
 import { db } from "@/lib/db";
 import { validYmd } from "@/lib/license";
 import { verifyFor } from "@/lib/modules";

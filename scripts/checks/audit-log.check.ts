@@ -227,10 +227,13 @@ async function main() {
 
     // ---------- lapsed company still logs ----------
     const lapsed = await checkShop({ repair: true });
+    // Read-only happens only where the owner's hosting is billed (HOSTING_BILLING=on, src/lib/modules.ts).
+    process.env.HOSTING_BILLING = "on";
     await grantDevLicense(lapsed.shopId, ["base"], { from: new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10), until: new Date(Date.now() - 20 * 86_400_000).toISOString().slice(0, 10), grace: 14, plan: "m", issuedAt: new Date(Date.now() - 60 * 86_400_000) });
     const lt = await ticket(lapsed.shopId);
     await addPaymentFor(lapsed.user, lt.id, { amountCents: 2500, method: "CASH", note: null });
     assert.equal((await entries(lapsed.shopId, "payment.add")).length, 1);
+    delete process.env.HOSTING_BILLING;
     ok("a lapsed company still logs a payment (the money actions most need a trail)");
 
     // ---------- tenant ----------

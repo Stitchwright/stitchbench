@@ -494,6 +494,8 @@ async function main() {
     // (a) The company lapsed between checkout and payment: the sale is still made (the customer's money is taken).
     const r9 = await startCheckout({ slug: slugA, cart: cartWith(new Map(), foot.id, 1), customer: cust("Lena Lapsed", null, "lena@example.test"), fulfil: "pickup", address: null, note: null }, now);
     const o9 = await db.webOrder.findUniqueOrThrow({ where: { id: r9.orderId } });
+    // Read-only happens only where the owner's hosting is billed (HOSTING_BILLING=on, src/lib/modules.ts).
+    process.env.HOSTING_BILLING = "on";
     const lapsed = await grantDevLicense(a.shopId, ["base"], { from: ymd(-60), until: ymd(-20), grace: 14, plan: "m", issuedAt: new Date(Date.now() - 60 * 86_400_000) });
     await mock.pay(o9.stripeSessionId!);
     await confirmFromReturn(r9.token, now);
@@ -507,6 +509,7 @@ async function main() {
     await expectError("void an online sale by its key", () => refuseVoidOfOnlineSale(a.shopId, p9.saleId!), /Online orders page/);
     // A cancel finds the sale by its key when the order never got the link: refunded in full, sale voided, stock back.
     await db.license.deleteMany({ where: { shopId: a.shopId } });
+    delete process.env.HOSTING_BILLING;
     await cancelOrderFor(a.user, o9.id, "check");
     assert.equal((await db.sale.findUniqueOrThrow({ where: { id: p9.saleId! } })).status, "VOIDED");
     assert.equal((await db.part.findUniqueOrThrow({ where: { id: foot.id } })).qtyOnHand, 5);

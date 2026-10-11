@@ -22,6 +22,9 @@ const keptVariables = [
   "AUTH_TRUST_HOST",
   "DATABASE_URL",
   "DEFAULT_SHOP_KIND",
+  // The owner's hosting, once it is billed: "on" lets an unpaid hosting make a company read-only (src/lib/modules.ts).
+  // Not set yet; listed so that setting it in the dashboard never shows up as "to destroy".
+  "HOSTING_BILLING",
   "PLATFORM_ADMIN_EMAILS",
   // Not set on either service as of 2 Oct 2026, but needed for customer links (booking, the shop) and for sealing the
   // mail password and Stripe keys: listed so that setting them in the dashboard never shows up as "to destroy".

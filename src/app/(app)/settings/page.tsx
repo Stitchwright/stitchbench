@@ -4,9 +4,10 @@ import { isInstallAdmin, requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
-import { getModules } from "@/lib/modules";
+import { getModules, hostingBilling } from "@/lib/modules";
 import { shopKinds } from "@/lib/equipment/shop";
-import { endedDay, FEATURE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_FEATURES_HREF } from "@/lib/module-info";
+import { NO_END } from "@/lib/license";
+import { endedDay, FEATURE_IDS, fmtYmd, SETTINGS_ACCOUNT_HREF, SETTINGS_FEATURES_HREF } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
@@ -159,10 +160,19 @@ export default async function SettingsPage() {
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))] as string[];
   // The features this company switched on (Settings → Features: every one is free).
   const featuresOn = FEATURE_IDS.filter((id) => modules.states[id].active).map((id) => modules.states[id].label);
-  // The program's own key: only a lapsed one says anything here.
+  // The program's own key matters only where the owner's hosting is billed: there it is the hosting's standing.
   const base = modules.states.base;
+  const hosting = hostingBilling();
   const accountLine = shop.hubAccountEmail ? `StitchHub account: ${shop.hubAccountEmail}${shop.hubAccountVerified ? "" : " (waiting for the email)"}` : "No StitchHub account yet (it's free)";
-  const baseLine = base.status === "lapsed" ? `Read-only since ${endedDay(base)}: new tickets, sales and edits wait` : accountLine;
+  const baseLine = !hosting
+    ? accountLine
+    : base.status === "lapsed"
+      ? `Read-only since ${endedDay(base)}: the hosting isn't paid, so new tickets, sales and edits wait`
+      : base.status === "grace"
+        ? `Hosting paid through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}; it keeps working until ${base.graceLastDay ? fmtYmd(base.graceLastDay) : "-"}`
+        : base.status === "off" || (base.lastDay ?? "") >= NO_END
+          ? accountLine
+          : `Hosting paid through ${base.lastDay ? fmtYmd(base.lastDay) : "-"}`;
   // The "For" select offers the kinds new work may use, plus any kind an item already names (so it can be read and changed).
   const usedKinds = new Set(services.map((s) => s.equipmentKind).filter(Boolean));
   const usableKeys = new Set(kinds.usable.map((k) => k.key));
@@ -193,7 +203,7 @@ export default async function SettingsPage() {
         <div className="space-y-2 text-sm">
           <p>{baseLine}.</p>
           <Link href={SETTINGS_ACCOUNT_HREF} className="link">
-            Your StitchHub account
+            {hosting ? "Your StitchHub account and the hosting" : "Your StitchHub account"}
           </Link>
         </div>
       </Section>

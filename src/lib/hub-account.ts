@@ -216,6 +216,7 @@ export type AccountView = {
     hubResetOptIn: boolean;
     termsVersion: string | null;
   };
+  /** The program's own key: it matters only where the owner's hosting is billed (always "off" elsewhere). */
   base: ModuleState;
   /** The hub this install is on (or would join): for the terms links and the "sign in on the hub" link. */
   hubUrl: string;
