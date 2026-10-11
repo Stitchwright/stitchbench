@@ -155,11 +155,12 @@ export function blockedMessage(s: ModuleState, admin: boolean): string {
     }
     return `${label} isn't switched on for this company.${admin ? " It's free: switch it on in Settings → Features." : " Ask the shop owner or an admin to switch it on in Settings → Features."}`;
   }
-  // The Assistant: bought on the company's StitchHub account, its key arrives with the sync.
-  const getIt = admin ? " Add it on your StitchHub account (Settings → Account)." : " Ask the shop owner about it.";
-  if (s.status === "lapsed") return `${label} ended on ${endedDay(s)}. You can still look at and export what's there.${getIt}`;
+  // The Assistant, as it always worked: bought on the company's StitchHub account, its key arrives with the sync.
+  if (s.status === "lapsed") {
+    return `${label} ended on ${endedDay(s)}. You can still look at and export what's there, and finish work that came in before then.${admin ? " To use it again, add it on your StitchHub account (Settings → Account)." : " Ask the shop owner about it."}`;
+  }
   if (s.status === "off" && s.startsOn) return `${label} starts on ${fmtYmd(s.startsOn)}.`;
-  return `${label} isn't on for this company.${getIt}`;
+  return `${label} isn't turned on for this company.${admin ? " Add it on your StitchHub account (Settings → Account)." : " Ask the shop owner about it."}`;
 }
 
 /** write when canWrite; read when lapsed, or off with records; none when off without records. */

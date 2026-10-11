@@ -56,7 +56,7 @@ export function ModuleNotice({ state, what, admin = false }: { state: ModuleStat
   return (
     <div className="card card-pad text-sm" role="status">
       <p>
-        <strong>{feature ? `${label} isn't switched on for this company.` : `${label} isn't on for this company.`}</strong> {blurb}
+        <strong>{feature ? `${label} isn't switched on for this company.` : `${label} isn't turned on for this company.`}</strong> {blurb}
       </p>
       <p className="mt-2">{admin ? <GetIt state={state} /> : feature ? "Ask the shop owner or an admin to switch it on in Settings → Features." : "Ask the shop owner about it."}</p>
     </div>

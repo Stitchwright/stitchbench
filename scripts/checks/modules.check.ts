@@ -224,7 +224,7 @@ async function main() {
     await assert.rejects(requireModule({ shopId: a.shopId, role: "OWNER" }, "appliance"), expect("never on", /^Small Appliance Repair isn't switched on for this company\./, "It's free: switch it on in Settings → Features."));
     await assert.rejects(requireModule({ shopId: a.shopId, role: "TECH" }, "maker"), expect("never on, tech", /^Maker Shop isn't switched on/, "Ask the shop owner or an admin to switch it on in Settings → Features."));
     await db.license.deleteMany({ where: { shopId: a.shopId } });
-    await assert.rejects(requireModule({ shopId: a.shopId, role: "OWNER" }, "assistant"), expect("assistant", /^Assistant isn't on for this company\./, "Add it on your StitchHub account (Settings → Account)."));
+    await assert.rejects(requireModule({ shopId: a.shopId, role: "OWNER" }, "assistant"), expect("assistant", /^Assistant isn't turned on for this company\./, "Add it on your StitchHub account (Settings → Account)."));
     assert.equal(await hasModule(a.shopId, "vac"), false);
     ok("requireModule: switched off, never switched on, and the Assistant, in each role's words");
 
