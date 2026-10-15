@@ -8,7 +8,7 @@ import { reportBrowserError, sendHelp } from "@/actions/help";
 import { markHelpRepliesRead } from "@/actions/ease";
 import type { HelpReplyView } from "@/lib/help";
 
-type Choice = "help" | "idea" | "rating";
+type Choice = "help" | "bug" | "idea" | "rating";
 
 const MAX_TEXT = 4000;
 const MAX_PICTURE = 800 * 1024;
@@ -65,7 +65,7 @@ async function takePicture(): Promise<Blob | null> {
   }
 }
 
-const KIND_WORDS: Record<string, string> = { help: "Something's wrong", idea: "Your idea", rating: "Your rating", error: "A problem we noticed" };
+const KIND_WORDS: Record<string, string> = { help: "Something's wrong", bug: "Your bug report", idea: "Your idea", rating: "Your rating", error: "A problem we noticed" };
 
 export function HelpButton({ program, email, connected, helpEmail, replies = [] }: { program: string; email: string; connected: boolean; helpEmail: string | null; replies?: HelpReplyView[] }) {
   const pathname = usePathname();
@@ -79,6 +79,7 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null);
   const [text, setText] = useState("");
+  const [steps, setSteps] = useState("");
   const [replyTo, setReplyTo] = useState(email);
   const [stars, setStars] = useState(0);
   const [quoteOk, setQuoteOk] = useState(false);
@@ -128,6 +129,7 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
   function reset() {
     setChoice(null);
     setText("");
+    setSteps("");
     setReplyTo(email);
     setStars(0);
     setQuoteOk(false);
@@ -157,7 +159,7 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
   async function pick(c: Choice) {
     setChoice(c);
     setError(null);
-    if (c !== "help") return;
+    if (c !== "help" && c !== "bug") return;
     setTaking(true);
     const blob = await takePicture();
     setTaking(false);
@@ -170,7 +172,7 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
     if (!choice) return;
     setError(null);
     if (choice !== "rating" && !text.trim()) {
-      setError(choice === "help" ? "Please tell us what happened." : "Please tell us your idea.");
+      setError(choice === "help" || choice === "bug" ? "Please tell us what happened." : "Please tell us your idea.");
       return;
     }
     if (choice === "rating" && !stars) {
@@ -183,12 +185,13 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
     fd.set("path", window.location.pathname);
     fd.set("userAgent", navigator.userAgent);
     fd.set("screen", screenSize());
+    if (choice === "bug") fd.set("steps", steps);
     if (choice !== "rating") fd.set("replyTo", replyTo);
     if (choice === "rating") {
       fd.set("stars", String(stars));
       fd.set("quoteOk", quoteOk ? "true" : "false");
     }
-    if (choice === "help" && withPicture && picture) fd.set("picture", picture, "screen.jpg");
+    if ((choice === "help" || choice === "bug") && withPicture && picture) fd.set("picture", picture, "screen.jpg");
     setBusy(true);
     try {
       const r = await sendHelp(fd);
@@ -237,7 +240,7 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
         >
           <div className="mb-3 flex items-start justify-between gap-2">
             <h2 id="help-title" className="text-xl font-semibold">
-              {sent ? "Sent" : choice === "help" ? "Something's wrong" : choice === "idea" ? "I have an idea" : choice === "rating" ? "Rate the program" : "How can we help?"}
+              {sent ? "Sent" : choice === "help" ? "Something's wrong" : choice === "bug" ? "Report a bug" : choice === "idea" ? "I have an idea" : choice === "rating" ? "Rate the program" : "How can we help?"}
             </h2>
             <button type="button" className="btn h-12 w-12 shrink-0 p-0 text-2xl leading-none" onClick={() => setOpen(false)} aria-label="Close">
               ×
@@ -271,6 +274,9 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
               )}
               <button ref={firstRef} type="button" className={`${choiceBtn} btn-lg`} onClick={() => void pick("help")}>
                 Something&apos;s wrong
+              </button>
+              <button type="button" className={`${choiceBtn} btn-lg`} onClick={() => void pick("bug")} data-testid="help-bug">
+                Report a bug
               </button>
               <button type="button" className={`${choiceBtn} btn-lg`} onClick={() => void pick("idea")}>
                 I have an idea
@@ -312,13 +318,23 @@ export function HelpButton({ program, email, connected, helpEmail, replies = [] 
               {choice !== "rating" && (
                 <div className="field">
                   <label htmlFor="help-text" className="label text-base">
-                    {choice === "help" ? "What happened?" : "What would make the program better for you?"}
+                    {choice === "help" || choice === "bug" ? "What happened?" : "What would make the program better for you?"}
                   </label>
                   <textarea id="help-text" className="textarea" rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} required autoFocus />
                 </div>
               )}
 
-              {choice === "help" && (
+              {choice === "bug" && (
+                <div className="field">
+                  <label htmlFor="help-steps" className="label text-base">
+                    How can we make it happen again? (optional)
+                  </label>
+                  <textarea id="help-steps" className="textarea" rows={3} maxLength={3000} value={steps} onChange={(e) => setSteps(e.target.value)} />
+                  <p className="muted text-sm">Bug reports go to the developers, who work from what you write. Please don&apos;t put customer names or card numbers in the words.</p>
+                </div>
+              )}
+
+              {(choice === "help" || choice === "bug") && (
                 <div className="space-y-2">
                   <label className="flex min-h-12 items-center gap-3 text-base">
                     <input type="checkbox" className="check h-6 w-6" checked={withPicture} disabled={!picture} onChange={(e) => setWithPicture(e.target.checked)} />
