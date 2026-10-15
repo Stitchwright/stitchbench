@@ -1206,12 +1206,21 @@ async function updateProgram({ fromTray }) {
       type: "question",
       title: NAME,
       message: `Update ${NAME} now?`,
-      detail: "It saves a backup, closes, and opens again by itself in a minute or two. Tablets and other computers reconnect by themselves.",
+      detail:
+        process.platform === "win32"
+          ? "It saves a backup, closes, and opens again by itself in a minute or two. Tablets and other computers reconnect by themselves."
+          : "This opens the downloads page. Install the new version over this one; your data stays where it is.",
       buttons: ["Update now", "Not now"],
       defaultId: 0,
       cancelId: 1,
     });
     if (ask.response !== 0) return;
+    // The silent in-place install is the Windows installer's /S switch. On macOS and Linux the new version is
+    // installed by hand: open the downloads page (the release is the same one the hub points at).
+    if (process.platform !== "win32") {
+      await shell.openExternal("https://github.com/stitchwright/stitchbench/releases/latest");
+      return;
+    }
     if (!RELEASE_PUBLIC_KEY) return await updateFailed("This copy can't check that the new version is genuine yet.");
     if (!pool || maintenance) return await updateFailed("The program is busy with something else. Try again in a minute.");
 

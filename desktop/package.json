@@ -1,7 +1,8 @@
 {
   "name": "stitchbench-desktop",
   "productName": "StitchBench",
-  "version": "1.7.1",
+  "version": "1.7.2",
+  "license": "MIT OR Apache-2.0",
   "description": "StitchBench (repair bench) or StitchShop (sewing / quilt shop counter) for the shop PC: runs the app and its database, and serves it to every device on the shop network.",
   "author": "Timing & Tension",
   "private": true,
@@ -13,6 +14,10 @@
     "test": "node --test \"test/*.test.mjs\"",
     "installer": "electron-builder --win nsis --publish never",
     "installer:stitchshop": "electron-builder --win nsis --publish never -c.extraMetadata.flavor=stitchshop -c.extraMetadata.productName=StitchShop -c.productName=StitchShop -c.appId=com.timingandtension.stitchshop -c.nsis.shortcutName=StitchShop -c.directories.output=dist-stitchshop",
+    "installer:linux": "electron-builder --linux AppImage deb --publish never",
+    "installer:stitchshop:linux": "electron-builder --linux AppImage deb --publish never -c.extraMetadata.flavor=stitchshop -c.extraMetadata.productName=StitchShop -c.productName=StitchShop -c.appId=com.timingandtension.stitchshop -c.nsis.shortcutName=StitchShop -c.directories.output=dist-stitchshop",
+    "installer:mac": "electron-builder --mac dmg zip --publish never",
+    "installer:stitchshop:mac": "electron-builder --mac dmg zip --publish never -c.extraMetadata.flavor=stitchshop -c.extraMetadata.productName=StitchShop -c.productName=StitchShop -c.appId=com.timingandtension.stitchshop -c.nsis.shortcutName=StitchShop -c.directories.output=dist-stitchshop",
     "dist": "node prepare-app.mjs && npm run installer",
     "dist:stitchshop": "node prepare-app.mjs && npm run installer:stitchshop"
   },
@@ -64,6 +69,29 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "StitchBench"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "maintainer": "Timing & Tension <noreply@stitchbench.app>",
+      "synopsis": "Repair bench and shop counter",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     }
   }
 }
