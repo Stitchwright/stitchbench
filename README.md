@@ -168,3 +168,7 @@ specs above.
   nightly backups.
 - **Errors:** server actions return `{ error }` for problems the user can fix (`src/lib/action.ts`), shown as
   toasts.
+
+## License
+
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option. See [NOTICE](NOTICE).
