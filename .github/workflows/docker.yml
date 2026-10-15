@@ -1,11 +1,11 @@
 # The hosted build as a Docker image (Dockerfile), for Railway-style hosts and anyone running their own server.
-# A tag like v1.7.2 publishes :1.7.2 and :latest.
+# Pushes to main publish :main; a tag like v1.7.2 publishes :1.7.2 and :latest.
 # Pull requests only build it, to prove the Dockerfile still works. Linux amd64 and arm64.
 name: Docker image
 
 on:
   push:
-    # Add `branches: [main]` once the repository is public (Actions minutes are free there; private repos are metered).
+    branches: [main]
     tags: ["v*"]
   pull_request:
     paths: [Dockerfile, .dockerignore, package.json, package-lock.json, ".github/workflows/docker.yml"]

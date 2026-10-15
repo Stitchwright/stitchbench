@@ -4,7 +4,11 @@ node_modules
 .github
 .env*
 !.env.example
-desktop
+# the type check reads scripts/checks, which import desktop/*.mjs: keep its sources, drop what it builds
+desktop/node_modules
+desktop/server
+desktop/dist
+desktop/dist-stitchshop
 docs
 tests
 test-results
