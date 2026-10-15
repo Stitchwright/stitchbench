@@ -2,7 +2,7 @@
 // `stitchshop`) and project `stitchbench` (service `stitchbench`). It carries the same settings as railway.json
 // (Config as Code, which Railway stops reading on 2026-12-01). Railway does not read this file on `railway up`: it is
 // applied once per project with `railway config plan` and `railway config apply` while the folder is linked to that
-// project (docs/HANDOFF.md section 3 has the steps). One file serves both projects because the CLI passes the linked
+// project. One file serves both projects because the CLI passes the linked
 // project's name in `ctx`, and in both projects the service carries the project's name (INSTALL.md's self-hosted
 // setup, `railway init --name stitchbench` + service `stitchbench`, follows the same rule).
 //

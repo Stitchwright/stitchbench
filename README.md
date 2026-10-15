@@ -2,8 +2,12 @@
 
 A repair bench for sewing, embroidery, longarm and industrial machine techs.
 
-**Install it:** see **[INSTALL.md](INSTALL.md)**. It runs either as a Windows program on the shop PC (no monthly
-cost) or hosted on Railway.
+**Download:** the [latest release](https://github.com/Stitchwright/stitchbench/releases/latest) has installers for
+Windows, macOS and Linux. For your own server, use the Docker image `ghcr.io/stitchwright/stitchbench` (a
+ready-made [compose file](docker-compose.selfhost.yml) is included).
+
+**Install it:** see **[INSTALL.md](INSTALL.md)**. It runs either as a program on the shop PC (Windows, Mac or Linux, no
+monthly cost) or hosted (Railway or Docker).
 
 - **Machines by model and serial.** Every machine that comes in gets a page with:
   - photos by type: check-in condition, inside the machine, wiring and connectors, parts, after repair
