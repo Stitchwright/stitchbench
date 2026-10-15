@@ -1,0 +1,10 @@
+StitchBench and StitchShop
+Copyright 2026 Timing & Tension
+
+Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE) or the MIT license (LICENSE-MIT), at your
+option.
+
+The reference data in prisma/seed-data (tension-gauge values, timing and adjustment settings, model and part listings)
+is factual data collected from manufacturers' service and operator manuals. The manuals themselves are not included.
+Brand and model names are trademarks of their respective owners and are used only to identify machines; this project
+is not affiliated with or endorsed by any of them.
