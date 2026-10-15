@@ -96,4 +96,4 @@ npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/s
 Deploys: `railway up --service stitchshop --ci` and, for StitchBench, `railway link --project stitchbench &&
 railway up --service stitchbench --ci && railway link --project stitchshop --service stitchshop`. The Windows install:
 `node desktop/backup-now.mjs`, `npm run prepare-app` in `desktop/`, then `scripts/local-test/update_installed.ps1
--Version <version>`. See `docs/HANDOFF.md` for where everything stands.
+-Version <version>`.
