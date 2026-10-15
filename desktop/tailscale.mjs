@@ -25,15 +25,19 @@ function run(exe, args, { timeout = 15_000 } = {}) {
 
 /** The tailscale CLI on this PC: its path, or null. The installer's folder first, then the Store app's alias, then PATH. */
 export async function findTailscale(env = process.env) {
-  const candidates = [
-    path.join(env.ProgramFiles ?? "C:\\Program Files", "Tailscale", "tailscale.exe"),
-    path.join(env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Tailscale", "tailscale.exe"),
-    ...(env.LOCALAPPDATA ? [path.join(env.LOCALAPPDATA, "Microsoft", "WindowsApps", "tailscale.exe")] : []),
-  ];
+  const candidates =
+    process.platform === "darwin"
+      ? ["/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale"]
+      : process.platform === "win32"
+        ? [
+            path.join(env.ProgramFiles ?? "C:\\Program Files", "Tailscale", "tailscale.exe"),
+            path.join(env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Tailscale", "tailscale.exe"),
+            ...(env.LOCALAPPDATA ? [path.join(env.LOCALAPPDATA, "Microsoft", "WindowsApps", "tailscale.exe")] : []),
+          ]
+        : ["/usr/bin/tailscale", "/usr/local/bin/tailscale", "/usr/sbin/tailscale"];
   for (const c of candidates) if (fs.existsSync(c)) return c;
-  if (process.platform !== "win32") return null;
   try {
-    const r = await run("where.exe", ["tailscale"], { timeout: 5000 });
+    const r = await run(process.platform === "win32" ? "where.exe" : "which", ["tailscale"], { timeout: 5000 });
     const first = r.stdout
       .split(/\r?\n/)
       .map((l) => l.trim())

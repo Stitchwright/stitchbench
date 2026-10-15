@@ -1,0 +1,36 @@
+# Run the hosted build on your own server:
+#   AUTH_SECRET=$(openssl rand -base64 33) docker compose -f docker-compose.selfhost.yml up -d
+# then open http://localhost:3000 (the first start creates the database and prints the owner login in the log).
+# Use the published image instead of building: replace `build: .` with `image: ghcr.io/stitchwright/stitchbench:latest`.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: stitchbench
+      POSTGRES_PASSWORD: stitchbench
+      POSTGRES_DB: stitchbench
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stitchbench"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://stitchbench:stitchbench@db:5432/stitchbench
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -base64 33)}
+      AUTH_TRUST_HOST: "true"
+      SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-owner@example.com}
+      SEED_SHOP_NAME: ${SEED_SHOP_NAME:-My Repair Shop}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      start_period: 60s
+volumes:
+  pgdata:
