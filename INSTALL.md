@@ -16,6 +16,25 @@ Both can join the community hub, StitchHub (see [Joining the community hub](#joi
 
 ---
 
+## Other downloads: macOS, Linux and Docker
+
+Every version tag (`v1.7.2`) builds everything on GitHub and publishes it on the repository's **Releases** page,
+with a `SHA256SUMS.txt`:
+
+- **macOS:** `StitchBench-<version>-mac-arm64.dmg` (Apple silicon) or `-mac-x64.dmg` (Intel). The app isn't signed
+  with an Apple certificate, so the first time, right-click it and choose **Open** (or System Settings → Privacy &
+  Security → Open Anyway).
+- **Linux:** `.AppImage` (make it executable and run it) or `.deb` (`sudo apt install ./StitchBench-...deb`), x64 or arm64.
+- **Hosted, on your own server (Docker):** `ghcr.io/stitchwright/stitchbench:latest`. Use
+  [`docker-compose.selfhost.yml`](docker-compose.selfhost.yml): `AUTH_SECRET=$(openssl rand -base64 33) docker compose -f docker-compose.selfhost.yml up -d`,
+  then open http://localhost:3000. For StitchShop set `APP_NAME=StitchShop` and `DEFAULT_SHOP_KIND=retail`.
+
+On macOS and Linux the program updates by hand (the tray's "Check for a new version" opens the downloads page);
+the one-click silent update is Windows only. Run the "Desktop installers" workflow from the Actions tab to build
+without publishing.
+
+---
+
 ## Option 1: Windows program
 
 ### You need

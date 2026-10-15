@@ -1,8 +1,12 @@
-# Builds the Windows installers, "StitchBench Setup <version>.exe" and "StitchShop Setup <version>.exe", on GitHub's
-# Windows machines (Smart App Control on the shop PC blocks unsigned build tools). Run it from the Actions tab
-# (Windows installers -> Run workflow) or by pushing a tag like v1.4.1. Download the installers from the run's page;
-# they're kept for 7 days. Set the version in desktop/package.json first. They're unsigned unless signing is switched on (docs/CODE_SIGNING.md).
-name: Windows installers
+# Builds the desktop programs on GitHub's machines (Smart App Control on the shop PC blocks unsigned build tools):
+#   Windows  "StitchBench Setup <version>.exe" and "StitchShop Setup <version>.exe"
+#   macOS    .dmg and .zip, Apple silicon and Intel
+#   Linux    .AppImage and .deb, x64 and arm64
+# Run it from the Actions tab (Desktop installers -> Run workflow) or push a tag like v1.7.2. Download the installers
+# from the run's page (kept for 7 days); a tag also publishes them on the repository's Releases page.
+# Set the version in desktop/package.json first. Windows installers are unsigned unless signing is switched on
+# (docs/CODE_SIGNING.md); the macOS and Linux ones are unsigned (INSTALL.md says how to open them).
+name: Desktop installers
 
 on:
   workflow_dispatch:
@@ -15,6 +19,71 @@ permissions:
   contents: read
 
 jobs:
+  # macOS and Linux. Each runner builds for its own architecture (the program ships a native Postgres).
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: mac, name: mac-arm64 }
+          - { os: macos-15-intel, target: mac, name: mac-x64 }
+          - { os: ubuntu-latest, target: linux, name: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux, name: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+      # No signing identity on the runner: build unsigned instead of looking for one in the keychain.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install the app's packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Install the program's packages
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the app for the program
+        working-directory: desktop
+        run: node prepare-app.mjs
+
+      - name: StitchBench installer
+        working-directory: desktop
+        run: npm run installer:${{ matrix.target }}
+
+      - name: StitchShop installer
+        working-directory: desktop
+        run: npm run installer:stitchshop:${{ matrix.target }}
+
+      - name: Keep the installers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers-${{ matrix.name }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist-stitchshop/*.dmg
+            desktop/dist-stitchshop/*.zip
+            desktop/dist-stitchshop/*.AppImage
+            desktop/dist-stitchshop/*.deb
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
   build:
     runs-on: windows-latest
     timeout-minutes: 60
@@ -149,3 +218,40 @@ jobs:
           path: unsigned/**/*.exe
           retention-days: 7
           compression-level: 0
+
+  # A tag (v1.7.2) publishes every installer on the Releases page. Skipped for a manual run.
+  # Only this job can write to the repository; it never runs the build.
+  release:
+    needs: [build, sign, unix]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && needs.unix.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      # Windows: "installers" (signed when signing is on). macOS and Linux: one "installers-<name>" each.
+      # "installers-unsigned" (the signing job's input) is left out on purpose.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installers
+          path: files
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: installers-{mac,linux}-*
+          path: files
+          merge-multiple: true
+
+      - name: Gather the files
+        run: find files -mindepth 2 -type f -exec mv -t files {} + && find files -mindepth 1 -type d -empty -delete
+
+      - name: Checksums
+        working-directory: files
+        run: find . -type f ! -name SHA256SUMS.txt -printf '%P\n' | sort | xargs sha256sum > ../SHA256SUMS.txt && mv ../SHA256SUMS.txt .
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --verify-tag files/* \
+            || gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber files/*

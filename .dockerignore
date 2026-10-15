@@ -1,0 +1,18 @@
+node_modules
+.next
+.git
+.github
+.env*
+!.env.example
+# the type check reads scripts/checks, which import desktop/*.mjs: keep its sources, drop what it builds
+desktop/node_modules
+desktop/server
+desktop/dist
+desktop/dist-stitchshop
+docs
+tests
+test-results
+playwright-report
+scripts/local-test
+**/*.log
+**/.DS_Store
