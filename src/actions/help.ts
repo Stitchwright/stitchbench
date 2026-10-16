@@ -12,21 +12,21 @@ const str = (fd: FormData, k: string) => {
   return typeof v === "string" ? v : "";
 };
 
-/** "Something's wrong", "I have an idea" or "Rate the program", from the Help panel. */
+/** "Something's wrong", "Report a bug", "I have an idea" or "Rate the program", from the Help panel. */
 export const sendHelp = safe.whileLapsed("sendHelp")(async function sendHelp(fd: FormData) {
   const user = await requireUser();
   const kind = str(fd, "kind");
-  if (kind !== "help" && kind !== "idea" && kind !== "rating") throw new UserError("Please pick one of the three choices.");
+  if (kind !== "help" && kind !== "bug" && kind !== "idea" && kind !== "rating") throw new UserError("Please pick one of the choices.");
   const typed = str(fd, "replyTo").trim();
   const replyTo = typed ? validEmail(typed) : null;
   if (typed && !replyTo) throw new UserError("That email address doesn't look right. Fix it, or leave the box empty.");
   let picture: Uint8Array | null = null;
   const file = fd.get("picture");
-  if (kind === "help" && file instanceof Blob && file.size > 0 && file.size <= HELP_PICTURE_MAX) picture = new Uint8Array(await file.arrayBuffer());
+  if ((kind === "help" || kind === "bug") && file instanceof Blob && file.size > 0 && file.size <= HELP_PICTURE_MAX) picture = new Uint8Array(await file.arrayBuffer());
   const shop = await db.shop.findUnique({ where: { id: user.shopId }, select: { name: true } });
   await addHelpItem(
     user.shopId,
-    { kind, text: str(fd, "text") || null, stars: Number(str(fd, "stars")) || null, quoteOk: str(fd, "quoteOk") === "on" || str(fd, "quoteOk") === "true", replyTo, picture },
+    { kind, text: str(fd, "text") || null, steps: str(fd, "steps") || null, stars: Number(str(fd, "stars")) || null, quoteOk: str(fd, "quoteOk") === "on" || str(fd, "quoteOk") === "true", replyTo, picture },
     helpContext({ path: str(fd, "path"), role: user.role, userAgent: str(fd, "userAgent"), screen: str(fd, "screen"), shopName: shop?.name ?? null }),
   );
 });

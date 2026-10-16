@@ -1852,7 +1852,7 @@ model HelpOutbox {
   id          String    @id @default(cuid())
   shopId      String
   shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  kind        String // help | idea | rating | error
+  kind        String // help | bug | idea | rating | error
   // Everything but the picture: the words, stars, reply address, page, program, version, and an error's message and stack
   payload     Json
   picture     Bytes? // JPEG of the screen, when the person left it in
