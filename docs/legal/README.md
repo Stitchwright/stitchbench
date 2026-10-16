@@ -1,7 +1,9 @@
 # Terms and privacy: drafts, publishing, and what's left to decide
 
-**Status (3 Oct 2026): drafts for review by a lawyer; not legal advice; not yet in force.** The hub shows them as
-version `2026-10-03-draft` (copies in the hub repo's `legal/`) under a "DRAFT, not yet in force" banner until the owner
+**Status (16 Oct 2026): drafts for review by a lawyer; not legal advice; not yet in force. Rewritten on 16 Oct 2026 for
+the free model** (the programs, the hub and the hosted service cost nothing; a YouTube channel and donations pay for
+them; no plans, trial, subscriptions, refunds or billing records). The hub shows them as
+version `2026-10-16-draft` (copies in the hub repo's `legal/`) under a "DRAFT, not yet in force" banner until the owner
 publishes a version (package `terms-launch`, section 1).
 
 | File | What it is |
@@ -12,8 +14,8 @@ publishes a version (package `terms-launch`, section 1).
 
 Both drafts mark open points inline:
 
-- `[LAWYER: ...]` is a question for the lawyer (24 in the Terms, 15 in the Privacy Policy).
-- `[OWNER: ...]` is a fact or choice for the owner (20 in the Terms, 13 in the Privacy Policy). Many are places where
+- `[LAWYER: ...]` is a question for the lawyer (22 in the Terms, 16 in the Privacy Policy).
+- `[OWNER: ...]` is a fact or choice for the owner (20 in the Terms, 22 in the Privacy Policy). Many are places where
   the draft states what the code does today and the owner should either accept it or change the code.
 - `[30]`, `[45]`, `[90]` are suggested numbers of days the owner sets.
 
@@ -28,7 +30,7 @@ and Anthropic's and Stripe's published terms as read on 3 Oct 2026 (links in the
 **One version string for both documents**, in the form **`YYYY-MM-DD`**: the date that version comes into force
 (for example `2026-11-15`). If only one document changes, both get the new date; the hub records one version per
 account, so one string keeps that simple. A same-day second version is `YYYY-MM-DD.2` (avoid it). While a version is a
-draft its string ends in **`-draft`** (today `2026-10-03-draft`), and the hub's pages carry a "DRAFT, not yet in force"
+draft its string ends in **`-draft`** (today `2026-10-16-draft`), and the hub's pages carry a "DRAFT, not yet in force"
 banner over it.
 
 **Where they live** (package `terms-launch`, built 3 Oct 2026; the hub's `src/terms.mjs` and README "Terms of Service
@@ -43,7 +45,7 @@ and Privacy Policy"):
 - The version in force is the hub's **`TERMS_VERSION`** variable (Railway), or when it is unset the newest pair on file
   (drafts don't count once a published version exists). `GET /v1/terms/current` names it (no key needed).
 - The programs follow the hub: Settings → Account asks the hub for the version in force (kept 10 minutes) and shows it
-  next to the tick; `TERMS_VERSION` in `src/lib/hub-account.ts` (`"2026-10-03-draft"`) is only the fallback when the
+  next to the tick; `TERMS_VERSION` in `src/lib/hub-account.ts` (`"2026-10-16-draft"`) is only the fallback when the
   hub doesn't answer. A new version needs no program release.
 
 **How acceptance is recorded** (the hub keeps the latest on the account, `accounts.terms_version` and `terms_at`, and
@@ -80,41 +82,38 @@ account is asked to accept it at its next sign-in on the hub, and before its nex
 
 ## 3. Decisions for the owner
 
-Already decided and written into the drafts (don't re-ask): Solo $25 a month or $250 a year (up to two people
-signed in) and Shop $45 or $450 (everyone), founding shops at $15 / $30 (decided 3 Oct 2026), all three ways of
-running; free while partnered as the retail side; 30-day trial per shop; 14 days of grace; lapsed = read-only, never
-data loss; refunds: 14 days full refund on a first charge, otherwise none, yearly pro rata at the owner's discretion;
-no sales tax on the subscription for now; account email = owner login; account deletion by the owner on request; the
-hub free to everyone; sharing chosen per item ("offer"); the Assistant through the hub with no prompt text kept on
-the hub, first names off by default, the privacy page says what is sent.
+Already decided and written into the drafts (don't re-ask): **the programs, the hub and the hosted service are free
+for every shop** (owner, 15 Oct 2026), paid for by YouTube and donations; donations are voluntary gifts that buy
+nothing extra and are not tax-deductible; all three ways of running; account email = owner login; account deletion by
+the owner on request; the hub free to everyone; sharing chosen per item ("offer"); bug reports are filed as GitHub
+issues by the hub (private repository for StitchBench and StitchShop, public for the open-source programs, no shop
+name or email in the issue); the Assistant through the hub with no prompt text kept on the hub, first names off by
+default, the privacy page says what is sent. The earlier paid-model decisions (plans, founding shops, trial, grace,
+refunds, sales tax on the subscription, module prices) were dropped; they are in the git history of the 3 Oct drafts.
 
 Still to decide (each is an `[OWNER]` note in the drafts):
 
-1. **Notice periods**: before charging starts, before a price change, before ending a free plan, before a change to
-   the terms (drafts say `[30]` days each).
-2. **Subscribing during the trial**: the hub charges on the day of subscribing, not at the trial's end (Terms 6).
-   Keep and say so, or change the hub.
-3. **Refund and dispute lapse**: a refund lapses the shop at once, even inside its trial; a dispute does too and isn't
-   undone automatically if you win (Terms 8). Keep or change.
-4. **Never-connected Windows installs**: do the Terms still require a subscription after the trial, although the
-   program keeps working (Terms 7)? Recommended: yes.
-5. **Hosted service**: decided 3 Oct 2026: the shared hosted service costs the same as Windows, and a dedicated copy is
-   at cost (about $10 a month on top); how often database backups run and how long they're kept; Railway region; how long a closed account's data
-   is kept before deletion (`[90]` days suggested); notice if the hosted service ever closes (`[90]` days).
+1. **Notice periods**: before the services change or stop, before charging ever starts, before a change to the terms
+   (drafts say `[90]` and `[30]` days).
+2. **The Assistant**: free, limited or paid (Terms 5). It costs money per request.
+3. **Limits on the free hosted service** (storage, photos, backups, messages), if any (Terms 5).
+4. **Donations**: the platform's name and what it passes on to you (Terms 6, Privacy 5.8), and the YouTube channel and
+   donation links. Also whether donations need any other notice.
+5. **Hosted service**: how often database backups run and how long they're kept; Railway region; how long a closed
+   account's data is kept before deletion (`[90]` days suggested).
 6. **Self-hosting licence**: this repository has no LICENSE file. Decide the terms self-hosting shops get the code
    under (Terms 4).
-7. **Module prices** to publish (the Assistant planned at $15 / $150 with 300 requests and 20 free plate reads).
-8. **The online shop's "hosted service's Stripe account" option** (Terms 13): payout schedule, fees, who bears refunds
+7. **The online shop's "hosted service's Stripe account" option** (Terms 13): payout schedule, fees, who bears refunds
    and chargebacks. And see lawyer question 4: it may not be allowed at all without Stripe Connect.
-9. **Uptime promise** for the hosted service (recommended: none).
-10. **Marketing email to shops**: none (draft), or product news with an unsubscribe.
-11. **Assistant counts kept on the hub**: how long (2 years suggested).
-12. **Customer deletion**: the program can't delete or merge a customer yet (HANDOFF 4, L126, decided not built). Say
+8. **Uptime promise** for the hosted service (recommended: none).
+9. **Marketing email to shops**: none (draft), or product news with an unsubscribe.
+10. **Assistant counts kept on the hub**: how long (2 years suggested).
+11. **Customer deletion**: the program can't delete or merge a customer yet (HANDOFF 4, L126, decided not built). Say
     how a deletion request is handled until it can, or build it before publishing.
-13. **Figure pictures go to the hub automatically** (see section 4 below): make it an "offer", or keep it and say so (the
+12. **Figure pictures go to the hub automatically** (see section 4 below): make it an "offer", or keep it and say so (the
     draft says so).
-14. **Request logs**: check Railway's log retention for the hub and hosted services (Privacy 5.2).
-15. **Answer time** for privacy requests (`[45]` days suggested).
+13. **Request logs**: check Railway's log retention for the hub and hosted services (Privacy 5.2).
+14. **Answer time** for privacy requests (`[45]` days suggested).
 
 ## 4. Found in the code while drafting (the owner should know)
 
