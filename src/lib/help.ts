@@ -11,7 +11,7 @@ import { appName, programVersion } from "@/lib/shops";
 import { UserError } from "@/lib/user-error";
 import type { Prisma } from "@/generated/prisma/client";
 
-export type HelpKind = "help" | "idea" | "rating" | "error";
+export type HelpKind = "help" | "bug" | "idea" | "rating" | "error";
 export const HELP_TEXT_MAX = 4000;
 /** The hub takes a picture up to 1 MB; the browser aims for 800 KB. */
 export const HELP_PICTURE_MAX = 1024 * 1024;
@@ -170,8 +170,10 @@ export async function recordActionError(user: { shopId: string; role: string }, 
 // ---------- what a person sends ----------
 
 export type HelpInput = {
-  kind: "help" | "idea" | "rating";
+  kind: "help" | "bug" | "idea" | "rating";
   text: string | null;
+  /** A bug report only: how to make it happen again. */
+  steps?: string | null;
   stars: number | null;
   quoteOk: boolean;
   replyTo: string | null;
@@ -182,7 +184,7 @@ export type HelpInput = {
 export async function addHelpItem(shopId: string, input: HelpInput, ctx: HelpContext): Promise<string> {
   const text = input.text?.trim().slice(0, HELP_TEXT_MAX + 1) || null;
   if (text && text.length > HELP_TEXT_MAX) throw new UserError(`Please keep it under ${HELP_TEXT_MAX.toLocaleString("en-US")} characters.`);
-  if (input.kind === "help" && !text) throw new UserError("Please tell us what happened.");
+  if ((input.kind === "help" || input.kind === "bug") && !text) throw new UserError("Please tell us what happened.");
   if (input.kind === "idea" && !text) throw new UserError("Please tell us your idea.");
   let stars: number | null = null;
   if (input.kind === "rating") {
@@ -190,7 +192,7 @@ export async function addHelpItem(shopId: string, input: HelpInput, ctx: HelpCon
     if (!(stars >= 1 && stars <= 5)) throw new UserError("Please pick 1 to 5 stars.");
   }
   let picture: Uint8Array | null = null;
-  if (input.kind === "help" && input.picture?.length) {
+  if ((input.kind === "help" || input.kind === "bug") && input.picture?.length) {
     const p = input.picture;
     // A JPEG starts FF D8 FF; anything else, or too big, is left out rather than refused (the words matter most).
     if (p.length <= HELP_PICTURE_MAX && p[0] === 0xff && p[1] === 0xd8 && p[2] === 0xff) picture = p;
@@ -198,6 +200,11 @@ export async function addHelpItem(shopId: string, input: HelpInput, ctx: HelpCon
   const payload: Record<string, unknown> = { context: ctx };
   if (text) payload.text = text;
   if (stars) payload.stars = stars;
+  if (input.kind === "bug") {
+    const steps = input.steps?.trim().slice(0, 3001) || null;
+    if (steps && steps.length > 3000) throw new UserError("Please keep the steps under 3,000 characters.");
+    if (steps) payload.steps = steps;
+  }
   if (input.kind === "rating") payload.quoteOk = input.quoteOk;
   if (input.kind !== "rating" && input.replyTo) payload.replyTo = input.replyTo;
   const row = await db.helpOutbox.create({
