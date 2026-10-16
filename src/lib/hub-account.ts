@@ -21,7 +21,7 @@ import { compareTermsVersions, validTermsVersion } from "@/lib/terms-version";
  * older hub, or out of reach). The version shown and sent is the hub's own, from GET /v1/terms/current (hubTermsVersion),
  * so a new version needs no program release (package terms-launch).
  */
-export const TERMS_VERSION = "2026-10-03-draft";
+export const TERMS_VERSION = "2026-10-16-draft";
 
 const TERMS_FRESH_MS = 10 * 60_000; // the hub's answer is good for 10 minutes
 const TERMS_RETRY_MS = 60_000; // no answer: asked again after a minute, the last answer (or TERMS_VERSION) meanwhile
