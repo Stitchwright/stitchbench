@@ -5,6 +5,7 @@
   "license": "MIT OR Apache-2.0",
   "description": "StitchBench (repair bench) or StitchShop (sewing / quilt shop counter) for the shop PC: runs the app and its database, and serves it to every device on the shop network.",
   "author": "Timing & Tension",
+  "homepage": "https://github.com/Stitchwright/stitchbench",
   "private": true,
   "type": "module",
   "main": "main.mjs",
