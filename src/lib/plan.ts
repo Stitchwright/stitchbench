@@ -10,6 +10,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { loginPlanOf, type LoginPlan } from "@/lib/license";
+import { freeProgram } from "@/lib/free-program";
 import { getModules, verifyFor } from "@/lib/modules";
 import { isPlatformAdmin } from "@/lib/shops";
 import { UserError } from "@/lib/user-error";
@@ -29,6 +30,7 @@ export type CompanyPlan = {
  * key names none, or there is no key.
  */
 export async function companyPlan(shopId: string): Promise<CompanyPlan | null> {
+  if (freeProgram()) return null; // free: no plans, so no limit on logins
   const base = (await getModules(shopId)).states.base;
   if (base.status === "off" || base.source !== "key" || !base.keyId) return null;
   const row = await db.license.findUnique({ where: { shopId_keyId: { shopId, keyId: base.keyId } }, select: { key: true } });

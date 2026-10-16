@@ -3,6 +3,7 @@ import "server-only";
 // and every stored key is verified from its text each time: nothing in the database can switch a module on by itself.
 import { cache } from "react";
 import { db } from "@/lib/db";
+import { freeProgram, FREE_EXCLUDED } from "@/lib/free-program";
 import { UserError } from "@/lib/user-error";
 import { acceptScope, adminPosition, effectiveNow, resolveStatus, verifyLicense, windows, type AdminPosition, type GrantRow, type LicensePayload, type Verified, type Window } from "@/lib/license";
 import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";
@@ -119,6 +120,11 @@ function keyView(row: LicenseRow, v: Verified, shopId: string, now: Date, tz: st
   return { view: { ...base, state }, payload: p };
 }
 
+/** A module while the programs are free (src/lib/free-program.ts): on for good, whatever keys the company holds. */
+function freeState(id: ModuleId): ModuleState {
+  return { id, label: MODULES[id].label, status: "on", active: true, lastDay: null, graceLastDay: null, startsOn: null, endedAt: null, plan: "c", source: null, keyId: null, switchedOff: false };
+}
+
 function toState(id: ModuleId, r: ReturnType<typeof resolveStatus>, pos: AdminPosition | null, tz: string): ModuleState {
   const best: Window | null = r.best;
   const switchedOff = r.status === "lapsed" && pos?.offAt != null && (best == null || best.graceUntil <= pos.offAt || best.issuedAt <= pos.offAt);
@@ -199,7 +205,7 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
           }
         }
       }
-      states[id] = toState(id, resolveStatus(ws, now, pos), pos, shop.timeZone);
+      states[id] = freeProgram() && !(FREE_EXCLUDED as readonly string[]).includes(id) ? freeState(id) : toState(id, resolveStatus(ws, now, pos), pos, shop.timeZone);
     }
     out.set(shop.id, {
       shopId: shop.id,

@@ -8,6 +8,9 @@ import { isUserError } from "@/lib/action";
 import { createShopWithOwner, type ShopKind } from "@/lib/shops";
 import type { CurrentUser } from "@/lib/session";
 
+// The check scripts test the key rules, so they run with the free program switched off (src/lib/free-program.ts).
+process.env.PROGRAM_FREE ??= "off";
+
 /** One run's tag: throwaway companies are named "Check <run>" and their logins check-<run>-<n>@stitchbench.test. */
 export const RUN = Date.now().toString(36);
 

@@ -10,6 +10,7 @@ import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { activateLicense } from "@/actions/licenses";
+import { freeProgram } from "@/lib/free-program";
 
 /** "2027-09-30" -> "Sep 30" (the year is left off where the sentence already says it is soon). */
 function shortDay(ymd: string) {
@@ -143,7 +144,7 @@ export default async function ModulesPage() {
             </span>
             <CopyButton text={shop.id} />
           </div>
-          <p className="muted">Keys are made for this ID. Give it when you buy or renew.</p>
+          <p className="muted">{freeProgram() ? "Your Company ID, in case you are asked for it when you write for help." : "Keys are made for this ID. Give it when you buy or renew."}</p>
           <p>Name on keys: {shop.name}</p>
           {modules.testBuild && <p className="pill tone-bad inline-block">Test build: test keys work here</p>}
           {modules.clockBehind && modules.floor && (
@@ -266,7 +267,7 @@ export default async function ModulesPage() {
             <div className="flex flex-wrap items-center gap-3">
               <Submit>Add key</Submit>
             </div>
-            <p className="muted text-xs">{MODULE_SALES_NOTE}</p>
+            <p className="muted text-xs">{freeProgram() ? "Every add-on is free and already on, so you do not need a key. A key is only for the Assistant." : MODULE_SALES_NOTE}</p>
           </ActionForm>
         ) : (
           <p className="muted text-sm">The shop owner or an admin adds keys.</p>
