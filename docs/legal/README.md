@@ -135,8 +135,8 @@ Still to decide (each is an `[OWNER]` note in the drafts):
 
 ## 5. Questions for the lawyer (summary; the full wording is inline)
 
-1. **Structure**: business-only terms (no consumer rules), authority to bind, minimum age 18; California's automatic
-   renewal law and similar for sole traders.
+1. **Structure**: business-only terms (no consumer rules), authority to bind, minimum age 18 (with no payments, auto-renewal
+   laws should not apply: confirm).
 2. **Data roles**: is the Terms' section 11 enough as a CCPA "service provider" contract for the hosted service, or is
    a separate DPA needed; GDPR/UK DPA only if non-US customers are possible; should we say "US businesses only".
 3. **A repair shop hosting StitchShop** for its partners: what must our Terms require of it.
@@ -148,15 +148,17 @@ Still to decide (each is an `[OWNER]` note in the drafts):
    edit history; copyright in manual figure crops; a DMCA agent and takedown process.
 7. **The Assistant**: Anthropic's DPA and subprocessor listing; whether to pass through more of Anthropic's terms;
    re-check the quoted terms at publication.
-8. **Sales tax on SaaS** and economic nexus; whether "we don't charge it now" is safe.
-9. **Refund wording** ("at our choice" for yearly), chargeback handling.
-10. **Warranty disclaimer, limitation of liability** (cap: 12 months' fees or $100; "lost data" next to the "never data
-    loss" promise), **indemnity**, repair-information disclaimer.
+8. **Donations and YouTube income** (Terms 6): how to describe donations as gifts, that they are not tax-deductible,
+   state rules on soliciting donations, and any notice needed elsewhere; revisit if the project becomes a nonprofit.
+9. **Free service and bug reports** (Terms 5, 7, 10; Privacy 5.2b): promises about notice before changing or stopping a
+   free service, public GitHub issues containing what people type, and the AI assistant that works on issues.
+10. **Warranty disclaimer, limitation of liability** (cap: $100, since nothing is paid; "lost data" next to the promise
+    not to delete a suspended shop's data), **indemnity**, repair-information disclaimer.
 11. **Changes**: "keep using = agree" or a fresh tick for material changes.
 12. **Disputes**: courts or arbitration, venue, class-action waiver, small claims.
 13. **Privacy specifics**: which state privacy laws apply at our size; cookie banner (none planned); COPPA where shops
     enroll children in classes; breach notification duties on the hosted service; subprocessor list format; request-log
-    IP addresses; billing record retention period.
+    IP addresses; how long to keep donation records.
 14. **Self-hosting licence** text, and the interplay with the hub's AGPL code.
 
 ## 6. Checklist before publishing
