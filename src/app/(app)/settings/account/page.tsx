@@ -117,7 +117,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             </p>
           )}
           {v.connected && !standingWord && <p className="muted">The hub hasn&apos;t said where this company stands yet. It does at the next sync, or press Check again.</p>}
-          {!v.connected && <p className="muted">This program isn&apos;t connected to StitchHub. It works as it is; an account is only needed to subscribe or to be comped.</p>}
+          {!v.connected && <p className="muted">This program isn&apos;t connected to StitchHub. It works as it is; a StitchHub account is for the community hub and partner shops.</p>}
           {nag && (
             <p className="pill tone-wait inline-block whitespace-normal">
               {program} has run here for {v.ageDays} days without a StitchHub account. Nothing stops, but please create one below so StitchBench knows about this shop
@@ -203,7 +203,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             <ActionForm action={startHubAccount} success="Account started: check your email" className="space-y-3">
               <h3 className="font-semibold">Create your StitchHub account</h3>
               <p className="muted">
-                One account, with your email and a password, owns this shop on StitchHub. It is where you subscribe when the time comes, and it keeps this program&apos;s key current.{" "}
+                One account, with your email and a password, owns this shop on StitchHub. It lists your shops, and connects this program to the community hub and to partner shops.{" "}
                 {!v.connected && `Creating it also connects this program to ${v.hubUrl.replace(/^https?:\/\//, "")} (no invite needed).`}
               </p>
               <div className="field max-w-sm">

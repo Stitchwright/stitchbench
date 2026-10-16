@@ -18,4 +18,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - After any `npm install` on Windows, check `package-lock.json` still has `node_modules/@emnapi/core` and
   `node_modules/@emnapi/runtime` (npm on Windows prunes these Linux-only optional packages; `npm ci` on GitHub and
   Railway then fails). Put them back as in commit f295adb if they're gone.
+- Free program (owner, 15 Oct 2026): StitchBench and StitchShop cost nothing; YouTube and donations pay for them. While
+  `PROGRAM_FREE` is on (the default; `src/lib/free-program.ts`) nothing lapses for want of a key, every add-on is on, and
+  there is no Solo login limit. The key rules still exist and are tested: check scripts set `PROGRAM_FREE=off` (in
+  `scripts/checks/lib.ts` and `tenant.ts`), and the end-to-end test server must be started with `PROGRAM_FREE=off`
+  (`scripts/local-test/start_hubtest.bat` does). The hub (StitchHub, `src/free.mjs`) comps every shop the same way.
 - Work in progress (review fixes, new features): read `docs/HANDOFF.md` before starting.

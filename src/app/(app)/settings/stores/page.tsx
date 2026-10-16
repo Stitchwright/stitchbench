@@ -161,7 +161,7 @@ export default async function StoresPage() {
                 <input id="add-name" name="name" required className="input" placeholder="Florida" />
               </div>
               <DetailFields prefix="add" s={{ address: null, phone: null, timeZone: shop.timeZone, taxRatePct: shop.taxRatePct, hours: null, receiptFooter: null }} />
-              <p className="muted col-span-full text-sm">Each store after the first is $25 a month ($250 a year), added to your StitchHub bill.</p>
+              <p className="muted col-span-full text-sm">Extra stores are free: there is nothing to add to a bill.</p>
               <div className="col-span-full">
                 <Submit>Add the store</Submit>
               </div>
@@ -363,7 +363,7 @@ export default async function StoresPage() {
               <input id="add-name" name="name" required className="input" />
             </div>
             <DetailFields prefix="add" s={{ address: null, phone: null, timeZone: shop.timeZone, taxRatePct: shop.taxRatePct, hours: null, receiptFooter: null }} />
-            <p className="muted col-span-full text-sm">Each store after the first is $25 a month ($250 a year), added to your StitchHub bill.</p>
+            <p className="muted col-span-full text-sm">Extra stores are free: there is nothing to add to a bill.</p>
             <div className="col-span-full">
               <Submit className="btn">Add the store</Submit>
             </div>

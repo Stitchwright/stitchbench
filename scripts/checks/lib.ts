@@ -18,6 +18,9 @@ import { makeCompany, removeCompany, RUN, type CheckCompany } from "./tenant";
 export type CheckShop = CheckCompany & { name: string };
 export type MessagingModule = "scheduling" | "marketing" | "vac";
 
+// The check scripts test the key rules, so they run with the free program switched off (src/lib/free-program.ts).
+process.env.PROGRAM_FREE ??= "off";
+
 const made: string[] = [];
 let n = 0;
 

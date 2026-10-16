@@ -30,6 +30,8 @@ Everything here is in the repo. Nothing needs the owner's PC except the Windows-
 ```
 # the build (about four minutes; run it in the foreground: a backgrounded build has been killed by memory pressure)
 STITCH_TEST_BUILD=1 npx next build
+# The key rules (lapsed = read-only, add-ons off without a key) are tested with the free program switched off: start the
+# server you test against with PROGRAM_FREE=off (src/lib/free-program.ts).
 
 # the sink, the Twilio mock and the Stripe mock (background; the Stripe mock posts its webhooks to the server)
 SMTP_SINK_PORT=2526 SMTP_SINK_HTTP=2581 node scripts/test-mail/smtp-sink.mjs &
