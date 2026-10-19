@@ -252,7 +252,7 @@ your password in **Settings**, and add your people under **Settings → People**
 | `AUTH_SECRET` | a long random secret (keep it private) |
 | `AUTH_TRUST_HOST` | `true` |
 | `TRUST_PROXY` | `true` on Railway: sign-in limits per device use the address Railway's proxy reports. Leave unset anywhere without a proxy in front |
-| `SEED_SHOP_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD` | the company and owner login made on the first start |
+| `SEED_SHOP_NAME`, `SEED_OWNER_NAME`, `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD` | the company and owner login made on the first start. With `FOUNDRY_SIGNIN=only` the password is ignored: the first start prints a one-time link that links the owner's Foundry Account (`npm run foundry:owner-link -- owner@example.com` makes another; docs/plan.md, "FA-5 notes") |
 | `ALLOW_SIGNUP` | leave unset. `true` lets anyone create a company at `/signup` |
 | `PLATFORM_ADMIN_EMAILS` | optional: emails that can add companies from the Companies page (hosting several shops) |
 | `APP_NAME`, `DEFAULT_SHOP_KIND` | `StitchShop` and `retail` for a StitchShop site (new companies start as sewing shops); leave unset for StitchBench |

@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { clientAddress } from "@/lib/client-ip";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
+import { checkLinkToken } from "@/lib/password-reset";
 import { signInStep } from "@/lib/sign-in";
 import { forgotPassword as cloudForgot, isFoundryError, signIn as cloudSignIn, signOut as cloudSignOut, signUp as cloudSignUp, type CloudOptions, type FoundryFailure, type SignedIn } from "./cloud";
 import { startFoundrySession } from "./session";
@@ -92,9 +93,20 @@ async function endAtService(token: string, o: CloudOptions) {
 }
 
 /** Why a link didn't happen. */
-export type LinkRefusal = "old" | "several" | "foundry-wrong" | "foundry-taken" | "wait" | "offline" | "down" | "other-account" | "taken" | "short";
+export type LinkRefusal = "old" | "link" | "several" | "foundry-wrong" | "foundry-taken" | "wait" | "offline" | "down" | "other-account" | "taken" | "short";
 
-export type LinkInput = { email: unknown; password: unknown; foundryEmail: unknown; foundryPassword: unknown; create: boolean };
+export type LinkInput = {
+  email?: unknown;
+  password?: unknown;
+  /** A setup or administrator's link (docs/plan.md FA-5): proves the login by itself, instead of its old email and password. */
+  token?: unknown;
+  foundryEmail: unknown;
+  foundryPassword: unknown;
+  create: boolean;
+};
+
+/** A link taken by someone else between the check and the write. */
+class LinkGone extends Error {}
 
 /**
  * Link a login to a Foundry Account (or make the account first). The login is proved by its old email and password (with
@@ -102,10 +114,20 @@ export type LinkInput = { email: unknown; password: unknown; foundryEmail: unkno
  * same email in several companies, link from Settings once signed in (not built yet: FA-2 follow-up).
  */
 export async function linkFoundryAccount(input: LinkInput, request: Request | Headers | undefined, o: FoundryDeps = {}): Promise<{ ok: true; login: FoundryLogin; foundryId: number } | { ok: false; reason: LinkRefusal }> {
-  const found = await signInStep({ email: input.email, password: input.password }, request);
-  if (!found) return { ok: false, reason: "old" };
-  if (found.length !== 1) return { ok: false, reason: "several" };
-  const who = found[0];
+  // Who the login is: a one-time link says so by itself; otherwise its old email and password do (with their usual limits).
+  let who: { id: string; sv: number };
+  let tokenRowId: string | null = null;
+  if (typeof input.token === "string" && input.token.trim()) {
+    const t = await checkLinkToken(input.token);
+    if (!t.ok) return { ok: false, reason: "link" };
+    who = { id: t.userId, sv: t.sv };
+    tokenRowId = t.rowId;
+  } else {
+    const found = await signInStep({ email: input.email, password: input.password }, request);
+    if (!found) return { ok: false, reason: "old" };
+    if (found.length !== 1) return { ok: false, reason: "several" };
+    who = found[0];
+  }
 
   const parsed = credentialsSchema.safeParse({ email: input.foundryEmail, password: input.foundryPassword });
   if (!parsed.success) return { ok: false, reason: input.create ? "short" : "foundry-wrong" };
@@ -133,19 +155,28 @@ export async function linkFoundryAccount(input: LinkInput, request: Request | He
     await endAtService(signed.token, o);
     return { ok: false, reason: "other-account" };
   }
-  if (user.foundryId === null) {
+  if (user.foundryId === null && (await db.user.findFirst({ where: { shopId: user.shopId, foundryId: signed.account.id }, select: { id: true } }))) {
     // Another login of this company already holds the account: say so without letting the database raise it.
-    if (await db.user.findFirst({ where: { shopId: user.shopId, foundryId: signed.account.id }, select: { id: true } })) {
-      await endAtService(signed.token, o);
-      return { ok: false, reason: "taken" };
-    }
-    try {
-      await db.user.update({ where: { id: user.id }, data: { foundryId: signed.account.id } });
-    } catch {
-      // Two links at the same moment: the unique rule (shopId, foundryId) is the last word.
-      await endAtService(signed.token, o);
-      return { ok: false, reason: "taken" };
-    }
+    await endAtService(signed.token, o);
+    return { ok: false, reason: "taken" };
+  }
+  try {
+    await db.$transaction(async (tx) => {
+      // The link is taken under its own update, in the same transaction as the write: two tries can't both use it, and a write
+      // that fails gives it back. A used link also cancels the login's other links (as setting a password from one does).
+      if (tokenRowId) {
+        const took = await tx.passwordReset.updateMany({ where: { id: tokenRowId, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+        if (took.count !== 1) throw new LinkGone();
+      }
+      if (user.foundryId === null) await tx.user.update({ where: { id: user.id }, data: { foundryId: signed.account.id } });
+      if (tokenRowId) await tx.passwordReset.updateMany({ where: { userId: user.id, kind: { in: ["reset", "setup", "admin"] }, usedAt: null }, data: { usedAt: new Date() } });
+    });
+  } catch (e) {
+    await endAtService(signed.token, o);
+    // Two links at the same moment: the unique rule (shopId, foundryId) is the last word.
+    return { ok: false, reason: e instanceof LinkGone ? "link" : "taken" };
+  }
+  if (user.foundryId === null) {
     try {
       await audit(db, { shopId: user.shopId, id: user.id, name: user.name, role: user.role }, { action: "foundry.link", subjectType: "User", subjectId: user.id, subjectLabel: `${user.name} (${user.email})` });
     } catch (e) {

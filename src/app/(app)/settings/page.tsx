@@ -6,6 +6,8 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { getModules } from "@/lib/modules";
 import { foundryLinkMode } from "@/lib/foundry/mode";
+import { foundrySignInMode } from "@/lib/foundry/switches";
+import { appName } from "@/lib/shops";
 import { loginNotice } from "@/lib/plan";
 import { shopKinds } from "@/lib/equipment/shop";
 import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
@@ -164,6 +166,8 @@ async function CommunityHub({ admin, timeZone, owner }: { admin: boolean; timeZo
 export default async function SettingsPage() {
   const user = await requireUser();
   const admin = user.role !== "TECH";
+  // FOUNDRY_SIGNIN=only (docs/plan.md FA-5): nobody has a password here; people come in by a one-time link that links their Foundry Account.
+  const only = foundrySignInMode() === "only";
   const [shop, services, users, modules, kinds, stockUnits] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId } }),
     db.serviceItem.findMany({ where: { shopId: user.shopId }, orderBy: { sortOrder: "asc" } }),
@@ -736,20 +740,27 @@ export default async function SettingsPage() {
                 {/* Your own password is changed under My password below, which asks for the current one. */}
                 {u.role !== "OWNER" && u.id !== user.id && (
                   <details className="mt-1">
-                    <summary className="link cursor-pointer text-xs">Reset password</summary>
-                    <ActionForm action={resetUserPassword.bind(null, u.id)} reset success="Password reset. Give them the new one." className="mt-2 flex flex-wrap gap-2">
-                      <label className="sr-only" htmlFor={`rp-${u.id}`}>
-                        New password for {u.name}
-                      </label>
-                      <input id={`rp-${u.id}`} name="password" required minLength={8} className="input w-64" placeholder="New password (8+ characters)" autoComplete="new-password" />
-                      <Submit className="btn btn-sm">Set password</Submit>
-                    </ActionForm>
+                    <summary className="link cursor-pointer text-xs">{only ? "Make a sign-in link" : "Reset password"}</summary>
+                    {only ? (
+                      <ActionForm action={resetUserPassword.bind(null, u.id)} showResult={`Sign-in link for ${u.name}`} success="Link made. Give it to them: it works once, for 24 hours, and signs out anything they had open." className="mt-2 flex flex-wrap gap-2">
+                        <Submit className="btn btn-sm">Make link</Submit>
+                        <span className="muted text-xs">For someone who lost access to their Foundry Account, or to use a different one.</span>
+                      </ActionForm>
+                    ) : (
+                      <ActionForm action={resetUserPassword.bind(null, u.id)} reset success="Password reset. Give them the new one." className="mt-2 flex flex-wrap gap-2">
+                        <label className="sr-only" htmlFor={`rp-${u.id}`}>
+                          New password for {u.name}
+                        </label>
+                        <input id={`rp-${u.id}`} name="password" required minLength={8} className="input w-64" placeholder="New password (8+ characters)" autoComplete="new-password" />
+                        <Submit className="btn btn-sm">Set password</Submit>
+                      </ActionForm>
+                    )}
                   </details>
                 )}
               </li>
             ))}
           </ul>
-          <ActionForm action={addUser} reset success="Account created. Give them the temporary password." className="grid-form border-t border-line pt-4">
+          <ActionForm action={addUser} reset showResult="Give this link to the new person" success={only ? "Person added. Give them the sign-in link: it works once, for 24 hours." : "Account created. Give them the temporary password."} className="grid-form border-t border-line pt-4">
             <div className="field">
               <label htmlFor="u-name" className="label">
                 Name
@@ -762,12 +773,14 @@ export default async function SettingsPage() {
               </label>
               <input id="u-email" name="email" type="email" required className="input" />
             </div>
-            <div className="field">
-              <label htmlFor="u-pw" className="label">
-                Temporary password (8+ characters)
-              </label>
-              <input id="u-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
-            </div>
+            {!only && (
+              <div className="field">
+                <label htmlFor="u-pw" className="label">
+                  Temporary password (8+ characters)
+                </label>
+                <input id="u-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
+              </div>
+            )}
             <div className="field">
               <label htmlFor="u-role" className="label">
                 Role
@@ -784,25 +797,33 @@ export default async function SettingsPage() {
         </Section>
       )}
 
-      <Section title="My password">
-        <ActionForm action={changePassword} reset success="Password changed" className="grid-form">
-          <div className="field">
-            <label htmlFor="pw-cur" className="label">
-              Current password
-            </label>
-            <input id="pw-cur" name="current" type="password" required className="input" autoComplete="current-password" />
-          </div>
-          <div className="field">
-            <label htmlFor="pw-new" className="label">
-              New password (8+ characters)
-            </label>
-            <input id="pw-new" name="next" type="password" required minLength={8} className="input" autoComplete="new-password" />
-          </div>
-          <div className="sm:col-span-2">
-            <Submit>Change password</Submit>
-          </div>
-        </ActionForm>
-      </Section>
+      {only ? (
+        <Section title="My sign-in">
+          <p className="text-sm">
+            {`You sign in to ${appName()} with your Foundry Account, so there is no password here to change. Forgot your Foundry Account's password? Use “Forgot your password?” on the sign-in page.`}
+          </p>
+        </Section>
+      ) : (
+        <Section title="My password">
+          <ActionForm action={changePassword} reset success="Password changed" className="grid-form">
+            <div className="field">
+              <label htmlFor="pw-cur" className="label">
+                Current password
+              </label>
+              <input id="pw-cur" name="current" type="password" required className="input" autoComplete="current-password" />
+            </div>
+            <div className="field">
+              <label htmlFor="pw-new" className="label">
+                New password (8+ characters)
+              </label>
+              <input id="pw-new" name="next" type="password" required minLength={8} className="input" autoComplete="new-password" />
+            </div>
+            <div className="sm:col-span-2">
+              <Submit>Change password</Submit>
+            </div>
+          </ActionForm>
+        </Section>
+      )}
       {!admin && <p className="muted text-sm">Shop settings are managed by the owner. Rates: labor {money(shop.laborRateCents)}/hr.</p>}
     </div>
   );

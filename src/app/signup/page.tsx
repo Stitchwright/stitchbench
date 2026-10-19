@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
-import { appName, createShopWithOwner, defaultShopKind, isPlatformAdmin, RESERVED_EMAIL, type ShopKind } from "@/lib/shops";
+import { appName, createShopWithOwner, defaultShopKind, isPlatformAdmin, randomOwnerPassword, RESERVED_EMAIL, type ShopKind } from "@/lib/shops";
+import { foundrySignInMode } from "@/lib/foundry/switches";
+import { ownerSetupLink } from "@/lib/password-reset";
 import { hubJoined } from "@/lib/hub";
 import { redeemPartnerCode } from "@/lib/partners";
 import { isUserError } from "@/lib/user-error";
@@ -39,8 +41,11 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
     const shopName = String(fd.get("shop") ?? "").trim();
     const name = String(fd.get("name") ?? "").trim();
     const email = normalizeEmail(fd.get("email"));
-    const password = String(fd.get("password") ?? "");
-    if (!shopName || !name || !email || password.length < 8) redirect(back("missing"));
+    // FOUNDRY_SIGNIN=only (docs/plan.md FA-5): no password. The new owner is taken straight to linking their Foundry Account, with a
+    // one-time link made for them here (the company's first owner is whoever just created it).
+    const only = foundrySignInMode() === "only";
+    const password = only ? randomOwnerPassword() : String(fd.get("password") ?? "");
+    if (!shopName || !name || !email || (!only && password.length < 8)) redirect(back("missing"));
     if (!isValidEmail(email)) redirect(back("email"));
     // The StitchBench administrator's address: only the install's first company may take it (createShopWithOwner checks).
     if (isPlatformAdmin(email) && (await db.shop.count())) redirect(back("reserved"));
@@ -69,6 +74,10 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         next = "/partners?error=partner-code";
       }
     }
+    if (only) {
+      const { token } = await ownerSetupLink(shop.id, email);
+      redirect(`/login/link?t=${encodeURIComponent(token)}`);
+    }
     try {
       await signIn("credentials", { email, password, redirectTo: next });
     } catch (e) {
@@ -94,14 +103,16 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
                 ? RESERVED_EMAIL
                 : error === "email"
                   ? EMAIL_HELP
-                  : "Fill in every field; password 8+ characters."}
+                  : foundrySignInMode() === "only"
+                    ? "Fill in every field."
+                    : "Fill in every field; password 8+ characters."}
           </p>
         )}
         {[
           ["shop", "Shop name", "text"],
           ["name", "Your name", "text"],
           ["email", "Email", "email"],
-          ["password", "Password (8+ characters)", "password"],
+          ...(foundrySignInMode() === "only" ? [] : [["password", "Password (8+ characters)", "password"]]),
         ].map(([k, label, type]) => (
           <div key={k} className="field">
             <label htmlFor={k} className="label">
@@ -126,6 +137,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           </label>
           <input id="partnerCode" name="partnerCode" autoComplete="off" className="input mono" placeholder="7KQP-M2XH-9TRD" />
         </div>
+        {foundrySignInMode() === "only" && <p className="muted text-sm">Next you link your Foundry Account (or make one): that is how you sign in, there is no separate password.</p>}
         <button className="btn btn-primary w-full">Create shop</button>
         {process.env.SETUP_TOKEN && (
           // The Windows program's first run (company-move-design.md section 8): its window opens the tray's file

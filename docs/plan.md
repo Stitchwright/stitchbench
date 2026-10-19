@@ -1,6 +1,6 @@
 # StitchBench and StitchShop: the Foundry Account plan
 
-**Status:** 2026-10-19. Survey done. FA-1 to FA-4 done, each behind a switch that is off: hosted sign-in (`FOUNDRY_SIGNIN`), the desktop program's optional link (`FOUNDRY_LINK`) and the Assistant's AI without the hub (`FOUNDRY_AI`). Owner: Bruce Wattendorf (SiteSentrix).
+**Status:** 2026-10-19. Survey done. FA-1 to FA-5 done, each behind a switch that is off: hosted sign-in (`FOUNDRY_SIGNIN`), the desktop program's optional link (`FOUNDRY_LINK`) and the Assistant's AI without the hub (`FOUNDRY_AI`). Owner: Bruce Wattendorf (SiteSentrix).
 
 ## Goal
 One login, the **Foundry Account** (cloud.stitchfoundry.app), and one credit balance ("Foundry credits"), for all
@@ -49,7 +49,7 @@ keyed by the account's `id`.
 | FA-2 | Hosted sign-in with a Foundry Account; `User.foundryId`; reset demo accounts | **Done 2026-10-19, behind `FOUNDRY_SIGNIN` (off).** See "FA-2 notes". Demo accounts need no reset: a login is linked by proving its old password |
 | FA-3 | Desktop: optional link; offline messages for hub and AI | **Done 2026-10-19, behind `FOUNDRY_LINK` (off).** See "FA-3 notes" |
 | FA-4 | AI through `/v1/messages` or the shop's own key; drop the hub proxy call | **Done 2026-10-19, behind `FOUNDRY_AI` (off).** See "FA-4 notes" |
-| FA-5 | Remove local owner passwords on hosted; drop `SEED_OWNER_PASSWORD` | none left |
+| FA-5 | Remove local owner passwords on hosted; drop `SEED_OWNER_PASSWORD` | **Done 2026-10-19, behind `FOUNDRY_SIGNIN=only` (off).** See "FA-5 notes"; the cutover is the owner's steps below |
 
 
 ## FA-3 notes
@@ -129,6 +129,44 @@ token (needs a cookie; the code path is tiny but untested), and the desktop shel
 PatternFoundry and LaserFoundry each need their own marketing page and download links for their different installers; MakerFoundry needs no landing
 page, because it is the storefront, so the pages link straight to it. PatternFoundry will get the same treatment as StitchBench/StitchShop (Foundry
 Account, AI in credits or the shop's own key) when its turn comes. **The owner will do the pages in the StitchFoundry chat, not here.**
+
+## FA-5 notes
+Nothing here changes anything until `FOUNDRY_SIGNIN=only`; with it off or on, every password flow is exactly as before.
+
+**With `only`, nobody has a local password:**
+- A **one-time link** (a setup or administrator's link, 24 hours, once) now proves a login by itself: `/login/link?t=…` links a Foundry Account with no old
+  password. It is taken in the same transaction as the write (two at once: one wins), is not spent by a wrong Foundry password or by a refusal for a
+  different account, and a plain "forgot my password" link is never proof. The old email-and-password proof still works at `/login/link`, for a login
+  with no link yet.
+- **Where links come from:** the seed (prints one for the first owner; `SEED_OWNER_PASSWORD` is ignored); the hub's "start a hosted shop"
+  (`setPasswordUrl` now opens the link page; same field name); the self-service `/signup` (goes straight on to linking); Companies → Add a company
+  and Partners → Set up StitchShop (a link shown once, no password typed); Settings → People (*Add person* needs no password and shows a link; *Make a
+  sign-in link* replaces *Reset password*: it clears the person's old link and ends their sessions, so they can attach a different account); Companies →
+  Reset link for an owner (same). `ActionForm` gained `showResult` to show such a link once, with Copy.
+- `/reset` and "My password" say there is no password; forgot-password mail is off (the Foundry Account's own reset is `/login/forgot`).
+- **Operator scripts** (`railway run npm run …`): `foundry:owner-link -- owner@example.com [company]` (a fresh 24-hour link when nobody is signed in:
+  an expired seed link, or an owner who lost their Foundry Account; it clears their link) and `foundry:retire-passwords [-- --apply]` (a dry run by
+  default; replaces the local password of every login that has a Foundry Account linked with a hash nobody knows, audited as `user.password_retired`;
+  lists the active logins still waiting to link; refuses unless `only`).
+
+**The cutover, in order (owner's steps, on Railway; not done):**
+1. Set `FOUNDRY_SIGNIN=on`. Everyone links at `/login/link` (old password + Foundry Account). Check the owner and a test login can sign in with the Foundry Account.
+2. Set `FOUNDRY_SIGNIN=only`. The old password stops signing anyone in and old sessions end; anyone still unlinked needs a link (Settings → People, or `foundry:owner-link`).
+3. `railway run npm run foundry:retire-passwords` (dry run), then `-- --apply`.
+4. Delete the `SEED_OWNER_PASSWORD` variable in Railway, then remove `"SEED_OWNER_PASSWORD"` from `.railway/railway.ts`'s kept list (leaving it there is harmless; removing it
+   from the list before the variable is gone would make `railway config apply` delete it for you).
+There is no way back from step 3 for a login except a link (which is the way in anyway).
+
+**Checked 2026-10-19:** tsc, lint, unit tests (105), `scripts/checks/foundry-passwords.check.ts` (4 steps; four deliberate breaks, one of which first slipped through
+a weak test and was fixed), and the existing sign-in, email-per-company, hosted-provisioning, join-companies, owner-phone, module, Assistant and FA-2/3/4
+checks (unchanged). A real browser run of the built app in `only`: the seed's printed link linked an owner with no old-password fields and signed them in; the
+same link again was refused; `/reset` said there is no password; Settings → People showed no password fields, a link for a new person that worked in a
+fresh browser; the signup page went straight to linking. The two scripts were run against that database. **Not checked:** the hub's own "start a hosted shop"
+request end to end (its answer still names `setPasswordUrl`), a deploy on Railway, the real Foundry service, and a phone-width look.
+
+**Known small things:** the hub's text for the link still says "choose a password" (a hub change, stitchhub `docs/plan.md`); a company created from the
+Companies page whose partner code fails still needs the administrator's *Reset link* (the failure message says so); two companies with the same owner
+email each get their own link.
 
 ## Open: "We host it for you" (FA-7)
 **Owner, 2026-10-19:** running it yourself (the Windows/Mac/Linux program, or your own server) stays **free**. If **SiteSentrix hosts**

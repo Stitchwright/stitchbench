@@ -82,6 +82,7 @@ export const AUDIT_ACTIONS = {
   "user.role": { category: "people", label: "Role changed" },
   "user.active": { category: "people", label: "Login made inactive or active" },
   "user.password_reset": { category: "people", label: "Password reset by an admin" },
+  "user.password_retired": { category: "people", label: "Local password retired (the login signs in with its Foundry Account)" },
   "user.password_change": { category: "people", label: "Own password changed" },
   "signin.ok": { category: "people", label: "Signed in" },
   "signin.fail": { category: "people", label: "Wrong password at sign-in" },

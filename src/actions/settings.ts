@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { safe, UserError } from "@/lib/action";
+import { safe, shownOnce, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { str, ticketNo, toCents } from "@/lib/format";
 import { assertId } from "@/lib/input";
@@ -11,7 +11,9 @@ import { shopKinds } from "@/lib/equipment/shop";
 import { requireModule } from "@/lib/modules";
 // Adding a person and switching access live in src/lib/people.ts (the Solo plan's two logins, src/lib/plan.ts).
 import { actorOf, audit, diff } from "@/lib/audit";
-import { addPersonAs, protectAdminLogin, setPersonActiveAs } from "@/lib/people";
+import { addPersonAs, protectAdminLogin, setPersonActiveAs, staffSignInLinkAs } from "@/lib/people";
+import { foundrySignInMode } from "@/lib/foundry/switches";
+import { ONLY_WORDS } from "@/lib/password-reset";
 
 /** The "For" select: "" (every kind) -> null, else a kind key this company has. */
 async function equipmentKindOf(shopId: string, v: FormDataEntryValue | null) {
@@ -159,6 +161,8 @@ export const savePriceListNote = safe(async function savePriceListNote(formData:
 
 export const resetUserPassword = safe.whileLapsed("resetUserPassword")(async function resetUserPassword(userId: string, formData: FormData) {
   const admin = await requireAdmin();
+  // FOUNDRY_SIGNIN=only: there is no password to set; the admin gets a one-time sign-in link to pass on (src/lib/people.ts).
+  if (foundrySignInMode() === "only") return shownOnce(await staffSignInLinkAs(admin, assertId(userId)));
   const password = String(formData.get("password") ?? "");
   if (password.length < 8) throw new UserError("Use at least 8 characters.");
   const u = await db.user.findFirst({ where: { id: userId, shopId: admin.shopId } });
@@ -175,8 +179,10 @@ export const resetUserPassword = safe.whileLapsed("resetUserPassword")(async fun
 
 // On the Solo plan a third active login is refused (src/lib/people.ts, src/lib/plan.ts).
 export const addUser = safe(async function addUser(formData: FormData) {
-  await addPersonAs(await requireAdmin(), formData);
+  const made = await addPersonAs(await requireAdmin(), formData);
   revalidatePath("/settings");
+  // FOUNDRY_SIGNIN=only: the one-time link, shown once, for the admin to give the new person.
+  if (made) return shownOnce(made.link);
 });
 
 export const setUserRole = safe(async function setUserRole(userId: string, formData: FormData) {
@@ -203,6 +209,7 @@ export const setUserActive = safe(async function setUserActive(userId: string, a
 
 export const changePassword = safe.whileLapsed("changePassword")(async function changePassword(formData: FormData) {
   const user = await requireUser();
+  if (foundrySignInMode() === "only") throw new UserError(ONLY_WORDS);
   const current = String(formData.get("current") ?? "");
   const next = String(formData.get("next") ?? "");
   if (next.length < 8) throw new UserError("Use at least 8 characters.");

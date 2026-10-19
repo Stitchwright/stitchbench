@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { foundrySignInMode } from "@/lib/foundry/switches";
 import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -192,10 +193,10 @@ export default async function Partners({ searchParams }: { searchParams: Promise
           <p className="muted mb-3 text-sm">
             Offer a quilt or sewing shop the register, inventory and repair tracking at no charge, in return for sending you their repairs and giving
             your stock shelf space. This makes their company and owner login on this install, already partnered with you on the terms below. Give
-            the owner the temporary password; they sign in at this same address and change it. (For them to reach it from their own counter, this
+            the owner {foundrySignInMode() === "only" ? "the one-time link shown after you save (it links their Foundry Account, which is how they sign in)" : "the temporary password; they sign in at this same address and change it"}. (For them to reach it from their own counter, this
             install needs to be online: see INSTALL.md, &quot;Hosted&quot;. Or give them the Windows program and a partner code instead.)
           </p>
-          <ActionForm action={setUpSewingShop} className="grid-form" success="Set up and partnered" reset>
+          <ActionForm action={setUpSewingShop} className="grid-form" success="Set up and partnered" reset showResult="Give this link to the owner">
             <div className="field">
               <label htmlFor="ss-shop" className="label">
                 Sewing shop&apos;s name
@@ -214,12 +215,14 @@ export default async function Partners({ searchParams }: { searchParams: Promise
               </label>
               <input id="ss-email" name="email" type="email" required className="input" />
             </div>
-            <div className="field">
-              <label htmlFor="ss-pw" className="label">
-                Temporary password (8+ characters)
-              </label>
-              <input id="ss-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
-            </div>
+            {foundrySignInMode() !== "only" && (
+              <div className="field">
+                <label htmlFor="ss-pw" className="label">
+                  Temporary password (8+ characters)
+                </label>
+                <input id="ss-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
+              </div>
+            )}
             <TermsFields idPrefix="ss-" />
             <div className="sm:col-span-2">
               <Submit>Set up their shop</Submit>

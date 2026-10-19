@@ -6,13 +6,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
-import { safe, UserError, isUserError } from "@/lib/action";
+import { safe, shownOnce, UserError, isUserError } from "@/lib/action";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireAdmin, requireInstallAdmin, requireUser } from "@/lib/session";
 import { str, toCents } from "@/lib/format";
 import { termsFromForm } from "@/lib/partner-terms";
 import { hubJoined } from "@/lib/hub";
-import { createShopWithOwner, isPlatformAdmin } from "@/lib/shops";
+import { createShopWithOwner, isPlatformAdmin, randomOwnerPassword } from "@/lib/shops";
+import { foundrySignInMode } from "@/lib/foundry/switches";
+import { ownerSetupLink } from "@/lib/password-reset";
 import { normalizeEmail } from "@/lib/email";
 import {
   acceptTerms,
@@ -159,11 +161,13 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
   const repair = await db.shop.findUniqueOrThrow({ where: { id: admin.shopId } });
   // The invite comes first: it needs the hub, so with the hub down nothing has been created yet.
   const invite = await createPartnerInvite(repair.id, repair.name, "repair", termsFromForm(formData));
+  // FOUNDRY_SIGNIN=only: no password is typed or given; the owner gets a one-time link that links their Foundry Account (docs/plan.md FA-5).
+  const only = foundrySignInMode() === "only";
   const created = await createShopWithOwner({
     shopName: String(formData.get("shop") ?? ""),
     name: String(formData.get("name") ?? ""),
     email: String(formData.get("email") ?? ""),
-    password: String(formData.get("password") ?? ""),
+    password: only ? randomOwnerPassword() : String(formData.get("password") ?? ""),
     kind: "retail",
   }, { allowReserved: true });
   let r: Awaited<ReturnType<typeof redeemPartnerCode>>;
@@ -181,6 +185,7 @@ export const setUpSewingShop = safe(async function setUpSewingShop(formData: For
   await saveLinkFromHub(repair.id, "repair", r.link);
   refresh();
   revalidatePath("/companies");
+  if (only) return shownOnce((await ownerSetupLink(created.id, normalizeEmail(formData.get("email")))).link);
 });
 
 /** A message the hub refused goes back in the queue (after the cause is fixed, e.g. a partnership restored). */
