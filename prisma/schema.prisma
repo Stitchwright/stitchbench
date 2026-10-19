@@ -3371,6 +3371,10 @@ model AssistantSettings {
   customerDailyCap Int      @default(20)
   offerFirstNames  Boolean  @default(false)
   voice            String?
+  // Where the AI comes from when FOUNDRY_AI is on (docs/plan.md FA-4): "foundry" (Foundry credits, the default) or "own" (the
+  // company's own Anthropic key, kept sealed in ownKey and never shown again).
+  aiSource         String   @default("foundry")
+  ownKey           String?
   updatedAt        DateTime @updatedAt
 }
 
@@ -3394,6 +3398,7 @@ model AssistantCall {
   cacheTokens     Int      @default(0)
   outputTokens    Int      @default(0)
   costMillicents  Int      @default(0) // thousandths of a cent: money stays an integer, and a call is under a cent
+  credits         Int? // Foundry credits the call took (FOUNDRY_AI on, paid in credits); null for the hub's proxy and a company's own key
   ms              Int      @default(0)
   accepted        Boolean? // "Use this" pressed, or "helped"; null for calls that only showed something
   error           String?

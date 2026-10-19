@@ -1,6 +1,6 @@
 # StitchBench and StitchShop: the Foundry Account plan
 
-**Status:** 2026-10-19. Survey done. FA-1, FA-2 and FA-3 done (cloud client and mock; hosted sign-in behind `FOUNDRY_SIGNIN`; the desktop program's optional link behind `FOUNDRY_LINK`; both switches off). The Assistant still goes through the hub (FA-4). Owner: Bruce Wattendorf (SiteSentrix).
+**Status:** 2026-10-19. Survey done. FA-1 to FA-4 done, each behind a switch that is off: hosted sign-in (`FOUNDRY_SIGNIN`), the desktop program's optional link (`FOUNDRY_LINK`) and the Assistant's AI without the hub (`FOUNDRY_AI`). Owner: Bruce Wattendorf (SiteSentrix).
 
 ## Goal
 One login, the **Foundry Account** (cloud.stitchfoundry.app), and one credit balance ("Foundry credits"), for all
@@ -48,7 +48,7 @@ keyed by the account's `id`.
 | FA-1 | Cloud client module (sign-in, account, `/v1/messages`) with a mock server for tests | **Done 2026-10-19**: `src/lib/foundry/cloud.ts` (`signUp`, `signIn`, `signOut`, `getAccount`, `forgotPassword`, `sendMessages`; errors are `FoundryError` with a `kind`: offline, signed-out, no-credits, wait, refused, not-open, broken), `scripts/test-mail/foundry-mock.mjs`, `src/lib/foundry/cloud.test.ts` (12 tests). Address: `FOUNDRY_CLOUD_URL`, default https://cloud.stitchfoundry.app. Unused until FA-2 |
 | FA-2 | Hosted sign-in with a Foundry Account; `User.foundryId`; reset demo accounts | **Done 2026-10-19, behind `FOUNDRY_SIGNIN` (off).** See "FA-2 notes". Demo accounts need no reset: a login is linked by proving its old password |
 | FA-3 | Desktop: optional link; offline messages for hub and AI | **Done 2026-10-19, behind `FOUNDRY_LINK` (off).** See "FA-3 notes" |
-| FA-4 | AI through `/v1/messages` or the shop's own key; drop the hub proxy call | features work both ways |
+| FA-4 | AI through `/v1/messages` or the shop's own key; drop the hub proxy call | **Done 2026-10-19, behind `FOUNDRY_AI` (off).** See "FA-4 notes" |
 | FA-5 | Remove local owner passwords on hosted; drop `SEED_OWNER_PASSWORD` | none left |
 
 
@@ -86,6 +86,49 @@ tests give the same result with and without this change), the real service, Wind
 - Gating is per install, not per company: with several companies on one desktop, one linked company opens the install's hub traffic. A
   desktop install is one company in practice; say so if that is wrong.
 - Linking is for owners and admins; techs never see a prompt.
+
+## FA-4 notes
+**The switch:** `FOUNDRY_AI=on` (hosted and desktop). Off = the Assistant goes through StitchHub's proxy exactly as before (that code is only moved
+into `askHub`; the existing Assistant checks pass unchanged). On = the program asks the AI itself and never calls the hub for it.
+
+**How a call goes** (`src/lib/assistant/direct.ts`, pure parts in `direct-math.ts`): each company chooses in Settings → Assistant → *Where the AI
+comes from*:
+- **Foundry credits (the default).** The account service's `/v1/messages`, with the account's token, paid in credits (SiteSentrix pays Anthropic;
+  the credits are the income). Whose token: the company's linked account (desktop, FA-3) first, else the Foundry session of the person who is signed in
+  (hosted). Nothing to set up beyond having an account.
+- **The company's own Anthropic key.** Pasted once, sealed in `AssistantSettings.ownKey` (field `anthropicKey`, bound to the company), never shown again
+  (only its last four characters), and used to call Anthropic directly. No Foundry Account needed; the cost is on the shop's own account and is kept in
+  the call log. Redirects are never followed (the key would go with them).
+- Same model classes, caps, cached system prompt, photo-on-the-last-message and one retry as the hub's proxy had. Limits: one call at a time per company
+  and 60 an hour (`ASSISTANT_HOURLY_CALLS`); no call allowance of ours (the balance, or the shop's own account, is the limit).
+- **Models.** The account service offers only `claude-opus-5-5` so far, so a class whose model it refuses (Sonnet, Haiku) is asked of Opus
+  (`FOUNDRY_AI_FALLBACK_MODEL`), once per refused model and remembered. That costs shops more credits than Haiku or Sonnet would: see the asks below.
+- **The Assistant add-on's key no longer applies** with the switch on: the module is on for every company (`src/lib/modules.ts`). Off, it keeps its own key
+  as before. Plain sentences for: no account or key, not enough credits, no internet, a refused sign-in, a busy company, a refused or empty Anthropic key.
+- `AssistantCall.credits` records credits taken; Settings shows the balance (or the last known one offline) and the month's credits or own-key cost.
+
+**Checked 2026-10-19:** tsc, lint, unit tests (105), `scripts/checks/assistant-direct.check.ts` (6 steps; three deliberate breaks each failed it),
+the existing Assistant, module, license, free-program, sign-in and FA-2/FA-3 checks (all unchanged), and a real browser run of the built app: the new
+section, a refused key, a saved key shown only as its last four characters, the old call-limit text gone. **Not checked:** a call through the real
+account service or the real Anthropic API, the Assistant buttons themselves in a browser (the check drives `runAssistant`), a hosted person's own session
+token (needs a cookie; the code path is tiny but untested), and the desktop shell.
+
+**Asks for the StitchFoundry chat (cloud service), updated**
+1. Offer `claude-haiku-4-5-20251001` and `claude-sonnet-5-5` as well as Opus, so cheap reads cost cheap credits (the fallback is a stopgap).
+2. A company-level spend: staff don't each hold credits, and background or anonymous calls (the booking page's customer questions) have no person's token.
+   Until then those need a linked company account (desktop) and don't work on hosted.
+3. Email verification (`emailVerified`) at sign-up; the batch API if the duplicate finder moves; a free monthly allowance and per-company cap, if wanted.
+
+**Decisions for the owner**
+- With the switch on, the Assistant add-on's key stops mattering for everyone (it is pay per use). Confirm that is the intent.
+- Hub retirement: the hub's `/v1/assistant`, its `ANTHROPIC_API_KEY` and the 300-call plan can only go once every program in use has `FOUNDRY_AI=on`
+  (older installs still call it). Nothing was removed from the hub.
+- Credits and the shop's own key are the only two ways; there is no "we pay" tier or free reads any more (the 20 free plate reads were the hub's).
+
+## Other apps' landing pages (owner, 2026-10-19; not done here)
+PatternFoundry and LaserFoundry each need their own marketing page and download links for their different installers; MakerFoundry needs no landing
+page, because it is the storefront, so the pages link straight to it. PatternFoundry will get the same treatment as StitchBench/StitchShop (Foundry
+Account, AI in credits or the shop's own key) when its turn comes. **The owner will do the pages in the StitchFoundry chat, not here.**
 
 ## Open: "We host it for you" (FA-7)
 **Owner, 2026-10-19:** running it yourself (the Windows/Mac/Linux program, or your own server) stays **free**. If **SiteSentrix hosts**

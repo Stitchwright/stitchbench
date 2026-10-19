@@ -11,13 +11,15 @@ import { getModules } from "@/lib/modules";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { monthPeriod } from "@/lib/time-zone";
 import { assistantAvailable } from "@/lib/assistant/client";
+import { sourceView } from "@/lib/assistant/source";
+import { foundryAiOn } from "@/lib/foundry/mode";
 import { assistantSettings } from "@/lib/assistant/context";
 import { FEATURES, FREE_PLATE_READS, GROUP_LABEL, SWITCH_GROUPS, type FeatureId } from "@/lib/assistant/features";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/action-form";
 import { HubLegalLinks } from "@/components/hub-legal-links";
 import { ModuleOff } from "@/components/module-off";
-import { saveAssistantSettings } from "@/actions/assistant";
+import { saveAssistantSettings, saveAssistantSource } from "@/actions/assistant";
 
 type Request = { system?: string; messages?: { role: string; content: string }[]; image?: { bytes: number; sha256: string } };
 
@@ -51,6 +53,10 @@ export default async function AssistantSettingsPage() {
   const canEdit = admin && on;
   const state = modules.states.assistant;
   const cost = calls.reduce((s, c) => s + c.costMillicents, 0);
+  // FOUNDRY_AI=on (docs/plan.md FA-4): no hub and no call limit of ours; Foundry credits or the company's own Anthropic key pay.
+  const direct = foundryAiOn();
+  const src = direct ? await sourceView(shopId) : null;
+  const creditsUsed = calls.reduce((s, c) => s + (c.credits ?? 0), 0);
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -58,16 +64,75 @@ export default async function AssistantSettingsPage() {
 
       <Section title="This month">
         <div className="space-y-1 text-sm">
-          <p>
-            <strong>{used}</strong> of {limit} Assistant calls used{shop.assistantMonth === thisMonth ? "" : " (counted here; the hub's count shows after the next call)"}. The count starts again when the month turns in {tz}. Plate reads without the
-            module: {FREE_PLATE_READS} a month.
-          </p>
+          {direct ? (
+            <p>
+              <strong>{calls.filter((c) => !c.error).length}</strong> Assistant calls this month. There is no call limit here: Foundry credits, or your own Anthropic account, pay for each one.
+            </p>
+          ) : (
+            <p>
+              <strong>{used}</strong> of {limit} Assistant calls used{shop.assistantMonth === thisMonth ? "" : " (counted here; the hub's count shows after the next call)"}. The count starts again when the month turns in {tz}. Plate reads without the
+              module: {FREE_PLATE_READS} a month.
+            </p>
+          )}
           {!on && <p className="muted">The Assistant is {state.status === "lapsed" ? "ended" : "off"} for this company, so every Ask button is hidden. The log below stays here to read and export.</p>}
           {on && !avail.ok && <p className="muted">{avail.message}</p>}
-          <p className="muted">Everything goes through StitchHub to the model (Anthropic). Nothing is sent until a person presses a button, and the exact text of each request is kept below.</p>
+          <p className="muted">
+            {direct
+              ? "Foundry credits: the request goes to the Foundry Account service, then to the model (Anthropic). Your own key: straight to Anthropic. StitchHub is not involved. "
+              : "Everything goes through StitchHub to the model (Anthropic). "}
+            Nothing is sent until a person presses a button, and the exact text of each request is kept below.
+          </p>
           <HubLegalLinks />
         </div>
       </Section>
+
+      {src && (
+        <Section title="Where the AI comes from">
+          {canEdit ? (
+            <ActionForm action={saveAssistantSource} success="Saved" className="space-y-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" name="source" value="foundry" defaultChecked={src.source === "foundry"} className="mt-1" />
+                <span>
+                  <strong>Foundry credits.</strong>{" "}
+                  Nothing to set up: the Assistant is paid from your Foundry Account&apos;s balance, and you buy credits there when you need more.
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" name="source" value="own" defaultChecked={src.source === "own"} className="mt-1" />
+                <span>
+                  <strong>My own Anthropic key.</strong> The Assistant calls Anthropic directly and the cost is on your own Anthropic account. No Foundry Account is needed.
+                </span>
+              </label>
+              <div className="field">
+                <label htmlFor="ai-key" className="label">
+                  Anthropic key
+                </label>
+                <input id="ai-key" name="key" type="password" autoComplete="off" className="input mono" placeholder={src.keyEnds ? `A key ending ${src.keyEnds} is saved: leave blank to keep it` : "sk-ant-…"} />
+                <p className="muted mt-1 text-xs">Kept locked on this server and never shown again. Make one at console.anthropic.com.</p>
+              </div>
+              {src.keyEnds && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="removeKey" className="check" />
+                  <span>Remove the saved key</span>
+                </label>
+              )}
+              <Submit>Save</Submit>
+            </ActionForm>
+          ) : (
+            <p className="text-sm">{src.source === "own" ? "This company uses its own Anthropic key." : "This company uses Foundry credits."} Only an owner or admin can change it.</p>
+          )}
+          <div className="mt-3 space-y-1 text-sm">
+            {src.source === "foundry" && src.paying && (
+              <p>
+                Foundry credits: {src.credits !== null ? <strong>{src.credits}</strong> : "balance unknown"}
+                {src.paying === "company" ? " (this company's linked Foundry Account)" : " (the Foundry Account you are signed in with)"}
+                {src.reachable === false ? ". Can't reach the Foundry Account service just now, so the balance isn't shown." : ""}
+              </p>
+            )}
+            {src.source === "foundry" && !src.paying && !avail.ok && <p className="pill tone-wait whitespace-normal">{avail.message}</p>}
+          </div>
+        </Section>
+      )}
 
       <Section title="What it may do">
         {canEdit ? (
@@ -113,7 +178,10 @@ export default async function AssistantSettingsPage() {
       <Section title="What was sent this month">
         <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
           <span className="muted">
-            {calls.length} call{calls.length === 1 ? "" : "s"}, about ${(cost / 100000).toFixed(2)} to the owner of StitchHub
+            {calls.length} call{calls.length === 1 ? "" : "s"}
+            {direct
+              ? `${creditsUsed ? `, ${creditsUsed} Foundry credits` : ""}${cost ? `, about $${(cost / 100000).toFixed(2)} on your own Anthropic account` : ""}`
+              : `, about $${(cost / 100000).toFixed(2)} to the owner of StitchHub`}
           </span>
           {admin && (
             // A file download, not a page: a plain link.

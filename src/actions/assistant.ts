@@ -8,6 +8,8 @@ import { revalidatePath } from "next/cache";
 import { noted, safe, shownOnce } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { draftText, labelRead, likelyCauses, markCall, plateRead, saveSettings, tagFromPicture } from "@/lib/assistant/bodies";
+import { saveSource } from "@/lib/assistant/source";
+import { foundryAiOn } from "@/lib/foundry/mode";
 import { askManuals, searchManualText } from "@/lib/assistant/manuals";
 import { clearIndex, startIndexing, stopIndexing } from "@/lib/assistant/manuals-index";
 import { looksLike, matchColumns, partsForJob } from "@/lib/assistant/parts";
@@ -63,6 +65,14 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
     offerFirstNames: fd.get("offerFirstNames") === "on",
     voice: String(fd.get("voice") ?? "").trim() || null,
   });
+  revalidatePath("/settings/assistant");
+});
+
+/** Settings → Assistant → where the AI comes from (FOUNDRY_AI=on): Foundry credits, or the company's own Anthropic key. */
+export const saveAssistantSource = safe(async (fd: FormData) => {
+  if (!foundryAiOn()) throw new UserError("Choosing where the AI comes from isn't switched on in this program.");
+  const user = await requireAdmin();
+  await saveSource(user, { source: fd.get("source"), key: fd.get("key"), removeKey: fd.get("removeKey") === "on" });
   revalidatePath("/settings/assistant");
 });
 

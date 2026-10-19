@@ -28,3 +28,11 @@ export function foundryLinkMode(): FoundryLinkMode {
   const v = (process.env.FOUNDRY_LINK ?? "").trim().toLowerCase();
   return v === "offer" || v === "required" ? v : "off";
 }
+
+// Where the Assistant's AI comes from (docs/plan.md FA-4), hosted and desktop alike.
+//   FOUNDRY_AI unset or "off"  the Assistant goes through StitchHub's proxy exactly as before
+//   "on"                       the program asks the AI itself, never through the hub: paid in Foundry credits through the
+//                              Foundry Account service (the default), or with the company's own Anthropic key (Settings →
+//                              Assistant). No call limit of ours, and no Assistant add-on key: the balance, or the shop's own
+//                              Anthropic account, is the limit.
+export { foundryAiOn } from "@/lib/free-program";

@@ -6,6 +6,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { foundryGate } from "@/lib/foundry/link";
+import { foundryAiOn } from "@/lib/foundry/mode";
 import { hubJoined, hubFetch, hubOfflineSince, HubError } from "@/lib/hub";
 import { getModules, hasModule } from "@/lib/modules";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -14,6 +15,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { FEATURES, OFFLINE_MESSAGE, type FeatureGroup, type FeatureId } from "./features";
 import { maskSerials } from "./redact";
 import type { Built, Source } from "./prompts";
+import { callModel, chooseTransport, releaseSlot, takeSlot } from "./direct";
 
 /** ASSISTANT=off on a server stops every call (the MESSAGES=off pattern); the check scripts point the hub address at a stand-in instead. */
 export const assistantSwitchedOff = () => (process.env.ASSISTANT ?? "").toLowerCase() === "off";
@@ -27,7 +29,7 @@ export function groupOn(s: GroupSwitches | null, g: FeatureGroup): boolean {
   return map[g];
 }
 
-export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "offline" | "module" | "feature" | "foundry"; message: string };
+export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "offline" | "module" | "feature" | "foundry" | "own-key"; message: string };
 
 /**
  * Whether an "Ask" button works now: the hub is joined and was reachable at the last call (the layout's offline pill
@@ -36,6 +38,17 @@ export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "o
  */
 export async function assistantAvailable(shopId: string, o: { module?: boolean; group?: FeatureGroup } = {}): Promise<Availability> {
   if (assistantSwitchedOff()) return { ok: false, why: "off", message: "The Assistant is switched off on this server." };
+  // FOUNDRY_AI=on (docs/plan.md FA-4): no hub. The module and the feature's switch as ever, then who pays: the company's own
+  // key (needs no Foundry Account and works from any PC with internet), or Foundry credits (needs the account).
+  if (foundryAiOn()) {
+    if (o.module !== false && !(await hasModule(shopId, "assistant"))) return { ok: false, why: "module", message: "The Assistant isn't turned on for this company." };
+    if (o.group) {
+      const s = await db.assistantSettings.findUnique({ where: { shopId } });
+      if (!groupOn(s, o.group)) return { ok: false, why: "feature", message: "This part of the Assistant is switched off in Settings → Assistant." };
+    }
+    const c = await chooseTransport(shopId);
+    return c.ok ? { ok: true } : { ok: false, why: c.why, message: c.message };
+  }
   // The desktop program with FOUNDRY_LINK=required: the Assistant needs the Foundry Account link, with the words that say what to do.
   const gate = await foundryGate();
   if (!gate.ok) return { ok: false, why: "foundry", message: gate.message };
@@ -65,6 +78,8 @@ type HubAnswer = {
   stopReason: string | null;
   usage: { input: number; cacheRead: number; output: number };
   costMillicents: number;
+  /** Foundry credits the call took (FOUNDRY_AI on and paid in credits), else absent or null. */
+  credits?: number | null;
   model: string;
   free?: boolean;
   month?: string;
@@ -120,28 +135,14 @@ export async function runAssistant(o: {
 
   const started = Date.now();
   let answer: HubAnswer;
+  const direct = foundryAiOn();
   try {
-    const key = (await assistantKeyText(shopId)) ?? "";
-    const r = await hubFetch("/v1/assistant", {
-      method: "POST",
-      shopRef: shopId,
-      signal: AbortSignal.timeout(WAIT_MS),
-      json: {
-        shopRef: shopId,
-        tz: await shopTimeZone(shopId),
-        feature,
-        model: built.cls,
-        system: built.system,
-        messages: built.messages,
-        maxTokens: built.maxTokens,
-        ...(photo ? { image: { mediaType: photo.mediaType, data: photo.data } } : {}),
-        ...(key ? { key } : {}),
-      },
-    });
-    answer = (await r.json()) as HubAnswer;
+    answer = direct ? await askDirect(shopId, built, photo) : await askHub(shopId, built, photo);
   } catch (e) {
     const ms = Date.now() - started;
-    const message = e instanceof HubError ? e.message : e instanceof UserError ? OFFLINE_MESSAGE : e instanceof Error && e.name === "TimeoutError" ? "The Assistant took too long to answer. Try again." : "The Assistant couldn't answer just now. Try again in a minute.";
+    // With FOUNDRY_AI on, a UserError already says what to do (offline, not enough credits, a refused key); on the hub path
+    // any UserError out of hubFetch means the hub couldn't be reached.
+    const message = direct && e instanceof UserError ? e.message : e instanceof HubError ? e.message : e instanceof UserError ? OFFLINE_MESSAGE : e instanceof Error && e.name === "TimeoutError" ? "The Assistant took too long to answer. Try again." : "The Assistant couldn't answer just now. Try again in a minute.";
     await logFailure(shopId, userId, feature, target, built, message, ms);
     if (e instanceof HubError && e.status === 402) await noteMonth(shopId, e.message);
     throw new UserError(message);
@@ -166,6 +167,7 @@ export async function runAssistant(o: {
       cacheTokens: answer.usage?.cacheRead ?? 0,
       outputTokens: answer.usage?.output ?? 0,
       costMillicents: answer.costMillicents ?? 0,
+      credits: typeof answer.credits === "number" ? answer.credits : null,
       ms,
     },
   });
@@ -173,6 +175,44 @@ export async function runAssistant(o: {
     await db.shop.update({ where: { id: shopId }, data: { assistantMonth: answer.month, assistantCalls: answer.calls, ...(typeof answer.limit === "number" ? { assistantLimit: answer.limit } : {}) } }).catch(() => {});
   }
   return { row, text: answer.text, free: answer.free === true, stopReason: answer.stopReason ?? null };
+}
+
+/** The hub's proxy (FOUNDRY_AI off): the call as it has always been made. */
+async function askHub(shopId: string, built: Built, photo: Photo | undefined): Promise<HubAnswer> {
+  const key = (await assistantKeyText(shopId)) ?? "";
+  const r = await hubFetch("/v1/assistant", {
+    method: "POST",
+    shopRef: shopId,
+    signal: AbortSignal.timeout(WAIT_MS),
+    json: {
+      shopRef: shopId,
+      tz: await shopTimeZone(shopId),
+      feature: built.feature,
+      model: built.cls,
+      system: built.system,
+      messages: built.messages,
+      maxTokens: built.maxTokens,
+      ...(photo ? { image: { mediaType: photo.mediaType, data: photo.data } } : {}),
+      ...(key ? { key } : {}),
+    },
+  });
+  return (await r.json()) as HubAnswer;
+}
+
+/**
+ * FOUNDRY_AI=on: the call itself, by the way the company chose (src/lib/assistant/direct.ts), one at a time per company.
+ * The answer has the hub's shape, so the logging below doesn't change.
+ */
+async function askDirect(shopId: string, built: Built, photo: Photo | undefined): Promise<HubAnswer> {
+  const c = await chooseTransport(shopId);
+  if (!c.ok) throw new UserError(c.message);
+  const wait = takeSlot(shopId);
+  if (wait) throw wait;
+  try {
+    return await callModel(c.transport, { cls: built.cls, feature: built.feature, system: built.system, messages: built.messages, maxTokens: built.maxTokens, ...(photo ? { photo: { mediaType: photo.mediaType, data: photo.data } } : {}) });
+  } finally {
+    releaseSlot(shopId);
+  }
 }
 
 /** A refusal for the month's allowance: the local count follows the hub's (the Settings page shows it offline). */
