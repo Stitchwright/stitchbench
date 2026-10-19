@@ -13,6 +13,7 @@ import { shopKinds } from "@/lib/equipment/shop";
 import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
 import { PageHeader, Section } from "@/components/ui";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
+import { linkMyLogin } from "@/actions/foundry";
 import { addStarterServices, addUser, changePassword, resetUserPassword, saveChecklist, savePriceListNote, saveServiceItem, saveShop, setUserActive, setUserRole } from "@/actions/settings";
 import { saveFabricSettings } from "@/actions/fabric";
 import { saveOrderSettings } from "@/actions/fabric-orders";
@@ -168,6 +169,8 @@ export default async function SettingsPage() {
   const admin = user.role !== "TECH";
   // FOUNDRY_SIGNIN=only (docs/plan.md FA-5): nobody has a password here; people come in by a one-time link that links their Foundry Account.
   const only = foundrySignInMode() === "only";
+  // Hosted with Foundry sign-in on: is this person's own login linked to a Foundry Account yet? (Settings -> Foundry Account, below.)
+  const myFoundry = foundrySignInMode() === "off" ? null : await db.user.findUnique({ where: { id: user.id }, select: { foundryId: true } });
   const [shop, services, users, modules, kinds, stockUnits] = await Promise.all([
     db.shop.findUniqueOrThrow({ where: { id: user.shopId } }),
     db.serviceItem.findMany({ where: { shopId: user.shopId }, orderBy: { sortOrder: "asc" } }),
@@ -794,6 +797,39 @@ export default async function SettingsPage() {
               <Submit>Add person</Submit>
             </div>
           </ActionForm>
+        </Section>
+      )}
+
+      {myFoundry && (
+        <Section title="Foundry Account" id="foundry-account">
+          {myFoundry.foundryId !== null ? (
+            <p className="text-sm">Your login in {shop.name} is linked to a Foundry Account: the one login for all SiteSentrix software, with one balance of Foundry credits.</p>
+          ) : (
+            <ActionForm action={linkMyLogin} reset success="Linked. From now on you can sign in with your Foundry Account." className="grid-form">
+              <p className="muted text-sm sm:col-span-2">
+                Link your login in {shop.name} to your Foundry Account. If you have a login in more than one company, do this in each one: each links separately.
+              </p>
+              <div className="field">
+                <label htmlFor="fa-email" className="label">
+                  Foundry Account email
+                </label>
+                <input id="fa-email" name="email" type="email" autoComplete="email" required className="input" />
+              </div>
+              <div className="field">
+                <label htmlFor="fa-pass" className="label">
+                  Foundry Account password
+                </label>
+                <input id="fa-pass" name="password" type="password" autoComplete="off" required className="input" />
+              </div>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" name="create" />
+                <span>I don&apos;t have a Foundry Account yet: make me one</span>
+              </label>
+              <div className="sm:col-span-2">
+                <Submit>Link</Submit>
+              </div>
+            </ActionForm>
+          )}
         </Section>
       )}
 

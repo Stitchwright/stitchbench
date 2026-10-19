@@ -11,6 +11,7 @@
 //   6. the service down, locking an email, and the per-address limit
 //   7. FOUNDRY_SIGNIN=only closes the old password at sign-in (a ticket, which a Foundry sign-in earns, still opens)
 //   8. the stored token is sealed, opens for its own row only, and dies with the row
+//   9. a signed-in person links their own login (the session is the proof), company by company, even with an email and password shared across companies
 // What this does not cover: the cookie and the page (they need a request and a browser).
 //   npm run check scripts/checks/foundry-signin.check.ts
 import "dotenv/config";
@@ -174,6 +175,26 @@ async function main() {
     await db.foundrySession.deleteMany({ where: { idHash: { in: [idHash, "1".repeat(64)] } } });
     assert.equal(await foundryTokenOf({ idHash }), null, "gone with the row");
     ok("the token is sealed to its own row and gone with it");
+
+    // 9. The signed-in person links their own login (Settings → Foundry Account): the session is the proof, so it works for a login that shares its
+    //    email and password with a login in another company, one company at a time.
+    const sharedEmail = `check-shared-${crypto.randomBytes(3).toString("hex")}@stitchbench.test`;
+    const hash = (await db.user.findUniqueOrThrow({ where: { id: b.user.id } })).passwordHash;
+    const inA = await db.user.create({ data: { shopId: a.shopId, email: sharedEmail, name: "Shared A", role: "TECH", passwordHash: hash } });
+    const inB = await db.user.create({ data: { shopId: b.shopId, email: sharedEmail, name: "Shared B", role: "TECH", passwordHash: hash } });
+    const sv = async (id: string) => (await db.user.findUniqueOrThrow({ where: { id } })).sessionVersion;
+    assert.deepEqual(await linkFoundryAccount({ email: sharedEmail, password: OLD, foundryEmail: "shared@example.com", foundryPassword: FPASS, create: true }, undefined, o), { ok: false, reason: "several" }, "the old password can't tell them apart");
+    assert.deepEqual(await linkFoundryAccount({ signedIn: { id: inA.id, sv: await sv(inA.id) }, foundryEmail: "shared@example.com", foundryPassword: "wrong wrong", create: false }, undefined, o), { ok: false, reason: "foundry-wrong" });
+    const forA = await linkFoundryAccount({ signedIn: { id: inA.id, sv: await sv(inA.id) }, foundryEmail: "shared@example.com", foundryPassword: FPASS, create: true }, undefined, o);
+    assert.ok(forA.ok, "linked from the session, in company A");
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: inB.id } })).foundryId, null, "company B's login is untouched");
+    const forB = await linkFoundryAccount({ signedIn: { id: inB.id, sv: await sv(inB.id) }, foundryEmail: "shared@example.com", foundryPassword: FPASS, create: false }, undefined, o);
+    assert.ok(forB.ok, "and then in company B, the same account");
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: inA.id } })).foundryId, (await db.user.findUniqueOrThrow({ where: { id: inB.id } })).foundryId);
+    assert.deepEqual(await linkFoundryAccount({ signedIn: { id: inA.id, sv: (await sv(inA.id)) + 1 }, foundryEmail: "shared@example.com", foundryPassword: FPASS, create: false }, undefined, o), { ok: false, reason: "old" }, "a session that has ended proves nothing");
+    await db.user.update({ where: { id: inA.id }, data: { active: false } });
+    assert.deepEqual(await linkFoundryAccount({ signedIn: { id: inA.id, sv: await sv(inA.id) }, foundryEmail: "shared@example.com", foundryPassword: FPASS, create: false }, undefined, o), { ok: false, reason: "old" }, "nor does a login switched off");
+    ok("a signed-in person links their own login, company by company, even when the email and password are shared; an ended session or a switched-off login can't");
 
     console.log(`\n${steps} steps passed.`);
   } finally {

@@ -100,6 +100,12 @@ export type LinkInput = {
   password?: unknown;
   /** A setup or administrator's link (docs/plan.md FA-5): proves the login by itself, instead of its old email and password. */
   token?: unknown;
+  /**
+   * The login that is signed in right now (its id and sessionVersion), from server code that has already checked the session
+   * (Settings → Foundry Account). The session is the proof: it is how a login that is one of several with the same email
+   * and password links its own account, one company at a time.
+   */
+  signedIn?: { id: string; sv: number };
   foundryEmail: unknown;
   foundryPassword: unknown;
   create: boolean;
@@ -117,7 +123,9 @@ export async function linkFoundryAccount(input: LinkInput, request: Request | He
   // Who the login is: a one-time link says so by itself; otherwise its old email and password do (with their usual limits).
   let who: { id: string; sv: number };
   let tokenRowId: string | null = null;
-  if (typeof input.token === "string" && input.token.trim()) {
+  if (input.signedIn) {
+    who = input.signedIn;
+  } else if (typeof input.token === "string" && input.token.trim()) {
     const t = await checkLinkToken(input.token);
     if (!t.ok) return { ok: false, reason: "link" };
     who = { id: t.userId, sv: t.sv };

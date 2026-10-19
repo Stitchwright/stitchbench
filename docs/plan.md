@@ -1,3 +1,8 @@
+**Follow-ups, since done:** a signed-in person links their own login from Settings → Foundry Account (`linkMyLogin`; the session is the proof, one company
+at a time, so it works for a login that shares an email and password with logins elsewhere; `LinkInput.signedIn`; checked in step 9 of
+`foundry-signin.check.ts` and in a browser); sign-up for a brand-new company and the hub's start-a-shop link now go to linking (FA-5). Still open: the
+StitchFoundry chat's `emailVerified` (so a link could offer "same email" as a hint).
+
 # StitchBench and StitchShop: the Foundry Account plan
 
 **Status:** 2026-10-19. Survey done. FA-1 to FA-5 done, each behind a switch that is off: hosted sign-in (`FOUNDRY_SIGNIN`), the desktop program's optional link (`FOUNDRY_LINK`) and the Assistant's AI without the hub (`FOUNDRY_AI`). Owner: Bruce Wattendorf (SiteSentrix).

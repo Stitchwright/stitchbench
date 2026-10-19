@@ -15,7 +15,7 @@ import { checkLinkToken } from "@/lib/password-reset";
 const WORDS: Record<LinkRefusal, string> = {
   link: "That link was used already, has expired, or isn't right. Ask for a new one.",
   old: "The old email and password don't match a login here.",
-  several: "That email and password fit a login in more than one company. Sign in with your old login, then ask for the link from Settings (coming soon).",
+  several: "That email and password fit a login in more than one company. Sign in with your old login (it asks which company), then link from Settings → Foundry Account. Do that once for each company.",
   "foundry-wrong": "That Foundry Account email and password don't match.",
   "foundry-taken": "There is already a Foundry Account with that email. Untick “make me a Foundry Account” and use its password.",
   wait: "Too many tries. Wait a few minutes, then try again.",
