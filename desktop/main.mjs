@@ -145,6 +145,8 @@ function loadConfig() {
     backupDir: path.join(app.getPath("documents"), `${NAME} Backups`),
     backupsToKeep: 30,
     platformAdminEmails: "",
+    // The optional link to a Foundry Account: "" (off), "offer" or "required" (src/lib/foundry/mode.ts, docs/plan.md FA-3).
+    foundryLink: "",
     openAtLogin: true,
     // Customer links (estimate approval, unsubscribe) need an address customers can open. Set, the program serves
     // ONLY those pages on 127.0.0.1:linksPort (links-gate.mjs) for a tunnel the shop runs; see INSTALL.md.
@@ -425,6 +427,7 @@ async function startServer() {
       AUTH_COOKIE_PREFIX: FLAVOR,
       LIBRARY_DIR: cfg.libraryDir,
       PLATFORM_ADMIN_EMAILS: cfg.platformAdminEmails,
+      FOUNDRY_LINK: cfg.foundryLink || process.env.FOUNDRY_LINK || "",
       ALLOW_SIGNUP: signupOpen ? "true" : "false",
       SETUP_TOKEN: setupToken,
       // Only this program can ask the server to read a move file from disk (tray: Restore a company from a move file).

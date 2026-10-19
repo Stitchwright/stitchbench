@@ -10,6 +10,7 @@ import { UserError } from "@/lib/user-error";
 import { applyMovedOut, applyStanding, movedAnswer, type StandingAnswer } from "@/lib/hub-standing";
 // Used inside functions only (it imports this file back for hubFetch): the cycle is harmless, as modules.ts and license-signing.ts.
 import { pullResetGrants } from "@/lib/hub-reset-grants";
+import { foundryGate, requireFoundryGate } from "@/lib/foundry/link";
 import { isDesktop } from "@/lib/modules";
 import { MOVE_CANCEL_PENDING } from "@/lib/move/format";
 import { baseNumber } from "@/lib/parts";
@@ -210,6 +211,9 @@ export async function hubReachable() {
 /** quick: someone is waiting on a page for this (a picture, ratings): give up sooner. */
 async function reach(url: string, init: RequestInit & { quick?: boolean }, base: string) {
   const { quick, ...rest } = init;
+  // FOUNDRY_LINK=required (the desktop program): no hub traffic without a Foundry Account link (src/lib/foundry/link.ts). Not
+  // a lost connection: it says what to do and does not mark the hub offline.
+  await requireFoundryGate();
   if (!net.background.getStore()) await quickCheck(base);
   let r: Response;
   try {
@@ -1016,6 +1020,7 @@ export async function writeState(run: SyncRun, data: Prisma.HubStateUpdateManyMu
 async function doSync(): Promise<SyncResult> {
   const s = await hubState();
   if (!s?.url || !s.installKey) return { skipped: true };
+  if (!(await foundryGate()).ok) return { skipped: true }; // not linked: nothing to share, and nothing to report as an error
   const run: SyncRun = { installId: s.installId };
   try {
     // The hub's name and Discord link can change; keep them current.

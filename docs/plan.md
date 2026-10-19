@@ -1,6 +1,6 @@
 # StitchBench and StitchShop: the Foundry Account plan
 
-**Status:** 2026-10-19. Survey done. FA-1 and FA-2 done (cloud client and mock; hosted sign-in with a Foundry Account behind the `FOUNDRY_SIGNIN` switch, which is off). The Assistant is not wired yet. Owner: Bruce Wattendorf (SiteSentrix).
+**Status:** 2026-10-19. Survey done. FA-1, FA-2 and FA-3 done (cloud client and mock; hosted sign-in behind `FOUNDRY_SIGNIN`; the desktop program's optional link behind `FOUNDRY_LINK`; both switches off). The Assistant still goes through the hub (FA-4). Owner: Bruce Wattendorf (SiteSentrix).
 
 ## Goal
 One login, the **Foundry Account** (cloud.stitchfoundry.app), and one credit balance ("Foundry credits"), for all
@@ -47,10 +47,45 @@ keyed by the account's `id`.
 | FA-0 | These docs; asks sent to the StitchFoundry chat (list in StitchHub's `docs/plan.md`) | merged |
 | FA-1 | Cloud client module (sign-in, account, `/v1/messages`) with a mock server for tests | **Done 2026-10-19**: `src/lib/foundry/cloud.ts` (`signUp`, `signIn`, `signOut`, `getAccount`, `forgotPassword`, `sendMessages`; errors are `FoundryError` with a `kind`: offline, signed-out, no-credits, wait, refused, not-open, broken), `scripts/test-mail/foundry-mock.mjs`, `src/lib/foundry/cloud.test.ts` (12 tests). Address: `FOUNDRY_CLOUD_URL`, default https://cloud.stitchfoundry.app. Unused until FA-2 |
 | FA-2 | Hosted sign-in with a Foundry Account; `User.foundryId`; reset demo accounts | **Done 2026-10-19, behind `FOUNDRY_SIGNIN` (off).** See "FA-2 notes". Demo accounts need no reset: a login is linked by proving its old password |
-| FA-3 | Desktop: optional link; offline messages for hub and AI | link, unlink and offline checked |
+| FA-3 | Desktop: optional link; offline messages for hub and AI | **Done 2026-10-19, behind `FOUNDRY_LINK` (off).** See "FA-3 notes" |
 | FA-4 | AI through `/v1/messages` or the shop's own key; drop the hub proxy call | features work both ways |
 | FA-5 | Remove local owner passwords on hosted; drop `SEED_OWNER_PASSWORD` | none left |
 
+
+## FA-3 notes
+**The switch** (`src/lib/foundry/mode.ts`, desktop program only; hosted editions are always off): `FOUNDRY_LINK`, or `foundryLink` in the
+program's settings file (`desktop/main.mjs` passes it on; INSTALL.md lists it). Unset or `off` = nothing shows and nothing changes.
+`offer` = Settings → Foundry Account lets the owner link; nothing depends on it. `required` = the community hub, partner shops and the
+Assistant need the link; everything else (tickets, register, stock, printing, manuals) never does, online or not.
+
+**How it works**
+- One link per company, in `FoundryLink` (migration `20261031000000_foundry_link`): the account's id, its email and last balance (for
+  showing only), and the service's token sealed with the other settings secrets. It needs the internet once, to link; after that the
+  program starts and works with none, because the gate reads only the database.
+- `foundryGate()` (`src/lib/foundry/link.ts`) answers "may the hub and Assistant be used?". Two refusals, each in words that say what to do:
+  not linked, and signed out (the service stopped accepting the token). Every hub request goes through it first (`hub.ts` `reach()`), so
+  nothing is even tried, and the hub is not wrongly marked "offline"; the background sync is skipped quietly; `assistantAvailable()`
+  asks it too (why `foundry`).
+- A link is re-checked with the service at most daily, in the background, when something asks; an unreachable service changes nothing
+  (never "signed out"). Settings → Foundry Account shows the last balance when the PC is offline and says so.
+- A sidebar notice shows only when the gate is closed ("Foundry Account not linked: hub sharing and the Assistant are off" and a link for
+  owners and admins). Offline messages for the hub and the Assistant were already there; the hub's `OFFLINE` and the Assistant's
+  `OFFLINE_MESSAGE` stay. `OFFLINE_NOTICE` (cloud.ts) is for FA-4's credit-paid requests.
+- Roles and permissions stay local: only an owner or admin can link or unlink; a tech sees the page read-only. The link is the account's id,
+  never its email.
+
+**Checked 2026-10-19:** tsc, lint, unit tests (100), `scripts/checks/foundry-link.check.ts` (7 steps; three deliberate breaks each failed
+it), the two FA-2 checks and `signin.check.ts` (unchanged), and a real browser run of the built app with `STITCH_DESKTOP=1`: unlinked
+notice, the service's wrong-password message, linking with "make me one", the balance, the token refused by the service (notice and page
+say sign in again), unlink (two-tap confirm), and with the switch off no page (404), no notice and no Settings entry. No cookie held the
+token. **Not checked:** the Electron shell itself (the desktop packages aren't installed here; `main.mjs` was only syntax-checked and its
+tests give the same result with and without this change), the real service, Windows, and a phone-width look.
+
+**Decisions for the owner**
+- Turning on `required` on installs that already joined the hub takes sharing away from them until they link. There are no real users yet.
+- Gating is per install, not per company: with several companies on one desktop, one linked company opens the install's hub traffic. A
+  desktop install is one company in practice; say so if that is wrong.
+- Linking is for owners and admins; techs never see a prompt.
 
 ## Open: "We host it for you" (FA-7)
 **Owner, 2026-10-19:** running it yourself (the Windows/Mac/Linux program, or your own server) stays **free**. If **SiteSentrix hosts**

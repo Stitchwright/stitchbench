@@ -5,6 +5,7 @@ import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { DEFAULT_CHECKLIST } from "@/lib/service-menu";
 import { getModules } from "@/lib/modules";
+import { foundryLinkMode } from "@/lib/foundry/mode";
 import { loginNotice } from "@/lib/plan";
 import { shopKinds } from "@/lib/equipment/shop";
 import { endedDay, fmtYmd, PAID_MODULE_IDS, SETTINGS_ACCOUNT_HREF, SETTINGS_MODULES_HREF, type ModuleState } from "@/lib/module-info";
@@ -221,6 +222,13 @@ export default async function SettingsPage() {
           <Link href={SETTINGS_ACCOUNT_HREF} className="link">
             Your StitchHub account and what {base.label} is licensed for
           </Link>
+          {foundryLinkMode() !== "off" && (
+            <div>
+              <Link href="/settings/foundry" className="link">
+                Foundry Account: the one login for all SiteSentrix software
+              </Link>
+            </div>
+          )}
         </div>
       </Section>
 

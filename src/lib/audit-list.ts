@@ -85,6 +85,7 @@ export const AUDIT_ACTIONS = {
   "signin.ok": { category: "people", label: "Signed in" },
   "signin.fail": { category: "people", label: "Wrong password at sign-in" },
   "foundry.link": { category: "people", label: "Linked to a Foundry Account" },
+  "foundry.unlink": { category: "people", label: "Unlinked from a Foundry Account" },
   // Data
   "books.exported": { category: "data", label: "Bookkeeping export marked as sent" },
   "export.download": { category: "data", label: "CSV downloaded" },

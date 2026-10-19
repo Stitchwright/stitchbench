@@ -193,6 +193,7 @@ makes it up if it is missing and resets the role's password to it at every start
 | `port` | web port for other devices (default 3100) |
 | `backupDir`, `backupsToKeep` | where backups go and how many are kept (default 30; `0` keeps them all) |
 | `platformAdminEmails` | emails that see the Companies page (only for hosting several companies) |
+| `foundryLink` | the optional link to a Foundry Account: empty (off), `offer` (Settings → Foundry Account lets the owner link) or `required` (the community hub, partner shops and the Assistant need the link; nothing else does) |
 | `openAtLogin` | start with Windows |
 | `publicUrl` | optional: the https address customers open for estimate and unsubscribe links (a tunnel pointed at the links port); see Messages below |
 | `linksPort` | the port that serves only the public pages (default the web port + 1) |

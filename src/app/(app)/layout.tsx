@@ -10,6 +10,7 @@ import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
 import { appName, isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
+import { foundryGate } from "@/lib/foundry/link";
 import { getModules } from "@/lib/modules";
 import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
@@ -53,6 +54,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pausePill = ms?.emailPausedAt ? "Email paused: fix in Settings" : ms?.smsPausedAt ? "Texts paused: fix in Settings" : null;
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
+  // The desktop program with FOUNDRY_LINK=required and no working Foundry Account link: say why the hub and the Assistant are off.
+  const foundry = await foundryGate();
   // Paid modules: a quiet renewal pill for admins, and a banner for everyone while a module is in its grace period.
   // Layouts don't re-render on navigation, so these may be one navigation stale; the pages and actions are the real gates.
   const shopRef = { id: user.shopId, name: shop?.name ?? "" };
@@ -136,6 +139,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               title="Sharing, the marketplace and messages to partner shops wait until the connection is back. Tickets, the register, customers and parts work as usual."
             >
               Offline since {fmtDateTime(new Date(offline), shop?.timeZone ?? DEFAULT_TIME_ZONE, { hour: "numeric", minute: "2-digit" })}
+            </span>
+          </div>
+        )}
+        {!foundry.ok && (
+          <div className="px-4 pb-2">
+            <span className="pill tone-wait text-xs whitespace-normal" title={foundry.message}>
+              {foundry.why === "signed-out" ? "Foundry Account: sign in again" : "Foundry Account not linked"}: hub sharing and the Assistant are off.{" "}
+              {admin ? (
+                <Link href="/settings/foundry" className="underline">
+                  Link it
+                </Link>
+              ) : (
+                "Ask the owner."
+              )}
             </span>
           </div>
         )}

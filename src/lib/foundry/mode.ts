@@ -14,3 +14,17 @@ export function foundrySignInMode(): FoundryMode {
   const v = (process.env.FOUNDRY_SIGNIN ?? "").trim().toLowerCase();
   return v === "on" || v === "only" ? v : "off";
 }
+
+// The desktop program's optional link to a Foundry Account (docs/plan.md FA-3). Desktop only; hosted editions sign in with
+// one (FOUNDRY_SIGNIN above) and are always "off" here.
+//   FOUNDRY_LINK unset or "off"  nothing shows and nothing changes
+//   "offer"                      Settings → Foundry Account lets the owner link; nothing depends on it
+//   "required"                   the community hub, partner shops and the Assistant need the link; the rest of the program
+//                                (tickets, register, stock, printing, manuals) never does, online or not
+export type FoundryLinkMode = "off" | "offer" | "required";
+
+export function foundryLinkMode(): FoundryLinkMode {
+  if (!isDesktop()) return "off";
+  const v = (process.env.FOUNDRY_LINK ?? "").trim().toLowerCase();
+  return v === "offer" || v === "required" ? v : "off";
+}

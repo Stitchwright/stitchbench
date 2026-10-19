@@ -97,7 +97,8 @@ function accountOf(v: unknown): FoundryAccount {
 
 function failure(status: number, body: unknown): FoundryError {
   // The service's own sentence ({ type: "error", error: { type, message } }), cut short; never anything from the request.
-  const said = isRecord(body) && isRecord(body.error) && typeof body.error.message === "string" ? body.error.message.slice(0, 300) : "";
+  const raw = isRecord(body) && isRecord(body.error) && typeof body.error.message === "string" ? body.error.message.slice(0, 300) : "";
+  const said = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : ""; // the service writes "that email and password don't match"; a toast starts with a capital
   if (status === 401) return new FoundryError(said || "Your Foundry Account sign-in has ended. Sign in again.", status, "signed-out");
   if (status === 402) return new FoundryError(said || "Not enough Foundry credits.", status, "no-credits");
   if (status === 429) return new FoundryError(said || "Too many tries. Wait a little and try again.", status, "wait");

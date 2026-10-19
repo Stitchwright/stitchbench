@@ -390,6 +390,7 @@ model Shop {
   stockTransfers    StockTransfer[]
   storeNotes        StoreNote[]
   approvals         Approval[]
+  foundryLink              FoundryLink?
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -4523,4 +4524,22 @@ model SlipReceipt {
   createdAt DateTime @default(now())
 
   @@id([shopId, key])
+}
+
+// A desktop install's optional link to a Foundry Account (docs/plan.md FA-3): one per company. `token` is the account
+// service's session token, sealed (src/lib/messaging/secrets.ts, field "foundryLink"); it never leaves the server.
+// `email` and `creditsLeft` are what the service last said, for showing only. state: ok | signed-out (the service
+// refused the token: sign in again). Needs no internet to read, so the program keeps working offline once linked.
+model FoundryLink {
+  shopId      String    @id
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  foundryId   Int
+  email       String
+  token       String
+  state       String    @default("ok")
+  creditsLeft Int?
+  checkedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([foundryId])
 }

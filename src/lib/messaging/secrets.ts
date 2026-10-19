@@ -8,7 +8,7 @@ import { isDesktop } from "@/lib/modules";
 // foundryToken:<FoundrySession idHash>: the Foundry Account service's session token (shopId "foundry": it belongs to no company).
 // moveToken:<CompanyMove id>: a company move's StitchHub token, kept until the hub has the company where it went
 // (src/lib/move/hub-step.ts).
-export type SecretField = "smtpPass" | "twilioToken" | "stripeKey" | "stripeWebhook" | "shippoKey" | "partnerKey" | "offsiteBucket" | `estimateToken:${string}` | `orderLink:${string}` | `moveToken:${string}` | `foundryToken:${string}`;
+export type SecretField = "smtpPass" | "twilioToken" | "stripeKey" | "stripeWebhook" | "shippoKey" | "partnerKey" | "offsiteBucket" | `estimateToken:${string}` | `orderLink:${string}` | `moveToken:${string}` | `foundryToken:${string}` | "foundryLink";
 
 type DerivedKey = { kid: string; key: Buffer };
 

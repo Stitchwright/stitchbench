@@ -5,6 +5,7 @@ import "server-only";
 // here is called on its own: only the actions in src/actions/assistant.ts call it, for a button a person pressed.
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
+import { foundryGate } from "@/lib/foundry/link";
 import { hubJoined, hubFetch, hubOfflineSince, HubError } from "@/lib/hub";
 import { getModules, hasModule } from "@/lib/modules";
 import { shopTimeZone } from "@/lib/shop-zone";
@@ -26,7 +27,7 @@ export function groupOn(s: GroupSwitches | null, g: FeatureGroup): boolean {
   return map[g];
 }
 
-export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "offline" | "module" | "feature"; message: string };
+export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "offline" | "module" | "feature" | "foundry"; message: string };
 
 /**
  * Whether an "Ask" button works now: the hub is joined and was reachable at the last call (the layout's offline pill
@@ -35,6 +36,9 @@ export type Availability ={ ok: true } | { ok: false; why: "off" | "no-hub" | "o
  */
 export async function assistantAvailable(shopId: string, o: { module?: boolean; group?: FeatureGroup } = {}): Promise<Availability> {
   if (assistantSwitchedOff()) return { ok: false, why: "off", message: "The Assistant is switched off on this server." };
+  // The desktop program with FOUNDRY_LINK=required: the Assistant needs the Foundry Account link, with the words that say what to do.
+  const gate = await foundryGate();
+  if (!gate.ok) return { ok: false, why: "foundry", message: gate.message };
   if (o.module !== false && !(await hasModule(shopId, "assistant"))) return { ok: false, why: "module", message: "The Assistant isn't turned on for this company." };
   if (o.group) {
     const s = await db.assistantSettings.findUnique({ where: { shopId } });
