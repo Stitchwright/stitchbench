@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { isPlatformAdmin } from "@/lib/shops";
+import { foundrySignInMode } from "@/lib/foundry/mode";
+import { currentFoundrySession } from "@/lib/foundry/session";
 
 export type CurrentUser = {
   id: string;
@@ -28,9 +30,15 @@ export async function sessionUser(): Promise<CurrentUser | null> {
   if (!u?.id) return null;
   const row = await db.user.findUnique({
     where: { id: u.id },
-    select: { id: true, shopId: true, role: true, name: true, email: true, active: true, sessionVersion: true },
+    select: { id: true, shopId: true, role: true, name: true, email: true, active: true, sessionVersion: true, foundryId: true },
   });
   if (!row || !row.active || row.sessionVersion !== (u.sv ?? 0) || row.shopId !== u.shopId) return null;
+  // FOUNDRY_SIGNIN=only (src/lib/foundry/mode.ts): a session without a live Foundry sign-in for this login's account ends.
+  // Sessions from before the switch go that way too, so turning it on signs everyone in again, with their Foundry Account.
+  if (foundrySignInMode() === "only") {
+    const fs = await currentFoundrySession();
+    if (!fs || row.foundryId === null || fs.foundryId !== row.foundryId) return null;
+  }
   return { id: row.id, shopId: row.shopId, role: row.role, name: row.name, email: row.email };
 }
 

@@ -21,6 +21,7 @@ import { knownDeviceCookie, knownDeviceFor, requestCookie } from "@/lib/known-de
 import { choiceCookieName, readTicket, spendTicket } from "@/lib/sign-in-ticket";
 import type { Role } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
+import { foundrySignInMode } from "@/lib/foundry/mode";
 
 // The same email rule accounts are made with (lib/email): a stricter check here locked out logins like owner@myshop.
 const credentialsSchema = z.object({
@@ -281,6 +282,8 @@ export async function checkSignIn(credentials: unknown, request: Request | undef
     const u = await redeemTicket(credentials, request);
     return u && logSignIn(u);
   }
+  // FOUNDRY_SIGNIN=only: the old email and password sign nobody in (src/lib/foundry/mode.ts); they still prove a login when linking.
+  if (foundrySignInMode() === "only") return null;
   const found = await signInStep(credentials, request);
   if (!found || found.length !== 1) return null;
   const { shopName: _shop, ...login } = found[0];

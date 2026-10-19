@@ -1,6 +1,6 @@
 # StitchBench and StitchShop: the Foundry Account plan
 
-**Status:** 2026-10-19. Survey done. FA-1 done (cloud client and mock, below); nothing is wired into sign-in or the Assistant yet. Owner: Bruce Wattendorf (SiteSentrix).
+**Status:** 2026-10-19. Survey done. FA-1 and FA-2 done (cloud client and mock; hosted sign-in with a Foundry Account behind the `FOUNDRY_SIGNIN` switch, which is off). The Assistant is not wired yet. Owner: Bruce Wattendorf (SiteSentrix).
 
 ## Goal
 One login, the **Foundry Account** (cloud.stitchfoundry.app), and one credit balance ("Foundry credits"), for all
@@ -46,7 +46,7 @@ keyed by the account's `id`.
 |---|---|---|
 | FA-0 | These docs; asks sent to the StitchFoundry chat (list in StitchHub's `docs/plan.md`) | merged |
 | FA-1 | Cloud client module (sign-in, account, `/v1/messages`) with a mock server for tests | **Done 2026-10-19**: `src/lib/foundry/cloud.ts` (`signUp`, `signIn`, `signOut`, `getAccount`, `forgotPassword`, `sendMessages`; errors are `FoundryError` with a `kind`: offline, signed-out, no-credits, wait, refused, not-open, broken), `scripts/test-mail/foundry-mock.mjs`, `src/lib/foundry/cloud.test.ts` (12 tests). Address: `FOUNDRY_CLOUD_URL`, default https://cloud.stitchfoundry.app. Unused until FA-2 |
-| FA-2 | Hosted sign-in with a Foundry Account; `User.foundryId`; reset demo accounts | owner signs in on a hosted demo |
+| FA-2 | Hosted sign-in with a Foundry Account; `User.foundryId`; reset demo accounts | **Done 2026-10-19, behind `FOUNDRY_SIGNIN` (off).** See "FA-2 notes". Demo accounts need no reset: a login is linked by proving its old password |
 | FA-3 | Desktop: optional link; offline messages for hub and AI | link, unlink and offline checked |
 | FA-4 | AI through `/v1/messages` or the shop's own key; drop the hub proxy call | features work both ways |
 | FA-5 | Remove local owner passwords on hosted; drop `SEED_OWNER_PASSWORD` | none left |
@@ -61,3 +61,34 @@ Prices and plans (`PROGRAM_FREE`), legal wording, and the wording users see on t
 - The client never logs, stores or puts the token in an error. Callers (FA-2 onward) keep it in the database, sealed with
   `SETTINGS_KEY`, and give the browser only a session reference.
 - `OFFLINE_NOTICE` is the one wording for "the hub and AI need the internet and your Foundry Account"; FA-3 shows it.
+
+## FA-2 notes
+**The switch** (`src/lib/foundry/mode.ts`, hosted only; the desktop program is always off): `FOUNDRY_SIGNIN` unset or `off` = the
+sign-in page and every session behave exactly as before. `on` = the page offers the Foundry Account first and the old email and
+password beside it; both work. `only` = the old password no longer signs anyone in (it still proves a login when linking), and a
+session without a live Foundry sign-in for its login's account ends, so turning it on signs everyone in again. Setting it is the
+owner's call, in Railway's variables (the name is already in `.railway/railway.ts`).
+
+**How it works**
+- A login is linked to a Foundry Account at `/login/link` by proving both: its old email and password (with the usual limits), and
+  the account's password (or "make me one", which signs up). `User.foundryId` then holds the account's **id**, never its email; the
+  service doesn't verify email yet, and a test shows an account made with an owner's email gets nothing.
+- `/login` signs in through the service; the logins linked to that id are the ones that fit (several companies: the existing
+  "Choose a company" step). `/login/forgot` asks the service to email a reset link.
+- The service's token is kept sealed in `FoundrySession` (only the hash of the browser's random cookie is stored); the browser holds
+  only that cookie. Sign out and `/api/session-end` delete the row and the cookie and end the session at the service.
+- Roles, companies and everything shop-specific still come from this database. A Foundry sign-in changes who may log in, nothing else.
+- Migration `20261030000000_foundry_account`; `scripts/checks/foundry-signin.check.ts` (9 steps, needs the dev database).
+
+**Checked 2026-10-19:** tsc, lint, unit tests (100), `signin.check.ts` (unchanged behaviour with the switch off), the new check, and a
+real browser run of the built app against the stand-in service in `on` and `only` (link, wrong old password, unlinked account,
+sign out, sign in again, old password in `on`, old session and a missing Foundry cookie ending in `only`; no token in any cookie).
+**Not checked:** a deploy on Railway, the real service at cloud.stitchfoundry.app, the real reset email (needs its Resend key), and a
+phone-width look at the new pages.
+
+**Not done yet (small follow-ups)**
+- Link from Settings when the same email and password fit a login in several companies (the link page says so).
+- Sign-up for a brand-new company with a Foundry Account (`/signup` still makes a local password); the hub's
+  `POST /api/platform/companies` still hands an owner a link to set a local password.
+- Removing local owner passwords and `SEED_OWNER_PASSWORD` once the owner has switched to `only` (FA-5).
+- Ask the StitchFoundry chat for verified email (an `emailVerified` flag) so a link could also offer "same email" as a hint.

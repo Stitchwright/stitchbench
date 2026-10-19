@@ -13,7 +13,7 @@
 // (neither does the real service yet).
 //
 //   import { startFoundryMock } from "./foundry-mock.mjs";
-//   const mock = await startFoundryMock({ port: 0, respond: (req) => "text" });
+//   const mock = await startFoundryMock({ port: 0, respond: (req) => "text" });   // firstId: the first account's id (default 1)
 //   program env: FOUNDRY_CLOUD_URL=mock.url
 //   node scripts/test-mail/foundry-mock.mjs       // FOUNDRY_MOCK_PORT (3405)
 //
@@ -47,16 +47,16 @@ const cleanEmail = (v) => {
 };
 
 /**
- * @param {{ port?: number, ai?: boolean, signupCredits?: number, models?: string[], inFlight?: number, respond?: ((req: { model: string, system: string, messages: unknown[], maxTokens: number, userText: string, accountId: number }) => string | { text?: string, stopReason?: string, status?: number, body?: unknown, delayMs?: number } | Promise<string | { text?: string, stopReason?: string, status?: number, body?: unknown, delayMs?: number }>) | null }} [opts]
+ * @param {{ port?: number, firstId?: number, ai?: boolean, signupCredits?: number, models?: string[], inFlight?: number, respond?: ((req: { model: string, system: string, messages: unknown[], maxTokens: number, userText: string, accountId: number }) => string | { text?: string, stopReason?: string, status?: number, body?: unknown, delayMs?: number } | Promise<string | { text?: string, stopReason?: string, status?: number, body?: unknown, delayMs?: number }>) | null }} [opts]
  */
-export async function startFoundryMock({ port = 0, ai = true, signupCredits = 100, models = ["claude-opus-5-5"], inFlight = 3, respond = null } = {}) {
+export async function startFoundryMock({ port = 0, firstId = 1, ai = true, signupCredits = 100, models = ["claude-opus-5-5"], inFlight = 3, respond = null } = {}) {
   const accounts = new Map(); // email -> { id, email, password, credits, wrong }
   const sessions = new Map(); // token -> account
   const requests = [];
   const queue = [];
   const sent = [];
   const running = new Map();
-  let nextId = 1;
+  let nextId = firstId;
 
   const send = (res, status, body, headers = {}) => {
     res.writeHead(status, { "content-type": "application/json", "access-control-allow-origin": "*", ...headers });
@@ -91,7 +91,7 @@ export async function startFoundryMock({ port = 0, ai = true, signupCredits = 10
       queue.length = 0;
       sent.length = 0;
       running.clear();
-      nextId = 1;
+      nextId = firstId;
       return send(res, 200, { ok: true });
     }
     if (route === "POST /__next") {

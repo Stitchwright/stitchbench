@@ -454,6 +454,10 @@ model User {
   whatsNewSeen   String?
   // Bigger text: "normal" | "large" | "larger"; null = normal
   textSize       String?
+  // The Foundry Account this login is linked to (docs/plan.md FA-2): the account's lasting id from the account service,
+  // never its email (that service doesn't verify email yet). Null = not linked; one account may be linked to a login in
+  // several companies, but to one login per company.
+  foundryId      Int?
 
   notes          ModelNote[]
   ticketsOpened  Ticket[]        @relation("TicketOpenedBy")
@@ -468,7 +472,22 @@ model User {
 
   // An email is unique inside one company (round 3 W1): the same address may have a login in several companies.
   @@unique([shopId, email])
+  @@unique([shopId, foundryId])
   @@index([email])
+  @@index([foundryId])
+}
+
+// A browser signed in with a Foundry Account (docs/plan.md FA-2). The browser holds a random value in an httpOnly cookie;
+// only its sha256 is kept here (idHash). `token` is the account service's session token (sfs_…), which can spend the
+// account's Foundry credits, so it is sealed (src/lib/messaging/secrets.ts) and never leaves the server.
+model FoundrySession {
+  idHash    String   @id
+  foundryId Int
+  token     String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([foundryId])
 }
 
 // A one-use password link or reset (hub-accounts-billing-design.md 4.3, package hosted-provisioning). Only the sha256 of

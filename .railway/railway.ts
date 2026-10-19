@@ -23,6 +23,7 @@ const keptVariables = [
   "DATABASE_URL",
   "DEFAULT_SHOP_KIND",
   "FOUNDRY_CLOUD_URL",
+  "FOUNDRY_SIGNIN",
   "PLATFORM_ADMIN_EMAILS",
   // Not set on either service as of 2 Oct 2026, but needed for customer links (booking, the shop) and for sealing the
   // mail password and Stripe keys: listed so that setting them in the dashboard never shows up as "to destroy".

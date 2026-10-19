@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser, sessionUser } from "@/lib/session";
 import { endEverySession } from "@/lib/sign-in";
+import { endFoundrySession } from "@/lib/foundry/session";
 import { rememberThisDevice } from "@/lib/known-device";
 import { db } from "@/lib/db";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -153,6 +154,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 // signed out on purpose, so it is known again at the new version (other devices stay unknown).
                 await rememberThisDevice(me.id);
               }
+              await endFoundrySession(); // this browser's Foundry sign-in too, if it has one
               await signOut({ redirectTo: "/login" });
             }}
           >
