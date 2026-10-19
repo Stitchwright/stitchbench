@@ -1,6 +1,6 @@
 # StitchBench and StitchShop: the Foundry Account plan
 
-**Status:** 2026-10-19. Survey done, nothing built yet. Owner: Bruce Wattendorf (SiteSentrix).
+**Status:** 2026-10-19. Survey done. FA-1 done (cloud client and mock, below); nothing is wired into sign-in or the Assistant yet. Owner: Bruce Wattendorf (SiteSentrix).
 
 ## Goal
 One login, the **Foundry Account** (cloud.stitchfoundry.app), and one credit balance ("Foundry credits"), for all
@@ -45,7 +45,7 @@ keyed by the account's `id`.
 | Id | What | Done when |
 |---|---|---|
 | FA-0 | These docs; asks sent to the StitchFoundry chat (list in StitchHub's `docs/plan.md`) | merged |
-| FA-1 | Cloud client module (sign-in, account, `/v1/messages`) with a mock server for tests | unit tests pass |
+| FA-1 | Cloud client module (sign-in, account, `/v1/messages`) with a mock server for tests | **Done 2026-10-19**: `src/lib/foundry/cloud.ts` (`signUp`, `signIn`, `signOut`, `getAccount`, `forgotPassword`, `sendMessages`; errors are `FoundryError` with a `kind`: offline, signed-out, no-credits, wait, refused, not-open, broken), `scripts/test-mail/foundry-mock.mjs`, `src/lib/foundry/cloud.test.ts` (12 tests). Address: `FOUNDRY_CLOUD_URL`, default https://cloud.stitchfoundry.app. Unused until FA-2 |
 | FA-2 | Hosted sign-in with a Foundry Account; `User.foundryId`; reset demo accounts | owner signs in on a hosted demo |
 | FA-3 | Desktop: optional link; offline messages for hub and AI | link, unlink and offline checked |
 | FA-4 | AI through `/v1/messages` or the shop's own key; drop the hub proxy call | features work both ways |
@@ -53,3 +53,11 @@ keyed by the account's `id`.
 
 ## Open decisions (the owner's)
 Prices and plans (`PROGRAM_FREE`), legal wording, and the wording users see on the first-run link prompt.
+
+## FA-1 notes
+- The mock follows the real service as read from `apps/stitchfoundry-cloud` on 2026-10-19, including that **only
+  `claude-opus-5-5` is offered** and that sign-up doesn't verify email. If the StitchFoundry chat changes either, change
+  `foundry-mock.mjs` and its tests with it.
+- The client never logs, stores or puts the token in an error. Callers (FA-2 onward) keep it in the database, sealed with
+  `SETTINGS_KEY`, and give the browser only a session reference.
+- `OFFLINE_NOTICE` is the one wording for "the hub and AI need the internet and your Foundry Account"; FA-3 shows it.
