@@ -21,9 +21,11 @@ Both can join the community hub, StitchHub (see [Joining the community hub](#joi
 Every version tag (`v1.7.2`) builds everything on GitHub and publishes it on the repository's **Releases** page,
 with a `SHA256SUMS.txt`:
 
-- **macOS:** `StitchBench-<version>-mac-arm64.dmg` (Apple silicon) or `-mac-x64.dmg` (Intel). The app isn't signed
-  with an Apple certificate, so the first time, right-click it and choose **Open** (or System Settings → Privacy &
-  Security → Open Anyway).
+- **macOS:** `StitchBench-<version>-mac-arm64.dmg` (Apple silicon) or `-mac-x64.dmg` (Intel). Releases are signed
+  with our Apple Developer ID and notarized by Apple, so it opens normally. (A build made from a branch or without the
+  secrets is unsigned: right-click it and choose **Open**, or System Settings → Privacy & Security → Open Anyway.)
+  To check one: `codesign --verify --deep --strict -v /Applications/StitchBench.app`, then
+  `spctl --assess --type execute -v /Applications/StitchBench.app` (should say "accepted, source=Notarized Developer ID").
 - **Linux:** `.AppImage` (make it executable and run it) or `.deb` (`sudo apt install ./StitchBench-...deb`), x64 or arm64.
 - **Hosted, on your own server (Docker):** `ghcr.io/stitchwright/stitchbench:latest`. Use
   [`docker-compose.selfhost.yml`](docker-compose.selfhost.yml): `AUTH_SECRET=$(openssl rand -base64 33) docker compose -f docker-compose.selfhost.yml up -d`,
@@ -43,8 +45,11 @@ without publishing.
 
 ### Install
 1. Run **`StitchBench Setup <version>.exe`**.
-   If Windows shows "Windows protected your PC", choose **More info → Run anyway**. If Smart App Control blocks
-   it outright, the installer has to be code-signed (see [Building the installer](#building-the-windows-installer)).
+   Release installers are signed (Azure Artifact Signing), so Windows should show our name as the publisher. To check:
+   right-click the installer → Properties → **Digital Signatures**, or in PowerShell
+   `Get-AuthenticodeSignature "StitchBench Setup <version>.exe"` (Status should be `Valid`). A fresh signature can still
+   get SmartScreen's "Windows protected your PC" until it builds reputation: choose **More info → Run anyway**. An
+   unsigned build (from a branch, or made without the secrets) may be blocked outright by Smart App Control.
 2. Start **StitchBench** from the desktop icon. The first start creates its database, which takes about a minute.
 3. The first screen asks for your company name, your name, your email and a password. That creates the company
    and your owner login. Sign-up then closes by itself. It only works in the program's own window on this PC,
@@ -778,26 +783,14 @@ npm run installer                    # → desktop/dist/StitchBench Setup <versi
 npm run installer:stitchshop         # → desktop/dist-stitchshop/StitchShop Setup <version>.exe (same program, StitchShop name and defaults)
 ```
 
-Set the version in `desktop/package.json`. Windows Smart App Control and SmartScreen block or warn about
-unsigned installers, so sign them before shops install them.
+Set the version in `desktop/package.json`. The GitHub workflow builds, signs and (for a `v*` tag) publishes the
+installers; it is described, with the secrets it needs, in [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md). In short:
+Windows is signed with Azure Artifact Signing (the programs inside, then the installers) and macOS with a Developer ID
+certificate and notarization. Both use the `release` environment's secrets, which only the `release` branch and `v*`
+tags can reach. A run from anywhere else, or with a secret missing, builds unsigned and prints a warning.
 
-#### Signing the installers
-
-Two ways work with the GitHub workflow; the first is cheaper and needs no hardware token.
-
-1. **Microsoft Trusted Signing** (about $10 a month; an Azure subscription and a verified identity, which takes a few
-   days). Make a Trusted Signing account and a certificate profile in Azure, then an app registration with a client
-   secret that has the "Trusted Signing Certificate Profile Signer" role. Add to `desktop/package.json` under `build.win`:
-   `"azureSignOptions": { "publisherName": "<the name on the certificate profile>", "endpoint": "https://<region>.codesigning.azure.net", "certificateProfileName": "<profile>", "codeSigningAccountName": "<account>" }`,
-   and give the workflow the secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (electron-builder reads
-   them). Remove the `CSC_LINK` lines from the workflow in that case.
-2. **A code-signing certificate file** (OV or EV from a certificate authority; since 2023 these come on a hardware token
-   or in a cloud HSM, so a plain `.pfx` is only possible with some providers' cloud signing). Store the `.pfx` as base64
-   in the repository secret `WIN_CSC_LINK` and its password in `WIN_CSC_KEY_PASSWORD`; the workflow passes them to
-   electron-builder, which signs both installers. With the secrets empty the installers are built unsigned, as today.
-
-Either way, the first signed release still shows SmartScreen's "unknown publisher" warning until the certificate has
-built up reputation (EV certificates and Trusted Signing skip that). Keep signing every release with the same identity.
+Building locally gives unsigned installers unless you set the same credentials yourself. On a Mac without them, add
+`-- -c.mac.identity=null -c.mac.notarize=false` to `npm run installer:mac`.
 
 ### Updating an installed program without a new installer
 Stop StitchBench (tray → Quit). Copy `desktop/server` over

@@ -4,8 +4,10 @@
 #   Linux    .AppImage and .deb, x64 and arm64
 # Run it from the Actions tab (Desktop installers -> Run workflow) or push a tag like v1.7.2. Download the installers
 # from the run's page (kept for 7 days); a tag also publishes them on the repository's Releases page.
-# Set the version in desktop/package.json first. Windows installers are unsigned unless signing is switched on
-# (docs/CODE_SIGNING.md); the macOS and Linux ones are unsigned (INSTALL.md says how to open them).
+# Set the version in desktop/package.json first. Windows (Azure Artifact Signing) and macOS (Developer ID, notarized)
+# are signed by jobs that use the "release" environment, which holds the secrets and allows only the release branch and
+# v* tags (docs/CODE_SIGNING.md); a run from anywhere else, or without the secrets, builds unsigned with a warning.
+# Linux is unsigned.
 name: Desktop installers
 
 on:
@@ -19,22 +21,18 @@ permissions:
   contents: read
 
 jobs:
-  # macOS and Linux. Each runner builds for its own architecture (the program ships a native Postgres).
-  unix:
+  # Linux. Each runner builds for its own architecture (the program ships a native Postgres). No signing.
+  linux:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-latest, target: mac, name: mac-arm64 }
-          - { os: macos-15-intel, target: mac, name: mac-x64 }
-          - { os: ubuntu-latest, target: linux, name: linux-x64 }
-          - { os: ubuntu-24.04-arm, target: linux, name: linux-arm64 }
+          - { os: ubuntu-latest, name: linux-x64 }
+          - { os: ubuntu-24.04-arm, name: linux-arm64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
       DATABASE_URL: postgresql://build:build@localhost:5432/build
-      # No signing identity on the runner: build unsigned instead of looking for one in the keychain.
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -61,11 +59,124 @@ jobs:
 
       - name: StitchBench installer
         working-directory: desktop
-        run: npm run installer:${{ matrix.target }}
+        run: npm run installer:linux
 
       - name: StitchShop installer
         working-directory: desktop
-        run: npm run installer:stitchshop:${{ matrix.target }}
+        run: npm run installer:stitchshop:linux
+
+      - name: Keep the installers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers-${{ matrix.name }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist-stitchshop/*.AppImage
+            desktop/dist-stitchshop/*.deb
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  # macOS: signed with the Developer ID certificate and notarized by electron-builder (hardened runtime and the
+  # entitlements are in desktop/package.json and desktop/build/entitlements.mac.plist). The "release" environment holds the
+  # secrets and only the release branch and v* tags may use it; elsewhere, or with a secret missing, the build is
+  # unsigned and says so.
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, name: mac-arm64 }
+          - { os: macos-15-intel, name: mac-x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    environment: ${{ (github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')) && 'release' || '' }}
+    env:
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      # Only this step sees the secrets while the packages install, and it only asks whether they are there.
+      - name: Check for the signing secrets
+        id: signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -z "$missing" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=macOS build is UNSIGNED::Not signing or notarizing; missing secrets:$missing (the release environment applies only to the release branch and v* tags)."
+          fi
+
+      - name: Install the app's packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Install the program's packages
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the app for the program
+        working-directory: desktop
+        run: node prepare-app.mjs
+
+      - name: StitchBench and StitchShop installers (signed and notarized)
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npm run installer:mac
+          npm run installer:stitchshop:mac
+
+      - name: StitchBench and StitchShop installers (unsigned)
+        if: ${{ steps.signing.outputs.signed != 'true' }}
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm run installer:mac -- -c.mac.identity=null -c.mac.notarize=false
+          npm run installer:stitchshop:mac -- -c.mac.identity=null -c.mac.notarize=false
+
+      # Show what a shop will meet: the signature, the notarization ticket and Gatekeeper's verdict.
+      - name: Check the signatures
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        run: |
+          set -e
+          for dmg in desktop/dist/*.dmg desktop/dist-stitchshop/*.dmg; do
+            dir=$(mktemp -d)
+            hdiutil attach "$dmg" -mountpoint "$dir" -nobrowse -quiet
+            app=$(ls -d "$dir"/*.app | head -1)
+            echo "== $dmg"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Authority|TeamIdentifier|flags|Timestamp'
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app"
+            hdiutil detach "$dir" -quiet
+          done
 
       - name: Keep the installers
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -74,16 +185,14 @@ jobs:
           path: |
             desktop/dist/*.dmg
             desktop/dist/*.zip
-            desktop/dist/*.AppImage
-            desktop/dist/*.deb
             desktop/dist-stitchshop/*.dmg
             desktop/dist-stitchshop/*.zip
-            desktop/dist-stitchshop/*.AppImage
-            desktop/dist-stitchshop/*.deb
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
 
+  # Windows, part 1: build the two programs unpacked (no installer yet) so the "sign" job can sign StitchBench.exe and
+  # StitchShop.exe before they are packed. This job runs every dependency's install scripts and has no secrets.
   build:
     runs-on: windows-latest
     timeout-minutes: 60
@@ -116,94 +225,136 @@ jobs:
         working-directory: desktop
         run: node prepare-app.mjs
 
-      # Code signing (INSTALL.md, "Signing the installers"): with the two secrets set, electron-builder signs both
-      # installers with that certificate; with them empty the installers are built unsigned, as before.
-      - name: StitchBench installer
+      - name: Unpacked StitchBench and StitchShop
         working-directory: desktop
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npm run installer
+        run: |
+          npm run unpacked
+          npm run unpacked:stitchshop
 
-      - name: StitchShop installer
-        working-directory: desktop
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npm run installer:stitchshop
-
-      # Signing off (the default): the installers are kept as they are. Signing on (repository variable
-      # SIGNING_ENABLED is "true"): the unsigned ones are handed to the "sign" job below, which has the Azure login.
-      - name: Keep the installers
-        if: ${{ vars.SIGNING_ENABLED != 'true' }}
+      - name: Keep the unpacked programs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: installers
+          name: win-unpacked
           path: |
-            desktop/dist/*.exe
-            desktop/dist-stitchshop/*.exe
-          retention-days: 7
-          compression-level: 0
-
-      - name: Keep the unsigned installers for signing
-        if: ${{ vars.SIGNING_ENABLED == 'true' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: installers-unsigned
-          path: |
-            desktop/dist/*.exe
-            desktop/dist-stitchshop/*.exe
+            desktop/dist/win-unpacked
+            desktop/dist-stitchshop/win-unpacked
+          if-no-files-found: error
           retention-days: 1
-          compression-level: 0
+          compression-level: 1
 
-  # Code signing with Azure Trusted Signing (now "Artifact Signing"); setup steps are in docs/CODE_SIGNING.md.
-  # Skipped unless the repository variable SIGNING_ENABLED is "true". It's a separate job so the build above, which
-  # runs every dependency's install scripts, never gets an OIDC token: only this job has id-token: write.
-  # Only the two outer installers are signed. The app's own StitchBench.exe inside them is not: the signing action is
-  # a composite action that signs a folder of files and can't be called per file from an electron-builder sign hook.
+  # Windows, part 2: Azure Artifact Signing (docs/CODE_SIGNING.md). Signs the two programs, packs them into the NSIS
+  # installers with electron-builder (--prepackaged), then signs the installers. The "release" environment holds the
+  # secrets; elsewhere, or with a secret missing, the installers are built unsigned and it says so. The secrets reach
+  # only the checking step and the signing steps, never the package install. The files inside the programs that
+  # are not StitchBench.exe / StitchShop.exe (the embedded Postgres, DLLs) are not signed.
   sign:
     needs: build
-    if: ${{ vars.SIGNING_ENABLED == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write
+    timeout-minutes: 30
+    environment: ${{ (github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')) && 'release' || '' }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install the program's packages
+        working-directory: desktop
+        run: npm ci
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: installers-unsigned
-          path: unsigned
+          name: win-unpacked
+          path: desktop
 
-      # Passwordless: GitHub OIDC to a Microsoft Entra app registration with a federated credential.
-      - name: Sign in to Azure
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Check for the signing secrets
+        id: signing
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+        run: |
+          $missing = @('AZURE_TENANT_ID','AZURE_CLIENT_ID','AZURE_CLIENT_SECRET','AZURE_SIGNING_ENDPOINT','AZURE_SIGNING_ACCOUNT','AZURE_CERT_PROFILE') | Where-Object { -not (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value }
+          if ($missing.Count -eq 0) { "signed=true" >> $env:GITHUB_OUTPUT }
+          else {
+            "signed=false" >> $env:GITHUB_OUTPUT
+            Write-Host "::warning title=Windows installers are UNSIGNED::Not signing; missing secrets: $($missing -join ', ') (the release environment applies only to the release branch and v* tags)."
+          }
 
-      # Inputs per https://github.com/Azure/artifact-signing-action (README and action.yml at v2.0.0; the action
-      # was called azure/trusted-signing-action before it was renamed). files-folder-recurse finds both
-      # folders the artifact keeps (dist and dist-stitchshop).
-      - name: Sign the installers
+      # Inputs per https://github.com/Azure/artifact-signing-action (action.yml at v2.0.0).
+      - name: Sign StitchBench.exe and StitchShop.exe
+        if: ${{ steps.signing.outputs.signed == 'true' }}
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
-          endpoint: ${{ vars.SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.SIGNING_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ vars.SIGNING_PROFILE_NAME }}
-          files-folder: ${{ github.workspace }}/unsigned
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
+          files: |
+            ${{ github.workspace }}\desktop\dist\win-unpacked\StitchBench.exe
+            ${{ github.workspace }}\desktop\dist-stitchshop\win-unpacked\StitchShop.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Pack the installers
+        working-directory: desktop
+        run: |
+          npm run installer:prepackaged
+          npm run installer:stitchshop:prepackaged
+
+      # The folders are not searched recursively, so only the installers beside win-unpacked are signed.
+      - name: Sign the StitchBench installer
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}\desktop\dist
           files-folder-filter: exe
-          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Sign the StitchShop installer
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}\desktop\dist-stitchshop
+          files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
       - name: Check the signatures
+        if: ${{ steps.signing.outputs.signed == 'true' }}
         shell: pwsh
         run: |
-          $files = Get-ChildItem unsigned -Recurse -Filter *.exe
-          if ($files.Count -ne 2) { throw "Expected 2 installers, found $($files.Count)" }
+          $files = @(Get-ChildItem desktop/dist/*.exe, desktop/dist-stitchshop/*.exe) + @(Get-Item desktop/dist/win-unpacked/StitchBench.exe, desktop/dist-stitchshop/win-unpacked/StitchShop.exe)
+          if ($files.Count -ne 4) { throw "Expected 4 files (2 installers, 2 programs), found $($files.Count)" }
           foreach ($f in $files) {
             $sig = Get-AuthenticodeSignature $f.FullName
             Write-Host "$($f.Name): $($sig.Status), $($sig.SignerCertificate.Subject)"
@@ -211,26 +362,29 @@ jobs:
             if ($null -eq $sig.TimeStamperCertificate) { throw "$($f.Name) has no timestamp" }
           }
 
-      - name: Keep the signed installers
+      - name: Keep the installers
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: installers
-          path: unsigned/**/*.exe
+          path: |
+            desktop/dist/*.exe
+            desktop/dist-stitchshop/*.exe
+          if-no-files-found: error
           retention-days: 7
           compression-level: 0
 
   # A tag (v1.7.2) publishes every installer on the Releases page. Skipped for a manual run.
   # Only this job can write to the repository; it never runs the build.
   release:
-    needs: [build, sign, unix]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && needs.unix.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    needs: [sign, mac, linux]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
     steps:
-      # Windows: "installers" (signed when signing is on). macOS and Linux: one "installers-<name>" each.
-      # "installers-unsigned" (the signing job's input) is left out on purpose.
+      # Windows: "installers". macOS and Linux: one "installers-<name>" each. "win-unpacked" (the signing job's input)
+      # is left out on purpose.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: installers
