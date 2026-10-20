@@ -6,6 +6,7 @@ import { unstable_rethrow } from "next/navigation";
 import { toast } from "sonner";
 import type { ActionResult } from "@/lib/action";
 import { showUndo } from "@/components/undo-bar";
+import { CopyButton } from "@/components/copy-button";
 
 type Action = (formData: FormData) => Promise<ActionResult>;
 
@@ -38,6 +39,7 @@ export function ActionForm({
   reset = false,
   className,
   id,
+  showResult,
 }: {
   action: Action;
   children: React.ReactNode;
@@ -45,9 +47,15 @@ export function ActionForm({
   reset?: boolean;
   className?: string;
   id?: string;
+  /**
+   * When the action returns shownOnce(text) (a one-time sign-in link), show that text under the form with this heading and a Copy
+   * button. It lives only in this page's memory: it isn't logged or kept anywhere, and it is gone when the page is.
+   */
+  showResult?: string;
 }) {
   const ref = useRef<HTMLFormElement>(null);
   const [pending, start] = useTransition();
+  const [shown, setShown] = useState<string | null>(null);
   return (
     <Pending.Provider value={pending}>
       <form
@@ -61,6 +69,7 @@ export function ActionForm({
           const fd = new FormData(form, (e.nativeEvent as SubmitEvent).submitter);
           start(async () => {
             const r = await runAction(() => action(fd));
+            setShown(showResult && !r?.error && r?.shown ? r.shown : null);
             if (r?.error) toast.error(r.error);
             else {
               if (r?.warn) toast.warning(r.warn, { duration: 8000 });
@@ -73,6 +82,16 @@ export function ActionForm({
       >
         {children}
       </form>
+      {shown && (
+        <div className="card card-pad mt-3 space-y-2 text-sm" role="status">
+          <p className="font-medium">{showResult}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input readOnly value={shown} className="input mono min-w-0 flex-1 text-xs" aria-label={showResult} onFocus={(e) => e.currentTarget.select()} />
+            <CopyButton text={shown} label="Copy the link" />
+          </div>
+          <p className="muted text-xs">Shown this once and kept nowhere else. It works once and runs out in 24 hours.</p>
+        </div>
+      )}
     </Pending.Provider>
   );
 }

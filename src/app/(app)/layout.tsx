@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser, sessionUser } from "@/lib/session";
 import { endEverySession } from "@/lib/sign-in";
+import { endFoundrySession } from "@/lib/foundry/session";
 import { rememberThisDevice } from "@/lib/known-device";
 import { db } from "@/lib/db";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -9,6 +10,7 @@ import { Nav } from "@/components/nav";
 import { signOut } from "@/auth";
 import { appName, isPlatformAdmin } from "@/lib/shops";
 import { hubOfflineSince } from "@/lib/hub";
+import { foundryGate } from "@/lib/foundry/link";
 import { getModules } from "@/lib/modules";
 import { endedDay, fmtYmd, MODULE_IDS, salesMailto, toNavGates } from "@/lib/module-info";
 import { gates as dataGates } from "@/lib/module-gate";
@@ -52,6 +54,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pausePill = ms?.emailPausedAt ? "Email paused: fix in Settings" : ms?.smsPausedAt ? "Texts paused: fix in Settings" : null;
   // The hub stopped answering (the internet is down, most likely): say so once, quietly. Everything local keeps working.
   const offline = hub?.installKey ? hubOfflineSince() : null;
+  // The desktop program with FOUNDRY_LINK=required and no working Foundry Account link: say why the hub and the Assistant are off.
+  const foundry = await foundryGate();
   // Paid modules: a quiet renewal pill for admins, and a banner for everyone while a module is in its grace period.
   // Layouts don't re-render on navigation, so these may be one navigation stale; the pages and actions are the real gates.
   const shopRef = { id: user.shopId, name: shop?.name ?? "" };
@@ -138,6 +142,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
           </div>
         )}
+        {!foundry.ok && (
+          <div className="px-4 pb-2">
+            <span className="pill tone-wait text-xs whitespace-normal" title={foundry.message}>
+              {foundry.why === "signed-out" ? "Foundry Account: sign in again" : "Foundry Account not linked"}: hub sharing and the Assistant are off.{" "}
+              {admin ? (
+                <Link href="/settings/foundry" className="underline">
+                  Link it
+                </Link>
+              ) : (
+                "Ask the owner."
+              )}
+            </span>
+          </div>
+        )}
         {/* On phones too: a shared counter tablet or a tech's phone must be able to sign out. */}
         <div className="px-4 py-2 text-xs side:py-4">
           <div className="muted">Signed in as {user.name}</div>
@@ -153,6 +171,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 // signed out on purpose, so it is known again at the new version (other devices stay unknown).
                 await rememberThisDevice(me.id);
               }
+              await endFoundrySession(); // this browser's Foundry sign-in too, if it has one
               await signOut({ redirectTo: "/login" });
             }}
           >

@@ -12,6 +12,8 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
+import { appBaseUrl } from "@/lib/app-origin";
+import { foundrySignInMode } from "@/lib/foundry/switches";
 import { isDesktop } from "@/lib/modules";
 import { allow } from "@/lib/rate-limit";
 import { platformMailProblem, sendPlatformMail } from "@/lib/platform-mail";
@@ -25,38 +27,18 @@ const HOUR = 3600_000;
 const LINK_KINDS = ["reset", "setup", "admin"];
 
 export const SAME_ANSWER = "If that address has a login here, the email is on its way. The link in it works once, for an hour.";
+/** FOUNDRY_SIGNIN=only: there is no local password to reset (docs/plan.md FA-5). */
+export const ONLY_WORDS = "Sign-in here is with your Foundry Account, so there is no password to reset. If you forgot your Foundry Account's password, use “Forgot your password?” on the sign-in page.";
 export const TRAY_WORDS = "On the Windows program, a password is reset on the shop PC: right-click the program's icon by the clock and choose Reset a password.";
 
 export const tokenHash = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 
-/** An origin from a variable: https, or http for this machine (tests); nothing but scheme, host and port. */
-function origin(raw: string | null | undefined): string | null {
-  const text = (raw ?? "").trim();
-  if (!text) return null;
-  try {
-    const u = new URL(text);
-    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
-    if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) return null;
-    if (u.username || u.password || u.search || u.hash || (u.pathname !== "/" && u.pathname !== "")) return null;
-    return u.origin;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * This service's own address, for the links it mails or hands out. Never taken from a request (a forged Host header
- * would send an owner a link to someone else's site): APP_URL, else PUBLIC_URL when it is the app itself (not a separate
- * links-only address), else Railway's public domain.
- */
-export function appBaseUrl(): string | null {
-  const railway = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  return origin(process.env.APP_URL) ?? (process.env.PUBLIC_LINKS_ONLY === "true" ? null : origin(process.env.PUBLIC_URL)) ?? (railway ? origin(`https://${railway}`) : null);
-}
+export { appBaseUrl };
 
 /** Why "Forgot your password?" can't mail a link here, or null when it can. */
 export function resetByEmailProblem(): string | null {
   if (isDesktop()) return TRAY_WORDS;
+  if (foundrySignInMode() === "only") return ONLY_WORDS;
   const mail = platformMailProblem();
   if (mail) return mail;
   if (!appBaseUrl()) return "This server doesn't know its own address for the link: set APP_URL (https://your-site).";
@@ -67,7 +49,7 @@ export function resetByEmailProblem(): string | null {
  * A new link for the login: the older links it had stop working, except that a reset the person asked for themselves only
  * replaces their own older reset links (it must not kill an administrator's link or a 24-hour setup link).
  */
-export async function issueResetLink(userId: string, kind: "reset" | "setup" | "admin", hours: number): Promise<{ link: string; expiresAt: Date }> {
+export async function issueResetLink(userId: string, kind: "reset" | "setup" | "admin", hours: number): Promise<{ link: string; token: string; expiresAt: Date }> {
   const base = appBaseUrl();
   if (!base) throw new UserError("This server doesn't know its own address for the link: set APP_URL (https://your-site).");
   const token = crypto.randomBytes(32).toString("base64url");
@@ -76,7 +58,9 @@ export async function issueResetLink(userId: string, kind: "reset" | "setup" | "
     db.passwordReset.updateMany({ where: { userId, kind: kind === "reset" ? "reset" : { in: LINK_KINDS }, usedAt: null }, data: { usedAt: new Date() } }),
     db.passwordReset.create({ data: { userId, tokenHash: tokenHash(token), kind, expiresAt } }),
   ]);
-  return { link: `${base}/reset?t=${token}`, expiresAt };
+  // FOUNDRY_SIGNIN=only: a setup or administrator's link proves the login so it can link a Foundry Account; there is no password to set.
+  const path = foundrySignInMode() === "only" && kind !== "reset" ? "/login/link" : "/reset";
+  return { link: `${base}${path}?t=${token}`, token, expiresAt };
 }
 
 /** A company's name on one plain line (another company's admin chose it): no line breaks, control characters or web addresses, 80 characters at most. */
@@ -100,6 +84,7 @@ export function resetMailText(app: string, email: string, items: { company: stri
  */
 export function requestResetFor(emailRaw: unknown, ip: string | null): { message: string; work: Promise<void> } {
   if (isDesktop()) throw new UserError(TRAY_WORDS);
+  if (foundrySignInMode() === "only") throw new UserError(ONLY_WORDS);
   const problem = resetByEmailProblem();
   if (problem) {
     console.error(`[password] a reset was asked for, but: ${problem}`);
@@ -142,6 +127,25 @@ export async function checkResetLink(token: unknown): Promise<LinkState> {
   return { ok: true, email: row.user.email, name: row.user.name, kind: row.kind, expiresAt: row.expiresAt };
 }
 
+export type LinkTokenState = { ok: true; rowId: string; userId: string; sv: number; email: string; name: string } | { ok: false; reason: string };
+
+/**
+ * A setup or administrator's link as proof of who a login is, for linking a Foundry Account without an old password
+ * (docs/plan.md FA-5). Not a "reset" link (that one only proves an email address was reachable once, and in `only` none is
+ * sent). Not used up here: linkFoundryAccount takes it, in the same transaction that writes the link.
+ */
+export async function checkLinkToken(token: unknown): Promise<LinkTokenState> {
+  if (isDesktop()) return { ok: false, reason: TRAY_WORDS };
+  const t = typeof token === "string" ? token.trim() : "";
+  const bad = "That link isn't right. Ask for a new one.";
+  if (!/^[A-Za-z0-9_-]{30,100}$/.test(t)) return { ok: false, reason: bad };
+  const row = await db.passwordReset.findUnique({ where: { tokenHash: tokenHash(t) }, include: { user: { select: { id: true, email: true, name: true, active: true, sessionVersion: true } } } });
+  if (!row || (row.kind !== "setup" && row.kind !== "admin") || !row.user.active) return { ok: false, reason: bad };
+  if (row.usedAt) return { ok: false, reason: "That link was used already, or a newer one replaced it. Ask for a new one." };
+  if (row.expiresAt <= new Date()) return { ok: false, reason: "That link has expired. Ask for a new one." };
+  return { ok: true, rowId: row.id, userId: row.user.id, sv: row.user.sessionVersion, email: row.user.email, name: row.user.name };
+}
+
 /**
  * Uses the link: the new password is set, every device signed in as that login signs in again (sessionVersion + 1), and
  * every other link it had stops working. The link is taken under the row's own update, so two tries at once can't both
@@ -149,6 +153,7 @@ export async function checkResetLink(token: unknown): Promise<LinkState> {
  */
 export async function finishReset(token: unknown, password: unknown, again: unknown): Promise<{ email: string; userId: string }> {
   if (isDesktop()) throw new UserError(TRAY_WORDS);
+  if (foundrySignInMode() === "only") throw new UserError(ONLY_WORDS);
   const pw = typeof password === "string" ? password : "";
   if (pw.length < 8) throw new UserError("Use at least 8 characters.");
   if (pw.length > 200) throw new UserError("That password is too long (200 characters at most).");
@@ -169,6 +174,14 @@ export async function finishReset(token: unknown, password: unknown, again: unkn
   });
 }
 
+/** A first-sign-in link for a company's owner, just made (FOUNDRY_SIGNIN=only): it links the owner's Foundry Account; 24 hours, one use. */
+export async function ownerSetupLink(shopId: string, email: string): Promise<{ link: string; token: string }> {
+  const owner = await db.user.findUnique({ where: { shopId_email: { shopId, email: normalizeEmail(email) } }, select: { id: true } });
+  if (!owner) throw new UserError("That company has no owner login.");
+  const { link, token } = await issueResetLink(owner.id, "setup", SETUP_HOURS);
+  return { link, token };
+}
+
 /**
  * The StitchBench administrator's "Reset link" for a company's owner (Companies): one hour, one use, shown once to the
  * administrator to pass on. Hosted only; the Windows program has the tray.
@@ -178,7 +191,11 @@ export async function ownerResetLinkFor(admin: CurrentUser, shopId: string): Pro
   if (isDesktop()) throw new UserError(TRAY_WORDS);
   const owner = await db.user.findFirst({ where: { shopId, role: "OWNER", active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
   if (!owner) throw new UserError("That company has no owner login.");
-  const { link } = await issueResetLink(owner.id, "admin", RESET_HOURS);
+  // FOUNDRY_SIGNIN=only: the link can attach a different Foundry Account (an owner who lost theirs), so the old attachment is cleared
+  // and the owner's sessions end; the link itself is the proof, and the administrator is who makes it.
+  const only = foundrySignInMode() === "only";
+  if (only) await db.user.update({ where: { id: owner.id }, data: { foundryId: null, sessionVersion: { increment: 1 } } });
+  const { link } = await issueResetLink(owner.id, "admin", only ? SETUP_HOURS : RESET_HOURS);
   console.info(`[password] reset link made for the owner of company ${shopId} by the administrator`);
   return link;
 }

@@ -22,6 +22,7 @@ import { KEEP_MOVED_DAYS } from "@/lib/move/format";
 import { ImportCompany } from "./import-company";
 import { OwnerResetLink } from "./owner-reset-link";
 import { resetByEmailProblem } from "@/lib/password-reset";
+import { foundrySignInMode } from "@/lib/foundry/switches";
 import { platformToken } from "@/lib/platform-api";
 
 const SHORT: Record<ModuleId, string> = { base: "Program", vac: "Vac", appliance: "Appliance", scheduling: "Scheduling", marketing: "Marketing", assistant: "Assistant", maker: "Maker" };
@@ -310,10 +311,11 @@ export default async function Companies() {
 
       <Section title="Add a company">
         <p className="muted mb-3 text-sm">
-          Creates the company and its owner login. Give the owner the temporary password; they sign in, set their prices, and add their own employees under
-          Settings → People.
+          {foundrySignInMode() === "only"
+            ? "Creates the company and its owner login. You get a one-time link, good for 24 hours, to give the owner: it links their Foundry Account, which is how they sign in. Then they set their prices and add their own employees under Settings → People."
+            : "Creates the company and its owner login. Give the owner the temporary password; they sign in, set their prices, and add their own employees under Settings → People."}
         </p>
-        <ActionForm action={createCompany} reset success="Company created" className="grid-form">
+        <ActionForm action={createCompany} reset showResult="Give this link to the owner" success={foundrySignInMode() === "only" ? "Company created. Give the owner the link below." : "Company created"} className="grid-form">
           <div className="field">
             <label htmlFor="c-shop" className="label">
               Company name
@@ -342,12 +344,14 @@ export default async function Companies() {
             </label>
             <input id="c-email" name="email" type="email" required className="input" />
           </div>
-          <div className="field">
-            <label htmlFor="c-pw" className="label">
-              Temporary password (8+ characters)
-            </label>
-            <input id="c-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
-          </div>
+          {foundrySignInMode() !== "only" && (
+            <div className="field">
+              <label htmlFor="c-pw" className="label">
+                Temporary password (8+ characters)
+              </label>
+              <input id="c-pw" name="password" required minLength={8} className="input" autoComplete="new-password" />
+            </div>
+          )}
           <CompanyTimeZoneField defaultZone={tz} />
           <div className="field sm:col-span-2">
             <label htmlFor="c-code" className="label">

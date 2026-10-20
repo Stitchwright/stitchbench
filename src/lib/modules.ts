@@ -3,7 +3,7 @@ import "server-only";
 // and every stored key is verified from its text each time: nothing in the database can switch a module on by itself.
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { freeProgram, FREE_EXCLUDED } from "@/lib/free-program";
+import { foundryAiOn, freeProgram, FREE_EXCLUDED } from "@/lib/free-program";
 import { UserError } from "@/lib/user-error";
 import { acceptScope, adminPosition, effectiveNow, resolveStatus, verifyLicense, windows, type AdminPosition, type GrantRow, type LicensePayload, type Verified, type Window } from "@/lib/license";
 import { LICENSE_PUBLIC_KEYS } from "@/lib/license-keys";
@@ -205,7 +205,9 @@ export async function loadModulesMany(shopIds: string[], opts: { now?: Date } = 
           }
         }
       }
-      states[id] = freeProgram() && !(FREE_EXCLUDED as readonly string[]).includes(id) ? freeState(id) : toState(id, resolveStatus(ws, now, pos), pos, shop.timeZone);
+      // The Assistant is on for everyone when its AI is paid per use (FOUNDRY_AI=on); otherwise it keeps its own key.
+      const free = (foundryAiOn() && id === "assistant") || (freeProgram() && !(FREE_EXCLUDED as readonly string[]).includes(id));
+      states[id] = free ? freeState(id) : toState(id, resolveStatus(ws, now, pos), pos, shop.timeZone);
     }
     out.set(shop.id, {
       shopId: shop.id,

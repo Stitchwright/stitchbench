@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ActionForm, Submit } from "@/components/action-form";
 import { finishPasswordReset, requestPasswordReset } from "@/actions/password-reset";
-import { checkResetLink, resetByEmailProblem, SAME_ANSWER, TRAY_WORDS } from "@/lib/password-reset";
+import { checkResetLink, ONLY_WORDS, resetByEmailProblem, SAME_ANSWER, TRAY_WORDS } from "@/lib/password-reset";
+import { foundrySignInMode } from "@/lib/foundry/switches";
 import { isDesktop } from "@/lib/modules";
 import { appName } from "@/lib/shops";
 
@@ -42,6 +44,22 @@ export default async function ResetPage({ searchParams }: { searchParams: Promis
     return (
       <Frame title="Forgot your password?">
         <p className="text-sm">{TRAY_WORDS}</p>
+      </Frame>
+    );
+  }
+
+  // FOUNDRY_SIGNIN=only (docs/plan.md FA-5): there is no local password. A first-sign-in or administrator's link opens the page that links a
+  // Foundry Account (which also says why a used or expired one can't); anything else is sent to the Foundry Account's own reset.
+  if (foundrySignInMode() === "only") {
+    if (t) redirect(`/login/link?t=${encodeURIComponent(t)}`);
+    return (
+      <Frame title="Forgot your password?">
+        <p className="text-sm">{ONLY_WORDS}</p>
+        <p className="text-sm">
+          <Link href="/login/forgot" className="link">
+            Reset my Foundry Account password
+          </Link>
+        </p>
       </Frame>
     );
   }

@@ -9,6 +9,9 @@ import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 import { DEFAULT_CHECKLIST, DEFAULT_SERVICE_MENU, starterKindFor } from "../src/lib/service-menu";
+import { appBaseUrl } from "../src/lib/app-origin";
+import { foundrySignInMode } from "../src/lib/foundry/switches";
+import { unusablePasswordHash } from "../src/lib/foundry/unusable";
 
 /**
  * The reference sets that ship with StitchBench. Loaded the same way as the Windows program's desktop/reference.mjs:
@@ -72,6 +75,9 @@ async function seedFirstShop() {
     return;
   }
   const email = (process.env.SEED_OWNER_EMAIL || "owner@example.com").toLowerCase();
+  // FOUNDRY_SIGNIN=only (docs/plan.md FA-5): the owner has no password. SEED_OWNER_PASSWORD is ignored; a one-time link that links
+  // their Foundry Account is printed instead (24 hours; `npm run foundry:owner-link` makes another).
+  const only = foundrySignInMode() === "only";
   const password = process.env.SEED_OWNER_PASSWORD || randomBytes(9).toString("base64url");
   // SEED_SHOP_KIND (or DEFAULT_SHOP_KIND): repair | retail (a sewing / quilt shop, StitchShop) | both
   const kind = process.env.SEED_SHOP_KIND || process.env.DEFAULT_SHOP_KIND || "repair";
@@ -86,13 +92,21 @@ async function seedFirstShop() {
           email,
           name: process.env.SEED_OWNER_NAME || "Shop Owner",
           role: "OWNER",
-          passwordHash: await bcrypt.hash(password, 10),
+          passwordHash: only ? await unusablePasswordHash() : await bcrypt.hash(password, 10),
         },
       },
       serviceItems: doesRepair ? { create: DEFAULT_SERVICE_MENU.map((s, i) => ({ name: s.name, priceCents: s.priceCents, sortOrder: i, equipmentKind: starterKindFor(s.name) })) } : undefined,
     },
   });
   console.log(`Shop "${shop.name}" created. Owner login: ${email}`);
+  if (only) {
+    const owner = await db.user.findFirstOrThrow({ where: { shopId: shop.id, email }, select: { id: true } });
+    const token = randomBytes(32).toString("base64url");
+    await db.passwordReset.create({ data: { userId: owner.id, tokenHash: createHash("sha256").update(token).digest("hex"), kind: "setup", expiresAt: new Date(Date.now() + 24 * 3600_000) } });
+    console.log(`Owner: open this link to link your Foundry Account (it works once, for 24 hours):\n  ${appBaseUrl() ?? "https://<this site's address>"}/login/link?t=${token}`);
+    if (process.env.SEED_OWNER_PASSWORD) console.log("SEED_OWNER_PASSWORD is ignored while FOUNDRY_SIGNIN=only: remove it from the variables.");
+    return;
+  }
   if (!process.env.SEED_OWNER_PASSWORD) console.log(`Owner password (change it in Settings): ${password}`);
 }
 

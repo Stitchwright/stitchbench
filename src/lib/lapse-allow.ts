@@ -20,6 +20,11 @@ export const WHILE_LAPSED = [
   "makeHubLinkCode",
   "refreshHubStanding",
   "setHubResetOptIn",
+  // Settings → Foundry Account: the way to the community hub, not a paid feature
+  "linkFoundryAccount",
+  "unlinkFoundryAccount",
+  "checkFoundryAccount",
+  "linkMyLogin",
   // A key pasted from the hub's email (or the owner's) switches the program back on
   "activateLicense",
   // The hosted StitchBench administrator's switch and sharing mute (their own company's standing is beside the point)

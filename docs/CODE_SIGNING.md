@@ -1,57 +1,68 @@
-# Code signing the Windows installers
+# Code signing the installers
 
-The installers workflow (`.github/workflows/installers.yml`) can sign "StitchBench Setup <version>.exe" and
-"StitchShop Setup <version>.exe" with Azure Trusted Signing (Microsoft now calls it Artifact Signing). It is switched
-off until you set the repository variable `SIGNING_ENABLED` to `true`; until then builds are unsigned, as today.
+**Status:** 2026-10-20. Written with the workflow change; not yet run on GitHub (see "Test run" at the end).
 
-## Your steps
+The installers workflow (`.github/workflows/installers.yml`) signs the Windows and macOS programs. Signing credentials
+live in the GitHub environment **`release`**, which allows only the `release` branch and `v*` tags and holds 12 secrets.
+A run from any other ref, or with a secret missing, builds **unsigned** and shows a warning in the run's summary: it
+never fails for want of a secret.
 
-1. **Azure subscription.** Create one at portal.azure.com (pay-as-you-go) if you don't have one.
-2. **Trusted Signing account.** In the portal, create a "Trusted Signing Account" (or "Artifact Signing"). Pick a
-   region and note its endpoint, for example East US is `https://eus.codesigning.azure.net/`. Use the Basic pricing tier.
-3. **Identity validation.** In the account, choose Identity validations, then New, as an **organization** (Timing &
-   Tension; needs a business that has existed a while and papers to match) or as an **individual** (your own legal
-   name and a government ID). Microsoft checks it; this can take days. Do this first.
-4. **Certificate profile.** After validation passes, create a certificate profile of type **Public Trust** linked to
-   that validation. Note the account name and profile name.
-5. **App registration.** In Microsoft Entra ID, create an app registration (no secret needed). Note its Application
-   (client) ID and the Directory (tenant) ID. Under Certificates and secrets, Federated credentials, add one for
-   **GitHub Actions deploying Azure resources**: your GitHub user or organization, this repository, entity type
-   **Branch**, branch `main`. (The sign job then works when you start the workflow with Run workflow on `main`. Azure
-   doesn't allow wildcards, so a push of a version tag would need its own credential, entity type Tag with that exact
-   tag; easiest is to always release with Run workflow on `main`.)
-6. **Role.** On the Trusted Signing account, Access control (IAM), add the role **Trusted Signing Certificate Profile
-   Signer** for the app registration.
-7. **Repository variables** (GitHub, Settings, Secrets and variables, Actions, **Variables** tab; none are secret):
-   - `AZURE_CLIENT_ID`: the app registration's client ID
-   - `AZURE_TENANT_ID`: the tenant ID
-   - `AZURE_SUBSCRIPTION_ID`: the subscription ID
-   - `SIGNING_ENDPOINT`: for example `https://eus.codesigning.azure.net/` (must match the account's region)
-   - `SIGNING_ACCOUNT_NAME`: the Trusted Signing account name
-   - `SIGNING_PROFILE_NAME`: the certificate profile name
-   - `SIGNING_ENABLED`: `true` (set this last; set it to anything else to switch signing off)
-8. **Run it.** Actions, Windows installers, Run workflow. The "sign" job signs both installers and fails the run if
-   either one isn't `Valid`. Download the `installers` artifact, right-click an installer, Properties, **Digital
-   Signatures** tab: you should see your name and a timestamp.
+## The secrets (environment `release`)
 
-## What is signed
+| Used for | Secrets |
+|---|---|
+| Windows (Azure Artifact Signing) | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE` |
+| macOS (Developer ID, notarization) | `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific), `APPLE_TEAM_ID` |
+| Not used here | `KEYCHAIN_PASSWORD`: electron-builder makes its own temporary keychain from the certificate, so nothing reads it |
 
-Only the two outer installers. The app's own `StitchBench.exe` / `StitchShop.exe` installed inside is not signed:
-Microsoft's action signs a folder of finished files and can't be plugged into electron-builder's per-file signing hook.
-SmartScreen reputation and the "unknown publisher" prompt are decided by the installer, so this is the main win. If
-Smart App Control still objects to the installed program, the next step is a `desktop/sign-azure.mjs` hook that calls
-Microsoft's signing tool (`signtool` with the Azure dlib) from electron-builder's `win.sign` setting.
+Secrets are never in the repository. Only the checking step and the signing steps receive them; the steps that install
+packages (which run every dependency's install scripts) get none.
 
-The build job itself has no Azure access; only the separate `sign` job gets an OIDC token.
+## Windows
+
+Jobs: `build` (no secrets) makes the two programs **unpacked** (`npm run unpacked`, `unpacked:stitchshop`) and keeps them
+for a day. `sign` (environment `release`):
+
+1. signs `StitchBench.exe` and `StitchShop.exe` in the unpacked folders with `azure/artifact-signing-action`;
+2. packs the NSIS installers from the signed folders (`electron-builder --prepackaged`, `installer:prepackaged`);
+3. signs the two installers;
+4. checks all four files with `Get-AuthenticodeSignature` (Valid and timestamped) and fails the run if any is not.
+
+Not signed: the files that ship beside the program (the embedded Postgres, DLLs) and the uninstaller NSIS builds into
+the installer. If Smart App Control objects to those, the next step is a signing hook in `win.sign` that signs every
+file electron-builder packs.
+
+## macOS
+
+`mac` (environment `release`) runs `electron-builder` with `CSC_LINK` = `APPLE_CERTIFICATE`, `CSC_KEY_PASSWORD` =
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` = `APPLE_PASSWORD` and `APPLE_TEAM_ID`.
+`desktop/package.json` (`build.mac`) turns on `hardenedRuntime` and `notarize`, with the entitlements Electron needs in
+`desktop/build/entitlements.mac.plist` (JIT, unsigned executable memory, and library validation off so the program can
+start its own Postgres). The job then mounts each `.dmg` and runs `codesign --verify --deep --strict`,
+`stapler validate` and `spctl --assess` (it fails if Gatekeeper rejects the app). Notarization waits for Apple and can
+take several minutes. Without the secrets the job passes `-c.mac.identity=null -c.mac.notarize=false`.
+
+## Linux
+
+Not signed. `SHA256SUMS.txt` on the release lists every file's checksum.
+
+## How to check a signature
+
+- Windows: right-click the file → Properties → Digital Signatures, or `Get-AuthenticodeSignature <file> | Format-List`.
+- macOS: `codesign -dv --verbose=2 <app>`, `xcrun stapler validate <app>`, `spctl --assess --type execute -v <app>`.
+
+## Repository variables the old setup used (delete them)
+
+Settings → Secrets and variables → Actions → **Variables**: `SIGNING_ENABLED`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+`AZURE_SUBSCRIPTION_ID`, `SIGNING_ENDPOINT`, `SIGNING_ACCOUNT_NAME`, `SIGNING_PROFILE_NAME`. The repository **secrets**
+`WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` (the old certificate-file fallback), if present, are not used any more either.
+The Entra app registration no longer needs its GitHub federated credential (the workflow no longer logs in with OIDC).
 
 ## Cost
 
-Basic tier is about $9.99 a month (5,000 signatures a month, plenty). Check the current price on Azure's pricing page.
+Azure Artifact Signing Basic is about $9.99 a month; the Apple Developer Program is $99 a year. Check current prices.
 
-## Fallback: an SSL.com OV certificate with eSigner
+## Revision history
 
-If Microsoft won't validate you, buy an OV code-signing certificate from SSL.com (about $130 to $250 a year) with
-eSigner cloud signing (hardware-token rules since 2023 mean the key can't be a plain file). That needs different
-steps: SSL.com's CodeSignTool in place of the Azure steps, with credentials and TOTP secret stored as GitHub
-**secrets**. The workflow's older hook still works for a downloadable certificate: electron-builder signs when the
-secrets `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are set (see INSTALL.md, "Signing the installers").
+- 2026-10-20: secrets in the `release` environment, programs signed before packing, macOS signed and notarized.
+- Earlier: Windows installers only, OIDC login, repository variables.

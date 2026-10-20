@@ -1,4 +1,5 @@
 import "server-only";
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { UserError } from "@/lib/user-error";
@@ -96,6 +97,9 @@ function knownTimeZone(tz: string | null | undefined) {
     return null;
   }
 }
+
+/** A password nobody will ever type, for a login that comes in by a Foundry Account (FOUNDRY_SIGNIN=only, docs/plan.md FA-5). */
+export const randomOwnerPassword = () => crypto.randomBytes(24).toString("base64url");
 
 export const RESERVED_EMAIL = "That email is reserved on this StitchBench.";
 

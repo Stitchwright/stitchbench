@@ -390,6 +390,7 @@ model Shop {
   stockTransfers    StockTransfer[]
   storeNotes        StoreNote[]
   approvals         Approval[]
+  foundryLink              FoundryLink?
 }
 
 // One move of a company between installs (company-move-design.md section 8), as the job's state: an export (this
@@ -454,6 +455,10 @@ model User {
   whatsNewSeen   String?
   // Bigger text: "normal" | "large" | "larger"; null = normal
   textSize       String?
+  // The Foundry Account this login is linked to (docs/plan.md FA-2): the account's lasting id from the account service,
+  // never its email (that service doesn't verify email yet). Null = not linked; one account may be linked to a login in
+  // several companies, but to one login per company.
+  foundryId      Int?
 
   notes          ModelNote[]
   ticketsOpened  Ticket[]        @relation("TicketOpenedBy")
@@ -468,7 +473,22 @@ model User {
 
   // An email is unique inside one company (round 3 W1): the same address may have a login in several companies.
   @@unique([shopId, email])
+  @@unique([shopId, foundryId])
   @@index([email])
+  @@index([foundryId])
+}
+
+// A browser signed in with a Foundry Account (docs/plan.md FA-2). The browser holds a random value in an httpOnly cookie;
+// only its sha256 is kept here (idHash). `token` is the account service's session token (sfs_…), which can spend the
+// account's Foundry credits, so it is sealed (src/lib/messaging/secrets.ts) and never leaves the server.
+model FoundrySession {
+  idHash    String   @id
+  foundryId Int
+  token     String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([foundryId])
 }
 
 // A one-use password link or reset (hub-accounts-billing-design.md 4.3, package hosted-provisioning). Only the sha256 of
@@ -3351,6 +3371,10 @@ model AssistantSettings {
   customerDailyCap Int      @default(20)
   offerFirstNames  Boolean  @default(false)
   voice            String?
+  // Where the AI comes from when FOUNDRY_AI is on (docs/plan.md FA-4): "foundry" (Foundry credits, the default) or "own" (the
+  // company's own Anthropic key, kept sealed in ownKey and never shown again).
+  aiSource         String   @default("foundry")
+  ownKey           String?
   updatedAt        DateTime @updatedAt
 }
 
@@ -3374,6 +3398,7 @@ model AssistantCall {
   cacheTokens     Int      @default(0)
   outputTokens    Int      @default(0)
   costMillicents  Int      @default(0) // thousandths of a cent: money stays an integer, and a call is under a cent
+  credits         Int? // Foundry credits the call took (FOUNDRY_AI on, paid in credits); null for the hub's proxy and a company's own key
   ms              Int      @default(0)
   accepted        Boolean? // "Use this" pressed, or "helped"; null for calls that only showed something
   error           String?
@@ -4504,4 +4529,22 @@ model SlipReceipt {
   createdAt DateTime @default(now())
 
   @@id([shopId, key])
+}
+
+// A desktop install's optional link to a Foundry Account (docs/plan.md FA-3): one per company. `token` is the account
+// service's session token, sealed (src/lib/messaging/secrets.ts, field "foundryLink"); it never leaves the server.
+// `email` and `creditsLeft` are what the service last said, for showing only. state: ok | signed-out (the service
+// refused the token: sign in again). Needs no internet to read, so the program keeps working offline once linked.
+model FoundryLink {
+  shopId      String    @id
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  foundryId   Int
+  email       String
+  token       String
+  state       String    @default("ok")
+  creditsLeft Int?
+  checkedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([foundryId])
 }

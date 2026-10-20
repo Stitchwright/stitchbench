@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isUserError, safe, UserError } from "@/lib/action";
+import { isUserError, safe, shownOnce, UserError } from "@/lib/action";
 import { requirePlatformAdmin } from "@/lib/session";
-import { createShopWithOwner, type ShopKind } from "@/lib/shops";
+import { createShopWithOwner, randomOwnerPassword, type ShopKind } from "@/lib/shops";
+import { foundrySignInMode } from "@/lib/foundry/switches";
+import { ownerSetupLink } from "@/lib/password-reset";
 import { normalizeEmail } from "@/lib/email";
 import { redeemPartnerCode } from "@/lib/partners";
 import { str } from "@/lib/format";
@@ -29,11 +31,13 @@ function validTimeZone(tz: string | null) {
 export const createCompany = safe(async function createCompany(formData: FormData) {
   await requirePlatformAdmin();
   const email = normalizeEmail(formData.get("email"));
+  // FOUNDRY_SIGNIN=only: no password is typed or given; the owner gets a one-time link that links their Foundry Account (docs/plan.md FA-5).
+  const only = foundrySignInMode() === "only";
   const shop = await createShopWithOwner({
     shopName: String(formData.get("shop") ?? ""),
     name: String(formData.get("name") ?? ""),
     email,
-    password: String(formData.get("password") ?? ""),
+    password: only ? randomOwnerPassword() : String(formData.get("password") ?? ""),
     kind: (String(formData.get("kind") ?? "repair") as ShopKind) || "repair",
     timeZone: validTimeZone(str(formData.get("timeZone"))),
   }, { allowReserved: true });
@@ -46,9 +50,10 @@ export const createCompany = safe(async function createCompany(formData: FormDat
       // Only a message meant for people goes to the browser; a database or network error stays in the server's log.
       if (!isUserError(e)) console.error("partner code for a new company:", e);
       const why = isUserError(e) ? e.message : "something went wrong on the server, and its log has the details";
-      throw new UserError(`The company was created, but the partner code didn't connect it: ${why}. Its owner can enter a new code under Partner shops.`);
+      throw new UserError(`The company was created, but the partner code didn't connect it: ${why}. Its owner can enter a new code under Partner shops.${only ? " Make the owner a sign-in link with Reset link in the list below." : ""}`);
     }
   }
+  if (only) return shownOnce((await ownerSetupLink(shop.id, email)).link);
 });
 
 /** The administrator's module switch for one company (modules-design.md section 8). Body: src/lib/modules-admin.ts. */
