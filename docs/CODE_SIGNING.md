@@ -37,7 +37,7 @@ file electron-builder packs.
 `mac` (environment `release`) first imports the certificate into a keychain of its own (`build.keychain`, protected by
 `KEYCHAIN_PASSWORD`; electron-builder's own temporary keychain failed at `set-key-partition-list` on the runner in the
 2026-10-20 test) and checks the Developer ID Application identity is in it. It then runs `electron-builder` with
-`CSC_KEYCHAIN` (that keychain) and `CSC_NAME` (the identity), plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` =
+`CSC_KEYCHAIN` (that keychain) and `CSC_NAME` (the name without the "Developer ID Application:" prefix, which electron-builder rejects), plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` =
 `APPLE_PASSWORD` and `APPLE_TEAM_ID` for notarization. The keychain is deleted at the end of the job.
 `desktop/package.json` (`build.mac`) turns on `hardenedRuntime` and `notarize`, with the entitlements Electron needs in
 `desktop/build/entitlements.mac.plist` (JIT, unsigned executable memory, and library validation off so the program can

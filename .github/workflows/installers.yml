@@ -175,7 +175,8 @@ jobs:
         working-directory: desktop
         env:
           CSC_KEYCHAIN: ${{ steps.keychain.outputs.path }}
-          CSC_NAME: "Developer ID Application: Bruce Wattendorf (JK9FZ6HPC6)"
+          # electron-builder wants the name without the "Developer ID Application:" prefix (the import step checks the full one).
+          CSC_NAME: "Bruce Wattendorf (JK9FZ6HPC6)"
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
