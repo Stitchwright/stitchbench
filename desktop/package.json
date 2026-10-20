@@ -50,6 +50,7 @@
       "reference.mjs",
       "app-role.mjs",
       "links-gate.mjs",
+      "server-dir.mjs",
       "tailscale.mjs",
       "reset-password.mjs",
       "update.mjs",

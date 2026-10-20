@@ -87,7 +87,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-latest, name: mac-arm64 }
+          - { os: macos-15, name: mac-arm64 }
           - { os: macos-15-intel, name: mac-x64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -183,6 +183,29 @@ jobs:
         run: |
           npm run installer:mac
           npm run installer:stitchshop:mac
+
+      # If signing fails, say which file: electron-builder's own message stops at "codesign --verify ... failed". One full
+      # verbose check of each app, then every Mach-O file in it on its own (a verify stops at the first bad file).
+      - name: Why did signing fail
+        if: ${{ failure() && steps.signing.outputs.signed == 'true' }}
+        run: |
+          for app in $(find desktop/dist desktop/dist-stitchshop -maxdepth 3 -name '*.app' -type d 2>/dev/null); do
+            echo "::group::codesign --verify --deep --strict --verbose=4 $app"
+            codesign --verify --deep --strict --verbose=4 "$app" 2>&1 || true
+            echo "::endgroup::"
+            echo "::group::Mach-O files in $app that do not verify"
+            find "$app" -type f -print0 | while IFS= read -r -d '' f; do
+              if file -b "$f" | grep -q 'Mach-O'; then
+                out=$(codesign --verify --strict --verbose=2 "$f" 2>&1) || echo "BAD $f: $out"
+              fi
+            done
+            echo "::endgroup::"
+            echo "::group::Symbolic links in $app that point outside it"
+            find "$app" -type l | while IFS= read -r l; do
+              t=$(readlink "$l"); case "$t" in /*) echo "ABSOLUTE $l -> $t" ;; esac
+            done
+            echo "::endgroup::"
+          done
 
       - name: StitchBench and StitchShop installers (unsigned)
         if: ${{ steps.signing.outputs.signed != 'true' }}
