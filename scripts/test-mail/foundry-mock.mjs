@@ -46,6 +46,8 @@ const cleanEmail = (v) => {
   return domain.includes(".") && !domain.startsWith(".") && !domain.endsWith(".") && e.length <= 254 && !/[\s\u0000-\u001f]/.test(e) ? e : null;
 };
 
+const MAX_DELAY_MS = 5000;
+
 /**
  * @param {{ port?: number, firstId?: number, ai?: boolean, signupCredits?: number, models?: string[], inFlight?: number, respond?: ((req: { model: string, system: string, messages: unknown[], maxTokens: number, userText: string, accountId: number }) => string | { text?: string, stopReason?: string, status?: number, body?: unknown, delayMs?: number } | Promise<string | { text?: string, stopReason?: string, status?: number, body?: unknown, delayMs?: number }>) | null }} [opts]
  */
@@ -180,7 +182,8 @@ export async function startFoundryMock({ port = 0, firstId = 1, ai = true, signu
           const r = respond ? await respond(rec) : `MOCK ANSWER for ${userText.slice(0, 40)}`;
           answer = typeof r === "string" ? { text: r } : r;
         }
-        if (answer.delayMs) await new Promise((r) => setTimeout(r, answer.delayMs));
+        // The delay comes from a request body (POST /__next), so it is capped: a test hook never needs more than a few seconds.
+        if (answer.delayMs) await new Promise((r) => setTimeout(r, Math.min(Math.max(Number(answer.delayMs) || 0, 0), MAX_DELAY_MS)));
         if (answer.status && answer.status !== 200) return send(res, answer.status, answer.body ?? { type: "error", error: { type: "api_error", message: "mock failure" } });
         const text = answer.text ?? "";
         const input = tokens(JSON.stringify(body.messages)) + tokens(system);
