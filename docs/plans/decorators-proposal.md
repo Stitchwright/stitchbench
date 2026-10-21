@@ -29,7 +29,7 @@ A new paid module, **Decorating** (`decorating`), turned on like the others, in 
 3. **A watched folder** both programs can see. Cheap, but only works when they run on one PC or one network.
 
 ## Questions for the owner (these are yours to decide)
-1. **Paid module or free?** The Vac Shop and Small Appliance modules are paid. Decorating could be a paid module, or free like the rest of the programs now are (`PROGRAM_FREE`). This is pricing, so it is yours.
+1. ~~Paid module or free?~~ **Decided 2026-10-21 (owner): free**, and Vac Shop is free too. Both already follow `PROGRAM_FREE` (`src/lib/free-program.ts`): while it is on, the default, every add-on is on for every company whatever keys it holds, except the Assistant. Decorating joins that rule and is not added to `FREE_EXCLUDED`. Open: if the owner wants these modules free even with `PROGRAM_FREE=off`, they need an always-on exception.
 2. **Which hand-off first?** Import only (option 1), or also the cloud inbox (option 2, which costs storage)?
 3. **Who is the buyer?** A decorator running only embroidery, or screen printing too from day one? Screen print needs its own pricing tables (colours, locations, tiers) and screen/ink tracking, but no separation software.
 4. **Does StitchFoundry export a job file?** The StitchFoundry chat should say whether one exists or will, and in what form, before D5 is designed.
@@ -39,4 +39,5 @@ A new paid module, **Decorating** (`decorating`), turned on like the others, in 
 Pricing, wording seen by customers (proof emails, quotes), and any legal text (terms for customer artwork and copyright on logos) stay with the owner.
 
 ## Revision history
+- 2026-10-21: owner decided Decorating and Vac Shop are free (question 1).
 - 2026-10-21: first version (survey and proposal).
