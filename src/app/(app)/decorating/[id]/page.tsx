@@ -46,9 +46,14 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
         </>
       }
       actions={
-        <Link href="/decorating" className="btn">
-          All orders
-        </Link>
+        <span className="flex flex-wrap gap-2">
+          <Link href={`/decorating/${o.id}/print`} className="btn" target="_blank">
+            Production worksheet
+          </Link>
+          <Link href="/decorating" className="btn">
+            All orders
+          </Link>
+        </span>
       }
       {...s}
     >

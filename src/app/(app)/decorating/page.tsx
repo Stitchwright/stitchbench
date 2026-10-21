@@ -43,7 +43,17 @@ export default async function DecoratingPage() {
   const write = s.gate === "write";
   const dollars = (c: number) => (c / 100).toFixed(2);
   return (
-    <DecorFrame title="Decorating" what="Decorating orders" sub="Embroidery orders from quote to pickup: the garments, the design on each, a price from your stitch-count table, collected and paid at the register." {...s}>
+    <DecorFrame
+      title="Decorating"
+      what="Decorating orders"
+      sub="Embroidery orders from quote to pickup: the garments, the design on each, a price from your stitch-count table, collected and paid at the register."
+      actions={
+        <Link href="/decorating/production" className="btn">
+          Production list
+        </Link>
+      }
+      {...s}
+    >
       <Section title={`Open (${open.length})`}>{open.length ? <Rows rows={open} tz={tz} /> : <Empty>No open orders. When a customer asks for embroidery, take the order below.</Empty>}</Section>
       {write && (
         <Section title="Take an order">

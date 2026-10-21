@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import type { CurrentUser } from "@/lib/session";
-import { DEFAULT_PRICES, orderPrice } from "@/lib/decor-math";
-import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, decorPrices, orderView, ordersFor, placementFile, removeLineFor, removePlacementFor, requoteFor, saveDecorPricesFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
+import { DEFAULT_PRICES, orderPrice, runMinutes } from "@/lib/decor-math";
+import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, decorPrices, orderView, ordersFor, placementFile, productionFor, removeLineFor, removePlacementFor, requoteFor, saveDecorPricesFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 import { voidSaleAs } from "@/lib/register-sale";
 import { customerDeletePlan } from "@/lib/merge";
 import { grantDevLicense } from "../license/dev";
@@ -169,7 +169,33 @@ async function main() {
     assert.ok(plan.blockers.some((x) => /Decorating order #\d+ isn't collected yet/.test(x)), "an open order blocks deleting the customer");
     ok("the lists (open soonest due, finished lately); an open order blocks deleting the customer");
 
-    // 8. Tenant.
+    // 8. The production list: approved and in-production orders, soonest due first, with their machine time.
+    const prices = await decorPrices(a.shopId);
+    const mk = async (title: string, due: string, pieces: string, stitches: string, colors: string) => {
+      const x = await createOrderFor(user(a), fd({ ...base, title, due }));
+      await addLineFor(user(a), x.id, fd({ description: "Tee", qty: pieces, garment: "5" }));
+      await addPlacementFor(user(a), x.id, fd({ location: "Left chest", stitches, colors }));
+      return x;
+    };
+    const late = await mk("Late order", "2020-01-01", "10", "5000", "2");
+    const soon = await mk("Soon order", "2030-01-01", "3", "12000", "1");
+    const never = await mk("No date", "", "1", "1000", "1");
+    const quotedOnly = await mk("Still a quote", "2029-01-01", "5", "5000", "1");
+    for (const x of [late, soon, never]) await setOrderStatusFor(user(a), x.id, "APPROVED");
+    await setOrderStatusFor(user(a), soon.id, "IN_PRODUCTION");
+    const prod = await productionFor(a.shopId);
+    assert.deepEqual(prod.rows.map((r) => r.id), [late.id, soon.id, never.id], "soonest due first, no date last; a quote and a ready order are not in the queue");
+    assert.ok(!prod.rows.some((r) => r.id === quotedOnly.id || r.id === o.id));
+    assert.deepEqual(prod.rows.map((r) => r.minutes), [10 * runMinutes(5000, 2, prices), 3 * runMinutes(12000, 1, prices), runMinutes(1000, 1, prices)]);
+    assert.deepEqual([prod.rows[0].overdue, prod.rows[1].overdue, prod.rows[2].overdue, prod.lateCount], [true, false, false, 1]);
+    assert.equal(prod.totalMinutes, prod.rows.reduce((t, r) => t + r.minutes, 0));
+    assert.deepEqual([prod.rows[0].pieces, prod.rows[0].stitches, prod.rows[0].placements], [10, 50000, 1]);
+    const view = (await orderView(a.shopId, late.id))!;
+    assert.equal(view.runMinutesTotal, prod.rows[0].minutes, "the worksheet and the list agree on the machine time");
+    assert.deepEqual((await productionFor(b.shopId)).rows, []);
+    ok("the production list: approved and in-production orders only, soonest due first, machine time at the shop's speed, the late count, and the worksheet agrees; B sees none of A's");
+
+    // 9. Tenant.
     await expectNotFound("B moves A's order", () => setOrderStatusFor(user(b), o.id, "APPROVED"));
     await expectNotFound("B collects A's order", () => collectOrderFor(user(b), o.id, fd({ method: "CASH" })));
     await expectNotFound("B turns down A's order", () => turnDownOrderFor(user(b), t.id, "no"));

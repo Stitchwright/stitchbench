@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_PRICES, basePriceCents, breakPct, cleanPrices, orderPrice, parseBreaks, parseTiers, pieceCents, runMinutes, sizesTotal, tiersText } from "./decor-math";
+import { DEFAULT_PRICES, formatMinutes, basePriceCents, breakPct, cleanPrices, orderPrice, parseBreaks, parseTiers, pieceCents, runMinutes, sizesTotal, tiersText } from "./decor-math";
 
 const P = DEFAULT_PRICES;
 
@@ -78,4 +78,9 @@ test("sizes add up", () => {
   assert.equal(sizesTotal("2XL: 3; XL x 1"), 4);
   assert.equal(sizesTotal("some of each"), null);
   assert.equal(sizesTotal(""), null);
+});
+
+test("machine time reads as hours and minutes", () => {
+  assert.deepEqual([0, 45, 60, 135, 61.4].map(formatMinutes), ["0 min", "45 min", "1 h", "2 h 15 min", "1 h 1 min"]);
+  assert.equal(formatMinutes(-5), "0 min");
 });

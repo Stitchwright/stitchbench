@@ -410,6 +410,43 @@ export async function ordersFor(shopId: string, o: { closed?: boolean; take?: nu
   return rows.map(({ lines, ...r }) => ({ ...r, pieces: lines.reduce((s, l) => s + l.qty, 0), overdue: !!r.dueAt && r.status !== "READY" && r.dueAt.getTime() < now.getTime() }));
 }
 
+export type ProductionRow = { id: string; number: number; name: string; title: string; status: string; dueAt: Date | null; overdue: boolean; pieces: number; minutes: number; stitches: number; placements: number };
+
+/**
+ * The production list: orders that are approved or in production, soonest due first, with the machine time each needs at the
+ * shop's set speed (every placement, on every piece) and the total queued. A placement with no stitch count (an agreed price
+ * only) counts no time.
+ */
+export async function productionFor(shopId: string, now = new Date()): Promise<{ rows: ProductionRow[]; totalMinutes: number; lateCount: number }> {
+  const [orders, prices] = await Promise.all([
+    db.decorOrder.findMany({
+      where: { shopId, status: { in: ["APPROVED", "IN_PRODUCTION"] } },
+      select: { id: true, number: true, name: true, title: true, status: true, dueAt: true, lines: { select: { qty: true } }, placements: { select: { stitches: true, colors: true } } },
+      orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { number: "asc" }],
+      take: 300,
+    }),
+    decorPrices(shopId),
+  ]);
+  const rows = orders.map((o) => {
+    const pieces = o.lines.reduce((t, l) => t + l.qty, 0);
+    const minutes = o.placements.reduce((t, p) => t + runMinutes(p.stitches, p.colors, prices), 0) * pieces;
+    return {
+      id: o.id,
+      number: o.number,
+      name: o.name,
+      title: o.title,
+      status: o.status,
+      dueAt: o.dueAt,
+      overdue: !!o.dueAt && o.dueAt.getTime() < now.getTime(),
+      pieces,
+      minutes,
+      stitches: o.placements.reduce((t, p) => t + p.stitches, 0) * pieces,
+      placements: o.placements.length,
+    };
+  });
+  return { rows, totalMinutes: rows.reduce((t, r) => t + r.minutes, 0), lateCount: rows.filter((r) => r.overdue).length };
+}
+
 export async function orderView(shopId: string, id: string) {
   const o = await db.decorOrder.findFirst({ where: { id, shopId }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
   if (!o) return null;

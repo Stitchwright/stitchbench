@@ -204,3 +204,11 @@ export function sizesTotal(text: string): number | null {
   }
   return total;
 }
+
+/** 135 -> "2 h 15 min", 45 -> "45 min", 120 -> "2 h", 0 -> "0 min". */
+export function formatMinutes(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return h === 0 ? `${r} min` : r === 0 ? `${h} h` : `${h} h ${r} min`;
+}

@@ -1,6 +1,6 @@
 # Embroidery and garment decorators in StitchShop: proposal
 
-**Status:** 2026-10-21. D1 (orders), D2 (embroidery quotes and costing) and the file import of D5 are built (migration `20261102000000_decorating`, `src/lib/decor*.ts`, `/decorating`, `scripts/checks/decorating.check.ts`). Not built: D3's proof by link, D4's production schedule and worksheets, screen printing, the cloud inbox. Owner: Bruce Wattendorf (SiteSentrix).
+**Status:** 2026-10-21. D1 (orders), D2 (embroidery quotes and costing) and the file import of D5 are built (migration `20261102000000_decorating`, `src/lib/decor*.ts`, `/decorating`, `scripts/checks/decorating.check.ts`). D4's production worksheet and production list are built too. Not built: D3's proof by link, screen printing, the cloud inbox. Owner: Bruce Wattendorf (SiteSentrix).
 
 ## What was asked
 Add shops that decorate garments (embroiderers, screen printers and similar) to StitchShop, and let StitchShop receive embroidery files from StitchFoundry.
@@ -39,6 +39,7 @@ A new paid module, **Decorating** (`decorating`), turned on like the others, in 
 Pricing, wording seen by customers (proof emails, quotes), and any legal text (terms for customer artwork and copyright on logos) stay with the owner.
 
 ## Revision history
+- 2026-10-21: D4 production worksheet and list built.
 - 2026-10-21: D1, D2 and the DST import built.
 - 2026-10-21: owner decided Decorating and Vac Shop are free (question 1).
 - 2026-10-21: first version (survey and proposal).
@@ -52,6 +53,7 @@ Free module; import only first (a drag-in DST, no cloud inbox); embroidery first
 - **Price:** the shop's table (`DecorSettings.prices`: stitch tiers, extra per thousand, quantity breaks, digitizing, set-up, machine speed) in `src/lib/decor-math.ts`. **The starting numbers are placeholders for the owner to change, not market prices.** A placement may carry an agreed price instead. The parts of the price are kept on the order, so a later change to the table never moves a quoted order and a sale bills exactly what was quoted.
 - **Files:** only **DST** is read (stitch records, colour changes, size), from the format's public description (`src/lib/embroidery-file.ts`, tests written from that description). PES, JEF, EXP, VP3 and the rest are kept as sent and the stitch count is typed: reading them without a sample file to check against would be a guess.
 - **Wired in:** collecting is a register sale (and voiding it puts the order back on the shelf); the customer merge, the delete blockers and the delete clean-up; the company move file and join (`MOVE_TABLES`, `NUMBERED`, `WITH_STORE`, `STAY`).
+- **Production (D4):** each order has a printable worksheet (`/decorating/[id]/print`: garments with sizes and an "in" box, each decoration with its file, stitches, colours, size and machine time, boxes to tick as the work goes, notes; no prices) and `/decorating/production` lists approved and in-production orders soonest due first with the machine time each needs (stitches at the shop's set speed plus colour changes, on every piece; hooping and trimming are not counted) and the total queued. There is no calendar or per-day capacity yet.
 - **Checked 2026-10-21:** `decorating.check.ts` (8 groups, five deliberate breaks each caught), `customer-merge`, `move-export`, `move-import`, `move-hub`, `join-companies`, `free-program`, `license`, `modules`, unit tests (118), tsc, lint; a real-browser run (take an order, garments, DST upload read as 5,000 stitches in 2 colours, approve, produce, ready, collect: sale #1001 at $185.00 before tax).
 - **Not checked:** phone width, the Windows program with the module, a deploy, any real PES/JEF file, and a real StitchFoundry-made DST (the test files are built from the format description).
 - **Open for StitchHub (another repo):** its `ADDON_IDS` and the keys it signs list five add-ons; `decorating` is not in them. Programs with `PROGRAM_FREE` on need no key, so nothing breaks, but a hub that comps "every add-on" does not yet include it.
