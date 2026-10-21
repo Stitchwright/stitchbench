@@ -53,6 +53,7 @@ export const CUSTOMER_REFS: readonly Ref[] = [
   { model: "SoftwareLicense", field: "customerId", label: ["software licence", "software licences"] },
   { model: "Certification", field: "customerId", label: ["certification", "certifications"] },
   { model: "MakeJob", field: "customerId", label: ["print or cut job", "print or cut jobs"] },
+  { model: "DecorOrder", field: "customerId", label: ["decorating order", "decorating orders"] },
   { model: "LiveClaim", field: "customerId", label: ["live-sale claim", "live-sale claims"] },
   { model: "SpecialOrder", field: "customerId", label: ["special order", "special orders"] },
   { model: "WantItem", field: "customerId", label: ["want list line", "want list lines"] },
@@ -348,6 +349,9 @@ async function customerBlockers(tx: Db, shopId: string, c: { id: string; kind: s
   for (const m of await tx.makeJob.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "WORKING", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
     out.push(`Print or cut job #${m.number} isn't collected yet. Finish, cancel or turn it down first.`);
   }
+  for (const d of await tx.decorOrder.findMany({ where: { shopId, customerId: c.id, status: { in: ["QUOTED", "APPROVED", "IN_PRODUCTION", "READY"] } }, select: { number: true }, orderBy: { number: "asc" } })) {
+    out.push(`Decorating order #${d.number} isn't collected yet. Finish, cancel or turn it down first.`);
+  }
   // A live-sale claim still held for them or waiting in their pay link (LiveClaim.customerId is a plain id).
   const claims = await tx.liveClaim.count({ where: { shopId, customerId: c.id, status: { in: ["HELD", "SENT"] } } });
   if (claims) out.push(`${say(claims, ["live-sale claim is", "live-sale claims are"])} still held or waiting to be paid. Let them go or wait for the payment first.`);
@@ -435,6 +439,7 @@ export async function customerDeletePlan(user: CurrentUser, customerId: string):
   add(n["StockUnit.consignorId"], ["machine once on consignment", "machines once on consignment"], "kept, without the customer");
   add(n["ConsignPayout.customerId"], ["consignment payout", "consignment payouts"], "kept in the books, without the customer");
   add(n["MakeJob.customerId"], ["print or cut job", "print or cut jobs"], `kept in the books as "${DELETED_NAME}" (their files deleted)`);
+  add(n["DecorOrder.customerId"], ["decorating order", "decorating orders"], `kept in the books as "${DELETED_NAME}" (their design files deleted)`);
   add(n["SpecialOrder.customerId"], ["finished special order", "finished special orders"], "kept in the books, without the customer");
   add(n["WantItem.customerId"], ["want list line", "want list lines"], "deleted");
   add(n["UnitLoan.customerId"], ["finished loan", "finished loans"], "kept, without the customer");
@@ -478,6 +483,8 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.appointment.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
+    await tx.decorPlacement.updateMany({ where: { shopId, order: { customerId: c.id } }, data: { fileData: null } });
+    await tx.decorOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.liveClaim.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null } });
     // A settled house account (9.4) stays for the books, without her (its id stands in, so the one-per-customer key holds).
     for (const a of await tx.houseAccount.findMany({ where: { shopId, customerId: c.id }, select: { id: true } })) {

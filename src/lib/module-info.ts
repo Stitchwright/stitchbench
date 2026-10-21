@@ -101,6 +101,11 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
     href: "/maker",
     blurb: "For shops that sell 3D printers, cutters and lasers: running-low reminders for printer and cutter owners, maker-space time on your own printer or laser, and print and cut jobs from quote to pickup.",
   },
+  decorating: {
+    label: "Decorating",
+    href: "/decorating",
+    blurb: "For shops that embroider (and later screen print) garments: orders from quote to pickup, priced by stitch count with quantity breaks, and the customer's design file (DST) read for its stitch count.",
+  },
   assistant: {
     label: "Assistant",
     href: "/settings/assistant",

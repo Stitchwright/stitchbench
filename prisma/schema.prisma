@@ -93,6 +93,7 @@ model Shop {
   // Print and cut jobs (shop-features-round-2-design.md 6.5, Maker Shop): the next job number, the machine's hourly rate,
   // the set-up fee, and the materials the laser never cuts (PVC and vinyl give off chlorine gas when laser cut).
   nextMakeJobNumber        Int           @default(1)
+  nextDecorOrderNumber     Int           @default(1)
   makeRateCents            Int           @default(2000)
   makeSetupCents           Int           @default(500)
   makeNeverCut             String        @default("PVC, vinyl")
@@ -334,6 +335,8 @@ model Shop {
   suppliesCare      SuppliesCare[]
   certifications    Certification[]
   makeJobs          MakeJob[]
+  decorSettings     DecorSettings?
+  decorOrders       DecorOrder[]
   // Phase 4 AI (shop-features-round-2-design.md section 5)
   patternNeeds      PatternNeed[]
   careTips          CareTip[]
@@ -575,6 +578,7 @@ model Customer {
   softwareLicenses SoftwareLicense[]
   certifications   Certification[]
   makeJobs         MakeJob[]
+  decorOrders      DecorOrder[]
   specialOrders    SpecialOrder[]
   wantItems        WantItem[]
   unitLoans        UnitLoan[]
@@ -2394,6 +2398,103 @@ model MakeJob {
   @@index([shopId, status])
   @@index([shopId, customerId])
   @@index([shopId, locationId])
+}
+
+// The Decorating module (docs/plans/decorators-proposal.md, free like the other modules while the program is free). One row
+// per shop: the price table (stitch tiers, quantity breaks, digitizing and set-up fees, the machine's speed). prices is a
+// DecorPrices (src/lib/decor-math.ts); no row or null = the starting values. Order numbers come from Shop.nextDecorOrderNumber.
+model DecorSettings {
+  shopId String @id
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  prices Json?
+}
+
+// An order for decorated garments (embroidery now; screen printing later): the make-job pattern for a counter that sells
+// decorating. status: QUOTED | APPROVED | IN_PRODUCTION | READY | COLLECTED | CANCELLED | TURNED_DOWN. quoteCents is the
+// price as last worked out (garments + decoration + digitizing + set-up), kept so a later change to the price table never
+// moves an order already quoted. saleId is a plain id.
+model DecorOrder {
+  id            String           @id @default(cuid())
+  shopId        String
+  shop          Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // The store it belongs to (shop-features-round-2-design.md 7.1): a plain Location id; null = the main store
+  locationId    String?
+  number        Int
+  customerId    String?
+  customer      Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name          String
+  title         String
+  status        String           @default("QUOTED")
+  dueAt         DateTime?
+  note          String?
+  taxable       Boolean          @default(true)
+  quoteCents    Int              @default(0)
+  // The parts of quoteCents as last worked out (the garments are in the lines, each placement's price per piece is on it):
+  // a sale bills exactly these, so a later change to the price table never moves a quoted order.
+  digitizingCents Int            @default(0)
+  setupCents    Int              @default(0)
+  turnedDownWhy String?
+  saleId        String?
+  approvedAt    DateTime?
+  startedAt     DateTime?
+  readyAt       DateTime?
+  collectedAt   DateTime?
+  closedAt      DateTime?
+  createdById   String?
+  createdAt     DateTime         @default(now())
+  lines         DecorLine[]
+  placements    DecorPlacement[]
+
+  @@unique([shopId, number])
+  @@index([shopId, status])
+  @@index([shopId, customerId])
+  @@index([shopId, locationId])
+}
+
+// What the decoration goes on: "Port Authority polo, navy", the sizes as typed ("S 2, M 4"), how many, and what the shop
+// charges for each blank (0 when the customer brings the garments).
+model DecorLine {
+  id           String     @id @default(cuid())
+  shopId       String
+  orderId      String
+  order        DecorOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sortOrder    Int        @default(0)
+  description  String
+  color        String?
+  sizes        String?
+  qty          Int
+  garmentCents Int        @default(0)
+
+  @@index([orderId])
+  @@index([shopId])
+}
+
+// One decoration on every piece of the order: "Left chest", method, the design's file (kept with the order, for re-orders)
+// and its numbers: read from a DST file, or typed. priceEachCents null = from the price table; a number = a price agreed.
+// newDesign: the shop digitized it for this order (the digitizing fee applies).
+model DecorPlacement {
+  id             String     @id @default(cuid())
+  shopId         String
+  orderId        String
+  order          DecorOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sortOrder      Int        @default(0)
+  location       String
+  method         String     @default("EMBROIDERY")
+  stitches       Int        @default(0)
+  colors         Int        @default(1)
+  widthMm        Float?
+  heightMm       Float?
+  newDesign      Boolean    @default(false)
+  priceEachCents Int?
+  quotedEachCents Int       @default(0)
+  note           String?
+  fileName       String?
+  fileFormat     String?
+  fileData       Bytes?
+  fileReadable   Boolean    @default(false)
+
+  @@index([orderId])
+  @@index([shopId])
 }
 
 model Certification {
