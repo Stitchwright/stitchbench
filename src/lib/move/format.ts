@@ -96,7 +96,7 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
   { t: "MakeJob", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> Customer: print and cut jobs with the customer's file (6.5)
   { t: "DecorSettings", key: '"shopId"' }, // the decorating price table (one row per company)
-  { t: "DecorOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale): decorating orders
+  { t: "DecorOrder", key: "id", bytes: ["mockupData"], page: PHOTO_PAGE }, // -> Customer (saleId is a plain id of a Sale): decorating orders with the mock-up picture
   { t: "DecorLine", key: "id" }, // -> DecorOrder: the garments
   { t: "DecorPlacement", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> DecorOrder: the decorations with the customer's design file
   { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)

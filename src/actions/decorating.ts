@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { noted, safe } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
-import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, removeLineFor, removePlacementFor, requoteFor, saveDecorPricesFor, saveOrderFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
+import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, removeLineFor, removeMockupFor, removePlacementFor, requoteFor, saveDecorPricesFor, saveOrderFor, sendProofFor, setMockupFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 
 const refresh = (id?: string) => {
   revalidatePath("/decorating", "layout");
@@ -89,5 +89,26 @@ export const saveDecorPrices = safe(async function saveDecorPrices(formData: For
   const user = await requireUser();
   const text = await saveDecorPricesFor(user, formData);
   refresh();
+  return noted(text);
+});
+
+export const setDecorMockup = safe(async function setDecorMockup(id: string, formData: FormData) {
+  const user = await requireUser();
+  const text = await setMockupFor(user, id, formData);
+  refresh(id);
+  return noted(text);
+});
+
+export const removeDecorMockup = safe(async function removeDecorMockup(id: string) {
+  const user = await requireUser();
+  const text = await removeMockupFor(user, id);
+  refresh(id);
+  return noted(text);
+});
+
+export const sendDecorProof = safe(async function sendDecorProof(id: string, formData: FormData) {
+  const user = await requireUser();
+  const text = await sendProofFor(user, id, { email: formData.get("email") === "on", sms: formData.get("sms") === "on", note: str(formData.get("note")) });
+  refresh(id);
   return noted(text);
 });

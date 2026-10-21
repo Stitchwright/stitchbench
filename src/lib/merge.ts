@@ -484,7 +484,7 @@ export async function deleteCustomerFor(user: CurrentUser, customerId: string, t
     await tx.longarmOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
     await tx.makeJob.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, fileData: null } });
     await tx.decorPlacement.updateMany({ where: { shopId, order: { customerId: c.id } }, data: { fileData: null } });
-    await tx.decorOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null } });
+    await tx.decorOrder.updateMany({ where: { shopId, customerId: c.id }, data: { name: DELETED_NAME, note: null, mockupName: null, mockupMime: null, mockupData: null } });
     await tx.liveClaim.updateMany({ where: { shopId, customerId: c.id }, data: { customerId: null, name: DELETED_NAME, phone: null } });
     // A settled house account (9.4) stays for the books, without her (its id stands in, so the one-per-customer key holds).
     for (const a of await tx.houseAccount.findMany({ where: { shopId, customerId: c.id }, select: { id: true } })) {

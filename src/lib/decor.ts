@@ -11,7 +11,7 @@ import { assertId } from "@/lib/input";
 import { str, toCents } from "@/lib/format";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireModule } from "@/lib/modules";
-import { moduleOn } from "@/lib/module-gate";
+import { moduleOn, requireOn } from "@/lib/module-gate";
 import { customerFromForm } from "@/lib/customer-input";
 import { completeSaleAs } from "@/lib/register-sale";
 import { TENDER_METHODS, type TenderMethod } from "@/lib/register-math";
@@ -20,6 +20,8 @@ import { parseYmd, zonedTime } from "@/lib/zoned";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { firstName } from "@/lib/messaging/templates";
 import { currentStoreId } from "@/lib/stores";
+import { createEstimateLink, estimateByToken, estimateContent } from "@/lib/estimate-links";
+import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
 import { MAX_DESIGN_BYTES, formatOf, readEmbroidery } from "@/lib/embroidery-file";
 import { DECOR_MOVES, OPEN_DECOR, METHOD_LABEL, cleanPrices, decorStatusLabel, effectiveColors, isDecorMethod, orderPrice, parseBreaks, parseScreenRows, parseTiers, pieceCents, placementMinutes, runMinutes, screenPieceCents, sizesTotal, type DecorPrices, type DecorStatus } from "@/lib/decor-math";
 import type { CurrentUser } from "@/lib/session";
@@ -93,12 +95,18 @@ async function requote(tx: Prisma.TransactionClient, shopId: string, orderId: st
   const price = orderPrice(lines, placements, prices);
   for (const [i, pl] of placements.entries()) await tx.decorPlacement.updateMany({ where: { id: pl.id, shopId }, data: { quotedEachCents: price.eachCents[i] } });
   if (price.totalCents > MAX_CENTS) throw new UserError("That comes to more than $100,000. Check the quantities and prices.");
+  await stopProofLinks(tx, shopId, orderId); // a customer must not approve a price that has since changed
   await tx.decorOrder.updateMany({ where: { id: orderId, shopId }, data: { quoteCents: price.totalCents, digitizingCents: price.digitizingCents, screenCents: price.screenCents, setupCents: price.setupCents } });
   return price.totalCents;
 }
 
+/** Any quote link already sent for the order stops working: what it showed is no longer what the order says. */
+async function stopProofLinks(tx: Prisma.TransactionClient, shopId: string, orderId: string): Promise<void> {
+  await tx.estimateLink.updateMany({ where: { shopId, decorOrderId: orderId, answer: null, revokedAt: null }, data: { revokedAt: new Date(), tokenSealed: null } });
+}
+
 async function ownOrder(shopId: string, id: string) {
-  const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId } });
+  const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId }, omit: { mockupData: true } });
   if (!o) throw new UserError("Order not found.");
   return o;
 }
@@ -393,7 +401,7 @@ export async function turnDownOrderFor(user: CurrentUser, id: string, why: strin
 export async function collectOrderFor(user: CurrentUser, id: string, fd: FormData | null): Promise<string> {
   const shopId = user.shopId;
   await requireModule(user, "decorating");
-  const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
+  const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId }, omit: { mockupData: true }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
   if (!o) throw new UserError("Order not found.");
   const asked = String(fd?.get("method") ?? "CASH");
   const method: TenderMethod = (TENDER_METHODS as string[]).includes(asked) ? (asked as TenderMethod) : "CASH";
@@ -484,12 +492,14 @@ export async function productionFor(shopId: string, now = new Date()): Promise<{
 }
 
 export async function orderView(shopId: string, id: string) {
-  const o = await db.decorOrder.findFirst({ where: { id, shopId }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
+  const o = await db.decorOrder.findFirst({ where: { id, shopId }, omit: { mockupData: true }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
   if (!o) return null;
-  const [prices, fileIds, sale] = await Promise.all([
+  const [prices, fileIds, sale, link, mockup] = await Promise.all([
     decorPrices(shopId),
     db.decorPlacement.findMany({ where: { orderId: o.id, shopId, fileData: { not: null } }, select: { id: true } }),
     o.saleId ? db.sale.findFirst({ where: { id: o.saleId, shopId }, select: { id: true, number: true } }) : null,
+    db.estimateLink.findFirst({ where: { shopId, decorOrderId: o.id }, orderBy: { createdAt: "desc" }, select: { answer: true, answeredAt: true, answerNote: true, expiresAt: true, revokedAt: true } }),
+    db.decorOrder.count({ where: { id: o.id, shopId, mockupData: { not: null } } }),
   ]);
   const withFile = new Set(fileIds.map((f) => f.id));
   const pieces = o.lines.reduce((s, l) => s + l.qty, 0);
@@ -506,5 +516,119 @@ export async function orderView(shopId: string, id: string) {
     };
   });
   const runTotal = placements.reduce((s, p) => s + p.minutesTotal, 0);
-  return { ...o, placements, pieces, garmentCents: o.lines.reduce((s, l) => s + l.qty * l.garmentCents, 0), runMinutesTotal: runTotal, sale };
+  return { ...o, placements, pieces, garmentCents: o.lines.reduce((s, l) => s + l.qty * l.garmentCents, 0), runMinutesTotal: runTotal, sale, link, hasMockup: mockup > 0 };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The quote and proof by link (docs/plans/decorators-proposal.md, package D3): the customer sees what will be made, where, the
+// price, and a mock-up picture if there is one, and approves or declines by the estimate link (Marketing sends it).
+
+const MAX_MOCKUP_BYTES = 2 * 1024 * 1024;
+
+/** PNG or JPEG by its first bytes (never by the name or the type the browser said, and never SVG: it can carry script). */
+function imageType(b: Uint8Array): "image/png" | "image/jpeg" | null {
+  if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return "image/png";
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  return null;
+}
+
+/** Attaches (or replaces) the mock-up picture the customer is shown. Any quote link already sent stops: they approved something else. */
+export async function setMockupFor(user: CurrentUser, orderId: string, fd: FormData): Promise<string> {
+  await requireBaseWritable(user);
+  await requireModule(user, "decorating");
+  const shopId = user.shopId;
+  const o = await ownOrder(shopId, orderId);
+  if (!OPEN_DECOR.includes(o.status as DecorStatus)) throw new UserError(`An order that is ${decorStatusLabel(o.status).toLowerCase()} can't be changed.`);
+  const f = fd.get("mockup");
+  if (!(f instanceof File) || f.size === 0) throw new UserError("Choose a picture first.");
+  if (f.size > MAX_MOCKUP_BYTES) throw new UserError(`That picture is larger than ${MAX_MOCKUP_BYTES / 1024 / 1024} MB. Save a smaller one.`);
+  const data = new Uint8Array(await f.arrayBuffer());
+  const mime = imageType(data);
+  if (!mime) throw new UserError("The mock-up has to be a PNG or JPEG picture.");
+  const name = f.name.replace(/[^\w .()-]+/g, "_").slice(-120) || "mockup";
+  await db.$transaction(async (tx) => {
+    await tx.decorOrder.updateMany({ where: { id: o.id, shopId }, data: { mockupName: name, mockupMime: mime, mockupData: data } });
+    await stopProofLinks(tx, shopId, o.id);
+  });
+  return "Saved the mock-up. If a quote link was already sent it has stopped: send it again.";
+}
+
+export async function removeMockupFor(user: CurrentUser, orderId: string): Promise<string> {
+  await requireBaseWritable(user);
+  await requireModule(user, "decorating");
+  const shopId = user.shopId;
+  const o = await ownOrder(shopId, orderId);
+  await db.$transaction(async (tx) => {
+    await tx.decorOrder.updateMany({ where: { id: o.id, shopId }, data: { mockupName: null, mockupMime: null, mockupData: null } });
+    await stopProofLinks(tx, shopId, o.id);
+  });
+  return "Removed the mock-up.";
+}
+
+/** The mock-up for staff: this company's own order only. */
+export async function mockupFile(shopId: string, orderId: string): Promise<{ mime: string; data: Uint8Array } | null> {
+  if (!/^[a-z0-9]{10,40}$/i.test(orderId)) return null;
+  const o = await db.decorOrder.findFirst({ where: { id: orderId, shopId }, select: { mockupMime: true, mockupData: true } });
+  return o?.mockupData && o.mockupMime ? { mime: o.mockupMime, data: o.mockupData } : null;
+}
+
+/** The mock-up for the customer's page: found by the link's token alone, and only for the order that link is about. */
+export async function proofMockup(token: string): Promise<{ mime: string; data: Uint8Array } | null> {
+  const found = await estimateByToken(token);
+  if (!found?.link.decorOrderId) return null;
+  // A stopped or expired link shows nothing (its page says so); an answered one still shows what was approved.
+  if (found.view.state !== "open" && found.view.state !== "answered") return null;
+  return mockupFile(found.link.shopId, found.link.decorOrderId);
+}
+
+/** The quote and proof by the estimate link, for the customer to approve or decline (Marketing; a public address). */
+export async function sendProofFor(user: CurrentUser, id: string, input: { email: boolean; sms: boolean; note: string | null }): Promise<string> {
+  const shopId = user.shopId;
+  await requireModule(user, "decorating");
+  await requireOn(user, "marketing");
+  const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId }, omit: { mockupData: true }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
+  if (!o) throw new UserError("Order not found.");
+  if (o.status !== "QUOTED") throw new UserError("Only a quoted order goes out for approval.");
+  if (!o.customerId) throw new UserError("This order has no customer to send it to.");
+  if (o.quoteCents <= 0) throw new UserError("Add the garments and decorations first, so there is a price to approve.");
+  if (!publicBaseUrl()) throw new UserError("This install has no public address, so there are no quote links. Call them with the price instead.");
+  const channels = [...(input.email ? (["email"] as const) : []), ...(input.sms ? (["sms"] as const) : [])];
+  if (!channels.length) throw new UserError("Pick email, text or both.");
+  const [shop, ms, customer] = await Promise.all([
+    db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true, phone: true } }),
+    messagingView(shopId),
+    db.customer.findFirstOrThrow({ where: { id: o.customerId, shopId }, select: { name: true, phone: true } }),
+  ]);
+  const pieces = o.lines.reduce((t, l) => t + l.qty, 0);
+  const lines = [
+    ...o.lines.filter((l) => l.garmentCents > 0).map((l) => ({ description: `${l.qty} × ${l.description}${l.color ? `, ${l.color}` : ""}`, amountCents: l.qty * l.garmentCents })),
+    ...o.placements
+      .filter((p) => p.quotedEachCents > 0)
+      .map((p) => ({ description: `${METHOD_LABEL[p.method] ?? "Decoration"}, ${p.location.toLowerCase()}, ${pieces} ${pieces === 1 ? "piece" : "pieces"} at ${money(p.quotedEachCents)}`, amountCents: p.quotedEachCents * pieces })),
+    ...(o.digitizingCents > 0 ? [{ description: "Digitizing your design", amountCents: o.digitizingCents }] : []),
+    ...(o.screenCents > 0 ? [{ description: "Screens", amountCents: o.screenCents }] : []),
+    ...(o.setupCents > 0 ? [{ description: "Set-up", amountCents: o.setupCents }] : []),
+  ];
+  const shown = lines.reduce((t, l) => t + l.amountCents, 0);
+  if (shown !== o.quoteCents) throw new UserError(`Order #${o.number}'s parts add up to ${money(shown)} but it was priced at ${money(o.quoteCents)}. Work the price out again and try once more.`);
+  const note = input.note?.trim().slice(0, 500) || "Prices are before sales tax. Please look over what we will make and where, then approve or call us with changes.";
+  await db.$transaction(async (tx) => {
+    const link = await createEstimateLink(tx, { shopId, decorOrderId: o.id, customerId: o.customerId!, totalCents: o.quoteCents, lines, note, days: ms.estimateLinkDays, byUserId: user.id });
+    const s = { target: "job" as const, customerId: o.customerId!, customerName: customer.name, customerPhone: customer.phone, machine: o.title, ref: `order #${o.number}`, lines, totalCents: o.quoteCents };
+    const r = await queueToCustomer(tx, {
+      shopId,
+      customerId: o.customerId!,
+      kind: "estimate",
+      channels: [...channels],
+      content: (ch) => estimateContent(ms, shop, s, note, link.maskedUrl, ch),
+      dedupeKey: `estimate:${link.id}`,
+      notAfter: link.expiresAt,
+      refType: "estimate",
+      refId: link.id,
+      byUserId: user.id,
+      ms,
+    });
+    if (!r.queued.length) throw new UserError("Not sent: they can't be reached by the way picked. Call them with the price.");
+  });
+  return `The quote and proof for order #${o.number} are on their way.`;
 }

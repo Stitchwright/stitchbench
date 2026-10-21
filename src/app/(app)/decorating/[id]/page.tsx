@@ -6,9 +6,10 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { gateFor } from "@/lib/module-gate";
 import { orderView } from "@/lib/decor";
 import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
-import { addDecorLine, collectDecorOrder, removeDecorLine, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
+import { addDecorLine, collectDecorOrder, removeDecorLine, removeDecorMockup, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, sendDecorProof, setDecorMockup, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
@@ -22,7 +23,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
   const user = await requireUser();
   const { id } = await params;
   const shopId = user.shopId;
-  const [s, o, tz] = await Promise.all([decorPageState(user, true), orderView(shopId, id), shopTimeZone(shopId)]);
+  const [s, o, tz, marketing] = await Promise.all([decorPageState(user, true), orderView(shopId, id), shopTimeZone(shopId), gateFor(shopId, "marketing")]);
   if (!o) notFound();
   const write = s.gate === "write";
   const moves = DECOR_MOVES[o.status] ?? [];
@@ -238,6 +239,58 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
             </ActionButton>
           </div>
         )}
+      </Section>
+
+      <Section title="Quote and proof for the customer">
+        {o.hasMockup ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a stored picture served by our own route, not a static asset
+          <img src={`/api/decorating/orders/${o.id}/mockup`} alt="The mock-up the customer is shown" className="max-h-72 max-w-full rounded border border-line" />
+        ) : (
+          <p className="muted text-sm">No mock-up picture yet. The customer is shown what will be made and the price; add a picture of the design on the garment to show it too.</p>
+        )}
+        {write && ["QUOTED", "APPROVED", "IN_PRODUCTION", "READY"].includes(o.status) && (
+          <ActionForm action={setDecorMockup.bind(null, o.id)} reset className="mt-2 flex flex-wrap items-end gap-2">
+            <div className="field">
+              <label className="label" htmlFor="dm-file">
+                {o.hasMockup ? "Replace the mock-up (PNG or JPEG, 2 MB at most)" : "Add a mock-up (PNG or JPEG, 2 MB at most)"}
+              </label>
+              <input id="dm-file" name="mockup" type="file" accept="image/png,image/jpeg" className="input" required />
+            </div>
+            <Submit className="btn">Save the picture</Submit>
+            {o.hasMockup && (
+              <ActionButton action={removeDecorMockup.bind(null, o.id)} className="btn">
+                Remove it
+              </ActionButton>
+            )}
+          </ActionForm>
+        )}
+        {o.link && (
+          <p className="mt-2 text-sm">
+            Quote sent by link:{" "}
+            {o.link.answer ? `${o.link.answer === "APPROVED" ? "approved" : "declined"} ${o.link.answeredAt ? fmtDateTime(o.link.answeredAt, tz) : ""}${o.link.answerNote ? `: ${o.link.answerNote}` : ""}` : o.link.revokedAt ? "stopped (the order changed, or it was replaced): send it again" : `waiting for an answer (until ${fmtDate(o.link.expiresAt, tz)})`}
+          </p>
+        )}
+        {write && o.status === "QUOTED" && marketing === "on" && o.customerId && (
+          <details className="mt-2">
+            <summary className="link cursor-pointer text-sm">Send the quote and proof for them to approve</summary>
+            <ActionForm action={sendDecorProof.bind(null, o.id)} className="mt-2 flex flex-wrap items-end gap-3">
+              <label className="flex min-h-11 items-center gap-2 text-base">
+                <input type="checkbox" name="sms" className="check" defaultChecked /> Text
+              </label>
+              <label className="flex min-h-11 items-center gap-2 text-base">
+                <input type="checkbox" name="email" className="check" defaultChecked /> Email
+              </label>
+              <div className="field min-w-64 flex-1">
+                <label className="label" htmlFor="dm-note">
+                  Note with it
+                </label>
+                <input id="dm-note" name="note" className="input" maxLength={500} placeholder="Prices are before sales tax." />
+              </div>
+              <Submit className="btn">Send the quote and proof</Submit>
+            </ActionForm>
+          </details>
+        )}
+        {write && o.status === "QUOTED" && marketing !== "on" && <p className="muted mt-2 text-sm">To send this by text or email, turn on Messages (Marketing). Until then, tell the customer the price and mark the order approved.</p>}
       </Section>
 
       {o.note && (

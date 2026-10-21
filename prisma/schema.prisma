@@ -2433,6 +2433,10 @@ model DecorOrder {
   // a sale bills exactly these, so a later change to the price table never moves a quoted order.
   digitizingCents Int            @default(0)
   screenCents   Int              @default(0)
+  // The mock-up the customer is shown with the quote (a PNG or JPEG, 2 MB at most); changing it stops any quote link already sent.
+  mockupName    String?
+  mockupMime    String?
+  mockupData    Bytes?
   setupCents    Int              @default(0)
   turnedDownWhy String?
   saleId        String?
@@ -2810,6 +2814,7 @@ model EstimateLink {
   ticketId    String? // a StitchBench ticket (plain id, always checked with shopId)
   repairJobId String? // or a partner repair job, the sewing shop's side
   makeJobId   String? // or a print or cut job (shop-features-round-2-design.md 6.5; plain id)
+  decorOrderId String? // or a decorating order's quote and proof (docs/plans/decorators-proposal.md; plain id)
   customerId  String?
   totalCents  Int // the estimate as shown; a changed bill needs a new link
   lines       Json // [{ description, amountCents }] as shown
@@ -2825,6 +2830,7 @@ model EstimateLink {
 
   @@index([shopId, ticketId])
   @@index([shopId, repairJobId])
+  @@index([shopId, decorOrderId])
   @@index([shopId, answeredAt])
 }
 
