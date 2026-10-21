@@ -104,7 +104,7 @@ export const MODULES: Record<ModuleId, { label: string; blurb: string; href: str
   decorating: {
     label: "Decorating",
     href: "/decorating",
-    blurb: "For shops that embroider (and later screen print) garments: orders from quote to pickup, priced by stitch count with quantity breaks, and the customer's design file (DST) read for its stitch count.",
+    blurb: "For shops that embroider or screen print garments: orders from quote to pickup, embroidery priced by stitch count and screen printing by colours and quantity, the customer's DST file read for its stitch count, and a production worksheet and list.",
   },
   assistant: {
     label: "Assistant",

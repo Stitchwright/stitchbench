@@ -21,7 +21,7 @@ import { queueToCustomer } from "@/lib/messaging/queue";
 import { firstName } from "@/lib/messaging/templates";
 import { currentStoreId } from "@/lib/stores";
 import { MAX_DESIGN_BYTES, formatOf, readEmbroidery } from "@/lib/embroidery-file";
-import { DECOR_MOVES, OPEN_DECOR, cleanPrices, decorStatusLabel, orderPrice, parseBreaks, parseTiers, pieceCents, runMinutes, sizesTotal, type DecorPrices, type DecorStatus } from "@/lib/decor-math";
+import { DECOR_MOVES, OPEN_DECOR, METHOD_LABEL, cleanPrices, decorStatusLabel, effectiveColors, isDecorMethod, orderPrice, parseBreaks, parseScreenRows, parseTiers, pieceCents, placementMinutes, runMinutes, screenPieceCents, sizesTotal, type DecorPrices, type DecorStatus } from "@/lib/decor-math";
 import type { CurrentUser } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -57,6 +57,8 @@ export async function saveDecorPricesFor(user: CurrentUser, fd: FormData): Promi
     if (!Number.isInteger(n) || n < lo || n > hi) throw new UserError(`${what}: a whole number from ${lo} to ${hi}.`);
     return n;
   };
+  const grid = parseScreenRows(str(fd.get("screenRows")) ?? "");
+  if ("error" in grid) throw new UserError(grid.error);
   const prices: DecorPrices = {
     tiers: tiers.tiers,
     breaks: breaks.breaks,
@@ -65,6 +67,13 @@ export async function saveDecorPricesFor(user: CurrentUser, fd: FormData): Promi
     setupCents: cents("setup", "The set-up fee"),
     stitchesPerMinute: whole("spm", "The machine's speed (stitches a minute)", 50, 3000),
     colorChangeSeconds: whole("colorSeconds", "Seconds for a colour change", 0, 3600),
+    screen: {
+      rows: grid.rows,
+      extraColorCents: cents("screenExtra", "The price for each colour past the grid"),
+      screenCents: cents("screenFee", "The fee for each screen"),
+      printsPerHour: whole("printsPerHour", "Prints an hour through the press", 1, 5000),
+      setupMinutesPerColor: whole("screenSetup", "Minutes to set up each colour on the press", 0, 600),
+    },
   };
   await db.decorSettings.upsert({ where: { shopId: user.shopId }, create: { shopId: user.shopId, prices }, update: { prices } });
   return "Saved the prices. Orders already quoted keep the price they were quoted at.";
@@ -77,14 +86,14 @@ export async function saveDecorPricesFor(user: CurrentUser, fd: FormData): Promi
 async function requote(tx: Prisma.TransactionClient, shopId: string, orderId: string): Promise<number> {
   const [lines, placements, settings] = await Promise.all([
     tx.decorLine.findMany({ where: { orderId, shopId }, select: { qty: true, garmentCents: true } }),
-    tx.decorPlacement.findMany({ where: { orderId, shopId }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, stitches: true, newDesign: true, priceEachCents: true } }),
+    tx.decorPlacement.findMany({ where: { orderId, shopId }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, method: true, stitches: true, colors: true, underbase: true, newDesign: true, priceEachCents: true } }),
     tx.decorSettings.findUnique({ where: { shopId }, select: { prices: true } }),
   ]);
   const prices = cleanPrices(settings?.prices);
   const price = orderPrice(lines, placements, prices);
   for (const [i, pl] of placements.entries()) await tx.decorPlacement.updateMany({ where: { id: pl.id, shopId }, data: { quotedEachCents: price.eachCents[i] } });
   if (price.totalCents > MAX_CENTS) throw new UserError("That comes to more than $100,000. Check the quantities and prices.");
-  await tx.decorOrder.updateMany({ where: { id: orderId, shopId }, data: { quoteCents: price.totalCents, digitizingCents: price.digitizingCents, setupCents: price.setupCents } });
+  await tx.decorOrder.updateMany({ where: { id: orderId, shopId }, data: { quoteCents: price.totalCents, digitizingCents: price.digitizingCents, screenCents: price.screenCents, setupCents: price.setupCents } });
   return price.totalCents;
 }
 
@@ -221,8 +230,9 @@ const positive = (v: string | null, what: string, max: number, whole = true): nu
 };
 
 /**
- * Adds a decoration to every piece. A DST file is read for its stitch count, colours and size (what the file says wins
- * over anything typed); any other file is kept and the stitch count is typed.
+ * Adds a decoration to every piece. Embroidery: a DST file is read for its stitch count, colours and size (what the file says
+ * wins over anything typed); any other file is kept and the stitch count is typed. Screen print: the number of inks (and an
+ * underbase for a dark garment), the art kept as sent, and whether the screens have to be made.
  */
 export async function addPlacementFor(user: CurrentUser, orderId: string, fd: FormData): Promise<string> {
   await requireBaseWritable(user);
@@ -232,24 +242,40 @@ export async function addPlacementFor(user: CurrentUser, orderId: string, fd: Fo
   assertEditable(o);
   const location = (str(fd.get("location")) ?? "").replace(/\s+/g, " ").slice(0, 40);
   if (!location) throw new UserError('Where it goes, like "Left chest".');
+  const methodRaw = str(fd.get("method")) ?? "EMBROIDERY";
+  if (!isDecorMethod(methodRaw)) throw new UserError("Pick embroidery or screen print.");
+  const method = methodRaw;
   const file = await designFrom(fd);
-  const info = file ? readEmbroidery(file.name, file.data) : null;
-  let stitches = positive(str(fd.get("stitches")), "The stitch count", 5_000_000) ?? 0;
-  let colors = positive(str(fd.get("colors")), "The number of colours", 100) ?? 1;
-  let widthMm = positive(str(fd.get("width")), "The width in mm", 2000, false);
-  let heightMm = positive(str(fd.get("height")), "The height in mm", 2000, false);
-  let said = "";
-  if (info?.readable) {
-    stitches = info.stitches ?? stitches;
-    colors = info.colors ?? colors;
-    widthMm = info.widthMm ?? widthMm;
-    heightMm = info.heightMm ?? heightMm;
-    said = ` The file says ${stitches.toLocaleString("en-US")} stitches in ${colors} colour${colors === 1 ? "" : "s"}.`;
-  }
-  if (stitches < 1 && !str(fd.get("price"))) throw new UserError(file && !info?.readable ? `${formatOf(file.name)} files aren't read yet: type the stitch count (the design program shows it).` : "Give the stitch count, or choose a DST file, or type the price for each piece.");
   const priceRaw = str(fd.get("price"));
   const priceEachCents = priceRaw ? toCents(priceRaw) : null;
   if (priceRaw && (priceEachCents == null || priceEachCents < 0 || priceEachCents > 100_000)) throw new UserError("The price for each piece: dollars, like 7.50 (leave empty to use your price table).");
+  const widthIn = positive(str(fd.get("width")), "The width in mm", 2000, false);
+  const heightIn = positive(str(fd.get("height")), "The height in mm", 2000, false);
+  const newDesign = fd.getAll("newDesign").map(String).includes("on");
+  let said = "";
+  let data: { stitches: number; colors: number; widthMm: number | null; heightMm: number | null; underbase: boolean; fileReadable: boolean; fileFormat: string | null };
+  if (method === "SCREEN_PRINT") {
+    const inks = positive(str(fd.get("colors")), "The number of colours", 12) ?? 0;
+    if (inks < 1) throw new UserError("How many colours does the print have? (Not counting an underbase.)");
+    const underbase = fd.getAll("underbase").map(String).includes("on");
+    data = { stitches: 0, colors: inks, widthMm: widthIn, heightMm: heightIn, underbase, fileReadable: false, fileFormat: file ? formatOf(file.name) : null };
+    said = ` ${effectiveColors(inks, underbase)} screen${effectiveColors(inks, underbase) === 1 ? "" : "s"}${underbase ? " with the underbase" : ""}.`;
+  } else {
+    const info = file ? readEmbroidery(file.name, file.data) : null;
+    let stitches = positive(str(fd.get("stitches")), "The stitch count", 5_000_000) ?? 0;
+    let colors = positive(str(fd.get("colors")), "The number of colours", 100) ?? 1;
+    let widthMm = widthIn;
+    let heightMm = heightIn;
+    if (info?.readable) {
+      stitches = info.stitches ?? stitches;
+      colors = info.colors ?? colors;
+      widthMm = info.widthMm ?? widthMm;
+      heightMm = info.heightMm ?? heightMm;
+      said = ` The file says ${stitches.toLocaleString("en-US")} stitches in ${colors} colour${colors === 1 ? "" : "s"}.`;
+    }
+    if (stitches < 1 && !priceRaw) throw new UserError(file && !info?.readable ? `${formatOf(file.name)} files aren't read yet: type the stitch count (the design program shows it).` : "Give the stitch count, or choose a DST file, or type the price for each piece.");
+    data = { stitches, colors: Math.max(1, colors), widthMm, heightMm, underbase: false, fileReadable: !!info?.readable, fileFormat: info?.format ?? (file ? formatOf(file.name) : null) };
+  }
   await db.$transaction(async (tx) => {
     const count = await tx.decorPlacement.count({ where: { orderId: o.id, shopId } });
     if (count >= MAX_PLACEMENTS) throw new UserError(`${MAX_PLACEMENTS} decorations is the most on one order.`);
@@ -259,20 +285,21 @@ export async function addPlacementFor(user: CurrentUser, orderId: string, fd: Fo
         orderId: o.id,
         sortOrder: count,
         location,
-        method: "EMBROIDERY",
-        stitches,
-        colors: Math.max(1, colors),
-        widthMm,
-        heightMm,
-        newDesign: fd.getAll("newDesign").map(String).includes("on"),
+        method,
+        stitches: data.stitches,
+        colors: data.colors,
+        widthMm: data.widthMm,
+        heightMm: data.heightMm,
+        underbase: data.underbase,
+        newDesign,
         priceEachCents,
         note: str(fd.get("note"))?.slice(0, 300) ?? null,
-        ...(file ? { fileName: file.name, fileFormat: info?.format ?? formatOf(file.name), fileData: file.data, fileReadable: !!info?.readable } : {}),
+        ...(file ? { fileName: file.name, fileFormat: data.fileFormat, fileData: file.data, fileReadable: data.fileReadable } : {}),
       },
     });
     await requote(tx, shopId, o.id);
   });
-  return `Added ${location.toLowerCase()}.${said}`;
+  return `Added ${location.toLowerCase()} (${METHOD_LABEL[method].toLowerCase()}).${said}`;
 }
 
 export async function removePlacementFor(user: CurrentUser, orderId: string, placementId: string): Promise<string> {
@@ -378,8 +405,17 @@ export async function collectOrderFor(user: CurrentUser, id: string, fd: FormDat
     const pieces = o.lines.reduce((s, l) => s + l.qty, 0);
     const lines = [
       ...o.lines.filter((l) => l.garmentCents > 0).map((l) => ({ description: `${l.description}${l.color ? `, ${l.color}` : ""} (order #${o.number})`.slice(0, 200), qty: l.qty, unitPriceCents: l.garmentCents, taxable: o.taxable })),
-      ...o.placements.filter((p) => p.quotedEachCents > 0).map((p) => ({ description: `Embroidery, ${p.location.toLowerCase()}${p.stitches ? `, ${p.stitches.toLocaleString("en-US")} stitches` : ""} (order #${o.number})`.slice(0, 200), qty: pieces, unitPriceCents: p.quotedEachCents, taxable: o.taxable })),
+      ...o.placements
+        .filter((p) => p.quotedEachCents > 0)
+        .map((p) => ({
+          description: (p.method === "SCREEN_PRINT" ? `Screen print, ${p.location.toLowerCase()}, ${effectiveColors(p.colors, p.underbase)} colour${effectiveColors(p.colors, p.underbase) === 1 ? "" : "s"}` : `Embroidery, ${p.location.toLowerCase()}${p.stitches ? `, ${p.stitches.toLocaleString("en-US")} stitches` : ""}`) + ` (order #${o.number})`,
+          qty: pieces,
+          unitPriceCents: p.quotedEachCents,
+          taxable: o.taxable,
+        }))
+        .map((l) => ({ ...l, description: l.description.slice(0, 200) })),
       ...(o.digitizingCents > 0 ? [{ description: `Digitizing, order #${o.number}`, qty: 1, unitPriceCents: o.digitizingCents, taxable: o.taxable }] : []),
+      ...(o.screenCents > 0 ? [{ description: `Screens, order #${o.number}`, qty: 1, unitPriceCents: o.screenCents, taxable: o.taxable }] : []),
       ...(o.setupCents > 0 ? [{ description: `Set-up, order #${o.number}`, qty: 1, unitPriceCents: o.setupCents, taxable: o.taxable }] : []),
     ];
     const billed = lines.reduce((s, l) => s + l.qty * l.unitPriceCents, 0);
@@ -421,7 +457,7 @@ export async function productionFor(shopId: string, now = new Date()): Promise<{
   const [orders, prices] = await Promise.all([
     db.decorOrder.findMany({
       where: { shopId, status: { in: ["APPROVED", "IN_PRODUCTION"] } },
-      select: { id: true, number: true, name: true, title: true, status: true, dueAt: true, lines: { select: { qty: true } }, placements: { select: { stitches: true, colors: true } } },
+      select: { id: true, number: true, name: true, title: true, status: true, dueAt: true, lines: { select: { qty: true } }, placements: { select: { method: true, stitches: true, colors: true, underbase: true } } },
       orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { number: "asc" }],
       take: 300,
     }),
@@ -429,7 +465,7 @@ export async function productionFor(shopId: string, now = new Date()): Promise<{
   ]);
   const rows = orders.map((o) => {
     const pieces = o.lines.reduce((t, l) => t + l.qty, 0);
-    const minutes = o.placements.reduce((t, p) => t + runMinutes(p.stitches, p.colors, prices), 0) * pieces;
+    const minutes = o.placements.reduce((t, p) => t + placementMinutes(p, pieces, prices), 0);
     return {
       id: o.id,
       number: o.number,
@@ -440,7 +476,7 @@ export async function productionFor(shopId: string, now = new Date()): Promise<{
       overdue: !!o.dueAt && o.dueAt.getTime() < now.getTime(),
       pieces,
       minutes,
-      stitches: o.placements.reduce((t, p) => t + p.stitches, 0) * pieces,
+      stitches: o.placements.filter((p) => p.method !== "SCREEN_PRINT").reduce((t, p) => t + p.stitches, 0) * pieces,
       placements: o.placements.length,
     };
   });
@@ -457,7 +493,18 @@ export async function orderView(shopId: string, id: string) {
   ]);
   const withFile = new Set(fileIds.map((f) => f.id));
   const pieces = o.lines.reduce((s, l) => s + l.qty, 0);
-  const placements = o.placements.map((p) => ({ ...p, hasFile: withFile.has(p.id), runMinutesEach: runMinutes(p.stitches, p.colors, prices), tableEachCents: pieceCents(p.stitches, pieces, prices) }));
-  const runTotal = placements.reduce((s, p) => s + p.runMinutesEach, 0) * pieces;
+  const placements = o.placements.map((p) => {
+    const screen = p.method === "SCREEN_PRINT";
+    return {
+      ...p,
+      hasFile: withFile.has(p.id),
+      /** Machine time for this decoration on the whole order, and for one piece (embroidery only: a print's set-up is not per piece). */
+      minutesTotal: placementMinutes(p, pieces, prices),
+      runMinutesEach: screen ? 0 : runMinutes(p.stitches, p.colors, prices),
+      colorsWithUnderbase: effectiveColors(p.colors, p.underbase),
+      tableEachCents: screen ? screenPieceCents(effectiveColors(p.colors, p.underbase), pieces, prices) : pieceCents(p.stitches, pieces, prices),
+    };
+  });
+  const runTotal = placements.reduce((s, p) => s + p.minutesTotal, 0);
   return { ...o, placements, pieces, garmentCents: o.lines.reduce((s, l) => s + l.qty * l.garmentCents, 0), runMinutesTotal: runTotal, sale };
 }

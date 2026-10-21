@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/session";
 import { fmtDate } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { orderView } from "@/lib/decor";
-import { decorStatusLabel, formatMinutes } from "@/lib/decor-math";
+import { METHOD_LABEL, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
 import { PrintButton } from "@/components/print-button";
 
 export default async function DecorWorksheet({ params }: { params: Promise<{ id: string }> }) {
@@ -64,24 +64,44 @@ export default async function DecorWorksheet({ params }: { params: Promise<{ id:
         {o.placements.map((p, i) => (
           <div key={p.id} className="break-inside-avoid rounded border border-line p-3">
             <p className="font-semibold">
-              {i + 1}. {p.location} · embroidery
+              {i + 1}. {p.location} · {METHOD_LABEL[p.method]?.toLowerCase() ?? p.method}
             </p>
-            <p>
-              {p.stitches.toLocaleString("en-US")} stitches · {p.colors} {p.colors === 1 ? "colour" : "colours"}
-              {p.widthMm != null && p.heightMm != null ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""} · {formatMinutes(p.runMinutesEach)} a piece, {formatMinutes(p.runMinutesEach * o.pieces)} for all {o.pieces}
-            </p>
-            <p className="text-sm">
-              Design file: {p.fileName ? `${p.fileName} (${p.fileFormat ?? "file"})` : "none attached"}
-              {p.newDesign ? " · new design: digitize, then sew a test on scrap" : ""}
-            </p>
+            {p.method === "SCREEN_PRINT" ? (
+              <>
+                <p>
+                  {p.colors} {p.colors === 1 ? "colour" : "colours"}
+                  {p.underbase ? " + white underbase" : ""} = {p.colorsWithUnderbase} {p.colorsWithUnderbase === 1 ? "screen" : "screens"}
+                  {p.widthMm != null && p.heightMm != null ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""} · about {formatMinutes(p.minutesTotal)} on the press for all {o.pieces}
+                </p>
+                <p className="text-sm">
+                  Art: {p.fileName ? `${p.fileName} (${p.fileFormat ?? "file"})` : "none attached"}
+                  {p.newDesign ? " · new screens: burn them first" : " · repeat: use the screens on the shelf"}
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  {p.stitches.toLocaleString("en-US")} stitches · {p.colors} {p.colors === 1 ? "colour" : "colours"}
+                  {p.widthMm != null && p.heightMm != null ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""} · {formatMinutes(p.runMinutesEach)} a piece, {formatMinutes(p.minutesTotal)} for all {o.pieces}
+                </p>
+                <p className="text-sm">
+                  Design file: {p.fileName ? `${p.fileName} (${p.fileFormat ?? "file"})` : "none attached"}
+                  {p.newDesign ? " · new design: digitize, then sew a test on scrap" : ""}
+                </p>
+              </>
+            )}
             {p.note && <p className="text-sm">Note: {p.note}</p>}
-            <p className="mt-1 text-sm">☐ design loaded &nbsp; ☐ test sewn &nbsp; ☐ hooped and placed &nbsp; ☐ done on all {o.pieces}</p>
+            <p className="mt-1 text-sm">
+              {p.method === "SCREEN_PRINT"
+                ? `☐ screens ready  ☐ inks mixed  ☐ registered on the press  ☐ test print  ☐ printed on all ${o.pieces}  ☐ cured`
+                : `☐ design loaded  ☐ test sewn  ☐ hooped and placed  ☐ done on all ${o.pieces}`}
+            </p>
           </div>
         ))}
         {o.placements.length === 0 && <p className="muted">No decorations on the order yet.</p>}
         {o.runMinutesTotal > 0 && (
           <p className="font-semibold">
-            {`Machine time for the whole order: about ${formatMinutes(o.runMinutesTotal)} at the shop's set speed.`}
+            {`Machine time for the whole order: about ${formatMinutes(o.runMinutesTotal)} at the speeds set in the shop's prices.`}
           </p>
         )}
       </section>

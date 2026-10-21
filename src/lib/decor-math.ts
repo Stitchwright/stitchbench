@@ -1,7 +1,9 @@
 // Decorating orders (docs/plans/decorators-proposal.md, package D1 and D2): the words, the steps an order may take, the
 // shop's price table and what an order comes to. Embroidery is priced by stitch count (a table of "up to this many
 // stitches costs this much a piece", then so much for every extra thousand), less a quantity break, plus a digitizing fee
-// for a design that has to be made and a set-up fee. Pure: pages, the server and the checks share it. Money in cents.
+// for a design that has to be made and a set-up fee. Screen printing is priced from a grid (the price a piece for this many
+// colours at this many pieces), a fee for each screen when the screens have to be made, and an underbase on a dark garment
+// counted as one more colour. Pure: pages, the server and the checks share it. Money in cents.
 // The numbers in DEFAULT_PRICES are starting values for a new shop to change, not market prices.
 import { roundCents } from "@/lib/register-math";
 
@@ -29,15 +31,25 @@ export const DECOR_MOVES: Record<string, DecorStatus[]> = {
   READY: ["IN_PRODUCTION"],
 };
 
-/** The decoration methods. Only embroidery is priced so far (screen printing is the next package). */
-export const DECOR_METHODS = ["EMBROIDERY"] as const;
+/** The decoration methods: embroidery by stitch count, screen printing by colours. (DTG, heat transfer and vinyl are not priced yet.) */
+export const DECOR_METHODS = ["EMBROIDERY", "SCREEN_PRINT"] as const;
 export type DecorMethod = (typeof DECOR_METHODS)[number];
-export const METHOD_LABEL: Record<string, string> = { EMBROIDERY: "Embroidery" };
+export const METHOD_LABEL: Record<string, string> = { EMBROIDERY: "Embroidery", SCREEN_PRINT: "Screen print" };
+export const isDecorMethod = (v: unknown): v is DecorMethod => typeof v === "string" && (DECOR_METHODS as readonly string[]).includes(v);
 
 export const PLACEMENTS = ["Left chest", "Right chest", "Full back", "Back yoke", "Left sleeve", "Right sleeve", "Cap front", "Cap side", "Cap back", "Other"] as const;
 
 export type StitchTier = { upTo: number; cents: number };
 export type QtyBreak = { min: number; pct: number };
+/** One line of the screen print grid: from `min` pieces, `cents[i]` is the price a piece with i + 1 colours. */
+export type ScreenRow = { min: number; cents: number[] };
+export type ScreenPrices = {
+  rows: ScreenRow[]; // ascending by min; fewer pieces than the first row's min pay the first row's price
+  extraColorCents: number; // each colour past the grid's columns
+  screenCents: number; // one screen for each colour (underbase included), when the screens have to be made
+  printsPerHour: number; // pieces an hour through the press, one colour at a time
+  setupMinutesPerColor: number; // registering and inking each colour on the press, every run
+};
 export type DecorPrices = {
   tiers: StitchTier[]; // ascending by upTo
   extraPer1000Cents: number; // each started thousand past the last tier
@@ -46,6 +58,20 @@ export type DecorPrices = {
   setupCents: number; // once per order
   stitchesPerMinute: number; // the machine's sewing speed, for run time
   colorChangeSeconds: number;
+  screen: ScreenPrices;
+};
+
+export const DEFAULT_SCREEN: ScreenPrices = {
+  rows: [
+    { min: 12, cents: [350, 450, 550, 650] },
+    { min: 24, cents: [275, 350, 425, 500] },
+    { min: 48, cents: [225, 290, 350, 410] },
+    { min: 144, cents: [160, 210, 260, 310] },
+  ],
+  extraColorCents: 60,
+  screenCents: 2500,
+  printsPerHour: 150,
+  setupMinutesPerColor: 10,
 };
 
 export const DEFAULT_PRICES: DecorPrices = {
@@ -66,6 +92,7 @@ export const DEFAULT_PRICES: DecorPrices = {
   setupCents: 0,
   stitchesPerMinute: 700,
   colorChangeSeconds: 45,
+  screen: DEFAULT_SCREEN,
 };
 
 const MAX_CENTS = 10_000_000;
@@ -73,6 +100,27 @@ const int = (v: unknown, lo: number, hi: number, fallback: number) => {
   const n = Math.round(Number(v));
   return Number.isFinite(n) && n >= lo && n <= hi ? n : fallback;
 };
+
+function cleanScreen(raw: unknown): ScreenPrices {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const rows = Array.isArray(r.rows)
+    ? (r.rows as unknown[])
+        .map((row) => {
+          const cents = Array.isArray((row as ScreenRow)?.cents) ? (row as ScreenRow).cents.map((c) => int(c, 0, MAX_CENTS, -1)).filter((c) => c >= 0).slice(0, 12) : [];
+          return { min: int((row as ScreenRow)?.min, 1, 1_000_000, 0), cents };
+        })
+        .filter((row) => row.min >= 1 && row.cents.length >= 1)
+        .sort((a, b) => a.min - b.min)
+        .slice(0, 20)
+    : [];
+  return {
+    rows: rows.length ? rows : DEFAULT_SCREEN.rows,
+    extraColorCents: int(r.extraColorCents, 0, 100_000, DEFAULT_SCREEN.extraColorCents),
+    screenCents: int(r.screenCents, 0, 100_000, DEFAULT_SCREEN.screenCents),
+    printsPerHour: int(r.printsPerHour, 1, 5000, DEFAULT_SCREEN.printsPerHour),
+    setupMinutesPerColor: int(r.setupMinutesPerColor, 0, 600, DEFAULT_SCREEN.setupMinutesPerColor),
+  };
+}
 
 /** Whatever was stored, made safe: bad or missing parts fall back to the starting values. */
 export function cleanPrices(raw: unknown): DecorPrices {
@@ -99,6 +147,7 @@ export function cleanPrices(raw: unknown): DecorPrices {
     setupCents: int(r.setupCents, 0, MAX_CENTS, DEFAULT_PRICES.setupCents),
     stitchesPerMinute: int(r.stitchesPerMinute, 50, 3000, DEFAULT_PRICES.stitchesPerMinute),
     colorChangeSeconds: int(r.colorChangeSeconds, 0, 3600, DEFAULT_PRICES.colorChangeSeconds),
+    screen: cleanScreen(r.screen),
   };
 }
 
@@ -131,8 +180,30 @@ export function runMinutes(stitches: number, colors: number, p: DecorPrices): nu
   return Math.max(1, Math.ceil(stitches / p.stitchesPerMinute + (changes * p.colorChangeSeconds) / 60));
 }
 
+/** Colours that need a screen and a pass: the inks, plus one for the underbase a dark garment needs. */
+export const effectiveColors = (colors: number, underbase: boolean) => Math.max(1, Math.round(colors)) + (underbase ? 1 : 0);
+
+/** What one piece costs to screen print with this many colours at this many pieces, from the grid. */
+export function screenPieceCents(colors: number, pieces: number, p: DecorPrices): number {
+  const s = p.screen;
+  let row = s.rows[0];
+  for (const r of s.rows) if (pieces >= r.min) row = r;
+  if (!row) return 0;
+  const c = Math.max(1, Math.round(colors));
+  if (c <= row.cents.length) return row.cents[c - 1];
+  return row.cents[row.cents.length - 1] + (c - row.cents.length) * s.extraColorCents;
+}
+
+/** Press time for one screen print placement on the whole order: set-up for each colour, then every piece through every colour. */
+export function screenMinutes(colors: number, pieces: number, p: DecorPrices): number {
+  if (pieces <= 0) return 0;
+  const c = Math.max(1, Math.round(colors));
+  return c * p.screen.setupMinutesPerColor + Math.ceil((pieces * c * 60) / p.screen.printsPerHour);
+}
+
 export type OrderLine = { qty: number; garmentCents: number };
-export type OrderPlacement = { stitches: number; newDesign: boolean; priceEachCents: number | null };
+/** method defaults to EMBROIDERY. For screen print `colors` is the inks, `underbase` adds one, and `newDesign` means the screens have to be made. */
+export type OrderPlacement = { method?: string; stitches: number; colors?: number; underbase?: boolean; newDesign: boolean; priceEachCents: number | null };
 export type OrderPrice = {
   pieces: number;
   garmentCents: number;
@@ -140,6 +211,8 @@ export type OrderPrice = {
   /** Each placement's price per piece, in the order given (a typed price wins over the table). */
   eachCents: number[];
   digitizingCents: number;
+  /** The screens, for screen print placements marked as needing them: one for each colour, underbase included. */
+  screenCents: number;
   setupCents: number;
   totalCents: number;
 };
@@ -152,14 +225,22 @@ export type OrderPrice = {
 export function orderPrice(lines: OrderLine[], placements: OrderPlacement[], p: DecorPrices): OrderPrice {
   const pieces = lines.reduce((s, l) => s + Math.max(0, Math.round(l.qty)), 0);
   const garmentCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.qty)) * Math.max(0, Math.round(l.garmentCents)), 0);
-  const eachCents = placements.map((pl) => (pl.priceEachCents != null ? Math.max(0, Math.round(pl.priceEachCents)) : pieceCents(pl.stitches, pieces, p)));
+  const screen = (pl: OrderPlacement) => pl.method === "SCREEN_PRINT";
+  const eachCents = placements.map((pl) => (pl.priceEachCents != null ? Math.max(0, Math.round(pl.priceEachCents)) : screen(pl) ? screenPieceCents(effectiveColors(pl.colors ?? 1, !!pl.underbase), pieces, p) : pieceCents(pl.stitches, pieces, p)));
   const decorationCents = eachCents.reduce((s, c) => s + c * pieces, 0);
-  const digitizingCents = placements.filter((pl) => pl.newDesign).length * p.digitizingCents;
+  const digitizingCents = placements.filter((pl) => !screen(pl) && pl.newDesign).length * p.digitizingCents;
+  const screenCents = placements.filter((pl) => screen(pl) && pl.newDesign).reduce((t, pl) => t + effectiveColors(pl.colors ?? 1, !!pl.underbase) * p.screen.screenCents, 0);
   const setupCents = pieces > 0 || placements.length > 0 ? p.setupCents : 0;
-  return { pieces, garmentCents, decorationCents, eachCents, digitizingCents, setupCents, totalCents: garmentCents + decorationCents + digitizingCents + setupCents };
+  return { pieces, garmentCents, decorationCents, eachCents, digitizingCents, screenCents, setupCents, totalCents: garmentCents + decorationCents + digitizingCents + screenCents + setupCents };
 }
 
 // ---- the price table as the settings form shows it -------------------------------------------------------------
+
+/** Machine time for one placement on the whole order: embroidery by stitches and colour changes on every piece, screen print by press set-up and passes. */
+export function placementMinutes(pl: { method?: string; stitches: number; colors: number; underbase?: boolean }, pieces: number, p: DecorPrices): number {
+  if (pl.method === "SCREEN_PRINT") return screenMinutes(effectiveColors(pl.colors, !!pl.underbase), pieces, p);
+  return runMinutes(pl.stitches, pl.colors, p) * Math.max(0, pieces);
+}
 
 /** "5000: 6.00" a line (stitches up to: dollars a piece) -> tiers; null with a message when a line can't be read. */
 export function parseTiers(text: string): { tiers: StitchTier[] } | { error: string } {
@@ -212,3 +293,23 @@ export function formatMinutes(minutes: number): string {
   const r = m % 60;
   return h === 0 ? `${r} min` : r === 0 ? `${h} h` : `${h} h ${r} min`;
 }
+
+// ---- the screen print grid as the settings form shows it ---------------------------------------------------------
+
+/** "24: 2.75, 3.50, 4.25" a line (pieces from: dollars a piece for 1, 2, 3... colours) -> rows. */
+export function parseScreenRows(text: string): { rows: ScreenRow[] } | { error: string } {
+  const rows: ScreenRow[] = [];
+  for (const line of text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+    const m = /^(\d{1,6})\s*[:=]\s*(.+)$/.exec(line);
+    const prices = m ? m[2].split(/[,;\s]+/).filter(Boolean).map((x) => /^\$?(\d{1,5}(?:\.\d{1,2})?)$/.exec(x)) : [];
+    if (!m || !prices.length || prices.some((x) => !x) || prices.length > 12) return { error: `"${line}" isn't a price line. Write pieces, a colon, then the price for 1 colour, 2 colours and so on, like 24: 2.75, 3.50, 4.25` };
+    rows.push({ min: Number(m[1]), cents: prices.map((x) => Math.round(Number((x as RegExpExecArray)[1]) * 100)) });
+  }
+  if (!rows.length) return { error: "Give at least one screen print line, like 24: 2.75, 3.50, 4.25" };
+  if (rows.length > 20) return { error: "Twenty screen print lines is the most." };
+  rows.sort((a, b) => a.min - b.min);
+  for (let i = 1; i < rows.length; i++) if (rows[i].min === rows[i - 1].min) return { error: `${rows[i].min} pieces is listed twice.` };
+  if (rows.some((r) => r.min < 1)) return { error: "Pieces start at 1." };
+  return { rows };
+}
+export const screenRowsText = (rows: ScreenRow[]) => rows.map((r) => `${r.min}: ${r.cents.map((c) => (c / 100).toFixed(2)).join(", ")}`).join("\n");

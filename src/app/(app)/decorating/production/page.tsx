@@ -16,7 +16,7 @@ export default async function DecorProductionPage() {
     <DecorFrame
       title="Production list"
       what="The production list"
-      sub="Approved orders and orders in production, soonest due first, with the machine time each needs at the speed set in your prices."
+      sub="Approved orders and orders in production, soonest due first, with the machine time each needs at the speeds set in your prices."
       actions={
         <Link href="/decorating" className="btn">
           All orders
@@ -53,7 +53,7 @@ export default async function DecorProductionPage() {
               Machine time queued: {formatMinutes(prod.totalMinutes)}
               {prod.lateCount > 0 ? ` · ${prod.lateCount} ${prod.lateCount === 1 ? "order is" : "orders are"} late` : ""}
             </p>
-            <p className="muted text-sm">Time is stitches at your set machine speed plus colour changes, for every decoration on every piece. It does not count hooping, trimming or the garments&apos; handling.</p>
+            <p className="muted text-sm">Embroidery time is stitches at your set machine speed plus colour changes, on every piece. Screen print time is the press set-up for each colour plus every piece through every colour. Neither counts hooping, trimming, drying or handling the garments.</p>
           </>
         ) : (
           <Empty>Nothing in the queue. An order appears here once the customer has approved it.</Empty>

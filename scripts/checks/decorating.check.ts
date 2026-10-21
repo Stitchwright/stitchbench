@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import type { CurrentUser } from "@/lib/session";
-import { DEFAULT_PRICES, orderPrice, runMinutes } from "@/lib/decor-math";
+import { DEFAULT_PRICES, orderPrice, runMinutes, screenMinutes } from "@/lib/decor-math";
 import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, decorPrices, orderView, ordersFor, placementFile, productionFor, removeLineFor, removePlacementFor, requoteFor, saveDecorPricesFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 import { voidSaleAs } from "@/lib/register-sale";
 import { customerDeletePlan } from "@/lib/merge";
@@ -40,6 +40,9 @@ const fd = (o: Record<string, string | File>) => {
   for (const [k, v] of Object.entries(o)) f.set(k, v);
   return f;
 };
+
+/** The screen print fields of the price form, as the starting values (the form always sends them). */
+const SCREEN_FORM = { screenRows: "12: 3.50, 4.50, 5.50, 6.50\n24: 2.75, 3.50, 4.25, 5.00\n48: 2.25, 2.90, 3.50, 4.10\n144: 1.60, 2.10, 2.60, 3.10", screenExtra: "0.60", screenFee: "25", printsPerHour: "150", screenSetup: "10" };
 
 /** A DST file of n stitches that go one tenth of a millimetre right and left in turn, and a colour change in the middle. */
 function dst(n: number): File {
@@ -113,9 +116,9 @@ async function main() {
 
     // 4. The quoted price is kept when the table changes.
     const quoted = v.quoteCents;
-    await expectError("a tech can't set prices", () => saveDecorPricesFor(tech(a), fd({ tiers: "5000: 1", breaks: "", extra: "0", digitizing: "0", setup: "0", spm: "700", colorSeconds: "45" })), /Only an owner or admin/);
-    await expectError("a bad price line", () => saveDecorPricesFor(user(a), fd({ tiers: "lots", breaks: "", extra: "0", digitizing: "0", setup: "0", spm: "700", colorSeconds: "45" })), /isn't a price line/);
-    assert.match(await saveDecorPricesFor(user(a), fd({ tiers: "5000: 7.00\n10000: 9.50", breaks: "12: 20", extra: "1.00", digitizing: "40", setup: "15", spm: "800", colorSeconds: "30" })), /Saved the prices/);
+    await expectError("a tech can't set prices", () => saveDecorPricesFor(tech(a), fd({ ...SCREEN_FORM, tiers: "5000: 1", breaks: "", extra: "0", digitizing: "0", setup: "0", spm: "700", colorSeconds: "45" })), /Only an owner or admin/);
+    await expectError("a bad price line", () => saveDecorPricesFor(user(a), fd({ ...SCREEN_FORM, tiers: "lots", breaks: "", extra: "0", digitizing: "0", setup: "0", spm: "700", colorSeconds: "45" })), /isn't a price line/);
+    assert.match(await saveDecorPricesFor(user(a), fd({ ...SCREEN_FORM, tiers: "5000: 7.00\n10000: 9.50", breaks: "12: 20", extra: "1.00", digitizing: "40", setup: "15", spm: "800", colorSeconds: "30" })), /Saved the prices/);
     assert.deepEqual((await decorPrices(a.shopId)).tiers, [{ upTo: 5000, cents: 700 }, { upTo: 10000, cents: 950 }]);
     assert.equal((await orderView(a.shopId, o.id))!.quoteCents, quoted, "an order already quoted keeps its price");
     await expectError("a tech can't re-price", () => requoteFor(tech(a), o.id), /Only an owner or admin/);
@@ -195,7 +198,43 @@ async function main() {
     assert.deepEqual((await productionFor(b.shopId)).rows, []);
     ok("the production list: approved and in-production orders only, soonest due first, machine time at the shop's speed, the late count, and the worksheet agrees; B sees none of A's");
 
-    // 9. Tenant.
+    // 9. Screen printing: the grid, the underbase, screens only when they are made, press time, and a mixed order billed in full.
+    await expectError("a bad screen line", () => saveDecorPricesFor(user(a), fd({ ...SCREEN_FORM, screenRows: "cheap", tiers: "5000: 7", breaks: "", extra: "1", digitizing: "40", setup: "15", spm: "800", colorSeconds: "30" })), /isn't a price line/);
+    const sp = await createOrderFor(user(a), fd({ ...base, title: "Spirit week tees", due: "2030-03-01" }));
+    await addLineFor(user(a), sp.id, fd({ description: "Gildan tee", color: "Black", qty: "24", garment: "6.00" }));
+    await expectError("no colours", () => addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "SCREEN_PRINT", colors: "" })), /How many colours/);
+    await expectError("too many colours", () => addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "SCREEN_PRINT", colors: "13" })), /up to 12/);
+    await expectError("an unknown method", () => addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "DTG", colors: "1" })), /Pick embroidery or screen print/);
+    const said2 = await addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "SCREEN_PRINT", colors: "2", underbase: "on", newDesign: "on", stitches: "9999", file: new File([new Uint8Array([137, 80, 78, 71])], "spirit.png") }));
+    assert.match(said2, /screen print\)\. 3 screens with the underbase/);
+    let sv = (await orderView(a.shopId, sp.id))!;
+    const front = sv.placements[0];
+    assert.deepEqual([front.method, front.stitches, front.colors, front.underbase, front.quotedEachCents, front.colorsWithUnderbase, front.fileFormat, front.fileReadable], ["SCREEN_PRINT", 0, 2, true, 425, 3, "PNG", false], "24 pieces, 2 inks + underbase = 3 colours: the grid's $4.25; typed stitches are ignored; the art is kept, not read");
+    assert.deepEqual([sv.screenCents, sv.digitizingCents, sv.quoteCents], [3 * 2500, 0, 24 * 600 + 24 * 425 + 7500 + 1500], "a screen for each colour, underbase included, and the set-up fee the table now says ($15)");
+    assert.equal(sv.runMinutesTotal, screenMinutes(3, 24, DEFAULT_PRICES), "press time: set-up for each colour and every piece through every colour");
+    // a repeat print (screens already on the shelf) and an embroidered left chest on the same order
+    await addPlacementFor(user(a), sp.id, fd({ location: "Back", method: "SCREEN_PRINT", colors: "1" }));
+    await addPlacementFor(user(a), sp.id, fd({ location: "Left chest", method: "EMBROIDERY", stitches: "5000", colors: "1", newDesign: "on" }));
+    sv = (await orderView(a.shopId, sp.id))!;
+    assert.deepEqual(sv.placements.map((p) => p.quotedEachCents), [425, 275, 600 * 0 + sv.placements[2].quotedEachCents]);
+    assert.equal(sv.placements[2].method, "EMBROIDERY");
+    assert.deepEqual([sv.screenCents, sv.digitizingCents], [7500, 4000], "the screens only for the first print; digitizing only for the embroidery (the table now says $40)");
+    assert.equal(sv.quoteCents, 24 * 600 + 24 * (425 + 275 + sv.placements[2].quotedEachCents) + 7500 + 4000 + 1500);
+    // press time and sewing time both count on the production list
+    await setOrderStatusFor(user(a), sp.id, "APPROVED");
+    const q = (await productionFor(a.shopId)).rows.find((r) => r.id === sp.id)!;
+    assert.equal(q.minutes, screenMinutes(3, 24, DEFAULT_PRICES) + screenMinutes(1, 24, DEFAULT_PRICES) + 24 * runMinutes(5000, 1, await decorPrices(a.shopId)));
+    assert.equal(q.stitches, 24 * 5000, "stitches count the embroidery only");
+    // billed in full: the screens and the printing are sale lines too
+    await setOrderStatusFor(user(a), sp.id, "IN_PRODUCTION");
+    await setOrderStatusFor(user(a), sp.id, "READY");
+    assert.match(await collectOrderFor(user(a), sp.id, fd({ method: "CASH" })), /collected: sale #/);
+    const spSale = await db.sale.findFirstOrThrow({ where: { id: (await orderView(a.shopId, sp.id))!.saleId!, shopId: a.shopId }, include: { lines: true } });
+    assert.equal(spSale.totalCents, sv.quoteCents);
+    assert.ok(spSale.lines.some((l) => /^Screen print, front, 3 colours/.test(l.description)) && spSale.lines.some((l) => /^Screens, order/.test(l.description)) && spSale.lines.some((l) => /^Embroidery, left chest/.test(l.description)));
+    ok("screen printing: the grid price for the colours and quantity, the underbase as one more colour, screens charged only when made, art kept, press time on the list, and a mixed order billed in full");
+
+    // 10. Tenant.
     await expectNotFound("B moves A's order", () => setOrderStatusFor(user(b), o.id, "APPROVED"));
     await expectNotFound("B collects A's order", () => collectOrderFor(user(b), o.id, fd({ method: "CASH" })));
     await expectNotFound("B turns down A's order", () => turnDownOrderFor(user(b), t.id, "no"));

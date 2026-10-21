@@ -2432,6 +2432,7 @@ model DecorOrder {
   // The parts of quoteCents as last worked out (the garments are in the lines, each placement's price per piece is on it):
   // a sale bills exactly these, so a later change to the price table never moves a quoted order.
   digitizingCents Int            @default(0)
+  screenCents   Int              @default(0)
   setupCents    Int              @default(0)
   turnedDownWhy String?
   saleId        String?
@@ -2484,7 +2485,10 @@ model DecorPlacement {
   colors         Int        @default(1)
   widthMm        Float?
   heightMm       Float?
+  // Screen print: colours (the inks), underbase = a white base for a dark garment, counted as one more colour; newDesign =
+  // the screens have to be made (embroidery: the design has to be digitized). The design file is the customer's art.
   newDesign      Boolean    @default(false)
+  underbase      Boolean    @default(false)
   priceEachCents Int?
   quotedEachCents Int       @default(0)
   note           String?

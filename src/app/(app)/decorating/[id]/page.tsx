@@ -7,11 +7,12 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { orderView } from "@/lib/decor";
-import { DECOR_MOVES, DECOR_TONE, PLACEMENTS, decorStatusLabel } from "@/lib/decor-math";
-import { addDecorLine, addDecorPlacement, collectDecorOrder, removeDecorLine, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
+import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
+import { addDecorLine, collectDecorOrder, removeDecorLine, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
+import { PlacementForm } from "@/components/decorating/placement-form";
 import { ymdOf } from "@/lib/zoned";
 
 const NEXT: Record<string, string> = { QUOTED: "APPROVED", APPROVED: "IN_PRODUCTION", IN_PRODUCTION: "READY" };
@@ -175,7 +176,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
               <li key={p.id} className="space-y-1 py-2 text-base">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">
-                    {p.location} <span className="muted text-sm font-normal">· embroidery</span>
+                    {p.location} <span className="muted text-sm font-normal">· {METHOD_LABEL[p.method]?.toLowerCase() ?? p.method}</span>
                   </span>
                   <span className="flex items-center gap-2">
                     <span className="num">{money(p.quotedEachCents)} each</span>
@@ -187,17 +188,20 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
                   </span>
                 </div>
                 <p className="muted text-sm">
-                  {p.stitches.toLocaleString("en-US")} stitches · {p.colors} {p.colors === 1 ? "colour" : "colours"}
-                  {p.widthMm != null && p.heightMm != null ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""} · about {p.runMinutesEach} min a piece
+                  {p.method === "SCREEN_PRINT"
+                    ? `${p.colors} ${p.colors === 1 ? "colour" : "colours"}${p.underbase ? " + underbase" : ""} · ${p.colorsWithUnderbase} ${p.colorsWithUnderbase === 1 ? "screen" : "screens"}`
+                    : `${p.stitches.toLocaleString("en-US")} stitches · ${p.colors} ${p.colors === 1 ? "colour" : "colours"}`}
+                  {p.widthMm != null && p.heightMm != null ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""}
+                  {p.method === "SCREEN_PRINT" ? ` · about ${formatMinutes(p.minutesTotal)} on the press for all ${o.pieces}` : ` · about ${p.runMinutesEach} min a piece`}
                   {p.priceEachCents != null ? " · price agreed, not from the table" : ""}
-                  {p.newDesign ? " · new design (digitizing fee)" : ""}
+                  {p.newDesign ? (p.method === "SCREEN_PRINT" ? " · new screens (screen fee)" : " · new design (digitizing fee)") : ""}
                 </p>
                 {p.hasFile && (
                   <p className="text-sm">
                     <a href={`/api/decorating/designs/${p.id}`} className="link">
                       Download {p.fileName}
                     </a>
-                    <span className="muted"> · {p.fileReadable ? `${p.fileFormat} file, read` : `${p.fileFormat ?? "file"} kept as sent (stitch count typed)`}</span>
+                    <span className="muted"> · {p.method === "SCREEN_PRINT" ? `${p.fileFormat ?? "art"} kept as sent` : p.fileReadable ? `${p.fileFormat} file, read` : `${p.fileFormat ?? "file"} kept as sent (stitch count typed)`}</span>
                   </p>
                 )}
                 {p.note && <p className="muted text-sm">{p.note}</p>}
@@ -210,68 +214,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
         {editable && (
           <details className="mt-2" open={o.placements.length === 0}>
             <summary className="link cursor-pointer text-sm">Add a decoration</summary>
-            <ActionForm action={addDecorPlacement.bind(null, o.id)} reset className="mt-2 grid gap-3 sm:grid-cols-2">
-              <div className="field">
-                <label className="label" htmlFor="dpl-loc">
-                  Where it goes
-                </label>
-                <input id="dpl-loc" name="location" list="decor-places" className="input" required maxLength={40} placeholder="Left chest" />
-                <datalist id="decor-places">
-                  {PLACEMENTS.map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-file">
-                  The design file (a DST is read for its stitch count)
-                </label>
-                <input id="dpl-file" name="file" type="file" className="input" accept=".dst,.pes,.jef,.exp,.vp3,.xxx,.u01,.hus,.pec,.sew,.shv,.csd,.pcs,.tbf,.emb,.ofm,.zip,.png,.jpg,.jpeg,.pdf,.ai,.svg" />
-                <p className="muted text-sm">Kept with the order for repeat orders. 10 MB at most.</p>
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-st">
-                  Stitches (when there is no DST)
-                </label>
-                <input id="dpl-st" name="stitches" inputMode="numeric" className="input num w-32" />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-col">
-                  Colours
-                </label>
-                <input id="dpl-col" name="colors" inputMode="numeric" className="input num w-24" defaultValue="1" />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-w">
-                  Width (mm)
-                </label>
-                <input id="dpl-w" name="width" inputMode="decimal" className="input num w-28" />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-h">
-                  Height (mm)
-                </label>
-                <input id="dpl-h" name="height" inputMode="decimal" className="input num w-28" />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-price">
-                  Agreed price for each piece ($, empty to use your table)
-                </label>
-                <input id="dpl-price" name="price" inputMode="decimal" className="input num w-28" />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="dpl-note">
-                  Note
-                </label>
-                <input id="dpl-note" name="note" className="input" maxLength={300} />
-              </div>
-              <label className="flex min-h-11 items-center gap-2 text-base sm:col-span-2">
-                <input type="checkbox" name="newDesign" value="on" className="check" /> We digitized this design for this order (charge the digitizing fee)
-              </label>
-              <div className="sm:col-span-2">
-                <Submit className="btn">Add the decoration</Submit>
-              </div>
-            </ActionForm>
+            <PlacementForm orderId={o.id} />
           </details>
         )}
       </Section>
@@ -283,9 +226,10 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
           </li>
           <li>Decoration: {money(decorationCents)}</li>
           {o.digitizingCents > 0 && <li>Digitizing: {money(o.digitizingCents)}</li>}
+          {o.screenCents > 0 && <li>Screens: {money(o.screenCents)}</li>}
           {o.setupCents > 0 && <li>Set-up: {money(o.setupCents)}</li>}
           <li className="text-xl font-semibold">Total {money(o.quoteCents)} before tax</li>
-          {o.runMinutesTotal > 0 && <li className="muted text-sm">About {Math.floor(o.runMinutesTotal / 60)} h {o.runMinutesTotal % 60} min on the machine for the whole order, at your set speed.</li>}
+          {o.runMinutesTotal > 0 && <li className="muted text-sm">About {formatMinutes(o.runMinutesTotal)} on the machines for the whole order, at your set speeds.</li>}
         </ul>
         {editable && s.admin && (
           <div className="mt-2">

@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { decorPrices, ordersFor, type OrderRow } from "@/lib/decor";
-import { DECOR_TONE, breaksText, decorStatusLabel, tiersText } from "@/lib/decor-math";
+import { DECOR_TONE, breaksText, decorStatusLabel, screenRowsText, tiersText } from "@/lib/decor-math";
 import { saveDecorPrices, startDecorOrder } from "@/actions/decorating";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CustomerPicker } from "@/components/customer-picker";
@@ -46,7 +46,7 @@ export default async function DecoratingPage() {
     <DecorFrame
       title="Decorating"
       what="Decorating orders"
-      sub="Embroidery orders from quote to pickup: the garments, the design on each, a price from your stitch-count table, collected and paid at the register."
+      sub="Embroidery and screen print orders from quote to pickup: the garments, the design on each, a price from your own tables, collected and paid at the register."
       actions={
         <Link href="/decorating/production" className="btn">
           Production list
@@ -54,7 +54,7 @@ export default async function DecoratingPage() {
       }
       {...s}
     >
-      <Section title={`Open (${open.length})`}>{open.length ? <Rows rows={open} tz={tz} /> : <Empty>No open orders. When a customer asks for embroidery, take the order below.</Empty>}</Section>
+      <Section title={`Open (${open.length})`}>{open.length ? <Rows rows={open} tz={tz} /> : <Empty>No open orders. When a customer asks for embroidery or printing, take the order below.</Empty>}</Section>
       {write && (
         <Section title="Take an order">
           <ActionForm action={startDecorOrder} className="grid gap-3 sm:grid-cols-2">
@@ -140,6 +140,37 @@ export default async function DecoratingPage() {
                 Seconds for a colour change
               </label>
               <input id="dp-cc" name="colorSeconds" inputMode="numeric" className="input num w-28" defaultValue={prices.colorChangeSeconds} />
+            </div>
+            <div className="field sm:col-span-2">
+              <label className="label" htmlFor="dp-screen">
+                Screen print: price for each piece, by quantity and colours
+              </label>
+              <textarea id="dp-screen" name="screenRows" rows={5} className="textarea num" defaultValue={screenRowsText(prices.screen.rows)} />
+              <p className="muted text-sm">One line each: pieces from, a colon, then the price for 1 colour, 2 colours and so on. Like 24: 2.75, 3.50, 4.25. Fewer pieces than the first line pay its price.</p>
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="dp-sx">
+                Each colour past the last column ($)
+              </label>
+              <input id="dp-sx" name="screenExtra" inputMode="decimal" className="input num w-28" defaultValue={dollars(prices.screen.extraColorCents)} />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="dp-sf">
+                One screen, when it has to be made ($)
+              </label>
+              <input id="dp-sf" name="screenFee" inputMode="decimal" className="input num w-28" defaultValue={dollars(prices.screen.screenCents)} />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="dp-pph">
+                Prints an hour through the press
+              </label>
+              <input id="dp-pph" name="printsPerHour" inputMode="numeric" className="input num w-28" defaultValue={prices.screen.printsPerHour} />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="dp-ssu">
+                Minutes to set up each colour on the press
+              </label>
+              <input id="dp-ssu" name="screenSetup" inputMode="numeric" className="input num w-28" defaultValue={prices.screen.setupMinutesPerColor} />
             </div>
             <div className="sm:col-span-2">
               <Submit className="btn">Save the prices</Submit>
