@@ -45,12 +45,18 @@ const sha = (b: Uint8Array) => crypto.createHash("sha256").update(b).digest("hex
 
 /** A DST file of n stitches (a colour change in the middle), as the other decorating checks make them. */
 function dst(n: number): Uint8Array {
-  const out = new Uint8Array(512 + n * 3 + 3);
+  // n stitches with a colour change in the middle (that record is not a stitch), then the end
+  const recs: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === Math.floor(n / 2)) recs.push([0, 0, 0xc3]);
+    recs.push([i % 2 === 0 ? 0x01 : 0x02, 0, 0x03]);
+  }
+  const out = new Uint8Array(512 + recs.length * 3 + 3);
   out.fill(0x20, 0, 512);
-  const h = `LA:FROM FOUNDRY    \rST:${String(n).padStart(7)}\rCO:  1\r+X:   10\r-X:    0\r+Y:    0\r-Y:    0\r`;
+  const h = `LA:FROM FOUNDRY    \rST:${String(recs.length).padStart(7)}\rCO:  1\r+X:   10\r-X:    0\r+Y:    0\r-Y:    0\r`;
   for (let i = 0; i < h.length; i++) out[i] = h.charCodeAt(i);
-  for (let i = 0; i < n; i++) out.set([i % 2 === 0 ? 0x01 : 0x02, 0, i === Math.floor(n / 2) ? 0xc3 : 0x03], 512 + i * 3);
-  out.set([0, 0, 0xf3], 512 + n * 3);
+  recs.forEach((r, i) => out.set(r, 512 + i * 3));
+  out.set([0, 0, 0xf3], 512 + recs.length * 3);
   return out;
 }
 

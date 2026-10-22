@@ -46,12 +46,18 @@ const SCREEN_FORM = { screenRows: "12: 3.50, 4.50, 5.50, 6.50\n24: 2.75, 3.50, 4
 
 /** A DST file of n stitches that go one tenth of a millimetre right and left in turn, and a colour change in the middle. */
 function dst(n: number): File {
-  const out = new Uint8Array(512 + n * 3 + 3);
+  // n stitches with a colour change in the middle (that record is not a stitch), then the end
+  const recs: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === Math.floor(n / 2)) recs.push([0, 0, 0xc3]);
+    recs.push([i % 2 === 0 ? 0x01 : 0x02, 0, 0x03]);
+  }
+  const out = new Uint8Array(512 + recs.length * 3 + 3);
   out.fill(0x20, 0, 512);
-  const h = `LA:CHECK           \rST:${String(n).padStart(7)}\rCO:  1\r+X:    1\r-X:    0\r+Y:    0\r-Y:    0\r`;
+  const h = `LA:CHECK           \rST:${String(recs.length).padStart(7)}\rCO:  1\r+X:    1\r-X:    0\r+Y:    0\r-Y:    0\r`;
   for (let i = 0; i < h.length; i++) out[i] = h.charCodeAt(i);
-  for (let i = 0; i < n; i++) out.set([i % 2 === 0 ? 0x01 : 0x02, 0, i === Math.floor(n / 2) ? 0xc3 : 0x03], 512 + i * 3);
-  out.set([0, 0, 0xf3], 512 + n * 3);
+  recs.forEach((r, i) => out.set(r, 512 + i * 3));
+  out.set([0, 0, 0xf3], 512 + recs.length * 3);
   return new File([out], "logo.dst");
 }
 
@@ -104,7 +110,7 @@ async function main() {
     assert.deepEqual([expected.garmentCents, expected.decorationCents, expected.digitizingCents], [24400, 24 * 540, 3500]);
     const f = await placementFile(a.shopId, pl.id);
     assert.equal(f?.name, "logo.dst");
-    assert.equal(f?.data.length, 512 + 5000 * 3 + 3);
+    assert.equal(f?.data.length, 512 + 5001 * 3 + 3, "5,000 stitches and a colour change, then the end");
     await addPlacementFor(user(a), o.id, fd({ location: "Back", stitches: "30000", colors: "1", price: "" }));
     await addPlacementFor(user(a), o.id, fd({ location: "Sleeve", stitches: "3000", price: "4.25", file: new File([new Uint8Array([1, 2, 3])], "sleeve.pes") }));
     v = (await orderView(a.shopId, o.id))!;

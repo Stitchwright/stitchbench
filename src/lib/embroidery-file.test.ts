@@ -58,11 +58,21 @@ test("a file's stitch count, colours and size come from it", () => {
   const info = readEmbroidery("box.DST", dst(recs, { CO: 1, PX: 200, NX: 0, PY: 100, NY: 0 }));
   assert.equal(info.readable, true);
   assert.equal(info.format, "DST");
-  assert.equal(info.stitches, 7);
+  assert.equal(info.stitches, 6, "seven records, one of them a colour change: six stitches");
   assert.equal(info.colors, 2);
   assert.equal(info.widthMm, 20);
   assert.equal(info.heightMm, 10);
   assert.equal(info.label, "TEST");
+});
+
+test("jumps, trims and colour changes are not stitches (the header's ST: counts them, so it is not the stitch count)", () => {
+  // three stitches, a trim (three small jumps that cancel out: +0.2/+0.2, -0.4/-0.4, +0.2/+0.2 mm), a long move split in two jumps, a colour change, two more stitches
+  const recs = [record(10, 0), record(10, 0), record(10, 0), record(2, 2, "jump"), record(-4, -4, "jump"), record(2, 2, "jump"), record(121, 0, "jump"), record(121, 0, "jump"), record(0, 0, "color"), record(10, 0), record(-10, 0)];
+  const info = readEmbroidery("trim.dst", dst(recs));
+  assert.equal(info.stitches, 5, "only the five normal stitch records sew");
+  assert.equal(info.colors, 2);
+  // a file of nothing but jumps sews nothing: there is no count to price
+  assert.equal(readEmbroidery("jumps.dst", dst([record(5, 5, "jump"), record(5, 5, "jump")])).readable, false);
 });
 
 test("the records win over a wrong header, and a header with no extents is measured", () => {

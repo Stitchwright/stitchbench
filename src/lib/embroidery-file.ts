@@ -11,7 +11,7 @@ export type EmbroideryInfo = {
   format: string; // DST, or the file's extension in capitals, or "FILE"
   readable: boolean; // the numbers below come from the file
   label: string | null;
-  stitches: number | null; // stitch records, jumps included, not the end record
+  stitches: number | null; // needle penetrations: the normal stitch records, not jumps, trims, colour changes or the end record
   colors: number | null; // colour changes + 1
   widthMm: number | null;
   heightMm: number | null;
@@ -47,8 +47,10 @@ function readDst(bytes: Uint8Array): EmbroideryInfo {
   const header = Array.from(bytes.subarray(0, 512), (c) => (c >= 32 && c < 127 ? String.fromCharCode(c) : " ")).join("");
   if (!/\bLA:/.test(header) || !/\bST:/.test(header)) return unreadable("DST");
   const label = /LA:(.{0,16})/.exec(header)?.[1]?.trim() || null;
-  // The records are the truth when the header disagrees (a hand-edited or damaged header).
-  let records = 0;
+  // The records are the truth when the header disagrees (a hand-edited or damaged header). The header's ST: counts every record
+  // (jumps, trims and the end included), so it is not the stitch count; a stitch count is the normal stitch records only, since a
+  // trim is a few small jumps and a long move several, and none of them sews.
+  let stitches = 0;
   let colorChanges = 0;
   let x = 0;
   let y = 0;
@@ -60,7 +62,7 @@ function readDst(bytes: Uint8Array): EmbroideryInfo {
   for (let i = 512; i < end; i += 3) {
     const r = decodeDstRecord(bytes[i], bytes[i + 1], bytes[i + 2]);
     if (r.kind === "end") break;
-    records += 1;
+    if (r.kind === "stitch") stitches += 1;
     if (r.kind === "color") colorChanges += 1;
     x += r.dx;
     y += r.dy;
@@ -69,7 +71,7 @@ function readDst(bytes: Uint8Array): EmbroideryInfo {
     minY = Math.min(minY, y);
     maxY = Math.max(maxY, y);
   }
-  if (records === 0) return unreadable("DST");
+  if (stitches === 0) return unreadable("DST"); // nothing that sews: no count to price
   const px = num(header, "+X");
   const nx = num(header, "-X");
   const py = num(header, "+Y");
@@ -78,7 +80,7 @@ function readDst(bytes: Uint8Array): EmbroideryInfo {
   const headerHeight = py != null && ny != null ? (py + ny) / 10 : null;
   const widthMm = headerWidth ?? (maxX - minX) / 10;
   const heightMm = headerHeight ?? (maxY - minY) / 10;
-  return { format: "DST", readable: true, label, stitches: records, colors: colorChanges + 1, widthMm: Math.round(widthMm * 10) / 10, heightMm: Math.round(heightMm * 10) / 10 };
+  return { format: "DST", readable: true, label, stitches, colors: colorChanges + 1, widthMm: Math.round(widthMm * 10) / 10, heightMm: Math.round(heightMm * 10) / 10 };
 }
 
 export function readEmbroidery(fileName: string, bytes: Uint8Array): EmbroideryInfo {
