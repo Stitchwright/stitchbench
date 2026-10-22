@@ -248,7 +248,22 @@ jobs:
             echo "== $dmg"
             codesign --verify --deep --strict --verbose=2 "$app"
             codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Authority|TeamIdentifier|flags|Timestamp'
-            xcrun stapler validate "$app"
+            # Validating fetches the ticket from Apple over the network, which drops now and then (rc.7 lost both mac jobs here
+            # with "network connection was lost", Error 68, after a good signature). Only that failure is tried again.
+            for attempt in 1 2 3; do
+              set +e
+              out=$(xcrun stapler validate "$app" 2>&1)
+              code=$?
+              set -e
+              echo "$out"
+              [ "$code" -eq 0 ] && break
+              if [ "$attempt" -lt 3 ] && echo "$out" | grep -qE "network connection was lost|Could not (connect|resolve)|timed out|Error 68"; then
+                echo "::warning::stapler validate lost its connection to Apple (attempt $attempt of 3); trying again in 60 s"
+                sleep 60
+                continue
+              fi
+              exit "$code"
+            done
             spctl --assess --type execute --verbose=2 "$app"
             hdiutil detach "$dir" -quiet
           done
