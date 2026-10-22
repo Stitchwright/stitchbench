@@ -9,7 +9,7 @@ import type { InboxItem, InboxView } from "@/lib/decor-inbox";
 
 const facts = (i: InboxItem) => {
   const m = i.meta;
-  return [m.stitches != null ? `${m.stitches.toLocaleString("en-US")} stitches` : "", m.colors ? `${m.colors} ${m.colors === 1 ? "colour" : "colours"}` : "", m.widthMm != null && m.heightMm != null ? `${m.widthMm} × ${m.heightMm} mm` : "", `${Math.max(1, Math.round(i.size / 1024))} KB`].filter(Boolean).join(" · ");
+  return [m.stitches != null ? `${m.stitches.toLocaleString("en-US")} stitches` : "", m.colors ? `${m.colors} ${m.colors === 1 ? "colour" : "colours"}` : "", m.widthMm != null && m.heightMm != null ? `${m.widthMm} × ${m.heightMm} mm` : "", m.hoop ? `hoop ${m.hoop}` : "", m.fabric ?? "", i.preview ? "with a preview picture" : "", `${Math.max(1, Math.round(i.size / 1024))} KB`].filter(Boolean).join(" · ");
 };
 
 export function InboxSection({ view, orders }: { view: InboxView; orders: { id: string; number: number; title: string }[] }) {
@@ -38,6 +38,7 @@ export function InboxSection({ view, orders }: { view: InboxView; orders: { id: 
             <li key={i.id} className="space-y-2 py-3">
               <div className="text-base">
                 <span className="font-medium">{i.fileName}</span>
+                {i.meta.design ? <span className="muted text-sm"> · {i.meta.design}</span> : null}
                 {i.meta.job ? <span className="muted text-sm"> · job {i.meta.job}</span> : null}
                 {i.meta.customer ? <span className="muted text-sm"> · for {i.meta.customer}</span> : null}
                 <p className="muted text-sm">{facts(i)}</p>

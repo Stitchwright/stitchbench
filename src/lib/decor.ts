@@ -553,6 +553,29 @@ export async function setMockupFor(user: CurrentUser, orderId: string, fd: FormD
   return "Saved the mock-up. If a quote link was already sent it has stopped: send it again.";
 }
 
+/**
+ * Attaches a picture that came with a file (StitchFoundry's preview) as the mock-up, only when the order has none: a mock-up
+ * someone chose is never replaced by one that arrived. Returns whether it was attached; a picture that isn't a PNG or JPEG of
+ * 2 MB at most is not an error here, it is just not used.
+ */
+export async function adoptMockupFor(user: CurrentUser, orderId: string, name: string, data: Uint8Array<ArrayBuffer>): Promise<boolean> {
+  await requireBaseWritable(user);
+  await requireModule(user, "decorating");
+  const shopId = user.shopId;
+  const o = await ownOrder(shopId, orderId);
+  if (!OPEN_DECOR.includes(o.status as DecorStatus)) return false;
+  if (data.length === 0 || data.length > MAX_MOCKUP_BYTES) return false;
+  const mime = imageType(data);
+  if (!mime) return false;
+  const safeName = name.replace(/[^\w .()-]+/g, "_").slice(-120) || "preview";
+  return db.$transaction(async (tx) => {
+    // The condition is in the update itself, so a mock-up added a moment ago by someone else is not overwritten.
+    const done = await tx.decorOrder.updateMany({ where: { id: o.id, shopId, mockupData: null }, data: { mockupName: safeName, mockupMime: mime, mockupData: data } });
+    if (done.count > 0) await stopProofLinks(tx, shopId, o.id);
+    return done.count > 0;
+  });
+}
+
 export async function removeMockupFor(user: CurrentUser, orderId: string): Promise<string> {
   await requireBaseWritable(user);
   await requireModule(user, "decorating");

@@ -10,14 +10,17 @@ import { UserError } from "@/lib/user-error";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireModule } from "@/lib/modules";
 import { MAX_DESIGN_BYTES } from "@/lib/embroidery-file";
-import { addPlacementFor, createOrderFor } from "@/lib/decor";
+import { addPlacementFor, adoptMockupFor, createOrderFor } from "@/lib/decor";
 import type { CurrentUser } from "@/lib/session";
 
-export type InboxMeta = { job?: string; customer?: string; garment?: string; placement?: string; notes?: string; due?: string; quantity?: number; stitches?: number; colors?: number; widthMm?: number; heightMm?: number; runMinutes?: number; threads?: string[] };
-export type InboxItem = { id: string; fileName: string; size: number; sha256: string; meta: InboxMeta; createdAt: string; expiresAt: string };
+export type InboxMeta = { job?: string; customer?: string; garment?: string; placement?: string; notes?: string; due?: string; quantity?: number; stitches?: number; colors?: number; widthMm?: number; heightMm?: number; runMinutes?: number; threads?: string[]; design?: string; format?: string; hoop?: string; fabric?: string; trims?: number; colorChanges?: number; threadM?: number; bobbinM?: number };
+/** A picture of the design that came with the file (PNG or JPEG). */
+export type InboxPreview = { size: number; sha256: string; type: "image/png" | "image/jpeg" };
+export type InboxItem = { id: string; fileName: string; size: number; sha256: string; meta: InboxMeta; preview: InboxPreview | null; createdAt: string; expiresAt: string };
 /** ok: the list; not-joined: this install is on no hub; not-linked: this company isn't tied to a StitchHub account; not-offered: the hub has no inbox (an older hub, or the Foundry sign-in is off there); offline. */
 export type InboxView = { state: "ok" | "not-joined" | "not-linked" | "not-offered" | "offline"; items: InboxItem[] };
 
+const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 const whole = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
 const real = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : undefined);
@@ -45,6 +48,19 @@ export function cleanItemMeta(raw: unknown): InboxMeta {
     const v = real(r[k], 0, 2000);
     if (v != null) out[k] = v;
   }
+  for (const k of ["design", "hoop", "fabric"] as const) {
+    const v = text(r[k], 120);
+    if (v) out[k] = v;
+  }
+  if (typeof r.format === "string" && /^[a-z0-9]{2,8}$/i.test(r.format.trim())) out.format = r.format.trim().toLowerCase();
+  const tr = whole(r.trims, 0, 100_000);
+  if (tr != null) out.trims = tr;
+  const cc = whole(r.colorChanges, 0, 1000);
+  if (cc != null) out.colorChanges = cc;
+  for (const k of ["threadM", "bobbinM"] as const) {
+    const v = real(r[k], 0, 1_000_000);
+    if (v != null) out[k] = v;
+  }
   if (Array.isArray(r.threads)) {
     const t = r.threads.map((x) => text(x, 60)).filter(Boolean).slice(0, 100);
     if (t.length) out.threads = t;
@@ -60,7 +76,13 @@ function cleanItem(raw: unknown): InboxItem | null {
   const sha = typeof r.sha256 === "string" && /^[0-9a-f]{64}$/.test(r.sha256) ? r.sha256 : null;
   const fileName = text(r.fileName, 120);
   if (!id || size == null || !sha || !fileName) return null;
-  return { id, fileName, size, sha256: sha, meta: cleanItemMeta(r.meta), createdAt: text(r.createdAt, 40), expiresAt: text(r.expiresAt, 40) };
+  // A preview the hub described wrongly is left out; the file itself is still good.
+  const pv = typeof r.preview === "object" && r.preview !== null ? (r.preview as Record<string, unknown>) : null;
+  const psize = pv ? whole(pv.size, 1, MAX_PREVIEW_BYTES) : undefined;
+  const psha = pv && typeof pv.sha256 === "string" && /^[0-9a-f]{64}$/.test(pv.sha256) ? pv.sha256 : null;
+  const ptype: InboxPreview["type"] | null = pv?.type === "image/png" || pv?.type === "image/jpeg" ? pv.type : null;
+  const preview = psize != null && psha && ptype ? { size: psize, sha256: psha, type: ptype } : null;
+  return { id, fileName, size, sha256: sha, meta: cleanItemMeta(r.meta), preview, createdAt: text(r.createdAt, 40), expiresAt: text(r.expiresAt, 40) };
 }
 
 /** The files waiting for this company on the hub. Never throws: a hub that is down or has no inbox is a state, not an error. */
@@ -78,14 +100,29 @@ export async function inboxFor(shopId: string): Promise<InboxView> {
   }
 }
 
-/** The file's bytes from the hub's bucket, held to the size and SHA-256 the hub listed. */
-async function download(shopId: string, item: InboxItem): Promise<Uint8Array<ArrayBuffer>> {
-  const a = (await (await hubFetch("/v1/inbox/get", { method: "POST", json: { shopRef: shopId, id: item.id }, shopRef: shopId })).json()) as { url?: unknown };
+/** The file's bytes (and its preview's, if it has one and the hub gave an address) from the hub's bucket, held to the size and SHA-256 the hub listed. */
+async function download(shopId: string, item: InboxItem): Promise<{ file: Uint8Array<ArrayBuffer>; preview: Uint8Array<ArrayBuffer> | null; previewNote: string }> {
+  const a = (await (await hubFetch("/v1/inbox/get", { method: "POST", json: { shopRef: shopId, id: item.id }, shopRef: shopId })).json()) as { url?: unknown; previewUrl?: unknown };
   const r = await fetch(checkBucketUrl(a.url), { redirect: "manual", signal: AbortSignal.timeout(2 * 60_000) });
   if (!r.ok) throw new UserError(`The file store didn't give the file (${r.status}). Try again.`);
   const buf = new Uint8Array(await r.arrayBuffer());
   if (buf.length !== item.size || crypto.createHash("sha256").update(buf).digest("hex") !== item.sha256) throw new UserError("What came back isn't the file the hub listed (its size or checksum is different), so it wasn't used.");
-  return buf;
+  // The picture is a nicety: whatever goes wrong with it, the design itself is still taken, and the answer says the picture wasn't.
+  let preview: Uint8Array<ArrayBuffer> | null = null;
+  let previewNote = "";
+  if (item.preview) {
+    try {
+      if (typeof a.previewUrl !== "string") throw new Error("no address");
+      const pr = await fetch(checkBucketUrl(a.previewUrl), { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+      if (!pr.ok) throw new Error(`status ${pr.status}`);
+      const pb = new Uint8Array(await pr.arrayBuffer());
+      if (pb.length !== item.preview.size || crypto.createHash("sha256").update(pb).digest("hex") !== item.preview.sha256) throw new Error("checksum");
+      preview = pb;
+    } catch {
+      previewNote = " The preview picture couldn't be fetched, so it wasn't used.";
+    }
+  }
+  return { file: buf, preview, previewNote };
 }
 
 /** The decoration form's fields for a file: where it goes, and what StitchFoundry said (the file itself wins where it can be read). */
@@ -99,7 +136,7 @@ function placementForm(item: InboxItem, buf: Uint8Array<ArrayBuffer>, location: 
   if (m.colors) fd.set("colors", String(m.colors));
   if (m.widthMm != null) fd.set("width", String(m.widthMm));
   if (m.heightMm != null) fd.set("height", String(m.heightMm));
-  const note = [m.job ? `StitchFoundry job ${m.job}` : "", m.threads?.length ? `Threads: ${m.threads.join(", ")}` : "", m.notes ?? ""].filter(Boolean).join(". ").slice(0, 300);
+  const note = [m.job ? `StitchFoundry job ${m.job}` : "", m.design ? `Design: ${m.design}` : "", m.hoop ? `Hoop ${m.hoop}` : "", m.fabric ? `Fabric: ${m.fabric}` : "", m.threads?.length ? `Threads: ${m.threads.join(", ")}` : "", m.notes ?? ""].filter(Boolean).join(". ").slice(0, 300);
   if (note) fd.set("note", note);
   return fd;
 }
@@ -119,7 +156,8 @@ export async function takeInboxItemFor(user: CurrentUser, itemId: string, target
   if (view.state !== "ok") throw new UserError(view.state === "offline" ? "The hub can't be reached just now. Try again in a minute." : "There is no StitchFoundry inbox for this shop yet.");
   const item = view.items.find((i) => i.id === itemId);
   if (!item) throw new UserError("That file isn't in the inbox any more (someone took it, or it ran out).");
-  const buf = await download(shopId, item);
+  const got = await download(shopId, item);
+  const buf = got.file;
   let orderId = target.orderId;
   let made = "";
   if (!orderId) {
@@ -129,11 +167,21 @@ export async function takeInboxItemFor(user: CurrentUser, itemId: string, target
     made = `Started order #${o.number}. `;
   }
   const said = await addPlacementFor(user, orderId, placementForm(item, buf, placeName(target.location, item)));
+  let picture = got.previewNote;
+  if (got.preview) {
+    try {
+      const ext = item.preview?.type === "image/jpeg" ? "jpg" : "png";
+      const base = item.fileName.replace(/\.[A-Za-z0-9]{2,4}$/, "") || "preview";
+      picture = (await adoptMockupFor(user, orderId, `${base}-preview.${ext}`, got.preview)) ? " The preview picture was saved as the order's mock-up." : " The order already has a mock-up (or the picture isn't usable), so the preview picture wasn't used.";
+    } catch {
+      picture = " The preview picture couldn't be saved.";
+    }
+  }
   let told = "";
   try {
     await hubFetch("/v1/inbox/take", { method: "POST", json: { shopRef: shopId, id: item.id }, shopRef: shopId });
   } catch {
     told = " The hub couldn't be told it was taken, so the file may show in the inbox again: don't add it twice.";
   }
-  return { orderId, text: `${made}${said}${told}` };
+  return { orderId, text: `${made}${said}${picture}${told}` };
 }

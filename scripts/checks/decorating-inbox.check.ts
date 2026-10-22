@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
 import { hubState } from "@/lib/hub";
 import { cleanItemMeta, inboxFor, takeInboxItemFor } from "@/lib/decor-inbox";
-import { addLineFor, createOrderFor, orderView } from "@/lib/decor";
+import { addLineFor, createOrderFor, mockupFile, orderView, setMockupFor } from "@/lib/decor";
 import type { CurrentUser } from "@/lib/session";
 import { grantDevLicense } from "../license/dev";
 import { checkShop, cleanup, type CheckShop } from "./lib";
@@ -60,15 +60,15 @@ function dst(n: number): Uint8Array {
   return out;
 }
 
-type Stored = { id: string; fileName: string; bytes: Uint8Array; meta: Record<string, unknown>; listed?: { size?: number; sha256?: string } };
-type Mode = { linked: boolean; listStatus: number; takeStatus: number; tamper: boolean };
+type Stored = { id: string; fileName: string; bytes: Uint8Array; meta: Record<string, unknown>; listed?: { size?: number; sha256?: string }; preview?: Uint8Array; previewType?: string };
+type Mode = { linked: boolean; listStatus: number; takeStatus: number; tamper: boolean; previewStatus: number; tamperPreview: boolean };
 
 /** The stand-in hub: the inbox routes of StitchHub's src/inbox.mjs as the program uses them, and the bucket's download. */
 async function startHub() {
   const store = new Map<string, Map<string, Stored>>(); // shopRef -> id -> file
   const taken: { shopRef: string; id: string }[] = [];
   const seen: { path: string; auth: string | undefined; shopRef: string | null }[] = [];
-  const mode: Mode = { linked: true, listStatus: 200, takeStatus: 200, tamper: false };
+  const mode: Mode = { linked: true, listStatus: 200, takeStatus: 200, tamper: false, previewStatus: 200, tamperPreview: false };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
     const chunks: Buffer[] = [];
@@ -80,9 +80,15 @@ async function startHub() {
     };
     if (url.pathname === "/health") return send(200, { ok: true });
     if (url.pathname.startsWith("/bucket/")) {
-      const [, , shopRef, id] = url.pathname.split("/");
+      const [, , shopRef, id, what] = url.pathname.split("/");
       const f = store.get(shopRef)?.get(id);
       if (!f) return send(404, {});
+      if (what === "preview") {
+        if (mode.previewStatus !== 200 || !f.preview) return send(mode.previewStatus === 200 ? 404 : mode.previewStatus, {});
+        const pb = mode.tamperPreview ? Uint8Array.from(f.preview, (b, i) => (i === 0 ? b ^ 1 : b)) : f.preview;
+        res.writeHead(200, { "content-length": pb.length });
+        return res.end(Buffer.from(pb));
+      }
       const bytes = mode.tamper ? Uint8Array.from(f.bytes, (b, i) => (i === 0 ? b ^ 1 : b)) : f.bytes;
       res.writeHead(200, { "content-length": bytes.length });
       return res.end(Buffer.from(bytes));
@@ -92,13 +98,13 @@ async function startHub() {
     if (url.pathname === "/v1/inbox/list") {
       if (mode.listStatus !== 200) return send(mode.listStatus, { error: "no" });
       if (!mode.linked) return send(200, { linked: false, items: [] });
-      const items = [...(store.get(String(shopRef))?.values() ?? [])].map((f) => ({ id: f.id, fileName: f.fileName, size: f.listed?.size ?? f.bytes.length, sha256: f.listed?.sha256 ?? sha(f.bytes), meta: f.meta, createdAt: "2026-10-22T10:00:00Z", expiresAt: "2026-11-21T10:00:00Z" }));
+      const items = [...(store.get(String(shopRef))?.values() ?? [])].map((f) => ({ id: f.id, fileName: f.fileName, size: f.listed?.size ?? f.bytes.length, sha256: f.listed?.sha256 ?? sha(f.bytes), meta: f.meta, preview: f.preview ? { size: f.preview.length, sha256: sha(f.preview), type: f.previewType ?? "image/png" } : null, createdAt: "2026-10-22T10:00:00Z", expiresAt: "2026-11-21T10:00:00Z" }));
       return send(200, { linked: true, items });
     }
     if (url.pathname === "/v1/inbox/get") {
       const f = store.get(String(shopRef))?.get(String(body.id));
       if (!f) return send(404, { error: "not in this inbox" });
-      return send(200, { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/bucket/${shopRef}/${f.id}`, expiresIn: 600 });
+      return send(200, { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/bucket/${shopRef}/${f.id}`, ...(f.preview ? { previewUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}/bucket/${shopRef}/${f.id}/preview` } : {}), expiresIn: 600 });
     }
     if (url.pathname === "/v1/inbox/take") {
       if (mode.takeStatus !== 200) return send(mode.takeStatus, { error: "the hub had a problem" });
@@ -220,6 +226,48 @@ async function main() {
     assert.equal((await orderView(a.shopId, o.id))!.placements.length, before + 1, "the order stands");
     hub.mode.takeStatus = 200;
     ok("a file whose bytes aren't the listed size and checksum is refused and nothing is added; a hub that can't be told leaves the order standing and says so");
+
+    // 5b. A preview picture that comes with the file becomes the mock-up, only when the order has none, and never costs the file.
+    const PNGB = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 7, 7, 7]);
+    const view2 = cleanItemMeta({ design: "Front logo", format: "DST", hoop: "100x100", fabric: "pique", trims: 12, colorChanges: 3, threadM: 41.3, bobbinM: 18, hack: 1 });
+    assert.deepEqual(view2, { design: "Front logo", format: "dst", hoop: "100x100", fabric: "pique", trims: 12, colorChanges: 3, threadM: 41.3, bobbinM: 18 }, "the newer keys are kept and checked");
+    assert.deepEqual(cleanItemMeta({ format: "DST;rm", trims: -1, colorChanges: 5000, threadM: Infinity, hoop: 5 }), {}, "bad values of them are dropped");
+    const oP = await createOrderFor(user(a), fd(base));
+    const idPv = hub.add(a.shopId, { fileName: "front.dst", bytes: dst(2500), meta: { hoop: "100x100", design: "Front" }, preview: PNGB });
+    const withPv = (await inboxFor(a.shopId)).items.find((i) => i.id === idPv)!;
+    assert.deepEqual([withPv.preview?.size, withPv.preview?.type], [PNGB.length, "image/png"]);
+    const rp = await takeInboxItemFor(user(a), idPv, { orderId: oP.id, newOrder: null, location: null });
+    assert.match(rp.text, /preview picture was saved as the order's mock-up/);
+    const mk = await mockupFile(a.shopId, oP.id);
+    assert.deepEqual([mk?.mime, mk ? Buffer.from(mk.data).equals(Buffer.from(PNGB)) : false], ["image/png", true], "the picture is the order's mock-up");
+    assert.match((await orderView(a.shopId, oP.id))!.placements[0].note ?? "", /Design: Front\. Hoop 100x100/, "what StitchFoundry said about the design goes in the note");
+    // an order that has a mock-up keeps it
+    const mine = new File([new Uint8Array([0xff, 0xd8, 0xff, 9, 9])], "mine.jpg");
+    await setMockupFor(user(a), o.id, fd({ mockup: mine }));
+    const idKeep = hub.add(a.shopId, { fileName: "keep.dst", bytes: dst(2100), meta: {}, preview: PNGB });
+    const rk = await takeInboxItemFor(user(a), idKeep, { orderId: o.id, newOrder: null, location: "Back" });
+    assert.match(rk.text, /already has a mock-up/);
+    assert.equal((await mockupFile(a.shopId, o.id))?.mime, "image/jpeg", "the mock-up someone chose is not replaced");
+    // a picture that can't be fetched, isn't a picture, or has the wrong bytes: the file is still taken
+    const oQ = await createOrderFor(user(a), fd(base));
+    hub.mode.previewStatus = 500;
+    const idBadFetch = hub.add(a.shopId, { fileName: "p1.dst", bytes: dst(2200), meta: {}, preview: PNGB });
+    const rf = await takeInboxItemFor(user(a), idBadFetch, { orderId: oQ.id, newOrder: null, location: "Left chest" });
+    hub.mode.previewStatus = 200;
+    assert.match(rf.text, /preview picture couldn't be fetched/);
+    assert.equal(await mockupFile(a.shopId, oQ.id), null, "no picture, no mock-up");
+    assert.equal((await orderView(a.shopId, oQ.id))!.placements.length, 1, "the design itself was taken");
+    const idNotPng = hub.add(a.shopId, { fileName: "p2.dst", bytes: dst(2300), meta: {}, preview: new Uint8Array([60, 115, 118, 103, 62, 1, 2, 3, 4, 5]) });
+    const rn = await takeInboxItemFor(user(a), idNotPng, { orderId: oQ.id, newOrder: null, location: "Back" });
+    assert.match(rn.text, /isn't usable/);
+    assert.equal(await mockupFile(a.shopId, oQ.id), null, "something that isn't a PNG or JPEG is not used");
+    hub.mode.tamperPreview = true;
+    const idLie = hub.add(a.shopId, { fileName: "p3.dst", bytes: dst(2400), meta: {}, preview: PNGB });
+    const rl = await takeInboxItemFor(user(a), idLie, { orderId: oQ.id, newOrder: null, location: "Sleeve" });
+    hub.mode.tamperPreview = false;
+    assert.match(rl.text, /preview picture couldn't be fetched/, "a picture whose checksum isn't the listed one is not used");
+    assert.equal(await mockupFile(a.shopId, oQ.id), null);
+    ok("a preview picture becomes the mock-up when the order has none; one a person chose is kept; a picture that can't be fetched or isn't a PNG/JPEG never costs the design; the newer keys are cleaned");
 
     // 6. Tenant and the module gate.
     const idB = hub.add(b.shopId, { fileName: "b.dst", bytes: dst(1000), meta: {} });
