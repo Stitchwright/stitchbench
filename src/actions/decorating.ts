@@ -7,6 +7,8 @@ import { redirect } from "next/navigation";
 import { noted, safe } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
+import { UserError } from "@/lib/user-error";
+import { takeInboxItemFor } from "@/lib/decor-inbox";
 import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, removeLineFor, removeMockupFor, removePlacementFor, requoteFor, saveDecorPricesFor, saveOrderFor, sendProofFor, setMockupFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 
 const refresh = (id?: string) => {
@@ -16,9 +18,25 @@ const refresh = (id?: string) => {
 
 export const startDecorOrder = safe(async function startDecorOrder(formData: FormData) {
   const user = await requireUser();
+  // Started from a file waiting in the StitchFoundry inbox: the order is made and the file goes on it as its first decoration.
+  const inboxItem = str(formData.get("inboxItem"));
+  if (inboxItem) {
+    const r = await takeInboxItemFor(user, inboxItem, { orderId: null, newOrder: formData, location: str(formData.get("location")) });
+    refresh();
+    redirect(`/decorating/${r.orderId}`);
+  }
   const r = await createOrderFor(user, formData);
   refresh();
   redirect(`/decorating/${r.id}`);
+});
+
+export const takeInboxIntoOrder = safe(async function takeInboxIntoOrder(itemId: string, formData: FormData) {
+  const user = await requireUser();
+  const orderId = str(formData.get("orderId"));
+  if (!orderId) throw new UserError("Pick an order first.");
+  const r = await takeInboxItemFor(user, itemId, { orderId, newOrder: null, location: str(formData.get("location")) });
+  refresh(r.orderId);
+  return noted(r.text);
 });
 
 export const saveDecorOrder = safe(async function saveDecorOrder(id: string, formData: FormData) {

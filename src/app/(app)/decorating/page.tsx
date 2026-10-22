@@ -5,12 +5,14 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { decorPrices, ordersFor, type OrderRow } from "@/lib/decor";
+import { inboxFor } from "@/lib/decor-inbox";
 import { DECOR_TONE, breaksText, decorStatusLabel, screenRowsText, tiersText } from "@/lib/decor-math";
 import { saveDecorPrices, startDecorOrder } from "@/actions/decorating";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CustomerPicker } from "@/components/customer-picker";
 import { Empty, Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
+import { InboxSection } from "@/components/decorating/inbox";
 
 function Rows({ rows, tz }: { rows: OrderRow[]; tz: string }) {
   return (
@@ -36,11 +38,13 @@ function Rows({ rows, tz }: { rows: OrderRow[]; tz: string }) {
   );
 }
 
-export default async function DecoratingPage() {
+export default async function DecoratingPage({ searchParams }: { searchParams: Promise<{ inbox?: string }> }) {
   const user = await requireUser();
   const shopId = user.shopId;
-  const [s, open, done, prices, tz] = await Promise.all([decorPageState(user), ordersFor(shopId), ordersFor(shopId, { closed: true, take: 30 }), decorPrices(shopId), shopTimeZone(shopId)]);
+  const { inbox: inboxId } = await searchParams;
+  const [s, open, done, prices, tz, inbox] = await Promise.all([decorPageState(user), ordersFor(shopId), ordersFor(shopId, { closed: true, take: 30 }), decorPrices(shopId), shopTimeZone(shopId), inboxFor(shopId)]);
   const write = s.gate === "write";
+  const fromInbox = write ? inbox.items.find((i) => i.id === inboxId) ?? null : null;
   const dollars = (c: number) => (c / 100).toFixed(2);
   return (
     <DecorFrame
@@ -55,21 +59,36 @@ export default async function DecoratingPage() {
       {...s}
     >
       <Section title={`Open (${open.length})`}>{open.length ? <Rows rows={open} tz={tz} /> : <Empty>No open orders. When a customer asks for embroidery or printing, take the order below.</Empty>}</Section>
+      {write && inbox.state !== "not-joined" && <InboxSection view={inbox} orders={open.filter((o) => o.status === "QUOTED" || o.status === "APPROVED").map((o) => ({ id: o.id, number: o.number, title: o.title }))} />}
       {write && (
         <Section title="Take an order">
           <ActionForm action={startDecorOrder} className="grid gap-3 sm:grid-cols-2">
+            {fromInbox && (
+              <div className="card card-pad space-y-2 sm:col-span-2" id="take">
+                <input type="hidden" name="inboxItem" value={fromInbox.id} />
+                <p className="text-base">
+                  This order starts with <strong>{fromInbox.fileName}</strong> from StitchFoundry as its first decoration.
+                </p>
+                <div className="field">
+                  <label className="label" htmlFor="do-loc">
+                    Where it goes
+                  </label>
+                  <input id="do-loc" name="location" className="input" maxLength={40} defaultValue={fromInbox.meta.placement ?? "Left chest"} />
+                </div>
+              </div>
+            )}
             <CustomerPicker initial={null} />
             <div className="field sm:col-span-2">
               <label className="label" htmlFor="do-title">
                 What is it?
               </label>
-              <input id="do-title" name="title" className="input" required maxLength={120} placeholder="Riverside Fire Dept polos" />
+              <input id="do-title" name="title" className="input" required maxLength={120} placeholder="Riverside Fire Dept polos" defaultValue={fromInbox?.meta.job ?? fromInbox?.meta.customer ?? ""} />
             </div>
             <div className="field">
               <label className="label" htmlFor="do-due">
                 Wanted by
               </label>
-              <input id="do-due" name="due" type="date" className="input" />
+              <input id="do-due" name="due" type="date" className="input" defaultValue={fromInbox?.meta.due ?? ""} />
             </div>
             <div className="field">
               <label className="label" htmlFor="do-note">
