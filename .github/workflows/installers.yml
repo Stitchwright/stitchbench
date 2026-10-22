@@ -180,9 +180,29 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
         run: |
-          npm run installer:mac
-          npm run installer:stitchshop:mac
+          # Apple's notarization ticket is fetched over the network after signing and notarizing have worked, and that fetch
+          # drops now and then ("The network connection was lost", then "Failed to staple ... code: 68"; rc.5 and rc.6 each
+          # lost a mac job to it). Only that failure is tried again, up to 3 times: any other failure (a real signing or
+          # notarization error) stops at once, so it is not hidden or repeated.
+          build() {
+            for attempt in 1 2 3; do
+              set +e
+              npm run "$1" 2>&1 | tee "$RUNNER_TEMP/build.log"
+              code=${PIPESTATUS[0]}
+              set -e
+              [ "$code" -eq 0 ] && return 0
+              if [ "$attempt" -lt 3 ] && grep -qE "Failed to staple|The staple and validate action failed|network connection was lost" "$RUNNER_TEMP/build.log"; then
+                echo "::warning::$1 failed while stapling Apple's ticket (attempt $attempt of 3); trying again in 60 s"
+                sleep 60
+                continue
+              fi
+              return "$code"
+            done
+          }
+          build installer:mac
+          build installer:stitchshop:mac
 
       # If signing fails, say which file: electron-builder's own message stops at "codesign --verify ... failed". One full
       # verbose check of each app, then every Mach-O file in it on its own (a verify stops at the first bad file).
