@@ -26,7 +26,7 @@ async function main() {
   let m = await loadModules(shop.shopId);
   assert.equal(m.states.base.status, "on", "the ended key does not lapse a free program");
   assert.equal(m.states.base.active, true);
-  for (const id of ["vac", "appliance", "scheduling", "marketing", "maker"] as const) assert.equal(m.states[id].status, "on", `${id} is on with no key`);
+  for (const id of ["vac", "appliance", "scheduling", "marketing", "maker", "decorating"] as const) assert.equal(m.states[id].status, "on", `${id} is on with no key`);
   assert.equal(m.states.assistant.status, "off", "the Assistant keeps its own key rule");
   assert.equal(await baseWritable(shop.shopId), true);
   await requireBaseWritable(shop.shopId); // does not throw

@@ -884,6 +884,8 @@ export async function voidSaleAs(user: CurrentUser, saleId: string, reason: stri
     await tx.longarmOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, saleId: null } });
     // A print or cut job collected on it likewise (shop-features-round-2-design.md 6.5), its file kept again.
     await tx.makeJob.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, closedAt: null, saleId: null, fileDeleteAfter: null } });
+    // A decorating order collected on it likewise (docs/plans/decorators-proposal.md).
+    await tx.decorOrder.updateMany({ where: { shopId, saleId: sale.id, status: "COLLECTED" }, data: { status: "READY", collectedAt: null, closedAt: null, saleId: null } });
     // A quilt appraisal's fee (9.8): the certificate is a draft again.
     await tx.appraisal.updateMany({ where: { shopId, saleId: sale.id }, data: { saleId: null, issuedAt: null } });
     // A charge to a house account (9.4) comes off it.
