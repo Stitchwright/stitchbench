@@ -496,7 +496,9 @@ jobs:
 
       - name: Checksums
         working-directory: files
-        run: find . -type f ! -name SHA256SUMS.txt -printf '%P\n' | sort | xargs sha256sum > ../SHA256SUMS.txt && mv ../SHA256SUMS.txt .
+        # NUL-separated all the way: the Windows installers are named like "StitchBench Setup 1.7.2.exe", and xargs on newlines split
+        # those at the spaces (rc.8: sha256sum looked for "StitchBench", "Setup" and "1.7.2.exe" and stopped with exit code 123).
+        run: find . -type f ! -name SHA256SUMS.txt -printf '%P\0' | sort -z | xargs -0 sha256sum > ../SHA256SUMS.txt && mv ../SHA256SUMS.txt .
 
       - name: Publish the release
         env:
