@@ -39,6 +39,7 @@ import {
   FileCheck,
   Sun,
   ArrowLeftRight,
+  Shirt,
 } from "lucide-react";
 import type { ModuleId, NavGate } from "@/lib/module-info";
 
@@ -62,6 +63,8 @@ const items: Item[] = [
   { href: "/vac", label: "Vac Shop", icon: Fan, module: "vac" },
   // Maker Shop (shop-features-round-2-design.md section 6): supplies due, maker-space time, print and cut jobs.
   { href: "/maker", label: "Maker Shop", icon: Printer, module: "maker" },
+  // Decorating (docs/plans/decorators-proposal.md): orders for embroidered garments.
+  { href: "/decorating", label: "Decorating", icon: Shirt, module: "decorating" },
   { href: "/customers", label: "Customers", icon: Users },
   // Scheduling: the calendar (its Staff tab is the staff schedule) for every company; classes need a counter.
   { href: "/calendar", label: "Calendar", icon: CalendarDays, module: "scheduling" },

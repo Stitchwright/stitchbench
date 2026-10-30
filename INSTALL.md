@@ -795,7 +795,7 @@ Building locally gives unsigned installers unless you set the same credentials y
 ### Updating an installed program without a new installer
 Stop StitchBench (tray → Quit). Copy `desktop/server` over
 `%LOCALAPPDATA%\Programs\StitchBench\resources\server`, and every program file listed in `desktop/package.json`
-(`build.files`: `main.mjs`, `migrate.mjs`, `backup.mjs`, `reference.mjs`, `app-role.mjs`, `links-gate.mjs`,
+(`build.files`: `main.mjs`, `migrate.mjs`, `backup.mjs`, `reference.mjs`, `app-role.mjs`, `links-gate.mjs`, `server-dir.mjs`,
 `tailscale.mjs`) into `%LOCALAPPDATA%\Programs\StitchBench\resources\app`, then start StitchBench again
 (`scripts/local-test/update_installed.ps1 -Version <v>` does all of this). It applies
 any database updates and new reference data by itself.

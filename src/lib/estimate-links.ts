@@ -45,8 +45,8 @@ function refresh(paths: string[]) {
     }
   }
 }
-const refreshTarget = (a: { ticketId?: string | null; repairJobId?: string | null; makeJobId?: string | null }) =>
-  refresh([...(a.ticketId ? [`/tickets/${a.ticketId}`] : []), ...(a.repairJobId ? [`/repairs/${a.repairJobId}`] : []), ...(a.makeJobId ? [`/maker/jobs/${a.makeJobId}`, "/maker/jobs"] : []), "/", "/register", "/repairs", "/tickets"]);
+const refreshTarget = (a: { ticketId?: string | null; repairJobId?: string | null; makeJobId?: string | null; decorOrderId?: string | null }) =>
+  refresh([...(a.ticketId ? [`/tickets/${a.ticketId}`] : []), ...(a.repairJobId ? [`/repairs/${a.repairJobId}`] : []), ...(a.makeJobId ? [`/maker/jobs/${a.makeJobId}`, "/maker/jobs"] : []), ...(a.decorOrderId ? [`/decorating/${a.decorOrderId}`, "/decorating"] : []), "/", "/register", "/repairs", "/tickets"]);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The link
@@ -65,6 +65,8 @@ export type EstimateView = {
   answer: "APPROVED" | "DECLINED" | null;
   answeredAt: Date | null;
   tz: string;
+  /** A decorating order's proof: what will be made and where, and whether a mock-up picture goes with it. Null for everything else. */
+  proof: { items: { where: string; what: string }[]; hasMockup: boolean } | null;
 };
 
 /** The ticket's bill as the customer is shown it: each line's total, then "Tax" as its own line. */
@@ -96,14 +98,14 @@ export function jobEstimateLines(j: { lines: unknown; taxCents: number | null; t
  */
 export async function createEstimateLink(
   tx: Db,
-  a: { shopId: string; ticketId?: string; repairJobId?: string; makeJobId?: string; customerId: string; totalCents: number; lines: Line[]; note: string | null; days: number; byUserId: string },
+  a: { shopId: string; ticketId?: string; repairJobId?: string; makeJobId?: string; decorOrderId?: string; customerId: string; totalCents: number; lines: Line[]; note: string | null; days: number; byUserId: string },
 ): Promise<{ id: string; maskedUrl: string; expiresAt: Date }> {
   const base = publicBaseUrl();
   if (!base) throw new UserError("This install has no public address, so there are no estimate links.");
-  if ([a.ticketId, a.repairJobId, a.makeJobId].filter(Boolean).length !== 1) throw new Error("createEstimateLink: one ticket, repair job or print and cut job");
+  if ([a.ticketId, a.repairJobId, a.makeJobId, a.decorOrderId].filter(Boolean).length !== 1) throw new Error("createEstimateLink: one ticket, repair job, print and cut job or decorating order");
   const now = new Date();
   await tx.estimateLink.updateMany({
-    where: { shopId: a.shopId, answer: null, revokedAt: null, ...(a.ticketId ? { ticketId: a.ticketId } : a.repairJobId ? { repairJobId: a.repairJobId } : { makeJobId: a.makeJobId }) },
+    where: { shopId: a.shopId, answer: null, revokedAt: null, ...(a.ticketId ? { ticketId: a.ticketId } : a.repairJobId ? { repairJobId: a.repairJobId } : a.decorOrderId ? { decorOrderId: a.decorOrderId } : { makeJobId: a.makeJobId }) },
     data: { revokedAt: now, tokenSealed: null },
   });
   const token = crypto.randomBytes(32).toString("base64url");
@@ -120,6 +122,7 @@ export async function createEstimateLink(
       ticketId: a.ticketId ?? null,
       repairJobId: a.repairJobId ?? null,
       makeJobId: a.makeJobId ?? null,
+      decorOrderId: a.decorOrderId ?? null,
       customerId: a.customerId,
       totalCents: a.totalCents,
       lines: a.lines.map((l) => ({ description: cleanText(l.description, 160), amountCents: l.amountCents })),
@@ -157,7 +160,29 @@ async function targetOf(tx: Db, link: EstimateLink): Promise<{ machine: string; 
     if (!m) return { machine: "job", ref: "", waiting: false, customerName: null };
     return { machine: m.title, ref: `job #${m.number}`, waiting: m.status === "QUOTED", customerName: m.name };
   }
+  // A decorating order's quote and proof (docs/plans/decorators-proposal.md): waiting while it is quoted.
+  if (link.decorOrderId) {
+    const d = await tx.decorOrder.findFirst({ where: { id: link.decorOrderId, shopId: link.shopId }, select: { title: true, number: true, status: true, name: true } });
+    if (!d) return { machine: "order", ref: "", waiting: false, customerName: null };
+    return { machine: d.title, ref: `order #${d.number}`, waiting: d.status === "QUOTED", customerName: d.name };
+  }
   return { machine: "machine", ref: "", waiting: false, customerName: null };
+}
+
+/** What a decorating order's proof page lists: each decoration in words, and whether the order has a mock-up picture. */
+async function proofOf(tx: Db, link: EstimateLink): Promise<EstimateView["proof"]> {
+  if (!link.decorOrderId) return null;
+  const o = await tx.decorOrder.findFirst({
+    where: { id: link.decorOrderId, shopId: link.shopId },
+    select: { mockupName: true, placements: { orderBy: { sortOrder: "asc" }, select: { location: true, method: true, stitches: true, colors: true, underbase: true, widthMm: true, heightMm: true } } },
+  });
+  if (!o) return null;
+  const items = o.placements.map((p) => {
+    const size = p.widthMm != null && p.heightMm != null ? `, ${p.widthMm} × ${p.heightMm} mm` : "";
+    const colours = `${p.colors} colour${p.colors === 1 ? "" : "s"}${p.underbase ? " on a white underbase" : ""}`;
+    return { where: p.location, what: p.method === "SCREEN_PRINT" ? `Screen print, ${colours}${size}` : `Embroidery${p.stitches ? `, ${p.stitches.toLocaleString("en-US")} stitches` : ""}, ${colours}${size}` };
+  });
+  return { items, hasMockup: !!o.mockupName };
 }
 
 /** The link and what the public page shows for it; null for a token that isn't one (no database lookup then). */
@@ -165,7 +190,7 @@ export async function estimateByToken(token: string, now = new Date()): Promise<
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return null;
   const link = await db.estimateLink.findUnique({ where: { tokenHash: sha256(token) } });
   if (!link) return null;
-  const [shop, target] = await Promise.all([db.shop.findUnique({ where: { id: link.shopId }, select: { name: true, phone: true, timeZone: true } }), targetOf(db, link)]);
+  const [shop, target, proof] = await Promise.all([db.shop.findUnique({ where: { id: link.shopId }, select: { name: true, phone: true, timeZone: true } }), targetOf(db, link), proofOf(db, link)]);
   if (!shop) return null;
   let state: EstimateView["state"];
   if (link.answer) state = "answered";
@@ -193,6 +218,7 @@ export async function estimateByToken(token: string, now = new Date()): Promise<
       answer: link.answer === "APPROVED" || link.answer === "DECLINED" ? link.answer : null,
       answeredAt: link.answeredAt,
       tz: shop.timeZone,
+      proof,
     },
   };
 }
@@ -248,6 +274,16 @@ export async function answerByToken(token: string, answer: "APPROVED" | "DECLINE
           await tx.makeJob.updateMany({
             where: { id: m.id, shopId },
             data: { note: [m.note, line].filter(Boolean).join("\n").slice(-2000), ...(answer === "APPROVED" && m.status === "QUOTED" ? { status: "APPROVED", approvedAt: now } : {}) },
+          });
+        }
+      } else if (link.decorOrderId) {
+        // A decorating order: approved moves it on; declined stays quoted with the customer's words in its note.
+        const d = await tx.decorOrder.findFirst({ where: { id: link.decorOrderId, shopId } });
+        if (d) {
+          const line = `${fmtDateTime(now, ctx.tz)}: the customer ${answer === "APPROVED" ? "approved" : "declined"} the quote and proof by link${cleaned ? `: ${cleaned}` : ""}.`;
+          await tx.decorOrder.updateMany({
+            where: { id: d.id, shopId },
+            data: { note: [d.note, line].filter(Boolean).join("\n").slice(-2000), ...(answer === "APPROVED" && d.status === "QUOTED" ? { status: "APPROVED", approvedAt: now } : {}) },
           });
         }
       }

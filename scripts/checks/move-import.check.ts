@@ -312,6 +312,11 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.certification.create({ data: { shopId, customerId: cust.id, equipment: "Laser cutter" } });
   await db.suppliesCare.create({ data: { shopId, machineId: machine.id, callNote: "Filament low" } });
   await db.makeJob.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover", title: "Name tag", fileName: "tag.svg", fileMime: "image/svg+xml", fileData: crypto.randomBytes(800), machineMinutes: 12, quoteCents: 1500 } });
+  // Decorating (docs/plans/decorators-proposal.md): the price table, an order with a garment and a decoration with its design file.
+  await db.decorSettings.create({ data: { shopId, prices: { tiers: [{ upTo: 5000, cents: 650 }], breaks: [{ min: 12, pct: 5 }], extraPer1000Cents: 90, digitizingCents: 3000, setupCents: 0, stitchesPerMinute: 700, colorChangeSeconds: 45 } } });
+  const decor = await db.decorOrder.create({ data: { shopId, number: 1, customerId: cust.id, name: "Mona Mover", title: "Club polos", quoteCents: 9000 } });
+  await db.decorLine.create({ data: { shopId, orderId: decor.id, description: "Polo", qty: 6, garmentCents: 900 } });
+  await db.decorPlacement.create({ data: { shopId, orderId: decor.id, location: "Left chest", stitches: 5000, fileName: "logo.dst", fileFormat: "DST", fileData: crypto.randomBytes(900), fileReadable: true } });
   // Phase 3 (shop-features-round-2-design.md 4.3 to 4.6): a price raise, a live sale's claim, an event's payment and door
   // prize, a shop hop with a passport stamped here.
   await db.priceChange.create({ data: { shopId, userId: a.user.id, rule: { by: "supplier", pct: 5 }, items: [{ partId: part.id, oldCents: 4300, newCents: 4500 }] } });

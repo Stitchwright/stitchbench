@@ -1,0 +1,267 @@
+// Decorating (docs/plans/decorators-proposal.md, packages D1, D2 and the file import): the module gate (free while the program
+// is free), taking an order, garments with sizes, a DST file read for its stitch count (other formats kept, stitches typed),
+// the price from the shop's table with quantity breaks, the price kept when the table changes, the steps, turning an order
+// down, collecting it as a register sale that bills exactly the quoted parts and voiding that sale, and the tenant section.
+//   npm run check scripts/checks/decorating.check.ts
+import "dotenv/config";
+import assert from "node:assert/strict";
+import { db } from "@/lib/db";
+import { isUserError } from "@/lib/action";
+import type { CurrentUser } from "@/lib/session";
+import { DEFAULT_PRICES, orderPrice, runMinutes, screenMinutes } from "@/lib/decor-math";
+import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, decorPrices, orderView, ordersFor, placementFile, productionFor, removeLineFor, removePlacementFor, requoteFor, saveDecorPricesFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
+import { voidSaleAs } from "@/lib/register-sale";
+import { customerDeletePlan } from "@/lib/merge";
+import { grantDevLicense } from "../license/dev";
+import { checkShop, cleanup, type CheckShop } from "./lib";
+import { expectNotFound } from "./tenant";
+
+let steps = 0;
+const ok = (what: string) => {
+  steps += 1;
+  console.log(`  ok  ${what}`);
+};
+const user = (s: CheckShop): CurrentUser => s.user;
+const tech = (s: CheckShop): CurrentUser => ({ ...s.user, role: "TECH" });
+const DAY = 86_400_000;
+
+async function expectError(label: string, fn: () => Promise<unknown>, re: RegExp) {
+  try {
+    await fn();
+  } catch (e) {
+    assert.ok(isUserError(e), `${label}: ${e instanceof Error ? e.stack : String(e)}`);
+    assert.match((e as Error).message, re, label);
+    return;
+  }
+  assert.fail(`${label}: no error`);
+}
+const fd = (o: Record<string, string | File>) => {
+  const f = new FormData();
+  for (const [k, v] of Object.entries(o)) f.set(k, v);
+  return f;
+};
+
+/** The screen print fields of the price form, as the starting values (the form always sends them). */
+const SCREEN_FORM = { screenRows: "12: 3.50, 4.50, 5.50, 6.50\n24: 2.75, 3.50, 4.25, 5.00\n48: 2.25, 2.90, 3.50, 4.10\n144: 1.60, 2.10, 2.60, 3.10", screenExtra: "0.60", screenFee: "25", printsPerHour: "150", screenSetup: "10" };
+
+/** A DST file of n stitches that go one tenth of a millimetre right and left in turn, and a colour change in the middle. */
+function dst(n: number): File {
+  // n stitches with a colour change in the middle (that record is not a stitch), then the end
+  const recs: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === Math.floor(n / 2)) recs.push([0, 0, 0xc3]);
+    recs.push([i % 2 === 0 ? 0x01 : 0x02, 0, 0x03]);
+  }
+  const out = new Uint8Array(512 + recs.length * 3 + 3);
+  out.fill(0x20, 0, 512);
+  const h = `LA:CHECK           \rST:${String(recs.length).padStart(7)}\rCO:  1\r+X:    1\r-X:    0\r+Y:    0\r-Y:    0\r`;
+  for (let i = 0; i < h.length; i++) out[i] = h.charCodeAt(i);
+  recs.forEach((r, i) => out.set(r, 512 + i * 3));
+  out.set([0, 0, 0xf3], 512 + recs.length * 3);
+  return new File([out], "logo.dst");
+}
+
+async function main() {
+  const a = await checkShop({ retail: true });
+  const b = await checkShop({ retail: true });
+  try {
+    await db.shop.update({ where: { id: a.shopId }, data: { taxRatePct: 0 } });
+    const base = { customerName: "Riverside Fire Dept", customerPhone: "555-0142", title: "Polos for the crew" };
+
+    // 1. The gate: free while the program is free, a key when it is not.
+    await expectError("no Decorating key", () => createOrderFor(user(a), fd(base)), /Decorating/);
+    process.env.PROGRAM_FREE = "on";
+    const free = await createOrderFor(user(a), fd({ ...base, title: "Free-program order" }));
+    assert.equal(free.number, 1);
+    process.env.PROGRAM_FREE = "off";
+    await grantDevLicense(a.shopId, ["decorating"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    await grantDevLicense(b.shopId, ["decorating"], { from: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10) });
+    ok("the gate: refused with no key, allowed while the program is free (the same module, no key), allowed with a key");
+
+    // 2. Taking an order and its garments.
+    const o = await createOrderFor(user(a), fd({ ...base, due: "2030-06-01" }));
+    assert.equal(o.number, 2);
+    await expectError("no title", () => createOrderFor(user(a), fd({ ...base, title: " " })), /Say what it is/);
+    await expectError("sizes do not match", () => addLineFor(user(a), o.id, fd({ description: "Polo", qty: "10", sizes: "S 2, M 4" })), /add up to 6, not 10/);
+    await expectError("no quantity", () => addLineFor(user(a), o.id, fd({ description: "Polo" })), /How many/);
+    await addLineFor(user(a), o.id, fd({ description: "Port Authority polo", color: "Navy", sizes: "S 2, M 4, L 4", garment: "9.00" }));
+    await addLineFor(user(a), o.id, fd({ description: "Port Authority polo", color: "White", qty: "14", garment: "11.00" }));
+    let v = (await orderView(a.shopId, o.id))!;
+    assert.deepEqual([v.pieces, v.garmentCents, v.lines.map((l) => l.qty), v.quoteCents], [24, 10 * 900 + 14 * 1100, [10, 14], 24400]);
+    ok("an order and its garments: sizes add up to the count (10 from S 2, M 4, L 4), a wrong total is refused, the garments are priced");
+
+    // 3. A DST file is read; other formats are kept and typed.
+    await expectError("a PES with no stitch count", () => addPlacementFor(user(a), o.id, fd({ location: "Left chest", file: new File([new Uint8Array([35, 80, 69, 83])], "crest.pes") })), /PES files aren't read yet/);
+    await expectError("nothing to price", () => addPlacementFor(user(a), o.id, fd({ location: "Left chest" })), /Give the stitch count/);
+    await expectError("too large", () => addPlacementFor(user(a), o.id, fd({ location: "Left chest", stitches: "1", file: new File([new Uint8Array(11 * 1024 * 1024)], "big.dst") })), /larger than 10 MB/);
+    const said = await addPlacementFor(user(a), o.id, fd({ location: "Left chest", stitches: "999", colors: "9", newDesign: "on", file: dst(5000) }));
+    assert.match(said, /file says 5,000 stitches in 2 colours/);
+    v = (await orderView(a.shopId, o.id))!;
+    const pl = v.placements[0];
+    assert.deepEqual([pl.stitches, pl.colors, pl.fileReadable, pl.fileFormat, pl.hasFile, pl.newDesign], [5000, 2, true, "DST", true, true], "what the file says wins over what was typed");
+    // 24 pieces: the 5000-stitch tier is $6.00, 10% off = $5.40 each
+    assert.equal(pl.quotedEachCents, 540);
+    const expected = orderPrice(
+      [{ qty: 10, garmentCents: 900 }, { qty: 14, garmentCents: 1100 }],
+      [{ stitches: 5000, newDesign: true, priceEachCents: null }],
+      DEFAULT_PRICES,
+    );
+    assert.equal(v.quoteCents, expected.totalCents);
+    assert.deepEqual([expected.garmentCents, expected.decorationCents, expected.digitizingCents], [24400, 24 * 540, 3500]);
+    const f = await placementFile(a.shopId, pl.id);
+    assert.equal(f?.name, "logo.dst");
+    assert.equal(f?.data.length, 512 + 5001 * 3 + 3, "5,000 stitches and a colour change, then the end");
+    await addPlacementFor(user(a), o.id, fd({ location: "Back", stitches: "30000", colors: "1", price: "" }));
+    await addPlacementFor(user(a), o.id, fd({ location: "Sleeve", stitches: "3000", price: "4.25", file: new File([new Uint8Array([1, 2, 3])], "sleeve.pes") }));
+    v = (await orderView(a.shopId, o.id))!;
+    // a 30000-stitch back: last tier $12.00 + 10 started thousands at $0.80 = $20.00, less 10% = $18.00; the sleeve's agreed $4.25 wins
+    assert.deepEqual(v.placements.map((p) => p.quotedEachCents), [540, 1800, 425]);
+    assert.deepEqual([v.placements[2].fileReadable, v.placements[2].fileFormat, v.placements[2].priceEachCents], [false, "PES", 425]);
+    assert.equal(v.quoteCents, 24400 + 24 * (540 + 1800 + 425) + 3500);
+    ok("a DST file is read (5,000 stitches, 2 colours, and it wins over what was typed); a PES is kept and typed; the table, the quantity break and an agreed price work out the price");
+
+    // 4. The quoted price is kept when the table changes.
+    const quoted = v.quoteCents;
+    await expectError("a tech can't set prices", () => saveDecorPricesFor(tech(a), fd({ ...SCREEN_FORM, tiers: "5000: 1", breaks: "", extra: "0", digitizing: "0", setup: "0", spm: "700", colorSeconds: "45" })), /Only an owner or admin/);
+    await expectError("a bad price line", () => saveDecorPricesFor(user(a), fd({ ...SCREEN_FORM, tiers: "lots", breaks: "", extra: "0", digitizing: "0", setup: "0", spm: "700", colorSeconds: "45" })), /isn't a price line/);
+    assert.match(await saveDecorPricesFor(user(a), fd({ ...SCREEN_FORM, tiers: "5000: 7.00\n10000: 9.50", breaks: "12: 20", extra: "1.00", digitizing: "40", setup: "15", spm: "800", colorSeconds: "30" })), /Saved the prices/);
+    assert.deepEqual((await decorPrices(a.shopId)).tiers, [{ upTo: 5000, cents: 700 }, { upTo: 10000, cents: 950 }]);
+    assert.equal((await orderView(a.shopId, o.id))!.quoteCents, quoted, "an order already quoted keeps its price");
+    await expectError("a tech can't re-price", () => requoteFor(tech(a), o.id), /Only an owner or admin/);
+    await requoteFor(user(a), o.id);
+    v = (await orderView(a.shopId, o.id))!;
+    // 24 pieces, 20% off: 5000 -> $7.00 = $5.60; 30000 -> $9.50 + 20 x $1.00 = $29.50 = $23.60; the agreed $4.25 stays; digitizing $40, set-up $15
+    assert.deepEqual(v.placements.map((p) => p.quotedEachCents), [560, 2360, 425]);
+    assert.deepEqual([v.digitizingCents, v.setupCents], [4000, 1500]);
+    assert.equal(v.quoteCents, 24400 + 24 * (560 + 2360 + 425) + 4000 + 1500);
+    ok("a later change to the price table never moves a quoted order; working the price out again uses today's table (owner or admin only)");
+
+    // 5. Removing, then the steps.
+    const extra = await db.decorPlacement.findFirstOrThrow({ where: { orderId: o.id, location: "Sleeve" } });
+    await removePlacementFor(user(a), o.id, extra.id);
+    assert.equal((await orderView(a.shopId, o.id))!.placements.length, 2);
+    const white = v.lines.find((l) => l.color === "White")!;
+    await removeLineFor(user(a), o.id, white.id);
+    assert.deepEqual([(await orderView(a.shopId, o.id))!.pieces, (await orderView(a.shopId, o.id))!.lines.length], [10, 1]);
+    await addLineFor(user(a), o.id, fd({ description: "Port Authority polo", color: "White", qty: "14", garment: "11.00" }));
+    await expectError("quoted to production", () => setOrderStatusFor(user(a), o.id, "IN_PRODUCTION"), /can't go to in production/);
+    await expectError("approve an empty order", () => setOrderStatusFor(user(a), free.id, "APPROVED"), /Add the garments/);
+    await setOrderStatusFor(user(a), o.id, "APPROVED");
+    await setOrderStatusFor(user(a), o.id, "IN_PRODUCTION");
+    await expectError("change in production", () => addLineFor(user(a), o.id, fd({ description: "Cap", qty: "1" })), /can't be changed now/);
+    await expectError("collect before ready", () => collectOrderFor(user(a), o.id, fd({ method: "CASH" })), /Only a ready order/);
+    assert.match(await setOrderStatusFor(user(a), o.id, "READY"), /is ready/);
+    const t = await createOrderFor(user(a), fd({ ...base, title: "A copied logo" }));
+    await expectError("no reason", () => turnDownOrderFor(user(a), t.id, " "), /Say why/);
+    await turnDownOrderFor(user(a), t.id, "A trademarked logo");
+    assert.deepEqual([(await orderView(a.shopId, t.id))!.status, (await orderView(a.shopId, t.id))!.turnedDownWhy], ["TURNED_DOWN", "A trademarked logo"]);
+    await expectError("turn down a ready order", () => turnDownOrderFor(user(a), o.id, "x"), /can't be turned down/);
+    ok("removing a decoration or garment prices again; the steps; a change after production starts is refused; turned down with a reason");
+
+    // 6. Collecting bills exactly the quoted parts; voiding the sale puts it back.
+    v = (await orderView(a.shopId, o.id))!;
+    const total = v.quoteCents;
+    assert.match(await collectOrderFor(user(a), o.id, fd({ method: "CARD" })), /collected: sale #/);
+    v = (await orderView(a.shopId, o.id))!;
+    const sale = await db.sale.findFirstOrThrow({ where: { id: v.saleId!, shopId: a.shopId }, include: { lines: true } });
+    assert.deepEqual([v.status, sale.totalCents, (sale.tenders as { method: string }[])[0].method], ["COLLECTED", total, "CARD"]);
+    assert.ok(sale.lines.length >= 4, "garments, two decorations, digitizing and set-up are billed as lines");
+    await voidSaleAs(user(a), sale.id, "wrong order");
+    v = (await orderView(a.shopId, o.id))!;
+    assert.deepEqual([v.status, v.saleId], ["READY", null], "voiding the sale puts the order back on the shelf");
+    ok("collecting bills the quoted parts as a register sale in the payment picked; voiding it makes the order ready again");
+
+    // 7. Lists and the customer delete.
+    assert.ok((await ordersFor(a.shopId)).some((r) => r.id === o.id && r.pieces === 24));
+    assert.ok((await ordersFor(a.shopId, { closed: true })).some((r) => r.id === t.id));
+    const plan = await customerDeletePlan(user(a), (await orderView(a.shopId, o.id))!.customerId!);
+    assert.ok(plan.blockers.some((x) => /Decorating order #\d+ isn't collected yet/.test(x)), "an open order blocks deleting the customer");
+    ok("the lists (open soonest due, finished lately); an open order blocks deleting the customer");
+
+    // 8. The production list: approved and in-production orders, soonest due first, with their machine time.
+    const prices = await decorPrices(a.shopId);
+    const mk = async (title: string, due: string, pieces: string, stitches: string, colors: string) => {
+      const x = await createOrderFor(user(a), fd({ ...base, title, due }));
+      await addLineFor(user(a), x.id, fd({ description: "Tee", qty: pieces, garment: "5" }));
+      await addPlacementFor(user(a), x.id, fd({ location: "Left chest", stitches, colors }));
+      return x;
+    };
+    const late = await mk("Late order", "2020-01-01", "10", "5000", "2");
+    const soon = await mk("Soon order", "2030-01-01", "3", "12000", "1");
+    const never = await mk("No date", "", "1", "1000", "1");
+    const quotedOnly = await mk("Still a quote", "2029-01-01", "5", "5000", "1");
+    for (const x of [late, soon, never]) await setOrderStatusFor(user(a), x.id, "APPROVED");
+    await setOrderStatusFor(user(a), soon.id, "IN_PRODUCTION");
+    const prod = await productionFor(a.shopId);
+    assert.deepEqual(prod.rows.map((r) => r.id), [late.id, soon.id, never.id], "soonest due first, no date last; a quote and a ready order are not in the queue");
+    assert.ok(!prod.rows.some((r) => r.id === quotedOnly.id || r.id === o.id));
+    assert.deepEqual(prod.rows.map((r) => r.minutes), [10 * runMinutes(5000, 2, prices), 3 * runMinutes(12000, 1, prices), runMinutes(1000, 1, prices)]);
+    assert.deepEqual([prod.rows[0].overdue, prod.rows[1].overdue, prod.rows[2].overdue, prod.lateCount], [true, false, false, 1]);
+    assert.equal(prod.totalMinutes, prod.rows.reduce((t, r) => t + r.minutes, 0));
+    assert.deepEqual([prod.rows[0].pieces, prod.rows[0].stitches, prod.rows[0].placements], [10, 50000, 1]);
+    const view = (await orderView(a.shopId, late.id))!;
+    assert.equal(view.runMinutesTotal, prod.rows[0].minutes, "the worksheet and the list agree on the machine time");
+    assert.deepEqual((await productionFor(b.shopId)).rows, []);
+    ok("the production list: approved and in-production orders only, soonest due first, machine time at the shop's speed, the late count, and the worksheet agrees; B sees none of A's");
+
+    // 9. Screen printing: the grid, the underbase, screens only when they are made, press time, and a mixed order billed in full.
+    await expectError("a bad screen line", () => saveDecorPricesFor(user(a), fd({ ...SCREEN_FORM, screenRows: "cheap", tiers: "5000: 7", breaks: "", extra: "1", digitizing: "40", setup: "15", spm: "800", colorSeconds: "30" })), /isn't a price line/);
+    const sp = await createOrderFor(user(a), fd({ ...base, title: "Spirit week tees", due: "2030-03-01" }));
+    await addLineFor(user(a), sp.id, fd({ description: "Gildan tee", color: "Black", qty: "24", garment: "6.00" }));
+    await expectError("no colours", () => addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "SCREEN_PRINT", colors: "" })), /How many colours/);
+    await expectError("too many colours", () => addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "SCREEN_PRINT", colors: "13" })), /up to 12/);
+    await expectError("an unknown method", () => addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "DTG", colors: "1" })), /Pick embroidery or screen print/);
+    const said2 = await addPlacementFor(user(a), sp.id, fd({ location: "Front", method: "SCREEN_PRINT", colors: "2", underbase: "on", newDesign: "on", stitches: "9999", file: new File([new Uint8Array([137, 80, 78, 71])], "spirit.png") }));
+    assert.match(said2, /screen print\)\. 3 screens with the underbase/);
+    let sv = (await orderView(a.shopId, sp.id))!;
+    const front = sv.placements[0];
+    assert.deepEqual([front.method, front.stitches, front.colors, front.underbase, front.quotedEachCents, front.colorsWithUnderbase, front.fileFormat, front.fileReadable], ["SCREEN_PRINT", 0, 2, true, 425, 3, "PNG", false], "24 pieces, 2 inks + underbase = 3 colours: the grid's $4.25; typed stitches are ignored; the art is kept, not read");
+    assert.deepEqual([sv.screenCents, sv.digitizingCents, sv.quoteCents], [3 * 2500, 0, 24 * 600 + 24 * 425 + 7500 + 1500], "a screen for each colour, underbase included, and the set-up fee the table now says ($15)");
+    assert.equal(sv.runMinutesTotal, screenMinutes(3, 24, DEFAULT_PRICES), "press time: set-up for each colour and every piece through every colour");
+    // a repeat print (screens already on the shelf) and an embroidered left chest on the same order
+    await addPlacementFor(user(a), sp.id, fd({ location: "Back", method: "SCREEN_PRINT", colors: "1" }));
+    await addPlacementFor(user(a), sp.id, fd({ location: "Left chest", method: "EMBROIDERY", stitches: "5000", colors: "1", newDesign: "on" }));
+    sv = (await orderView(a.shopId, sp.id))!;
+    assert.deepEqual(sv.placements.map((p) => p.quotedEachCents), [425, 275, 600 * 0 + sv.placements[2].quotedEachCents]);
+    assert.equal(sv.placements[2].method, "EMBROIDERY");
+    assert.deepEqual([sv.screenCents, sv.digitizingCents], [7500, 4000], "the screens only for the first print; digitizing only for the embroidery (the table now says $40)");
+    assert.equal(sv.quoteCents, 24 * 600 + 24 * (425 + 275 + sv.placements[2].quotedEachCents) + 7500 + 4000 + 1500);
+    // press time and sewing time both count on the production list
+    await setOrderStatusFor(user(a), sp.id, "APPROVED");
+    const q = (await productionFor(a.shopId)).rows.find((r) => r.id === sp.id)!;
+    assert.equal(q.minutes, screenMinutes(3, 24, DEFAULT_PRICES) + screenMinutes(1, 24, DEFAULT_PRICES) + 24 * runMinutes(5000, 1, await decorPrices(a.shopId)));
+    assert.equal(q.stitches, 24 * 5000, "stitches count the embroidery only");
+    // billed in full: the screens and the printing are sale lines too
+    await setOrderStatusFor(user(a), sp.id, "IN_PRODUCTION");
+    await setOrderStatusFor(user(a), sp.id, "READY");
+    assert.match(await collectOrderFor(user(a), sp.id, fd({ method: "CASH" })), /collected: sale #/);
+    const spSale = await db.sale.findFirstOrThrow({ where: { id: (await orderView(a.shopId, sp.id))!.saleId!, shopId: a.shopId }, include: { lines: true } });
+    assert.equal(spSale.totalCents, sv.quoteCents);
+    assert.ok(spSale.lines.some((l) => /^Screen print, front, 3 colours/.test(l.description)) && spSale.lines.some((l) => /^Screens, order/.test(l.description)) && spSale.lines.some((l) => /^Embroidery, left chest/.test(l.description)));
+    ok("screen printing: the grid price for the colours and quantity, the underbase as one more colour, screens charged only when made, art kept, press time on the list, and a mixed order billed in full");
+
+    // 10. Tenant.
+    await expectNotFound("B moves A's order", () => setOrderStatusFor(user(b), o.id, "APPROVED"));
+    await expectNotFound("B collects A's order", () => collectOrderFor(user(b), o.id, fd({ method: "CASH" })));
+    await expectNotFound("B turns down A's order", () => turnDownOrderFor(user(b), t.id, "no"));
+    await expectNotFound("B adds to A's order", () => addLineFor(user(b), o.id, fd({ description: "Cap", qty: "1" })));
+    await expectNotFound("B removes A's line", () => removeLineFor(user(b), o.id, v.lines[0].id));
+    assert.equal(await orderView(b.shopId, o.id), null);
+    assert.equal(await placementFile(b.shopId, pl.id), null);
+    assert.deepEqual(await ordersFor(b.shopId), []);
+    // B's own order can't touch A's lines or files either: ids from another company are not found
+    const own = await createOrderFor(user(b), fd({ ...base, title: "B's order" }));
+    await expectError("B removes A's line through its own order", () => removeLineFor(user(b), own.id, v.lines[0].id), /isn't on this order/);
+    ok("tenant: B can't move, collect, turn down, change, read or download A's orders, nor reach A's lines through its own");
+  } finally {
+    await cleanup();
+  }
+  console.log(`decorating.check: ${steps} groups passed`);
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => db.$disconnect());
