@@ -32,6 +32,12 @@ Add a new demo company in three places: its seed script, `SEED_SCRIPTS`, and `DE
 
 Checked: `src/lib/demo-reset.test.ts` (the guard), `scripts/checks/demo-reset.check.ts` (the real script refuses on a non-demo server and beside a real company, and deletes nothing), and one real reset on a scratch database: a change made as a visitor was gone afterwards and the company was rebuilt with a new id.
 
+## The quilt shop: Maple Street Quilt Co. (`scripts/demo/seed-demo.ts`)
+
+An invented quilt and sewing shop in a made-up town ("Maple Hollow, WI"; every phone is 555-01xx and every email is example.com). `npx tsx scripts/demo/seed-demo.ts` makes it (running it again resets it; `--remove` deletes it). Sign in as `demo@stitchshop.test` (password from `DEMO_PASSWORD`, default `demo-password-1`; set it on a real demo server). It has: about 146 fabric items (prints, solids, batiks, flannels, wide backing, holiday, precuts; 29 items running low), kits and patterns, 12 machines for sale (real makes and models as data, invented prices), 19 customers (a guild, a beginner, a church banner committee and others), 7 classes with sign-ups (including Beginner Log Cabin, Free-Motion Quilting Night and Bag-Making Saturday), three weeks of register sales, repair tickets, appointments and online booking, gift cards, special orders and marketing. Public pages: `/book/maple-street` and `/shop/maple-street`. All dates are worked out from today. Checked by `scripts/checks/demo-quilt-seed.check.ts` (takes about two minutes: it runs the seed twice and then removes it).
+
+**Not in the seed yet:** layaways and holds (the money on a layaway is register lines, which the seed does not make), and loyalty points.
+
 ## Still to build
 
-The quilt shop and the embroidery and print shop seeds (#63, #64), the one-click entry for each shop type (#65), the repair shop demo (#38) and the landing page buttons (the StitchFoundry chat, `stitchsite`).
+The embroidery and print shop seed (#64), the one-click entry for each shop type (#65), the repair shop demo (#38) and the landing page buttons (the StitchFoundry chat, `stitchsite`).

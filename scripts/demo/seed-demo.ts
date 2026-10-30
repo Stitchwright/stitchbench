@@ -1,4 +1,4 @@
-// A reusable demo company for showing StitchShop: "Bobbin & Bolt Quilt Co.", an invented quilt shop that also services
+// A reusable demo company for showing StitchShop: "Maple Street Quilt Co.", an invented quilt shop that also services
 // sewing and embroidery machines, with every add-on module on and about a month of believable history.
 //   npx tsx scripts/demo/seed-demo.ts            make it (running it again resets it: the old demo company is deleted first)
 //   npx tsx scripts/demo/seed-demo.ts --remove   delete the demo company and everything in it
@@ -15,7 +15,7 @@ import { swatchPng, type SwatchKind } from "./swatch";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_EMAIL = "demo@stitchshop.test";
-const SHOP_NAME = "Bobbin & Bolt Quilt Co.";
+const SHOP_NAME = "Maple Street Quilt Co.";
 const TZ = "America/Chicago";
 const TAX = 5.5;
 
@@ -104,12 +104,12 @@ async function run() {
         doesRepair: true,
         sellsRetail: true,
         checklistItems: DEFAULT_CHECKLIST,
-        receiptNote: "Thank you for shopping Bobbin & Bolt! Returns within 14 days with receipt, uncut fabric only. Open Tue-Sat 10-5.",
+        receiptNote: "Thank you for shopping Maple Street! Returns within 14 days with receipt, uncut fabric only. Open Tue-Sat 10-5.",
         priceListNote: "Machines are quoted after a free look at the counter. We call before any work over the quote.",
         payInstructions: null,
         checkInKind: "sewing",
         // Online booking and the online shop share one public address.
-        bookingSlug: "bobbin-and-bolt",
+        bookingSlug: "maple-street",
         bookingOn: true,
         bookingLeadHours: 12,
         bookingDaysAhead: 45,
@@ -145,7 +145,7 @@ async function run() {
       { key: "beth", name: "Beth Anderson-Cole", phone: "(715) 555-0134", email: "beth.ac@example.com", address: "7 Creamery Road, Maple Hollow, WI 54999", notify: "email" },
       { key: "guild", name: "Maple Hollow Quilt Guild", phone: "(715) 555-0150", email: "guild@example.com", notes: "Guild account: 24 members, meets first Thursday. 10% guild discount on classes.", notify: "email" },
       { key: "ruth", name: "Ruth Ellison", phone: "(715) 555-0127", email: "ruth.ellison@example.com", notify: "email" },
-      { key: "nadia", name: "Nadia Rahman", phone: "(715) 555-0166", email: "nadia.rahman@example.com", notes: "New quilter, took Beginner Quilting last spring.", notify: "email" },
+      { key: "nadia", name: "Nadia Rahman", phone: "(715) 555-0166", email: "nadia.rahman@example.com", notes: "New quilter, took Beginner Log Cabin last spring.", notify: "email" },
       { key: "carol", name: "Carol Dunning", phone: "(715) 555-0172", email: "carol.dunning@example.com", notify: "email" },
       { key: "harold", name: "Harold Peterson", phone: "(715) 555-0108", notes: "Restores vintage Singers. Calls, does not email.", notify: "" },
       { key: "walt", name: "Walt Szymanski", phone: "(715) 555-0119", notes: "Vintage machine collector. Brings his own oil.", notify: "" },
@@ -155,6 +155,10 @@ async function run() {
       { key: "marybeth", name: "Mary Beth Tolliver", phone: "(715) 555-0138", email: "mb.tolliver@example.com", notify: "email" },
       { key: "kristen", name: "Kristen Hale", phone: "(715) 555-0176", email: "kristen.hale@example.com", notify: "email" },
       { key: "janet", name: "Janet Voss", phone: "(715) 555-0165", email: "janet.voss@example.com", notes: "Rents the longarm most months.", notify: "email" },
+      { key: "mildred", name: "Mildred Haskins", phone: "(715) 555-0191", email: "mildred.haskins@example.com", notes: "Started the Thursday Night Quilt Guild in 1994. Buys backing by the bolt.", notify: "email" },
+      { key: "bev", name: "Bev Larson", phone: "(715) 555-0192", email: "bev.larson@example.com", notes: "Third Featherweight this year. We keep telling her she has a problem.", notify: "email" },
+      { key: "edna", name: "Edna Whitcomb", phone: "(715) 555-0193", email: "edna.whitcomb@example.com", notes: "Brings cookies on class nights.", notify: "email" },
+      { key: "banner", name: "St. Anne's Banner Committee", phone: "(715) 555-0194", email: "banners@example.com", notes: "Making the Advent banners again: felt, fusible web and a lot of gold ribbon.", notify: "email" },
     ];
     let guest: GuestFile | null = null;
     const guestFile = path.join(here, "guest.local.json");
@@ -226,6 +230,49 @@ async function run() {
       { key: "m_janome", number: "MAC-8001", desc: "Janome 3160QDC computerized sewing machine, new", kind: "ACCESSORY", priceCents: 69900, costPct: 0.68, stock: 3, reorderAt: 1, brand: "Janome", location: "Machine shelf" },
       { key: "m_brother", number: "MAC-8002", desc: "Brother SE700 sewing and embroidery machine, new", kind: "ACCESSORY", priceCents: 49900, costPct: 0.7, stock: 2, reorderAt: 1, brand: "Brother", location: "Machine shelf" },
     ];
+    // ---------- more of the shelves: about 130 more bolts, kits and machines, so the shop looks stocked ----------
+    {
+      const wall = (n: number) => `Wall ${"ABC"[n % 3]}, bolt ${1 + Math.floor(n / 3)}`;
+      const qtr = (max: number) => Math.round((2 + rnd() * max) * 4) / 4;
+      let n = 0;
+      const bolt = (desc: string, priceCents: number, extra: Partial<Item> = {}) => {
+        n += 1;
+        const low = n % 11 === 0; // a few running low, so the reorder list has something on it
+        items.push({ key: `g${n}`, number: `FAB-${1100 + n}`, desc, kind: "FABRIC", unit: "yd", priceCents, stock: low ? 2.5 : qtr(55), reorderAt: 8, location: wall(n), ...extra });
+      };
+      const families = ["Autumn Leaves", "Cottage Garden", "Barn Quilt", "Fireside", "Maple Syrup", "County Fair", "Hometown Stripe", "Little Blossoms", "Church Supper", "Farmers Market", "Snowy Pines", "Porch Swing"];
+      const ways = ["Cream", "Sage", "Navy", "Rust", "Plum", "Butter", "Rose", "Teal"];
+      for (const f of families) for (const w of ways.filter((_, i) => (i + f.length) % 3 !== 0).slice(0, 5)) bolt(`Quilting cotton - ${f} print, ${w}`, 1299 + 50 * (f.length % 3));
+      for (const c of ["Barn Red", "Pumpkin", "Butter", "Sage", "Moss", "Sky", "Navy", "Denim", "Plum", "Heather", "Cream", "Snow", "Charcoal", "Chestnut", "Rose", "Coral", "Teal", "Slate", "Wheat", "Lilac"]) bolt(`Quilting cotton - ${c} solid`, 1149);
+      for (const c of ["Ocean waves", "Forest floor", "Sunset", "Lavender fields", "Mossy stones", "Autumn fire", "Blueberry", "Seaglass", "Harvest gold", "Rosewood", "Peacock", "Cinnamon", "Dusk", "Meadow", "Ember", "Frost"]) bolt(`Batik - ${c}`, 1599);
+      for (const c of ["Cozy plaid, rust", "Cozy plaid, navy", "Woodland, sage", "Snowflake, cream", "Buffalo check, red", "Buffalo check, black", "Little stars, gray", "Plain, natural", "Plain, butter", "Fox and pine, tan"]) bolt(`Flannel - ${c}`, 1450);
+      for (const c of ["Charcoal", "Cream", "Navy", "Sage", "Gray tonal", "Black"]) bolt(`Wide backing 108in - ${c}`, 2399 + (c === "Black" ? 200 : 0), { reorderAt: 6, location: "Back wall" });
+      for (const c of ["Candy cane stripe", "Pine boughs", "Snowman parade", "Jolly red tonal", "Gold sparkle", "Holly and berries", "Cardinals", "Gingerbread"]) bolt(`Holiday cotton - ${c}`, 1349, { location: "Holiday wall" });
+      for (const [what, price] of [["Charm pack", 1299], ["Jelly roll", 3499], ["Layer cake", 4299], ["Fat quarter bundle", 4800]] as const) {
+        for (const f of ["Cottage Garden", "Porch Swing", "Snowy Pines"]) {
+          n += 1;
+          items.push({ key: `g${n}`, number: `PRE-${3100 + n}`, desc: `${what} - ${f}`, kind: "FABRIC", priceCents: price, stock: Math.round(2 + rnd() * 14), reorderAt: 3, location: "Precut rack" });
+        }
+      }
+      // Kits and a few more patterns
+      for (const [i, [title, price]] of ([["Log Cabin Baby Quilt kit (pattern, fabric and binding)", 7900], ["Harvest Table Runner kit", 4900], ["Zip Tote Bag kit", 3900], ["Scrappy Stars lap quilt kit", 8900], ["Christmas Tree Skirt kit", 6900], ["Block of the Month kit, this month", 2400]] as [string, number][]).entries()) {
+        items.push({ key: `kit${i}`, number: `KIT-9${String(i + 1).padStart(3, "0")}`, desc: title, kind: "PATTERN", priceCents: price, stock: 3 + (i % 5) * 2, reorderAt: 2, location: "Kit shelf" });
+      }
+      // Machines on the floor (real makes and models are just data; the prices are invented for the demo)
+      const machines: [string, string, number, number, string][] = [
+        ["MAC-8003", "Janome Memory Craft 6700P sewing machine, new", 109900, 2, "Janome"],
+        ["MAC-8004", "Janome Skyline S7 sewing machine, new", 149900, 1, "Janome"],
+        ["MAC-8005", "Brother PE800 embroidery machine, new", 49900, 2, "Brother"],
+        ["MAC-8006", "Brother XR9550 sewing and quilting machine, new", 34900, 3, "Brother"],
+        ["MAC-8007", "Juki TL-2000Qi straight-stitch machine, new", 119900, 1, "Juki"],
+        ["MAC-8008", "Juki HZL-F300 computerized machine, new", 79900, 2, "Juki"],
+        ["MAC-8009", "Bernina 475 QE sewing and quilting machine, new", 249900, 1, "Bernina"],
+        ["MAC-8010", "Baby Lock Jubilant sewing machine, new", 59900, 2, "Baby Lock"],
+        ["MAC-8011", "Singer 4423 Heavy Duty sewing machine, new", 24900, 4, "Singer"],
+        ["MAC-8012", "Singer Featherweight 221, serviced and guaranteed, used", 79900, 1, "Singer"],
+      ];
+      for (const [number, desc, priceCents, stock, brand] of machines) items.push({ key: `m_${number.toLowerCase()}`, number, desc, kind: "ACCESSORY", priceCents, costPct: 0.7, stock, reorderAt: 1, brand, location: "Machine floor" });
+    }
     const partId: Record<string, string> = {};
     const itemByKey: Record<string, Item> = {};
     const sold: Record<string, number> = {};
@@ -424,7 +471,7 @@ async function run() {
       },
       {
         key: "beginner",
-        title: "Beginner Quilting, 4 weeks",
+        title: "Beginner Log Cabin, 4 weeks",
         description: "From rotary cutter to finished lap quilt in four weekly evenings. We cover cutting, piecing, pressing, sandwiching and binding. Fee includes the pattern and a fabric kit ($145 class + $38 kit).",
         teacher: "Marlene Hartwell",
         supplies: "Sewing machine in good order, 1/4-inch foot, 45mm rotary cutter and 18x24 mat, 6.5 x 24 ruler, pins or clips, neutral thread. Fabric kit supplied.",
@@ -438,7 +485,7 @@ async function run() {
       },
       {
         key: "fmq",
-        title: "Free-Motion Quilting",
+        title: "Free-Motion Quilting Night",
         description: "Loosen up and draw with your needle. Stippling, pebbles, loops and feathers on a practice sandwich, using a darning foot on your own machine.",
         teacher: "Marlene Hartwell",
         supplies: "Machine with feed dogs that drop or a free-motion foot, darning foot, 4 practice sandwiches (we provide), gloves if you have them.",
@@ -471,6 +518,17 @@ async function run() {
         seats: 15,
         meetings: [{ day: 11, from: "18:00", to: "20:00" }, { day: 39, from: "18:00", to: "20:00" }, { day: 67, from: "18:00", to: "20:00" }],
         roster: ["linda", "joan", "beth", "ruth", "nadia", "carol", "patricia", "tamika", "susan", "janet", "kristen"].map((c, i) => ({ cust: c, signedAgo: 2 + (i % 9), paid: i < 8 })),
+      },
+      {
+        key: "bags",
+        title: "Bag-Making Saturday",
+        description: "Sew a lined zip tote in one day: cutting, interfacing, zipper, lining and finishing. Bring your lunch; we have the coffee on.",
+        teacher: "Priya Nair",
+        supplies: "Sewing machine in good order, zipper foot, 1/2 yd outer fabric, 1/2 yd lining, 1 yd interfacing, a 14-in zipper (kit available in the shop).",
+        feeCents: 8500,
+        seats: 8,
+        meetings: [{ day: 14, from: "10:00", to: "15:00" }],
+        roster: [{ cust: "nadia", signedAgo: 4, paid: true }, { cust: "tamika", signedAgo: 3, paid: true }, { cust: "kristen", signedAgo: 3 }, { cust: "susan", signedAgo: 1 }],
       },
     ];
     const classId: Record<string, string> = {};
@@ -747,7 +805,7 @@ async function run() {
     // ---------- appointments and booking ----------
     const weekdays = (from: string, to: string) => [2, 3, 4, 5, 6].map((day) => ({ day, from, to }));
     const typeRow = async (name: string, minutes: number, feeCents: number, extra: { resource?: string; capacity?: number; hours?: object[]; online: boolean; sortOrder: number; location?: string }) =>
-      (await db.appointmentType.create({ data: { shopId, name, minutes, feeCents, taxable: false, capacity: extra.capacity ?? 1, resource: extra.resource ?? null, hours: extra.hours ?? [], online: extra.online, sortOrder: extra.sortOrder, location: extra.location ?? "Bobbin & Bolt, front counter" }, select: { id: true } })).id;
+      (await db.appointmentType.create({ data: { shopId, name, minutes, feeCents, taxable: false, capacity: extra.capacity ?? 1, resource: extra.resource ?? null, hours: extra.hours ?? [], online: extra.online, sortOrder: extra.sortOrder, location: extra.location ?? "Maple Street, front counter" }, select: { id: true } })).id;
     const tDrop = await typeRow("Machine drop-off", 15, 0, { capacity: 3, hours: weekdays("10:00", "16:45"), online: true, sortOrder: 1 });
     const tLong = await typeRow("Longarm rental, 2 hours", 120, 4000, { resource: "Longarm", capacity: 1, hours: weekdays("10:00", "17:00"), online: true, sortOrder: 2, location: "Longarm studio, back of the shop" });
     const tLesson = await typeRow("Private lesson on your machine, 1 hour", 60, 4500, { hours: [3, 4, 5, 6].map((day) => ({ day, from: "10:00", to: "16:00" })), online: true, sortOrder: 3 });
@@ -804,9 +862,34 @@ async function run() {
       }
     }
 
+    // ---------- gift cards and special orders ----------
+    for (const [number, who, cents, spentCents, daysAgo] of [["MAPLE100001", "linda", 5000, 1850, 21], ["MAPLE100002", "beth", 10000, 0, 9], ["MAPLE100003", "", 2500, 2500, 33]] as [string, string, number, number, number][]) {
+      const card = await db.giftCard.create({
+        data: { shopId, number, kind: "gift", customerId: who ? cid[who] : null, balanceCents: cents - spentCents, status: "active", issuedAt: ago(daysAgo), lastUsedAt: spentCents ? ago(Math.max(1, daysAgo - 8)) : null, note: who ? null : "Bought at the counter as a birthday gift", createdById: marlene.id },
+        select: { id: true },
+      });
+      await db.giftCardEntry.create({ data: { shopId, cardId: card.id, at: ago(daysAgo), amountCents: cents, reason: "SOLD", userId: marlene.id } });
+      if (spentCents) await db.giftCardEntry.create({ data: { shopId, cardId: card.id, at: ago(Math.max(1, daysAgo - 8)), amountCents: -spentCents, reason: "REDEEMED", userId: marlene.id } });
+    }
+    const specials: { cust: string; description: string; qty: number; unit?: string; priceCents: number; depositCents: number; status: string; expectedIn?: number; hereAgo?: number; kind?: string; note?: string }[] = [
+      { cust: "linda", description: "Backing 108in - Wine tonal, 6 yards (her Featherweight 221 quilt)", qty: 6, unit: "yd", priceCents: 2599, depositCents: 5000, status: "WAITING", note: "Cut in one piece, please" },
+      { cust: "guild", description: "Charm packs - Porch Swing, case of 12 (guild raffle quilt)", qty: 12, priceCents: 1299, depositCents: 6000, status: "ORDERED", expectedIn: 5 },
+      { cust: "beth", description: "Janome 6700P extension table", qty: 1, priceCents: 9900, depositCents: 2000, status: "HERE", hereAgo: 1 },
+      { cust: "ruth", description: "Pre-order: Cottage Garden Christmas line, 10 yards assorted", qty: 10, unit: "yd", priceCents: 1349, depositCents: 3000, status: "WAITING", kind: "PREORDER", expectedIn: 21 },
+    ];
+    for (const [i, o] of specials.entries()) {
+      await db.specialOrder.create({
+        data: {
+          shopId, number: 1001 + i, customerId: cid[o.cust], kind: o.kind ?? "ORDER", status: o.status, description: o.description, qty: o.qty, unit: o.unit ?? null,
+          priceCents: o.priceCents, depositCents: o.depositCents, depositRule: "credit", expectedOn: o.expectedIn ? dayYmd(o.expectedIn) : null,
+          hereAt: o.hereAgo ? ago(o.hereAgo) : null, note: o.note ?? null, createdById: marlene.id, createdAt: ago(12 - i * 2),
+        },
+      });
+    }
+
     // ---------- marketing ----------
     await db.messagingSettings.create({
-      data: { shopId, emailOn: true, smtpPreset: "other", smtpHost: "smtp.example.com", fromName: "Bobbin & Bolt Quilt Co.", fromEmail: "hello@example.com", replyTo: "hello@example.com", replyWatchedAt: ago(10), replyWatchedBy: marlene.name, postalAddress: "214 Spool Street, Maple Hollow, WI 54999", tzConfirmedAt: ago(10), tzConfirmedBy: marlene.name, emailOkAt: ago(1) },
+      data: { shopId, emailOn: true, smtpPreset: "other", smtpHost: "smtp.example.com", fromName: "Maple Street Quilt Co.", fromEmail: "hello@example.com", replyTo: "hello@example.com", replyWatchedAt: ago(10), replyWatchedBy: marlene.name, postalAddress: "214 Spool Street, Maple Hollow, WI 54999", tzConfirmedAt: ago(10), tzConfirmedBy: marlene.name, emailOkAt: ago(1) },
     });
     await db.campaign.create({
       data: {
@@ -814,7 +897,7 @@ async function run() {
         name: "Fall Shop Hop Weekend: 20% off fat quarters",
         channel: "email",
         subject: "Shop Hop weekend: 20% off every fat quarter",
-        body: "Hi {first_name},\n\nIt is Shop Hop weekend here at {shop_name}. Come see us Friday through Sunday for 20% off every fat quarter and bundle in the shop, free cider, and a free pattern with any purchase over $25.\n\nOur classroom is also open for a peek at the October classes.\n\nHope to see you,\nThe Bobbin & Bolt crew\n{shop_phone}",
+        body: "Hi {first_name},\n\nIt is Shop Hop weekend here at {shop_name}. Come see us Friday through Sunday for 20% off every fat quarter and bundle in the shop, free cider, and a free pattern with any purchase over $25.\n\nOur classroom is also open for a peek at the October classes.\n\nHope to see you,\nThe Maple Street crew\n{shop_phone}",
         audience: { kind: "bought", days: 365 },
         status: "DRAFT",
         createdById: marlene.id,
@@ -827,8 +910,8 @@ async function run() {
         shopId,
         name: "October classes are open for sign-up",
         channel: "email",
-        subject: "New classes at Bobbin & Bolt: Beginner Quilting, Free-Motion and more",
-        body: "Hi {first_name},\n\nOur October classes are open: Beginner Quilting (4 weeks), Free-Motion Quilting, Embroidery Machine Basics and Block of the Month. Seats are limited, so sign up at the counter or online.\n\n{upcoming_classes}\n\nSee you in class!\n{shop_name}",
+        subject: "New classes at Maple Street: Beginner Log Cabin, Free-Motion and more",
+        body: "Hi {first_name},\n\nOur October classes are open: Beginner Log Cabin (4 weeks), Free-Motion Quilting, Embroidery Machine Basics and Block of the Month. Seats are limited, so sign up at the counter or online.\n\n{upcoming_classes}\n\nSee you in class!\n{shop_name}",
         audience: { kind: "all" },
         status: "SENT",
         members: recipients.map((c) => cid[c.key]),
@@ -852,8 +935,8 @@ async function run() {
           kind: "campaign",
           customerId: cid[c.key],
           address: c.email!,
-          subject: "New classes at Bobbin & Bolt: Beginner Quilting, Free-Motion and more",
-          body: `Hi ${c.name.split(" ")[0]},\n\nOur October classes are open: Beginner Quilting (4 weeks), Free-Motion Quilting, Embroidery Machine Basics and Block of the Month.`,
+          subject: "New classes at Maple Street: Beginner Log Cabin, Free-Motion and more",
+          body: `Hi ${c.name.split(" ")[0]},\n\nOur October classes are open: Beginner Log Cabin (4 weeks), Free-Motion Quilting, Embroidery Machine Basics and Block of the Month.`,
           status: i === 3 ? "SKIPPED" : "SENT",
           sendAfter: ago(6, "09:30"),
           sentAt: new Date(ago(6, "09:31").getTime() + i * 1500),
@@ -874,7 +957,7 @@ Demo company ready: ${SHOP_NAME}
   sales        ${sales.length} over three weeks, ${money(salesTotalCents)} taken
   classes      ${classes.length}
   tickets      ${tickets.length}
-  public pages /book/bobbin-and-bolt and /shop/bobbin-and-bolt
+  public pages /book/maple-street and /shop/maple-street
 Remove it again with: npx tsx scripts/demo/seed-demo.ts --remove`);
   } finally {
     await db.$disconnect();
