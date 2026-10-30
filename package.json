@@ -64,7 +64,7 @@
     "eslint-config-next": "16.4.2",
     "railway": "^3.16.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^6"
   },
   "engines": {
     "node": ">=22.13"
