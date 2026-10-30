@@ -22,6 +22,16 @@ Everything else works, so visitors can sell, book a class, create a ticket and s
 
 `DEMO_MODE=on`, `DATABASE_URL` (the demo's own database), `AUTH_SECRET`, `PUBLIC_URL`, optional `DEMO_SIGNUP_URL`. Leave `ALLOW_SIGNUP`, `MESSAGES` and any hub or Foundry settings unset. `PROGRAM_FREE` stays at its default (on).
 
+## The nightly reset (`npm run demo:reset`)
+
+`scripts/demo/reset.ts` removes the demo companies and everything in them (uploads are stored in the database, so they go too) and makes them again from the seed scripts in `SEED_SCRIPTS` (`src/lib/demo-reset.ts`), so every visitor starts from the same shops. Schedule it in Railway as a cron job on the demo service at about 3:30 a.m. Eastern (the schedule is set in Railway).
+
+It **refuses and changes nothing** (exit code 1) unless `DEMO_MODE=on` and the database holds only known demo companies (`DEMO_COMPANIES`) whose people all have invented email domains (`.test`, `example.com`, `.org`, `.net`). One real shop in the same database stops it. `npm run demo:reset -- --check` only says whether it would be allowed. When the database is not on this PC the seed scripts also need `DEMO_ALLOW_REMOTE=yes` and `DEMO_PASSWORD`.
+
+Add a new demo company in three places: its seed script, `SEED_SCRIPTS`, and `DEMO_COMPANIES`.
+
+Checked: `src/lib/demo-reset.test.ts` (the guard), `scripts/checks/demo-reset.check.ts` (the real script refuses on a non-demo server and beside a real company, and deletes nothing), and one real reset on a scratch database: a change made as a visitor was gone afterwards and the company was rebuilt with a new id.
+
 ## Still to build
 
-The nightly reset (#62), the quilt shop and the embroidery and print shop seeds (#63, #64), the one-click entry for each shop type (#65), the repair shop demo (#38) and the landing page buttons (the StitchFoundry chat, `stitchsite`).
+The quilt shop and the embroidery and print shop seeds (#63, #64), the one-click entry for each shop type (#65), the repair shop demo (#38) and the landing page buttons (the StitchFoundry chat, `stitchsite`).
