@@ -7,6 +7,16 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # @types/node must match the Node we run (24: Dockerfile, .nvmrc, CI), not the newest Node. Move it by hand,
+      # together with the Dockerfile, when we move to the next LTS.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint (through eslint-config-next) refuses TypeScript 7 ("does not support TS 7.0"; tracking:
+      # typescript-eslint/typescript-eslint#10940), and tests/unit/jsx-entity-spaces.test.ts uses the compiler API that 7
+      # no longer has. Reconsider when typescript-eslint supports it.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
   - package-ecosystem: npm
     directory: /desktop
     schedule: { interval: weekly }
@@ -21,3 +31,9 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # Stay on a Node LTS line (24 today). Odd majors (25, 27) are never LTS, and a new LTS is a deliberate move:
+      # change the Dockerfile, .nvmrc, the workflows' node-version and @types/node together. Dependabot's
+      # "docker/node" updates are therefore limited to minor and patch.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
