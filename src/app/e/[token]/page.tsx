@@ -57,10 +57,26 @@ export default async function EstimatePage({ params, searchParams }: { params: P
       {v.state !== "expired" && v.state !== "revoked" && (
       <section className="card card-pad space-y-3">
         <h1 className="h2">
-          Estimate for your {v.machine}
+          {v.proof ? "Your order" : "Estimate for your"} {v.machine}
           {v.ref && ` (${v.ref})`}
         </h1>
         <p>Hi {v.firstName},</p>
+        {v.proof && (
+          <div className="space-y-2">
+            <p className="font-semibold">What we will make</p>
+            <ul className="list-disc pl-5">
+              {v.proof.items.map((it, i) => (
+                <li key={i}>
+                  <strong>{it.where}:</strong> {it.what}
+                </li>
+              ))}
+            </ul>
+            {v.proof.hasMockup && (
+              // eslint-disable-next-line @next/next/no-img-element -- the picture is served by our own route for this link
+              <img src={`/api/e/${encodeURIComponent(token)}/mockup`} alt="A picture of the design on the garment" className="max-w-full rounded border border-line" />
+            )}
+          </div>
+        )}
         <table className="table">
           <tbody>
             {v.lines.map((l, i) => (
@@ -107,7 +123,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
       )}
       {v.state === "open" && (step === "approve" || step === "decline") && (
         <form method="post" action={`/api/e/${encodeURIComponent(token)}`} className="card card-pad space-y-3">
-          <h2 className="h2">{step === "approve" ? `Approve ${total} for your ${v.machine}?` : `Decline the work on your ${v.machine}?`}</h2>
+          <h2 className="h2">{step === "approve" ? `Approve ${total} for ${v.proof ? "" : "your "}${v.machine}?` : `Decline the work on ${v.proof ? "" : "your "}${v.machine}?`}</h2>
           <input type="hidden" name="answer" value={step === "approve" ? "APPROVED" : "DECLINED"} />
           <input type="hidden" name="confirm" value="1" />
           <div className="field">
