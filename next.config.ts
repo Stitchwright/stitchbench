@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // Machine intake and marketplace listings send their photos with the form (shrunk in the browser first). Every page
   // request passes proxy.ts, which buffers at most proxyClientMaxBodySize (10 MB unless raised) and hands the action a
   // cut-off body beyond it: the two limits have to be the same.
-  experimental: { serverActions: { bodySizeLimit: "16mb" }, proxyClientMaxBodySize: "16mb" },
+  experimental: { serverActions: { bodySizeLimit: process.env.DEMO_MODE === "on" ? "1mb" : "16mb" }, proxyClientMaxBodySize: process.env.DEMO_MODE === "on" ? "1mb" : "16mb" },
   // A test build (STITCH_TEST_BUILD=1 npm run build) accepts development license keys against a local database. The
   // value is fixed here at build time, so a normal build can't be put into test mode at run time (modules-design.md 3.3).
   env: { STITCH_TEST_BUILD: process.env.STITCH_TEST_BUILD === "1" ? "1" : "" },

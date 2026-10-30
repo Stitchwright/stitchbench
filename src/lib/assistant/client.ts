@@ -5,6 +5,7 @@ import "server-only";
 // here is called on its own: only the actions in src/actions/assistant.ts call it, for a button a person pressed.
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
+import { isDemo } from "@/lib/demo-mode";
 import { foundryGate } from "@/lib/foundry/link";
 import { foundryAiOn } from "@/lib/foundry/mode";
 import { hubJoined, hubFetch, hubOfflineSince, HubError } from "@/lib/hub";
@@ -18,7 +19,7 @@ import type { Built, Source } from "./prompts";
 import { callModel, chooseTransport, releaseSlot, takeSlot } from "./direct";
 
 /** ASSISTANT=off on a server stops every call (the MESSAGES=off pattern); the check scripts point the hub address at a stand-in instead. */
-export const assistantSwitchedOff = () => (process.env.ASSISTANT ?? "").toLowerCase() === "off";
+export const assistantSwitchedOff = () => (process.env.ASSISTANT ?? "").toLowerCase() === "off" || isDemo();
 
 type GroupSwitches = { draftOn: boolean; causesOn: boolean; plateOn: boolean; manualsOn: boolean; partsOn: boolean; fabricOn: boolean; askOn: boolean; marketingOn: boolean; quiltOn: boolean; customerOn: boolean; stockOn: boolean };
 
