@@ -18,6 +18,7 @@ import pg from "pg";
 import { migrate } from "./migrate.mjs";
 import { backup, restore, listBackups, readManifest } from "./backup.mjs";
 import { loadReference } from "./reference.mjs";
+import { writableServerDir } from "./server-dir.mjs";
 import { ensureAppRole, APP_ROLE } from "./app-role.mjs";
 import { startLinksGate } from "./links-gate.mjs";
 import { findTailscale, tailscaleStatus, serveStatus, serveOn, serveOff, linkIn } from "./tailscale.mjs";
@@ -32,7 +33,9 @@ const NAME = FLAVOR === "stitchshop" ? "StitchShop" : "StitchBench";
 app.setName(NAME); // before anything asks for userData
 // The installer's shortcut carries this id; Windows shows the program's notifications only when they match.
 app.setAppUserModelId(`com.timingandtension.${FLAVOR}`);
-const APP_DIR = app.isPackaged ? path.join(process.resourcesPath, "server") : path.join(HERE, "server");
+const BUNDLED_SERVER = app.isPackaged ? path.join(process.resourcesPath, "server") : path.join(HERE, "server");
+// A signed macOS app can't be written to (see server-dir.mjs), so there the server runs from a copy in the data folder.
+const APP_DIR = app.isPackaged && process.platform === "darwin" ? writableServerDir(BUNDLED_SERVER, path.join(app.getPath("userData"), "server")) : BUNDLED_SERVER;
 const DATA = app.getPath("userData"); // %APPDATA%\StitchBench or %APPDATA%\StitchShop
 const CONFIG_FILE = path.join(DATA, "config.json");
 // The database password and sign-in secret: kept out of the settings file people edit, so a typo there can't lose them.
