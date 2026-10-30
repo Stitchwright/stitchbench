@@ -38,7 +38,7 @@ export async function register() {
   const every = Number(process.env.PARTNER_SYNC_SECONDS);
   g.partnerTimer = setInterval(partners, (Number.isFinite(every) && every >= 10 ? every : 60) * 1000);
   // Email and texts (scheduling-messaging-design.md 4.3). MESSAGES=off stops every send path on this server.
-  if (process.env.MESSAGES !== "off") {
+  if (!(await import("@/lib/demo-mode")).messagesSwitchedOff()) {
     const { clearStaleOwnLeases } = await import("@/lib/lease");
     await clearStaleOwnLeases().catch(() => {});
     const { runMessages } = await import("@/lib/messaging/worker");

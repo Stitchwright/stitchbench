@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { authConfig } from "@/auth.config";
 import { linksHostDecision } from "@/lib/links-host";
+import { demoAddress, demoAllowWrite, isDemo } from "@/lib/demo-mode";
 
 const { auth } = NextAuth(authConfig);
 const authProxy = auth as unknown as (req: NextRequest, ev: NextFetchEvent) => Promise<Response | undefined>;
@@ -22,6 +23,10 @@ export default async function proxy(req: NextRequest, ev: NextFetchEvent) {
   const host = (req.headers.get("host") ?? "").toLowerCase();
   if (process.env.PUBLIC_LINKS_ONLY === "true" && linksHost && host === linksHost) {
     return linksHostDecision(req.method, req.nextUrl.pathname, req.headers) === "pass" ? NextResponse.next() : new NextResponse("Not found", { status: 404 });
+  }
+  // A demo server: a limit on writes per visitor address (docs/demo.md).
+  if (isDemo() && req.method !== "GET" && req.method !== "HEAD" && !demoAllowWrite(demoAddress(req.headers.get("x-forwarded-for")))) {
+    return new NextResponse("Slow down a little: too many changes from this address. Try again in a minute.", { status: 429 });
   }
   // API routes check their own session, as before.
   if (req.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();

@@ -49,7 +49,7 @@ export const readPlate = safe(async (data: string, mediaType: string) => {
 });
 
 /** Settings → Assistant: a switch per feature group, the voice sample and the first-names switch. */
-export const saveAssistantSettings = safe(async (fd: FormData) => {
+export const saveAssistantSettings = safe(async function saveAssistantSettings(fd: FormData) {
   const user = await requireAdmin();
   await saveSettings(user, {
     draftOn: fd.get("draftOn") === "on",
@@ -69,7 +69,7 @@ export const saveAssistantSettings = safe(async (fd: FormData) => {
 });
 
 /** Settings → Assistant → where the AI comes from (FOUNDRY_AI=on): Foundry credits, or the company's own Anthropic key. */
-export const saveAssistantSource = safe(async (fd: FormData) => {
+export const saveAssistantSource = safe(async function saveAssistantSource(fd: FormData) {
   if (!foundryAiOn()) throw new UserError("Choosing where the AI comes from isn't switched on in this program.");
   const user = await requireAdmin();
   await saveSource(user, { source: fd.get("source"), key: fd.get("key"), removeKey: fd.get("removeKey") === "on" });

@@ -23,6 +23,7 @@ import { textToHtml } from "./templates";
 import { checkTwilio, findSent, sendText } from "./twilio";
 import { BASE_KINDS, EXPLICIT_KINDS, type Channel, type MessageKind, type SkipReason } from "./types";
 import { dailySummaries } from "@/lib/owner-today";
+import { messagesSwitchedOff } from "@/lib/demo-mode";
 
 export type MessageRunResult = { sent: number; failed: number; waiting: number } | { busy: true } | { off: true };
 
@@ -39,7 +40,7 @@ const SHOP_MS = 20_000; // at most this long per shop
 const CHANNELS: Channel[] = ["email", "sms"];
 
 export const OFF_MESSAGE = "Messages are switched off on this server (MESSAGES=off).";
-const off = () => process.env.MESSAGES === "off";
+const off = messagesSwitchedOff;
 const log = (what: string) => (e: unknown) => console.error(`messages ${what}:`, e instanceof Error ? e.message : e);
 
 /** The timer's and the kick's entry: one run per process at a time, under the install-wide lease. */
