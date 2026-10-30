@@ -13,7 +13,7 @@ never fails for want of a secret.
 |---|---|
 | Windows (Azure Artifact Signing) | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE` |
 | macOS (Developer ID, notarization) | `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific), `APPLE_TEAM_ID` |
-| Not used here | `KEYCHAIN_PASSWORD`: electron-builder makes its own temporary keychain from the certificate, so nothing reads it |
+| macOS keychain | `KEYCHAIN_PASSWORD`: protects the temporary keychain the workflow imports the certificate into |
 
 Secrets are never in the repository. Only the checking step and the signing steps receive them; the steps that install
 packages (which run every dependency's install scripts) get none.
@@ -34,8 +34,21 @@ file electron-builder packs.
 
 ## macOS
 
-`mac` (environment `release`) runs `electron-builder` with `CSC_LINK` = `APPLE_CERTIFICATE`, `CSC_KEY_PASSWORD` =
-`APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` = `APPLE_PASSWORD` and `APPLE_TEAM_ID`.
+`mac` (environment `release`) first imports the certificate into a keychain of its own (`build.keychain`, protected by
+`KEYCHAIN_PASSWORD`; electron-builder's own temporary keychain failed at `set-key-partition-list` on the runner in the
+2026-10-20 test) and checks the Developer ID Application identity is in it. It then runs `electron-builder` with
+`CSC_KEYCHAIN` (that keychain) and `CSC_NAME` (the name without the "Developer ID Application:" prefix, which electron-builder rejects), plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` =
+`APPLE_PASSWORD` and `APPLE_TEAM_ID` for notarization. The keychain is deleted at the end of the job.
+
+If signing fails, the "Why did signing fail" step prints the full `codesign --verify --deep --strict --verbose=4`, every
+Mach-O file in the app that does not verify, and any absolute symbolic links (the usual causes of a failed `--strict` check).
+
+**Nothing may write into the signed app.** The program used to rename the server's `_node_modules` folders inside the app
+on its first start; on macOS it now copies `Resources/server` once per build to `~/Library/Application Support/<program>/server`
+and runs it from there (`desktop/server-dir.mjs`). **asar** is still off: the embedded Postgres binaries are found
+from the module's own path and started by it, which does not work from inside an asar, and the 8,000-odd files that take
+the time to sign are the server folder in `Resources`, which asar would not touch. Turning it on needs the Postgres path
+changed and a test on a real Mac first.
 `desktop/package.json` (`build.mac`) turns on `hardenedRuntime` and `notarize`, with the entitlements Electron needs in
 `desktop/build/entitlements.mac.plist` (JIT, unsigned executable memory, and library validation off so the program can
 start its own Postgres). The job then mounts each `.dmg` and runs `codesign --verify --deep --strict`,
@@ -64,5 +77,7 @@ Azure Artifact Signing Basic is about $9.99 a month; the Apple Developer Program
 
 ## Revision history
 
+- 2026-10-20: macOS runs the server from a copy outside the app; failure diagnostics; arm64 on macos-15.
+- 2026-10-20: macOS imports the certificate into its own keychain (CSC_KEYCHAIN, CSC_NAME) after run 14's keychain failure.
 - 2026-10-20: secrets in the `release` environment, programs signed before packing, macOS signed and notarized.
 - Earlier: Windows installers only, OIDC login, repository variables.

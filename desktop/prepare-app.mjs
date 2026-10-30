@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { materializeLinks, remainingLinks } from "./materialize-links.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const out = path.join(import.meta.dirname, "server");
@@ -30,6 +31,13 @@ for (const f of fs.readdirSync(out)) if (f.startsWith(".env")) fs.rmSync(path.jo
 // output (the previous build, nested), the docs, the scripts (the dev license key is read only by test builds, and
 // this is never one), the Railway files. A pattern once made the app 800 MB; this keeps it from shipping again.
 for (const d of ["src", "desktop", "docs", "scripts", ".railway", "railway.json", "tests"]) fs.rmSync(path.join(out, d), { recursive: true, force: true });
+
+// Next links its external packages (pg, pdfjs-dist, @prisma/client) by absolute path into this machine's build folder:
+// dangling on any other PC, and macOS signing rejects them. Make each a real copy (materialize-links.mjs).
+const replaced = materializeLinks(out);
+console.log(`replaced ${replaced.length} symbolic link(s) with copies`);
+const left = remainingLinks(out);
+if (left.length) throw new Error(`symbolic links left in the server folder: ${left.slice(0, 5).join(", ")}`);
 
 // electron-builder leaves every folder named node_modules out of extra resources, so ship them as _node_modules;
 // the program renames them back when it starts (main.mjs, unpackModules).

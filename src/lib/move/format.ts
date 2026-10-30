@@ -95,6 +95,10 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "LongarmOrder", key: "id" }, // -> Customer (saleId is a plain id of a Sale)
   { t: "LongarmPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> LongarmOrder
   { t: "MakeJob", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> Customer: print and cut jobs with the customer's file (6.5)
+  { t: "DecorSettings", key: '"shopId"' }, // the decorating price table (one row per company)
+  { t: "DecorOrder", key: "id", bytes: ["mockupData"], page: PHOTO_PAGE }, // -> Customer (saleId is a plain id of a Sale): decorating orders with the mock-up picture
+  { t: "DecorLine", key: "id" }, // -> DecorOrder: the garments
+  { t: "DecorPlacement", key: "id", bytes: ["fileData"], page: PHOTO_PAGE }, // -> DecorOrder: the decorations with the customer's design file
   { t: "ClubPayment", key: "id" }, // -> ClubMember (saleId is a plain id of a Sale)
   { t: "MachinePhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Machine, Ticket
   { t: "PartPhoto", key: "id", bytes: ["data"], page: PHOTO_PAGE }, // -> Part
@@ -202,6 +206,7 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
   ManualOffer: "a company's offers to the hub's manual repository: they name files in this PC's library and uploads made by this install on the hub, so they stay with this copy",
   OffsiteRun: "this install's history of off-site backup runs",
   HelpOutbox: "what the Help button and the error alerts sent (or are about to send) to the hub from this install: the new install sends its own",
+  FoundryLink: "this PC's optional link to a Foundry Account: its token is sealed under this install's key and means nothing to another install, so the new install links again if the company chooses to",
   HelpReply: "our answers to what this install's Help button sent: fetched from the hub by this install, so the new install asks for its own",
 };
 

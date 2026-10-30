@@ -271,6 +271,7 @@ async function main() {
     await db.partnerLink.create({ data: { id: `chk${token()}`, shopId: A, side: "repair", partnerName: "Quilt Shop", accountId: dup.id } });
     await db.longarmOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", widthIn: 40, lengthIn: 50, quiltCents: 5000, totalCents: 5000 } });
     await db.makeJob.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", title: "Name tags" } });
+    await db.decorOrder.create({ data: { shopId: A, number: 1, customerId: dup.id, name: "Jane Doe", status: "COLLECTED", title: "Polos" } });
     const live = await db.liveSale.create({ data: { shopId: A, name: "Merge live" } });
     await db.liveClaim.create({ data: { shopId: A, liveSaleId: live.id, customerId: dup.id, name: "Jane Doe", description: "Charm pack", qty: 1, priceCents: 1200, status: "PAID" } });
     await db.layaway.create({ data: { shopId: A, number: 1, customerId: dup.id, status: "COMPLETED", dueBy: "2026-12-31", terms: "Terms" } });
@@ -468,6 +469,8 @@ async function main() {
     await db.softwareLicense.create({ data: { shopId: A, customerId: del.id, description: "PE-Design 11", code: "DEL-1", startsOn: new Date() } });
     await db.certification.create({ data: { shopId: A, customerId: del.id, equipment: "Longarm" } });
     await db.makeJob.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Keychain" } });
+    const delDecor = await db.decorOrder.create({ data: { shopId: A, number: 2, customerId: del.id, name: "Del Person", status: "COLLECTED", title: "Caps", note: "her logo" } });
+    await db.decorPlacement.create({ data: { shopId: A, orderId: delDecor.id, location: "Cap front", fileName: "logo.dst", fileFormat: "DST", fileData: Buffer.from([1, 2, 3]) } });
     const dLive = await db.liveSale.create({ data: { shopId: A, name: "Delete live" } });
     const dClaim = await db.liveClaim.create({ data: { shopId: A, liveSaleId: dLive.id, customerId: del.id, name: "Del Person", phone: "555-0177", description: "Jelly roll", qty: 1, priceCents: 3000, status: "PAID" } });
     await db.wantItem.create({ data: { shopId: A, customerId: del.id, words: "Kaffe" } });
@@ -549,6 +552,10 @@ async function main() {
     assert.deepEqual([s2.customerId, s2.name, s2.attendee, s2.note, s2.paidCents, s2.refundedCents], [null, DELETED_NAME, null, null, 4000, 4000]);
     const a2 = await db.appointment.findUniqueOrThrow({ where: { id: appt.id } });
     assert.deepEqual([a2.customerId, a2.name, a2.note], [null, DELETED_NAME, null]);
+    const d2 = await db.decorOrder.findUniqueOrThrow({ where: { id: delDecor.id } });
+    assert.deepEqual([d2.customerId, d2.name, d2.note], [null, DELETED_NAME, null], "a decorating order is kept in the books without her");
+    const d2p = await db.decorPlacement.findFirstOrThrow({ where: { orderId: delDecor.id } });
+    assert.deepEqual([d2p.fileName, d2p.fileData], ["logo.dst", null], "her design file is deleted, its name kept");
     // Machines: the one with a ticket and the one bags were bought for stay without an owner; the bare one is gone.
     assert.equal((await db.machine.findUniqueOrThrow({ where: { id: dm1.id } })).customerId, null);
     assert.equal((await db.machine.findUniqueOrThrow({ where: { id: dm3.id } })).customerId, null);

@@ -45,6 +45,7 @@ const STAY = new Set([
   "PartnerRun",
   "ShopHop",
   "HopStampLocal",
+  "DecorSettings",
 ]);
 
 /** Numbered records: the second company's are numbered on from the first's, and the first's counter moves past them. */
@@ -53,6 +54,7 @@ const NUMBERED: { table: string; counter: keyof Prisma.ShopUncheckedUpdateInput 
   { table: "Sale", counter: "nextSaleNumber" },
   { table: "WebOrder", counter: "nextWebOrderNumber" },
   { table: "MakeJob", counter: "nextMakeJobNumber" },
+  { table: "DecorOrder", counter: "nextDecorOrderNumber" },
   { table: "PurchaseOrder", counter: null },
   { table: "LongarmOrder", counter: "nextLongarmNumber" },
   { table: "Layaway", counter: "nextLayawayNumber" },
@@ -64,7 +66,7 @@ const NUMBERED: { table: string; counter: keyof Prisma.ShopUncheckedUpdateInput 
 ];
 
 /** Tables with a store (locationId): the second company's rows without one were its main store's. */
-const WITH_STORE = ["Sale", "Ticket", "WebOrder", "StockUnit", "PurchaseOrder", "ShopClass", "AppointmentType", "Shift", "LongarmOrder", "MakeJob", "SpecialOrder", "UnitLoan", "GiftCardEntry", "Layaway", "LiveSale", "AccountEntry", "CardReader", "StockMove", "User", "Approval"];
+const WITH_STORE = ["Sale", "Ticket", "WebOrder", "StockUnit", "PurchaseOrder", "ShopClass", "AppointmentType", "Shift", "LongarmOrder", "MakeJob", "DecorOrder", "SpecialOrder", "UnitLoan", "GiftCardEntry", "Layaway", "LiveSale", "AccountEntry", "CardReader", "StockMove", "User", "Approval"];
 
 /** How long a join code is good for. */
 export const JOIN_CODE_MINUTES = 30;
