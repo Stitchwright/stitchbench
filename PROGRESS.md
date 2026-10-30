@@ -9,6 +9,7 @@ Updated 2026-10-29. Read after `CLAUDE.md`. Keep this under one page.
 - Licence MIT OR Apache-2.0. No beta signup form, analytics or landing page work here (the site is handled in the StitchFoundry chat).
 
 ## Recently done
+- Integration contract copy (v1.0.0, `contracts/`) and `tests/unit/contract.test.ts` checking Bench's real `job.update`, sender rules and readers; `docs/integration.md`.
 - Decorating module, inbox preview picture, DST stitch-count fix (#32).
 - Installer fixes: retry on Apple's staple network drops (#33, #34); checksums with spaces in file names (#35).
 - Cleanup: `.nvmrc` (24), exact-version saves; no history bloat found (7c853b9, on the work branch).

@@ -532,7 +532,7 @@ type JobRow = Prisma.RepairJobGetPayload<object>;
  * that has since gone up isn't fully paid: its commission follows the bill until the rest is paid (the sewing shop
  * works it out the same way from the same lines).
  */
-function jobSnapshot(job: JobRow, t: TicketForJob, terms: PartnerTerms) {
+export function jobSnapshot(job: JobRow, t: TicketForJob, terms: PartnerTerms) {
   const lines: JobLine[] = t.lines.map((l) => ({ description: l.description, qty: l.qty, amountCents: lineTotal(l), kind: l.kind }));
   const subtotal = lines.reduce((a, l) => a + l.amountCents, 0);
   const taxable = t.lines.filter((l) => l.taxable).reduce((a, l) => a + lineTotal(l), 0);
@@ -1170,7 +1170,7 @@ export function syncPartners(): Promise<PartnerSyncResult> {
 // ---------- applying what the partner sent ----------
 
 // Which side may send each type (the hub sends link.*).
-const FROM: Record<string, "repair" | "retail" | "either" | "hub"> = {
+export const FROM: Record<string, "repair" | "retail" | "either" | "hub"> = {
   "link.created": "hub",
   "link.ended": "hub",
   "terms.propose": "either",

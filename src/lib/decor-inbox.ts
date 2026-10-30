@@ -68,7 +68,8 @@ export function cleanItemMeta(raw: unknown): InboxMeta {
   return out;
 }
 
-function cleanItem(raw: unknown): InboxItem | null {
+/** One item of the hub's inbox list, held to the shapes the hub promises; null when it is unusable. */
+export function cleanItem(raw: unknown): InboxItem | null {
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
   const id = typeof r.id === "string" && /^[A-Za-z0-9_-]{8,40}$/.test(r.id) ? r.id : null;
