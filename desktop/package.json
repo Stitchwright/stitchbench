@@ -28,12 +28,12 @@
   },
   "dependencies": {
     "embedded-postgres": "17.10.0-beta.17",
-    "pg": "^8.16.3",
+    "pg": "^8.23.1",
     "pg-copy-streams": "^7.0.0"
   },
   "devDependencies": {
     "electron": "^44.4.5",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "com.timingandtension.stitchbench",
