@@ -9,6 +9,7 @@ Updated 2026-10-29. Read after `CLAUDE.md`. Keep this under one page.
 - Licence MIT OR Apache-2.0. No beta signup form, analytics or landing page work here (the site is handled in the StitchFoundry chat).
 
 ## Recently done
+- Dependabot triage (2026-10-30): #51 pins `@types/node` to ^24 and adds ignore rules (Node 25, @types/node majors, TypeScript 7: typescript-eslint refuses it). #26 (eslint 10) is green and can be merged as is.
 - Work queue set up: `docs/claude-queue.md`, a disabled-by-default `claude-nightly.yml`, labels, issues #40 to #45 (4 queued, 2 proposed).
 - Integration contract copy (v1.0.0, `contracts/`) and `tests/unit/contract.test.ts` checking Bench's real `job.update`, sender rules and readers; `docs/integration.md`.
 - Decorating module, inbox preview picture, DST stitch-count fix (#32).
