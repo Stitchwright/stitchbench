@@ -7,6 +7,8 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { gateFor } from "@/lib/module-gate";
+import { isDemo } from "@/lib/demo-mode";
+import { simulateOnlineCustomer } from "@/actions/online-orders";
 import { onlineNotices } from "@/lib/shop-orders/proofs";
 import { orderView } from "@/lib/decor";
 import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorOrderLabel, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
@@ -340,6 +342,26 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
               </ActionForm>
             )}
             {write && o.status === "QUOTED" && !o.hasMockup && <p className="muted text-sm">Add a mock-up picture above, then send it as the proof.</p>}
+            {isDemo() && write && ["QUOTED", "APPROVED"].includes(o.status) && (
+              <div className="card card-pad space-y-2">
+                <p className="muted text-sm">Demo: pretend to be the customer.</p>
+                <div className="flex flex-wrap gap-2">
+                  {o.status === "QUOTED" && o.proofNo > 0 && o.proofAnswer === null && (
+                    <>
+                      <ActionButton action={simulateOnlineCustomer.bind(null, o.id, "approved")} className="btn" success="Done">
+                        The customer approves the proof
+                      </ActionButton>
+                      <ActionButton action={simulateOnlineCustomer.bind(null, o.id, "changes")} className="btn" success="Done">
+                        The customer asks for changes
+                      </ActionButton>
+                    </>
+                  )}
+                  <ActionButton action={simulateOnlineCustomer.bind(null, o.id, "cancel")} className="btn" confirm="Tap again: the customer cancels">
+                    The customer cancels
+                  </ActionButton>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {o.link && (

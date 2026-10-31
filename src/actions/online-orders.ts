@@ -5,9 +5,13 @@
 import { revalidatePath } from "next/cache";
 import { noted, safe } from "@/lib/action";
 import { requireUser } from "@/lib/session";
+import { simulateCustomerFor, simulateOrderFor } from "@/lib/shop-orders/demo";
 import { publishCatalogFor, removeOfferFor, removeProductFor, saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
 
-const refresh = () => revalidatePath("/decorating", "layout");
+const refresh = (id?: string) => {
+  revalidatePath("/decorating", "layout");
+  if (id) revalidatePath(`/decorating/${id}`);
+};
 
 export const setOnlineOrders = safe(async function setOnlineOrders(formData: FormData) {
   const user = await requireUser();
@@ -55,5 +59,21 @@ export const publishOnlineCatalog = safe(async function publishOnlineCatalog() {
   const user = await requireUser();
   const text = await publishCatalogFor(user.shopId);
   refresh();
+  return noted(text);
+});
+
+/** Demo only: a customer places an order from this shop's own garments and prices (the same code takes it as a real one). */
+export const simulateOnlineOrder = safe(async function simulateOnlineOrder(kind: string) {
+  const user = await requireUser();
+  const text = await simulateOrderFor(user, kind === "ship" ? "ship" : "pickup");
+  refresh();
+  return noted(text);
+});
+
+/** Demo only: the customer answers the proof, or cancels. */
+export const simulateOnlineCustomer = safe(async function simulateOnlineCustomer(id: string, what: string) {
+  const user = await requireUser();
+  const text = await simulateCustomerFor(user, id, what === "approved" ? "approved" : what === "cancel" ? "cancel" : "changes");
+  refresh(id);
   return noted(text);
 });

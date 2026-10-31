@@ -4,9 +4,10 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
+import { isDemo } from "@/lib/demo-mode";
 import { onlineView } from "@/lib/shop-orders/online";
 import { breaksText, METHOD_WORDS, type OfferIn } from "@/lib/shop-orders/catalog";
-import { publishOnlineCatalog, removeOnlineOffer, removeOnlineProduct, saveOnlineOffer, saveOnlineProduct, saveOnlineShipping, setOnlineOrders } from "@/actions/online-orders";
+import { publishOnlineCatalog, simulateOnlineOrder, removeOnlineOffer, removeOnlineProduct, saveOnlineOffer, saveOnlineProduct, saveOnlineShipping, setOnlineOrders } from "@/actions/online-orders";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Empty, Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
@@ -37,6 +38,19 @@ export default async function OnlineOrdersPage() {
       }
       {...s}
     >
+      {isDemo() && write && (
+        <Section title="Try it: a customer places an order">
+          <p className="muted mb-2 text-sm">This is a demo, so no real customer is involved. The buttons make the order a customer would place from your garments and prices below, and it arrives as a decorating order, already paid, the way a real one does.</p>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton action={simulateOnlineOrder.bind(null, "pickup")} className="btn btn-primary" success="Order placed">
+              Simulate an order for pickup
+            </ActionButton>
+            <ActionButton action={simulateOnlineOrder.bind(null, "ship")} className="btn" success="Order placed">
+              Simulate an order to be shipped
+            </ActionButton>
+          </div>
+        </Section>
+      )}
       <Section title="Take orders from MakerFoundry">
         <p className="mb-2 text-base">
           {state === "on" && <span className="pill tone-ready">Taking orders</span>}

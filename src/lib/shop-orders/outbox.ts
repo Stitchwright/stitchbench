@@ -3,6 +3,7 @@ import "server-only";
 // transaction as the change it reports.
 import crypto from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
+import { isDemo } from "@/lib/demo-mode";
 import { parseBody, type SENDS } from "@/lib/shop-orders/contract";
 
 export const SERVICE = "service:makerfoundry";
@@ -25,7 +26,7 @@ export async function enqueue(tx: Prisma.TransactionClient, shopId: string, m: O
   const n = seq[0]?.nextSeq;
   if (typeof n !== "number") throw new Error("Not queued: no sequence number.");
   const id = crypto.randomUUID();
-  await tx.syncOut.create({ data: { id, shopId, conversation: m.conversation, seq: n, type: m.type, version: 1, body: parsed.body as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + (TTL_DAYS[m.type] ?? 7) * 86_400_000) } });
+  await tx.syncOut.create({ data: { id, shopId, conversation: m.conversation, seq: n, type: m.type, version: 1, body: parsed.body as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + (TTL_DAYS[m.type] ?? 7) * 86_400_000), ...(isDemo() ? { sentAt: new Date() } : {}) } });
   return { id, seq: n };
 }
 

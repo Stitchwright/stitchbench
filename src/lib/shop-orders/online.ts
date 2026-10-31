@@ -9,6 +9,7 @@ import { assertId } from "@/lib/input";
 import { requireBaseWritable } from "@/lib/base-gate";
 import { requireModule } from "@/lib/modules";
 import { hubJoined, hubStatus } from "@/lib/hub";
+import { isDemo } from "@/lib/demo-mode";
 import { buildCatalog, isMethod, parsePriceBreaks } from "@/lib/shop-orders/catalog";
 import { enqueue } from "@/lib/shop-orders/outbox";
 import { v2 } from "@/lib/shop-orders/hubv2";
@@ -54,7 +55,7 @@ export async function publishCatalogFor(shopId: string): Promise<string> {
     await tx.shopOrdersSync.update({ where: { shopId }, data: { catalogPublishedAt: new Date() } });
   });
   // Send it now when the hub is there; if not, the outbox keeps it and sends it when the connection is back.
-  await syncShop(shopId).catch(() => {});
+  if (!isDemo()) await syncShop(shopId).catch(() => {});
   return `Published: ${built.body.products.length} ${built.body.products.length === 1 ? "garment" : "garments"} for customers to order.`;
 }
 
@@ -78,7 +79,7 @@ export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promi
   const maxOpen = Number(str(fd.get("maxOpen")) ?? "200");
   if (!Number.isInteger(maxOpen) || maxOpen < 1 || maxOpen > 10_000) throw new UserError("Most open orders at once: a whole number from 1 to 10,000.");
   if (on) {
-    if (!(await hubJoined())) throw new UserError("Join the community hub first (Settings → StitchHub): orders come through it.");
+    if (!isDemo() && !(await hubJoined())) throw new UserError("Join the community hub first (Settings → StitchHub): orders come through it.");
     // Prove there is something to sell before telling the hub: an opt-in with no catalogue would take orders nobody can place.
     const row = await ordersSyncRow(shopId);
     const [products, offers] = await Promise.all([db.onlineProduct.count({ where: { shopId } }), db.onlineOffer.count({ where: { shopId } })]);
@@ -86,7 +87,7 @@ export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promi
     void row;
   }
   try {
-    await v2(shopId, "/v2/optin", { method: "PUT", json: { service: "makerfoundry", enabled: on, maxOpen } });
+    if (!isDemo()) await v2(shopId, "/v2/optin", { method: "PUT", json: { service: "makerfoundry", enabled: on, maxOpen } });
   } catch (e) {
     if (hubStatus(e) === 404) throw new UserError("This hub doesn't take MakerFoundry orders yet. Ask whoever runs it.");
     if (hubStatus(e) === 426) throw new UserError("StitchHub needs a newer StitchShop before it can take orders. Please update the program.");
