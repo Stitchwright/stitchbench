@@ -67,3 +67,10 @@ test("a list of colours or sizes is cleaned", () => {
   assert.deepEqual(splitList(" S ,M;L\n\nXL, s", 20), ["S", "M", "L", "XL"]);
   assert.equal(splitList("a,b,c", 2).length, 2);
 });
+
+test("the shop's Foundry Account is published when it has one, and left out when it has none", () => {
+  const r = buildCatalog({ ...base, account: 4217 });
+  assert.ok(r.ok && r.body.shop.account === 4217);
+  const none = buildCatalog({ ...base, account: null });
+  assert.ok(none.ok && none.body.shop.account === undefined);
+});

@@ -61,6 +61,11 @@ export default async function OnlineOrdersPage() {
         {r.upgradeNeeded && <p className="mb-2 text-base">{r.upgradeNeeded}</p>}
         {r.lastError && state === "on" && <p className="muted mb-2 text-sm">Last try to reach the hub: {r.lastError}</p>}
         {v.failedOut > 0 && <p className="mb-2 text-base">{v.failedOut} {v.failedOut === 1 ? "message was" : "messages were"} refused by the hub and will not be sent again.</p>}
+        {v.account !== null ? (
+          <p className="muted mb-2 text-sm">MakerFoundry pays you through the owner&apos;s Foundry Account (number {v.account}).</p>
+        ) : (
+          !isDemo() && <p className="mb-2 text-base">The owner&apos;s login isn&apos;t linked to a Foundry Account. Link it (Settings → Account): MakerFoundry pays the shop through that account and doesn&apos;t offer a shop without one.</p>
+        )}
         {!v.hub && <p className="muted mb-2 text-sm">Join the community hub first (Settings → StitchHub): orders come through it.</p>}
         {write && (
           <ActionForm action={setOnlineOrders} success="Saved" className="flex flex-wrap items-end gap-3">
