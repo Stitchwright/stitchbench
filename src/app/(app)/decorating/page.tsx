@@ -52,9 +52,16 @@ export default async function DecoratingPage({ searchParams }: { searchParams: P
       what="Decorating orders"
       sub="Embroidery and screen print orders from quote to pickup: the garments, the design on each, a price from your own tables, collected and paid at the register."
       actions={
-        <Link href="/decorating/production" className="btn">
-          Production list
-        </Link>
+        <>
+          {s.admin && (
+            <Link href="/decorating/online" className="btn">
+              Online orders
+            </Link>
+          )}
+          <Link href="/decorating/production" className="btn">
+            Production list
+          </Link>
+        </>
       }
       {...s}
     >

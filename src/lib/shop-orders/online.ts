@@ -1,0 +1,157 @@
+import "server-only";
+// Settings for taking orders from MakerFoundry (docs/plans/makerfoundry-orders-plan.md package 2): the opt-in, the garments and
+// decorations the shop offers with their prices, and publishing them as the catalogue. Owner or admin only. A customer is charged only
+// prices from a catalogue the shop published, so every change to the list publishes the new one (while the shop takes orders).
+import { db } from "@/lib/db";
+import { UserError } from "@/lib/user-error";
+import { str, toCents } from "@/lib/format";
+import { assertId } from "@/lib/input";
+import { requireBaseWritable } from "@/lib/base-gate";
+import { requireModule } from "@/lib/modules";
+import { hubJoined, hubStatus } from "@/lib/hub";
+import { buildCatalog, isMethod, parsePriceBreaks } from "@/lib/shop-orders/catalog";
+import { enqueue } from "@/lib/shop-orders/outbox";
+import { ordersSyncRow, syncShop, v2 } from "@/lib/shop-orders/sync";
+import type { CurrentUser } from "@/lib/session";
+
+async function gate(user: CurrentUser) {
+  if (user.role === "TECH") throw new UserError("Only an owner or admin can change what the shop sells through MakerFoundry.");
+  await requireBaseWritable(user);
+  await requireModule(user, "decorating");
+}
+
+const text = (v: FormDataEntryValue | null, max: number) => (str(v) ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+
+/** Everything the settings page shows. */
+export async function onlineView(shopId: string) {
+  const row = await ordersSyncRow(shopId);
+  const [products, offers, catalogOut, failedOut] = await Promise.all([
+    db.onlineProduct.findMany({ where: { shopId }, orderBy: { createdAt: "asc" } }),
+    db.onlineOffer.findMany({ where: { shopId }, orderBy: [{ method: "asc" }, { createdAt: "asc" }] }),
+    db.syncOut.findFirst({ where: { shopId, type: "catalog", deadAt: null }, orderBy: { createdAt: "desc" }, select: { sentAt: true, createdAt: true, error: true, expiredAt: true } }),
+    db.syncOut.count({ where: { shopId, deadAt: { not: null } } }),
+  ]);
+  return { row, products, offers, catalogOut, failedOut, hub: await hubJoined() };
+}
+
+/** Publishes the catalogue built from the shop's list: the earlier one that has not gone yet is replaced (only the latest matters). */
+export async function publishCatalogFor(shopId: string): Promise<string> {
+  const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId }, select: { name: true } });
+  const row = await ordersSyncRow(shopId);
+  const [products, offers] = await Promise.all([db.onlineProduct.findMany({ where: { shopId } }), db.onlineOffer.findMany({ where: { shopId } })]);
+  const built = buildCatalog({
+    shopName: shop.name,
+    ships: row.shipsOrders,
+    shippingCents: row.shippingCents,
+    products: products.map((p) => ({ sku: p.sku, name: p.name, kind: p.kind, colours: p.colours, sizes: p.sizes, blankCents: p.blankCents })),
+    offers: offers.map((o) => ({ method: o.method, placement: o.placement, breaks: o.breaks as { min: number; cents: number }[], setupCents: o.setupCents })),
+  });
+  if (!built.ok) throw new UserError(built.why);
+  await db.$transaction(async (tx) => {
+    await tx.syncOut.updateMany({ where: { shopId, type: "catalog", sentAt: null, deadAt: null }, data: { deadAt: new Date(), error: "Replaced by a newer catalogue." } });
+    await enqueue(tx, shopId, { conversation: "catalog", type: "catalog", body: built.body });
+    await tx.shopOrdersSync.update({ where: { shopId }, data: { catalogPublishedAt: new Date() } });
+  });
+  // Send it now when the hub is there; if not, the outbox keeps it and sends it when the connection is back.
+  await syncShop(shopId).catch(() => {});
+  return `Published: ${built.body.products.length} ${built.body.products.length === 1 ? "garment" : "garments"} for customers to order.`;
+}
+
+/** After an edit: the new list goes out at once while the shop takes orders; the answer says so (or why not). */
+async function afterEdit(shopId: string, said: string): Promise<string> {
+  const row = await ordersSyncRow(shopId);
+  if (!row.optedIn) return `${said} It goes out when you turn on orders from MakerFoundry.`;
+  try {
+    return `${said} ${await publishCatalogFor(shopId)}`;
+  } catch (e) {
+    // The list no longer makes a catalogue (the last garment was removed): the one customers see stays until a new one is published.
+    if (e instanceof UserError) return `${said} Not published: ${e.message} Customers still see the earlier catalogue.`;
+    throw e;
+  }
+}
+
+export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promise<string> {
+  await gate(user);
+  const shopId = user.shopId;
+  const on = String(fd.get("on") ?? "") === "on";
+  const maxOpen = Number(str(fd.get("maxOpen")) ?? "200");
+  if (!Number.isInteger(maxOpen) || maxOpen < 1 || maxOpen > 10_000) throw new UserError("Most open orders at once: a whole number from 1 to 10,000.");
+  if (on) {
+    if (!(await hubJoined())) throw new UserError("Join the community hub first (Settings → StitchHub): orders come through it.");
+    // Prove there is something to sell before telling the hub: an opt-in with no catalogue would take orders nobody can place.
+    const row = await ordersSyncRow(shopId);
+    const [products, offers] = await Promise.all([db.onlineProduct.count({ where: { shopId } }), db.onlineOffer.count({ where: { shopId } })]);
+    if (!products || !offers) throw new UserError("Add at least one garment and one decoration with prices first, so customers have something to order.");
+    void row;
+  }
+  try {
+    await v2(shopId, "/v2/optin", { method: "PUT", json: { service: "makerfoundry", enabled: on, maxOpen } });
+  } catch (e) {
+    if (hubStatus(e) === 404) throw new UserError("This hub doesn't take MakerFoundry orders yet. Ask whoever runs it.");
+    if (hubStatus(e) === 426) throw new UserError("StitchHub needs a newer StitchShop before it can take orders. Please update the program.");
+    throw e;
+  }
+  await db.shopOrdersSync.update({ where: { shopId }, data: { optedIn: on, maxOpen } });
+  if (!on) return "No new orders from MakerFoundry. Orders you already have carry on.";
+  return `You take orders from MakerFoundry. ${await publishCatalogFor(shopId)}`;
+}
+
+export async function saveShippingFor(user: CurrentUser, fd: FormData): Promise<string> {
+  await gate(user);
+  const ships = String(fd.get("ships") ?? "") === "on";
+  const cents = toCents(str(fd.get("shipping")) ?? "0");
+  if (cents == null || cents < 0 || cents > 100_000) throw new UserError("Shipping: dollars, like 8.99 (0 for none).");
+  await ordersSyncRow(user.shopId);
+  await db.shopOrdersSync.update({ where: { shopId: user.shopId }, data: { shipsOrders: ships, shippingCents: ships ? cents : 0 } });
+  return afterEdit(user.shopId, ships ? "Shipping saved." : "Pickup only.");
+}
+
+export async function saveProductFor(user: CurrentUser, fd: FormData): Promise<string> {
+  await gate(user);
+  const sku = text(fd.get("sku"), 60);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/.test(sku)) throw new UserError("Code: letters, numbers, dots and dashes, like TEE-01.");
+  const name = text(fd.get("name"), 120);
+  if (!name) throw new UserError("Say what the garment is, like Cotton tee.");
+  const colours = text(fd.get("colours"), 600);
+  const sizes = text(fd.get("sizes"), 200);
+  if (!colours || !sizes) throw new UserError("List the colours and the sizes you can supply, separated by commas.");
+  const blank = toCents(str(fd.get("blank")) ?? "");
+  if (blank == null || blank < 0 || blank > 100_000) throw new UserError("What the garment costs a customer before decoration: dollars, like 9.00.");
+  await ordersSyncRow(user.shopId);
+  const data = { name, kind: text(fd.get("kind"), 30) || "shirt", colours, sizes, blankCents: blank };
+  await db.onlineProduct.upsert({ where: { shopId_sku: { shopId: user.shopId, sku } }, create: { shopId: user.shopId, sku, ...data }, update: data });
+  return afterEdit(user.shopId, `${name} saved.`);
+}
+
+export async function removeProductFor(user: CurrentUser, id: string): Promise<string> {
+  await gate(user);
+  const r = await db.onlineProduct.deleteMany({ where: { id: assertId(id), shopId: user.shopId } });
+  if (r.count !== 1) throw new UserError("That garment was not found in your list.");
+  return afterEdit(user.shopId, "Removed.");
+}
+
+export async function saveOfferFor(user: CurrentUser, fd: FormData): Promise<string> {
+  await gate(user);
+  const method = String(fd.get("method") ?? "");
+  if (!isMethod(method)) throw new UserError("Pick embroidery or screen print.");
+  const placement = text(fd.get("placement"), 40);
+  if (!placement) throw new UserError("Say where it goes, like Left chest.");
+  const b = parsePriceBreaks(String(fd.get("breaks") ?? ""));
+  if ("error" in b) throw new UserError(b.error);
+  const setup = toCents(str(fd.get("setup")) ?? "0");
+  if (setup == null || setup < 0 || setup > 100_000) throw new UserError("Set-up for an order: dollars, like 25 (0 for none).");
+  const maxRaw = str(fd.get("maxStitches"));
+  const maxStitches = maxRaw ? Number(maxRaw) : null;
+  if (maxStitches != null && (!Number.isInteger(maxStitches) || maxStitches < 100 || maxStitches > 1_000_000)) throw new UserError("Biggest design: a whole number of stitches, like 8000 (empty for no limit).");
+  await ordersSyncRow(user.shopId);
+  const data = { breaks: b.breaks, setupCents: setup, maxStitches };
+  await db.onlineOffer.upsert({ where: { shopId_method_placement: { shopId: user.shopId, method, placement } }, create: { shopId: user.shopId, method, placement, ...data }, update: data });
+  return afterEdit(user.shopId, `${placement} saved.`);
+}
+
+export async function removeOfferFor(user: CurrentUser, id: string): Promise<string> {
+  await gate(user);
+  const r = await db.onlineOffer.deleteMany({ where: { id: assertId(id), shopId: user.shopId } });
+  if (r.count !== 1) throw new UserError("That decoration was not found in your list.");
+  return afterEdit(user.shopId, "Removed.");
+}
