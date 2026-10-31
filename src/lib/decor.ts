@@ -86,6 +86,9 @@ export async function saveDecorPricesFor(user: CurrentUser, fd: FormData): Promi
 
 /** Recomputes the price from the order's lines and placements and the shop's table, and stores the parts. */
 async function requote(tx: Prisma.TransactionClient, shopId: string, orderId: string): Promise<number> {
+  // An order paid on MakerFoundry keeps the price the customer paid: the shop's table is not applied to it.
+  const online = await tx.decorOrder.findFirst({ where: { id: orderId, shopId, source: { not: null } }, select: { quoteCents: true } });
+  if (online) return online.quoteCents;
   const [lines, placements, settings] = await Promise.all([
     tx.decorLine.findMany({ where: { orderId, shopId }, select: { qty: true, garmentCents: true } }),
     tx.decorPlacement.findMany({ where: { orderId, shopId }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, method: true, stitches: true, colors: true, underbase: true, newDesign: true, priceEachCents: true } }),
@@ -403,6 +406,7 @@ export async function collectOrderFor(user: CurrentUser, id: string, fd: FormDat
   await requireModule(user, "decorating");
   const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId }, omit: { mockupData: true }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
   if (!o) throw new UserError("Order not found.");
+  if (o.source) throw new UserError("This order was paid on MakerFoundry: there is nothing to take at the register. It is handed over from its own page.");
   const asked = String(fd?.get("method") ?? "CASH");
   const method: TenderMethod = (TENDER_METHODS as string[]).includes(asked) ? (asked as TenderMethod) : "CASH";
   const at = new Date();
@@ -441,17 +445,17 @@ export async function collectOrderFor(user: CurrentUser, id: string, fd: FormDat
 // ---------------------------------------------------------------------------------------------------------------
 // Reading
 
-export type OrderRow = { id: string; number: number; name: string; customerId: string | null; title: string; status: string; quoteCents: number; dueAt: Date | null; createdAt: Date; overdue: boolean; pieces: number };
+export type OrderRow = { online?: boolean; id: string; number: number; name: string; customerId: string | null; title: string; status: string; quoteCents: number; dueAt: Date | null; createdAt: Date; overdue: boolean; pieces: number };
 
 /** Open orders first (soonest due), then the latest closed ones. */
 export async function ordersFor(shopId: string, o: { closed?: boolean; take?: number } = {}, now = new Date()): Promise<OrderRow[]> {
   const rows = await db.decorOrder.findMany({
     where: { shopId, status: o.closed ? { in: ["COLLECTED", "CANCELLED", "TURNED_DOWN"] } : { in: OPEN_DECOR } },
-    select: { id: true, number: true, name: true, customerId: true, title: true, status: true, quoteCents: true, dueAt: true, createdAt: true, lines: { select: { qty: true } } },
+    select: { id: true, number: true, name: true, customerId: true, title: true, status: true, quoteCents: true, dueAt: true, createdAt: true, source: true, lines: { select: { qty: true } } },
     orderBy: o.closed ? [{ number: "desc" }] : [{ dueAt: { sort: "asc", nulls: "last" } }, { number: "asc" }],
     take: o.take ?? 200,
   });
-  return rows.map(({ lines, ...r }) => ({ ...r, pieces: lines.reduce((s, l) => s + l.qty, 0), overdue: !!r.dueAt && r.status !== "READY" && r.dueAt.getTime() < now.getTime() }));
+  return rows.map(({ lines, source, ...r }) => ({ ...r, online: source !== null, pieces: lines.reduce((s, l) => s + l.qty, 0), overdue: !!r.dueAt && r.status !== "READY" && r.dueAt.getTime() < now.getTime() }));
 }
 
 export type ProductionRow = { id: string; number: number; name: string; title: string; status: string; dueAt: Date | null; overdue: boolean; pieces: number; minutes: number; stitches: number; placements: number };
@@ -526,7 +530,7 @@ export async function orderView(shopId: string, id: string) {
 const MAX_MOCKUP_BYTES = 2 * 1024 * 1024;
 
 /** PNG or JPEG by its first bytes (never by the name or the type the browser said, and never SVG: it can carry script). */
-function imageType(b: Uint8Array): "image/png" | "image/jpeg" | null {
+export function imageType(b: Uint8Array): "image/png" | "image/jpeg" | null {
   if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return "image/png";
   if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
   return null;
@@ -612,6 +616,7 @@ export async function sendProofFor(user: CurrentUser, id: string, input: { email
   const o = await db.decorOrder.findFirst({ where: { id: assertId(id), shopId }, omit: { mockupData: true }, include: { lines: { orderBy: { sortOrder: "asc" } }, placements: { orderBy: { sortOrder: "asc" }, omit: { fileData: true } } } });
   if (!o) throw new UserError("Order not found.");
   if (o.status !== "QUOTED") throw new UserError("Only a quoted order goes out for approval.");
+  if (o.source) throw new UserError("This customer ordered on MakerFoundry: the proof goes to them through MakerFoundry, not by email or text.");
   if (!o.customerId) throw new UserError("This order has no customer to send it to.");
   if (o.quoteCents <= 0) throw new UserError("Add the garments and decorations first, so there is a price to approve.");
   if (!publicBaseUrl()) throw new UserError("This install has no public address, so there are no quote links. Call them with the price instead.");

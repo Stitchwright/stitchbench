@@ -2448,10 +2448,33 @@ model DecorOrder {
   closedAt      DateTime?
   createdById   String?
   createdAt     DateTime         @default(now())
+  // An order that came through MakerFoundry (docs/plans/makerfoundry-orders-plan.md package 3): MAKERFOUNDRY, the order reference there,
+  // and what the customer paid. quoteCents is goods plus set-up as paid, never re-worked from the price table; shipping and tax are kept
+  // apart (still open questions). The shipping address is kept only for an order to be shipped, and is for the order page alone.
+  source        String?
+  onlineRef     String?
+  paidCents     Int?
+  shopGetsCents Int?
+  feeCents      Int?
+  cardFeeCents  Int?
+  shippingPaidCents Int?
+  taxPaidCents  Int?
+  fulfilment    String?
+  shipTo        Json?
+  // A note for the shop to read first, such as a design bigger than the offer covers
+  onlineFlag    String?
+  // The customer's picture from the order, fetched after the order is made (PNG or JPEG)
+  previewSha256 String?
+  previewSize   Int?
+  // Fetching the art and the picture is tried again until it works
+  fileTries     Int              @default(0)
+  fileError     String?
+  filesNextTryAt DateTime?
   lines         DecorLine[]
   placements    DecorPlacement[]
 
   @@unique([shopId, number])
+  @@unique([shopId, onlineRef])
   @@index([shopId, status])
   @@index([shopId, customerId])
   @@index([shopId, locationId])
@@ -2501,6 +2524,9 @@ model DecorPlacement {
   fileFormat     String?
   fileData       Bytes?
   fileReadable   Boolean    @default(false)
+  // The design file of an online order, to be fetched (and checked against these) after the order is made
+  artSha256      String?
+  artSize        Int?
 
   @@index([orderId])
   @@index([shopId])

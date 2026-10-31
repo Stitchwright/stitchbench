@@ -4,6 +4,7 @@ import "server-only";
 // version, and answers "applied" (done: the next message of the conversation may go) or "defer" (what it needs hasn't arrived yet:
 // try again later, and the ones after it wait). Throwing is the same as "defer" with the error kept.
 import { db } from "@/lib/db";
+import { takeOrder } from "@/lib/shop-orders/intake";
 
 export type Applied = "applied" | "defer";
 export type MessageContext = { shopId: string; messageId: string; sender: string; conversation: string; seq: number; sentAt: Date; body: unknown };
@@ -20,5 +21,11 @@ export const handlerFor = (type: string, version: number): Handler | undefined =
 registerHandler("message.expired", 1, async (c) => {
   const b = c.body as { id: string; reason: string };
   await db.syncOut.updateMany({ where: { id: b.id, shopId: c.shopId, expiredAt: null }, data: { expiredAt: new Date(), expiredWhy: b.reason } });
+  return "applied";
+});
+
+// MakerFoundry's customer paid: the order becomes a decorating order (see intake.ts).
+registerHandler("order.placed", 1, async (c) => {
+  await takeOrder(c);
   return "applied";
 });

@@ -26,6 +26,7 @@ function Rows({ rows, tz }: { rows: OrderRow[]; tz: string }) {
             <span className="muted text-sm">
               · {o.name} · {o.pieces} {o.pieces === 1 ? "piece" : "pieces"}
             </span>
+            {o.online && <span className="pill tone-work ml-2">MakerFoundry</span>}
           </span>
           <span className="flex flex-wrap items-center gap-2 text-base">
             <span className="num">{money(o.quoteCents)}</span>

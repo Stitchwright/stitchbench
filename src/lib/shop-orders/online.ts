@@ -11,7 +11,8 @@ import { requireModule } from "@/lib/modules";
 import { hubJoined, hubStatus } from "@/lib/hub";
 import { buildCatalog, isMethod, parsePriceBreaks } from "@/lib/shop-orders/catalog";
 import { enqueue } from "@/lib/shop-orders/outbox";
-import { ordersSyncRow, syncShop, v2 } from "@/lib/shop-orders/sync";
+import { v2 } from "@/lib/shop-orders/hubv2";
+import { ordersSyncRow, syncShop } from "@/lib/shop-orders/sync";
 import type { CurrentUser } from "@/lib/session";
 
 async function gate(user: CurrentUser) {

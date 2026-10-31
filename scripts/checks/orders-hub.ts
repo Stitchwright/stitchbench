@@ -16,7 +16,8 @@ export async function startOrdersHub() {
   const posted: Record<string, unknown>[] = [];
   const hellos: Record<string, unknown>[] = [];
   const optins: (Record<string, unknown> & { shop: string | null })[] = [];
-  const knobs = { minClient: null as string | null, failAcks: 0, postStatuses: [] as { status: number; error: string; code?: string }[], optinStatuses: [] as { status: number; error: string }[], offline: false };
+  const files = new Map<string, Buffer>();
+  const knobs = { minClient: null as string | null, failAcks: 0, postStatuses: [] as { status: number; error: string; code?: string }[], optinStatuses: [] as { status: number; error: string }[], fileStatuses: [] as { status: number; error: string }[], corruptFiles: new Set<string>(), offline: false };
   let seq = 0;
 
   const server = http.createServer(async (req, res) => {
@@ -26,6 +27,14 @@ export async function startOrdersHub() {
     };
     const url = new URL(req.url ?? "/", "http://x");
     if (url.pathname === "/health") return send(200, { ok: true });
+    // The bucket: the short-lived address the hub hands out for a file (no hub credentials, as the real one).
+    const bucket = /^\/bucket\/([0-9a-f]{64})$/.exec(url.pathname);
+    if (bucket && req.method === "GET") {
+      const f = files.get(bucket[1]);
+      if (!f) return void res.writeHead(404).end();
+      const bytes = knobs.corruptFiles.has(bucket[1]) ? Buffer.concat([f.subarray(0, f.length - 1), Buffer.from([0x7f])]) : f;
+      return void res.writeHead(200, { "content-length": bytes.length }).end(bytes);
+    }
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const raw = Buffer.concat(chunks).toString("utf8");
@@ -46,6 +55,13 @@ export async function startOrdersHub() {
     if (url.pathname === "/v2/hello" && req.method === "POST") {
       hellos.push({ shop, ...json });
       return send(200, { hub: "2.0.0", types: {}, limits: {}, released: 0 });
+    }
+    if (url.pathname === "/v2/files/get" && req.method === "POST") {
+      const scripted = knobs.fileStatuses.shift();
+      if (scripted) return send(scripted.status, { error: scripted.error });
+      const f = files.get(String(json?.sha256 ?? ""));
+      if (!f) return send(404, { error: "No such file for you.", code: "no_such_file" });
+      return send(200, { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/bucket/${json.sha256}`, expires_in: 600, size: f.length, type: null, sha256: json.sha256 });
     }
     if (url.pathname === "/v2/optin" && req.method === "PUT") {
       const scripted = knobs.optinStatuses.shift();
@@ -90,6 +106,7 @@ export async function startOrdersHub() {
     posted,
     hellos,
     optins,
+    files,
     knobs,
     /** A message waiting for the company on the hub (as MakerFoundry's would be). */
     put(shopRef: string, m: { type: string; conversation: string; seq: number; body: unknown; id?: string; from?: string; version?: number; createdAt?: Date; expiresAt?: Date | null }): string {
