@@ -9,29 +9,18 @@ import "server-only";
 // MakerFoundry the shop never answered. Duplicates are dropped by message id; an old copy of a seq already applied is acknowledged and ignored.
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { HubError, hubFetch, hubJoined, hubStatus, inBackground } from "@/lib/hub";
+import { HubError, hubJoined, hubStatus, inBackground } from "@/lib/hub";
+import { backoff, plain, v2, clientVersion } from "@/lib/shop-orders/hubv2";
 import { withLease } from "@/lib/lease";
 import { parseBody, UNDERSTOOD } from "@/lib/shop-orders/contract";
+import { retryPendingFiles } from "@/lib/shop-orders/intake";
 import { parseEnvelope, planApply, senderKind } from "@/lib/shop-orders/protocol";
 import { handlerFor, type Applied } from "@/lib/shop-orders/handlers";
-import pkg from "../../../package.json";
 
 import { SERVICE } from "@/lib/shop-orders/outbox";
 const PAGE = 50;
 const MAX_PAGES = 10;
 const HELLO_EVERY_MS = 6 * 3600_000;
-
-/** The X-Client value: this program and its version (semver, as the hub's minimum-version check reads it). */
-export function clientId(): string {
-  const v = process.env.STITCH_VERSION?.trim();
-  const version = v && /^\d+\.\d+\.\d+/.test(v) ? v : pkg.version;
-  return `stitchshop/${version}`;
-}
-const clientVersion = () => clientId().split("/")[1];
-
-export const v2 = (shopId: string, path: string, init: { method?: string; json?: unknown } = {}) => hubFetch(path, { ...init, shopRef: shopId, headers: { "X-Client": clientId() } });
-const backoff = (tries: number) => new Date(Date.now() + Math.min(2 ** Math.min(tries, 12), 60) * 60_000);
-const plain = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.").slice(0, 300);
 
 export async function ordersSyncRow(shopId: string) {
   return db.shopOrdersSync.upsert({ where: { shopId }, create: { shopId }, update: {} });
@@ -241,6 +230,7 @@ export async function syncShop(shopId: string): Promise<ShopRun | { busy: true }
       const polled = await pollShop(shopId);
       await ackStored(shopId);
       const a = await applyWaiting(shopId);
+      await retryPendingFiles(shopId);
       const s = await flushOutbox(shopId);
       await db.shopOrdersSync.update({ where: { shopId }, data: { lastPollAt: new Date(), lastOkAt: new Date(), lastError: null } });
       return { polled, applied: a.applied, sent: s.sent };

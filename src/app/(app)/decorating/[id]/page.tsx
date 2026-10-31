@@ -19,6 +19,9 @@ import { ymdOf } from "@/lib/zoned";
 const NEXT: Record<string, string> = { QUOTED: "APPROVED", APPROVED: "IN_PRODUCTION", IN_PRODUCTION: "READY" };
 const NEXT_WORD: Record<string, string> = { APPROVED: "The customer approved it", IN_PRODUCTION: "Start production", READY: "It is ready" };
 
+/** A shipping address as lines of text. */
+const addressLines = (a: Record<string, string>) => [a.name, a.line1, a.line2, [a.city, a.region, a.postal].filter(Boolean).join(" "), a.country].filter(Boolean).join("\n");
+
 export default async function DecorOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
@@ -75,7 +78,28 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
             ))}
         </div>
       )}
-      {o.status === "READY" && write && (
+      {o.source === "MAKERFOUNDRY" && (
+        <Section title="Ordered on MakerFoundry">
+          {o.onlineFlag && <p className="card card-pad mb-2 whitespace-pre-line text-base">{o.onlineFlag}</p>}
+          {o.fileError && <p className="mb-2 text-base">Some of the customer&apos;s files haven&apos;t arrived yet; trying again. ({o.fileError})</p>}
+          <ul className="space-y-1 text-base">
+            <li>
+              The customer paid <span className="num">{money(o.paidCents ?? 0)}</span> on MakerFoundry: goods and set-up {money(o.quoteCents)}, shipping {money(o.shippingPaidCents ?? 0)}, tax {money(o.taxPaidCents ?? 0)}.
+            </li>
+            <li>
+              MakerFoundry keeps {money(o.feeCents ?? 0)}; the card fee is {money(o.cardFeeCents ?? 0)}. <span className="font-semibold">Your share: {money(o.shopGetsCents ?? 0)}</span>, paid to you by MakerFoundry.
+            </li>
+            <li>{o.fulfilment === "SHIP" ? "To be shipped to:" : "Pickup at the shop."}</li>
+          </ul>
+          {o.fulfilment === "SHIP" && o.shipTo && typeof o.shipTo === "object" && (
+            <address className="mt-1 whitespace-pre-line text-base not-italic">
+              {addressLines(o.shipTo as Record<string, string>)}
+            </address>
+          )}
+          <p className="muted mt-2 text-sm">The customer&apos;s email and phone are never sent to you; you reach them through the order&apos;s messages on MakerFoundry.</p>
+        </Section>
+      )}
+      {o.status === "READY" && write && !o.source && (
         <div className="card card-pad space-y-2">
           <h2 className="text-base font-semibold">Picked up: take the payment</h2>
           <ActionForm action={collectDecorOrder.bind(null, o.id)} className="flex flex-wrap items-center gap-2">
@@ -220,19 +244,21 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
         )}
       </Section>
 
-      <Section title="The price">
+      <Section title={o.source ? "The price (as paid)" : "The price"}>
         <ul className="space-y-1 text-base">
-          <li>
-            Garments: {money(o.garmentCents)}
-          </li>
-          <li>Decoration: {money(decorationCents)}</li>
+          {!o.source && (
+            <li>
+              Garments: {money(o.garmentCents)}
+            </li>
+          )}
+          {!o.source && <li>Decoration: {money(decorationCents)}</li>}
           {o.digitizingCents > 0 && <li>Digitizing: {money(o.digitizingCents)}</li>}
           {o.screenCents > 0 && <li>Screens: {money(o.screenCents)}</li>}
           {o.setupCents > 0 && <li>Set-up: {money(o.setupCents)}</li>}
-          <li className="text-xl font-semibold">Total {money(o.quoteCents)} before tax</li>
+          <li className="text-xl font-semibold">{o.source ? `Goods and set-up ${money(o.quoteCents)}, paid` : `Total ${money(o.quoteCents)} before tax`}</li>
           {o.runMinutesTotal > 0 && <li className="muted text-sm">About {formatMinutes(o.runMinutesTotal)} on the machines for the whole order, at your set speeds.</li>}
         </ul>
-        {editable && s.admin && (
+        {editable && s.admin && !o.source && (
           <div className="mt-2">
             <ActionButton action={requoteDecorOrder.bind(null, o.id)} className="btn btn-sm">
               Work the price out again from today&apos;s table
