@@ -34,7 +34,13 @@ export async function onlineView(shopId: string) {
     db.syncOut.findFirst({ where: { shopId, type: "catalog", deadAt: null }, orderBy: { createdAt: "desc" }, select: { sentAt: true, createdAt: true, error: true, expiredAt: true } }),
     db.syncOut.count({ where: { shopId, deadAt: { not: null } } }),
   ]);
-  return { row, products, offers, catalogOut, failedOut, hub: await hubJoined() };
+  return { row, products, offers, catalogOut, failedOut, hub: await hubJoined(), account: await payoutAccountOf(shopId) };
+}
+
+/** The Foundry Account the shop is paid through: the one the company's owner login is linked to (the oldest active owner login that is linked), or null. */
+export async function payoutAccountOf(shopId: string): Promise<number | null> {
+  const owner = await db.user.findFirst({ where: { shopId, role: "OWNER", active: true, foundryId: { not: null } }, orderBy: { createdAt: "asc" }, select: { foundryId: true } });
+  return owner?.foundryId ?? null;
 }
 
 /** Publishes the catalogue built from the shop's list: the earlier one that has not gone yet is replaced (only the latest matters). */
@@ -50,6 +56,7 @@ export async function publishCatalogFor(shopId: string): Promise<string> {
     freeOverCents: row.freeOverCents,
     pickup: row.offersPickup,
     pickupAddress: (row.pickupAddress as PickupAddress | null) ?? null,
+    account: await payoutAccountOf(shopId),
     products: products.map((p) => ({ sku: p.sku, name: p.name, kind: p.kind, colours: p.colours, sizes: p.sizes, blankCents: p.blankCents })),
     offers: offers.map((o) => ({ method: o.method, placement: o.placement, breaks: o.breaks as { min: number; cents: number }[], setupCents: o.setupCents })),
   });
@@ -89,6 +96,8 @@ export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promi
     const row = await ordersSyncRow(shopId);
     const [products, offers] = await Promise.all([db.onlineProduct.count({ where: { shopId } }), db.onlineOffer.count({ where: { shopId } })]);
     if (!products || !offers) throw new UserError("Add at least one garment and one decoration with prices first, so customers have something to order.");
+    // MakerFoundry pays the shop through the owner's linked Foundry Account, and does not offer a shop without one (a demo has none).
+    if (!isDemo() && (await payoutAccountOf(shopId)) === null) throw new UserError("Link the owner's login to a Foundry Account first (Settings → Account): MakerFoundry pays the shop through it, and doesn't offer a shop without one.");
     if (row.offersPickup && !row.pickupAddress) throw new UserError("Add the shop's pick-up address under Shipping and pick-up first (or switch pick-up off): sales tax on a pick-up order is worked out from it.");
   }
   try {

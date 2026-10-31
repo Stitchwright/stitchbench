@@ -174,6 +174,9 @@ async function main() {
     };
 
     // ----- the shop opts in on the real hub and its catalogue arrives -----
+    const ownerLogin = await db.user.findFirstOrThrow({ where: { shopId: A.shopId, role: "OWNER" } });
+    const ACCOUNT = 8_000_000 + Math.floor(Math.random() * 90_000);
+    await db.user.update({ where: { id: ownerLogin.id }, data: { foundryId: ACCOUNT } }); // the owner's linked Foundry Account
     await saveProductFor(A.user, form({ sku: "REAL-TEE", name: "Real tee", colours: "Navy, White", sizes: "M, L", blank: "9.00" }));
     await saveOfferFor(A.user, form({ method: "embroidery", placement: "Left chest", breaks: "1: 12.00\n12: 10.00", setup: "25", maxStitches: "5000" }));
     await saveShippingFor(A.user, form({ pickup: "on", ships: "on", shipping: "8.99", perExtra: "0.50", freeOver: "300", pa_line1: "210 Main Street", pa_city: "Elmwood", pa_region: "OH", pa_postcode: "44001", pa_country: "US" }));
@@ -194,6 +197,7 @@ async function main() {
       if (!cat) await sleep(250);
     }
     assert.ok(cat, "the service received the catalogue through the real hub");
+    assert.equal(cat.body.shop.account, ACCOUNT, "the owner's Foundry Account comes through the real hub");
     assert.equal(cat.body.products[0].cents, 900, "the garment's own price comes through the real hub");
     assert.deepEqual(cat.body.products[0].methods[0].price_breaks, [{ min: 1, cents: 1200 }, { min: 12, cents: 1000 }], "and the decoration's, apart");
     assert.deepEqual(cat.body.shipping, { flat_cents: 899, per_extra_piece_cents: 50, free_over_cents: 30000 }, "shipping by the piece");

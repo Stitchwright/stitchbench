@@ -17,6 +17,8 @@ export type CatalogIn = {
   freeOverCents?: number;
   pickup?: boolean;
   pickupAddress?: PickupAddress | null;
+  /** The shop's Foundry Account (the owner's linked one): MakerFoundry pays the shop through it, and does not offer a shop without one. */
+  account?: number | null;
   products: ProductIn[];
   offers: OfferIn[];
 };
@@ -100,7 +102,7 @@ export function buildCatalog(c: CatalogIn): { ok: true; body: CatalogBody } | { 
   const shipping = c.ships ? { flat_cents: c.shippingCents, per_extra_piece_cents: c.perExtraPieceCents ?? 0, free_over_cents: c.freeOverCents ?? 0 } : { flat_cents: 0 };
   // Without a pick-up address MakerFoundry offers only shipping while it collects sales tax: say pick-up only when it can be used.
   const body = {
-    shop: { name: c.shopName, ships: c.ships, pickup, ...(pickup && a ? { address: { line1: a.line1, ...(a.line2 ? { line2: a.line2 } : {}), city: a.city, ...(a.region ? { region: a.region } : {}), postcode: a.postcode, country: a.country } } : {}) },
+    shop: { name: c.shopName, ships: c.ships, pickup, ...(c.account ? { account: c.account } : {}), ...(pickup && a ? { address: { line1: a.line1, ...(a.line2 ? { line2: a.line2 } : {}), city: a.city, ...(a.region ? { region: a.region } : {}), postcode: a.postcode, country: a.country } } : {}) },
     products,
     shipping,
     currency: "usd" as const,

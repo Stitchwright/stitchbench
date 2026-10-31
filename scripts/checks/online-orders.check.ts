@@ -53,6 +53,15 @@ async function main() {
     await saveProductFor(A.user, form(tee));
     await saveOfferFor(A.user, form(chest));
     assert.equal(catalogs(hub).length, 0, "nothing is published while the shop is not taking orders");
+    // MakerFoundry pays the shop through the owner's linked Foundry Account and doesn't offer a shop without one.
+    await refused("no Foundry Account", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /Link the owner's login to a Foundry Account/);
+    const techLogin = await db.user.findFirstOrThrow({ where: { shopId: A.shopId, role: "OWNER" } });
+    // Only the owner's link counts: a technician's linked account, or a retired owner login's, is not who the shop is paid through.
+    await db.user.create({ data: { shopId: A.shopId, email: `tech-${Date.now()}@stitchbench.test`, name: "Tech", passwordHash: "x", role: "TECH", foundryId: 7_000_001 } });
+    await db.user.create({ data: { shopId: A.shopId, email: `old-${Date.now()}@stitchbench.test`, name: "Old owner", passwordHash: "x", role: "OWNER", active: false, foundryId: 7_000_002 } });
+    await refused("only the owner's link counts", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /Link the owner's login to a Foundry Account/);
+    await db.user.update({ where: { id: techLogin.id }, data: { foundryId: 9_000_000 + Math.floor(Math.random() * 90_000) } }); // the owner links an account
+    const account = (await db.user.findUniqueOrThrow({ where: { id: techLogin.id } })).foundryId!;
     // Pick-up is on until it is switched off, and then the pick-up address is needed: sales tax on a pick-up order is worked out from it.
     await refused("pick-up without an address", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /pick-up address/);
     await refused("a pick-up address needs a zip", () => saveShippingFor(A.user, form({ ...ADDRESS, pa_postcode: "" })), /address \(street, town and zip\)/);
@@ -73,6 +82,7 @@ async function main() {
     const m = first.body.products[0].methods[0];
     assert.deepEqual(m.price_breaks, [{ min: 1, cents: 1200 }, { min: 12, cents: 1000 }], "the decoration alone");
     assert.equal((first.body.products[0] as unknown as { cents: number }).cents, 900, "and the garment's own price beside it");
+    assert.equal((first.body.shop as unknown as { account: number }).account, account, "the owner's linked Foundry Account is who MakerFoundry pays");
     assert.deepEqual(first.body.shop.address, { line1: "210 Main Street", city: "Elmwood", region: "OH", postcode: "44001", country: "US" }, "the pick-up address goes with pick-up");
     assert.equal(m.setup_cents, 2500);
     assert.deepEqual(m.placements, ["Left chest"]);
