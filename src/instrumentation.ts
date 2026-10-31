@@ -19,6 +19,7 @@ export async function register() {
   const g = globalThis as unknown as {
     hubTimer?: NodeJS.Timeout;
     partnerTimer?: NodeJS.Timeout;
+    ordersTimer?: NodeJS.Timeout;
     messageTimer?: NodeJS.Timeout;
     downloadTimer?: NodeJS.Timeout;
     moveSweepTimer?: NodeJS.Timeout;
@@ -37,8 +38,17 @@ export async function register() {
   // Blank, a word ("1m") or 0 would make Node run the timer about every millisecond: anything under 10 s means the usual 60.
   const every = Number(process.env.PARTNER_SYNC_SECONDS);
   g.partnerTimer = setInterval(partners, (Number.isFinite(every) && every >= 10 ? every : 60) * 1000);
+  // MakerFoundry orders through the hub's v2 queue (docs/plans/makerfoundry-orders-plan.md): only companies that opted in or have messages in flight.
+  const { isDemo } = await import("@/lib/demo-mode");
+  if (!isDemo()) {
+    const { syncOrders } = await import("@/lib/shop-orders/sync");
+    const orders = () => syncOrders().catch((e) => console.error("orders sync:", e instanceof Error ? e.message : e));
+    setTimeout(orders, 25_000);
+    const oevery = Number(process.env.ORDERS_SYNC_SECONDS);
+    g.ordersTimer = setInterval(orders, (Number.isFinite(oevery) && oevery >= 10 ? oevery : 60) * 1000);
+  }
   // Email and texts (scheduling-messaging-design.md 4.3). MESSAGES=off stops every send path on this server.
-  if (process.env.MESSAGES !== "off") {
+  if (!(await import("@/lib/demo-mode")).messagesSwitchedOff()) {
     const { clearStaleOwnLeases } = await import("@/lib/lease");
     await clearStaleOwnLeases().catch(() => {});
     const { runMessages } = await import("@/lib/messaging/worker");

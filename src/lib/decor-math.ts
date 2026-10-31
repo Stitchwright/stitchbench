@@ -20,6 +20,8 @@ export const DECOR_LABEL: Record<string, string> = {
   TURNED_DOWN: "Turned down",
 };
 export const decorStatusLabel = (s: string) => DECOR_LABEL[s] ?? s;
+/** The word for an order's state: a collected order that went by post is Shipped. */
+export const decorOrderLabel = (s: string, fulfilment?: string | null) => (s === "COLLECTED" && fulfilment === "SHIP" ? "Shipped" : decorStatusLabel(s));
 export const DECOR_TONE: Record<string, string> = { QUOTED: "tone-neutral", APPROVED: "tone-work", IN_PRODUCTION: "tone-work", READY: "tone-ready", COLLECTED: "tone-done", CANCELLED: "tone-bad", TURNED_DOWN: "tone-bad" };
 export const OPEN_DECOR: DecorStatus[] = ["QUOTED", "APPROVED", "IN_PRODUCTION", "READY"];
 

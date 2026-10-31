@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { isDemo } from "@/lib/demo-mode";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { EMAIL_HELP, isValidEmail, normalizeEmail } from "@/lib/email";
@@ -28,7 +29,7 @@ function setupOk(given: unknown) {
 // Lets another repair shop create its own account. Off unless ALLOW_SIGNUP=true.
 export default async function Signup({ searchParams }: { searchParams: Promise<{ error?: string; setup?: string }> }) {
   const { error, setup } = await searchParams; // read first so the page renders per request, not at build time
-  if (process.env.ALLOW_SIGNUP !== "true" || !setupOk(setup)) notFound();
+  if (isDemo() || process.env.ALLOW_SIGNUP !== "true" || !setupOk(setup)) notFound();
   // The Windows program's first run: once the company exists, its window signs in instead (the program no longer
   // restarts the server to close sign-up, which could cut the new owner's sign-up off halfway).
   if (process.env.SETUP_TOKEN && (await db.shop.count())) redirect("/login");

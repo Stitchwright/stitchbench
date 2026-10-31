@@ -10,6 +10,7 @@ import { UserError } from "@/lib/user-error";
 import { freeWeek, hoursOf, hoursText, overlapCount, poolKey, withinHours } from "@/lib/appointments";
 import { nextMeetings, seatCounts, enrollIn } from "@/lib/classes";
 import { money, str } from "@/lib/format";
+import { rentalFeeCents } from "@/lib/longarm-math";
 import { isNotifyBy } from "@/components/notify-by-field";
 import { lockKeys } from "@/lib/lock";
 import { recordConsent } from "@/lib/messaging/consent";
@@ -171,17 +172,19 @@ export async function bookOnline(a: BookInput, now = new Date()): Promise<{ appo
   const hours = hoursOf(type.hours);
   if (!withinHours(hours, startsAt, endsAt, shop.timeZone)) throw new UserError(`${type.name} can be booked ${hoursText(hours)}. Please pick another time.`);
   const note = a.note?.trim().slice(0, 500) || null;
+  // A rental by the hour: the rate x the time booked (the type's flat fee is then ignored), in the record and the confirmation alike.
+  const feeCents = type.hourlyCents != null ? rentalFeeCents(type.hourlyCents, type.minutes) : type.feeCents;
   return db.$transaction(async (tx) => {
     const customer = await customerForOnline(tx, shop.id, a.customer);
     await lockKeys(tx, [poolKey(shop.id, type)]);
     const taken = await overlapCount(tx, { shopId: shop.id, resource: type.resource, typeId: type.id }, startsAt, endsAt);
     if (taken >= type.capacity) throw new UserError("That time was just taken. Please pick another.");
     const appt = await tx.appointment.create({
-      data: { shopId: shop.id, typeId: type.id, resource: type.resource?.trim() || null, customerId: customer.id, name: customer.name, title: type.name, startsAt, endsAt, feeCents: type.hourlyCents != null ? Math.round((type.hourlyCents * type.minutes) / 60) : type.feeCents, taxable: type.taxable, note, source: "online" },
+      data: { shopId: shop.id, typeId: type.id, resource: type.resource?.trim() || null, customerId: customer.id, name: customer.name, title: type.name, startsAt, endsAt, feeCents, taxable: type.taxable, note, source: "online" },
       select: { id: true },
     });
     const token = await makeLink(tx, { shopId: shop.id, appointmentId: appt.id, customerId: customer.id, until: endsAt });
-    await confirm(tx, { shopId: shop.id, customerId: customer.id, kind: "appointment", refId: appt.id, what: type.name, when: fmtWhen(startsAt, shop.timeZone), location: type.location, feeCents: type.feeCents, notAfter: endsAt, token, shop });
+    await confirm(tx, { shopId: shop.id, customerId: customer.id, kind: "appointment", refId: appt.id, what: type.name, when: fmtWhen(startsAt, shop.timeZone), location: type.location, feeCents, notAfter: endsAt, token, shop });
     return { appointmentId: appt.id, token };
   });
 }
