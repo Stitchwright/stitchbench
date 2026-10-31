@@ -8,7 +8,7 @@ import { GettingStartedCard, WhatsNewCard } from "@/components/ease-cards";
 import { MarketTodo } from "@/components/market-todo";
 import { MarginFloorNotice } from "@/components/margin-floor-notice";
 import { PAID_ELSEWHERE } from "@/lib/sales";
-import { monthRange, startOfToday } from "@/lib/time-zone";
+import { monthRange, startOfToday, todayIn } from "@/lib/time-zone";
 import { registerTakenCents } from "@/lib/register-day";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { PartnerTodo } from "@/components/partner-todo";
@@ -34,7 +34,8 @@ export default async function Dashboard() {
   // A sewing shop without a repair bench starts at the register, before any of the bench's queries run.
   if (!shop.doesRepair) redirect("/register");
   const tz = await shopTimeZone(shopId);
-  const today = monthRange(null, null, tz); // the shop's own day, [start, end)
+  const day = todayIn(tz);
+  const today = monthRange(day, day, tz); // the shop's own day, [start, end)
   const low = { shopId, qtyOnHand: { lte: db.part.fields.reorderAt } };
   const [open, lowStock, lowCount, todayPay, todaySales, kinds] = await Promise.all([
     // Bench tickets only: central vac installs aren't in custody, on the status tiles or in the storage-fee list.
