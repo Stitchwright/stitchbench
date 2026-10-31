@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { writeNotices } from "../third-party-notices.mjs";
 
-const here = path.dirname(new URL(import.meta.url).pathname);
+const here = import.meta.dirname;
 
 function pkg(dir, meta, files = {}) {
   fs.mkdirSync(dir, { recursive: true });
