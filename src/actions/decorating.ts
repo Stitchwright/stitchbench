@@ -9,6 +9,8 @@ import { requireUser } from "@/lib/session";
 import { str } from "@/lib/format";
 import { UserError } from "@/lib/user-error";
 import { takeInboxItemFor } from "@/lib/decor-inbox";
+import { handOverOnlineOrderFor } from "@/lib/shop-orders/handover";
+import { sendOnlineProofFor } from "@/lib/shop-orders/proofs";
 import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, removeLineFor, removeMockupFor, removePlacementFor, requoteFor, saveDecorPricesFor, saveOrderFor, sendProofFor, setMockupFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 
 const refresh = (id?: string) => {
@@ -127,6 +129,23 @@ export const removeDecorMockup = safe(async function removeDecorMockup(id: strin
 export const sendDecorProof = safe(async function sendDecorProof(id: string, formData: FormData) {
   const user = await requireUser();
   const text = await sendProofFor(user, id, { email: formData.get("email") === "on", sms: formData.get("sms") === "on", note: str(formData.get("note")) });
+  refresh(id);
+  return noted(text);
+});
+
+/** An order paid on MakerFoundry goes to the customer (collected, or shipped with an optional tracking number); MakerFoundry is told. */
+export const handOverDecorOrder = safe(async function handOverDecorOrder(id: string, formData: FormData) {
+  const user = await requireUser();
+  const text = await handOverOnlineOrderFor(user, id, str(formData.get("tracking")));
+  refresh(id);
+  revalidatePath("/register/sales");
+  return noted(text);
+});
+
+/** The mock-up goes to a MakerFoundry customer as a proof (through the hub), with a note. */
+export const sendDecorOnlineProof = safe(async function sendDecorOnlineProof(id: string, formData: FormData) {
+  const user = await requireUser();
+  const text = await sendOnlineProofFor(user, id, str(formData.get("note")));
   refresh(id);
   return noted(text);
 });

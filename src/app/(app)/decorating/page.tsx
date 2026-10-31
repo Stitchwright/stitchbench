@@ -6,7 +6,7 @@ import { fmtDate, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { decorPrices, ordersFor, type OrderRow } from "@/lib/decor";
 import { inboxFor } from "@/lib/decor-inbox";
-import { DECOR_TONE, breaksText, decorStatusLabel, screenRowsText, tiersText } from "@/lib/decor-math";
+import { DECOR_TONE, breaksText, decorOrderLabel, screenRowsText, tiersText } from "@/lib/decor-math";
 import { saveDecorPrices, startDecorOrder } from "@/actions/decorating";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CustomerPicker } from "@/components/customer-picker";
@@ -26,11 +26,12 @@ function Rows({ rows, tz }: { rows: OrderRow[]; tz: string }) {
             <span className="muted text-sm">
               · {o.name} · {o.pieces} {o.pieces === 1 ? "piece" : "pieces"}
             </span>
+            {o.online && <span className="pill tone-work ml-2">MakerFoundry</span>}
           </span>
           <span className="flex flex-wrap items-center gap-2 text-base">
             <span className="num">{money(o.quoteCents)}</span>
             {o.dueAt && <span className={o.overdue ? "pill tone-bad" : "muted text-sm"}>{o.overdue ? "late: " : "by "}{fmtDate(o.dueAt, tz)}</span>}
-            <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorStatusLabel(o.status)}</span>
+            <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorOrderLabel(o.status, o.ship ? "SHIP" : null)}</span>
           </span>
         </li>
       ))}
@@ -52,9 +53,16 @@ export default async function DecoratingPage({ searchParams }: { searchParams: P
       what="Decorating orders"
       sub="Embroidery and screen print orders from quote to pickup: the garments, the design on each, a price from your own tables, collected and paid at the register."
       actions={
-        <Link href="/decorating/production" className="btn">
-          Production list
-        </Link>
+        <>
+          {s.admin && (
+            <Link href="/decorating/online" className="btn">
+              Online orders
+            </Link>
+          )}
+          <Link href="/decorating/production" className="btn">
+            Production list
+          </Link>
+        </>
       }
       {...s}
     >

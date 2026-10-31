@@ -25,3 +25,6 @@ Everything else works, so visitors can sell, book a class, create a ticket and s
 ## Still to build
 
 The nightly reset (#62), the quilt shop and the embroidery and print shop seeds (#63, #64), the one-click entry for each shop type (#65), the repair shop demo (#38) and the landing page buttons (the StitchFoundry chat, `stitchsite`).
+
+## Simulated customer orders (MakerFoundry)
+Decorating › Online orders has "Simulate an order for pickup / to be shipped" in a demo only. It makes the order a customer would place from the shop's own garments and prices and takes it in through the same code a real order goes through; the order's page then lets the visitor pretend to be the customer (approve the proof, ask for changes, cancel) and carry on to production and hand-over. No hub, no MakerFoundry and no network are involved. See `docs/plans/makerfoundry-orders-plan.md`.

@@ -7,9 +7,12 @@ import { requireUser } from "@/lib/session";
 import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { gateFor } from "@/lib/module-gate";
+import { isDemo } from "@/lib/demo-mode";
+import { simulateOnlineCustomer } from "@/actions/online-orders";
+import { onlineNotices } from "@/lib/shop-orders/proofs";
 import { orderView } from "@/lib/decor";
-import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
-import { addDecorLine, collectDecorOrder, removeDecorLine, removeDecorMockup, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, sendDecorProof, setDecorMockup, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
+import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorOrderLabel, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
+import { addDecorLine, collectDecorOrder, handOverDecorOrder, removeDecorLine, removeDecorMockup, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, sendDecorOnlineProof, sendDecorProof, setDecorMockup, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
@@ -19,12 +22,16 @@ import { ymdOf } from "@/lib/zoned";
 const NEXT: Record<string, string> = { QUOTED: "APPROVED", APPROVED: "IN_PRODUCTION", IN_PRODUCTION: "READY" };
 const NEXT_WORD: Record<string, string> = { APPROVED: "The customer approved it", IN_PRODUCTION: "Start production", READY: "It is ready" };
 
+/** A shipping address as lines of text. */
+const addressLines = (a: Record<string, string>) => [a.name, a.line1, a.line2, [a.city, a.region, a.postcode ?? a.postal].filter(Boolean).join(" "), a.country].filter(Boolean).join("\n");
+
 export default async function DecorOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
   const shopId = user.shopId;
   const [s, o, tz, marketing] = await Promise.all([decorPageState(user, true), orderView(shopId, id), shopTimeZone(shopId), gateFor(shopId, "marketing")]);
   if (!o) notFound();
+  const notices = o.source === "MAKERFOUNDRY" && o.onlineRef ? await onlineNotices(shopId, o.onlineRef) : null;
   const write = s.gate === "write";
   const moves = DECOR_MOVES[o.status] ?? [];
   const next = NEXT[o.status];
@@ -36,7 +43,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
       what="This order"
       sub={
         <>
-          <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorStatusLabel(o.status)}</span> for{" "}
+          <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorOrderLabel(o.status, o.fulfilment)}</span> for{" "}
           {o.customerId ? (
             <Link href={`/customers/${o.customerId}`} className="link">
               {o.name}
@@ -75,7 +82,53 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
             ))}
         </div>
       )}
-      {o.status === "READY" && write && (
+      {o.source === "MAKERFOUNDRY" && (
+        <Section title="Ordered on MakerFoundry">
+          {o.onlineFlag && <p className="card card-pad mb-2 whitespace-pre-line text-base">{o.onlineFlag}</p>}
+          {notices?.proofLost && <p className="card card-pad mb-2 text-base">The last proof never reached the customer (StitchHub gave up delivering it). Send it again below.</p>}
+          {notices && notices.refused.length > 0 && <p className="mb-2 text-base">StitchHub refused {notices.refused.length === 1 ? "a message" : `${notices.refused.length} messages`} about this order and will not send {notices.refused.length === 1 ? "it" : "them"} again: {notices.refused.map((r) => `${r.type}${r.error ? ` (${r.error})` : ""}`).join("; ")}</p>}
+          {o.fileError && <p className="mb-2 text-base">Some of the customer&apos;s files haven&apos;t arrived yet; trying again. ({o.fileError})</p>}
+          <ul className="space-y-1 text-base">
+            <li>
+              The customer paid <span className="num">{money(o.paidCents ?? 0)}</span> on MakerFoundry: goods and set-up {money(o.quoteCents)}, shipping {money(o.shippingPaidCents ?? 0)}, and {money(o.taxPaidCents ?? 0)} sales tax (collected by MakerFoundry, who pays it over: it is not yours and you add none).
+            </li>
+            <li>
+              MakerFoundry keeps {money(o.feeCents ?? 0)} (10% of the price before tax); the card fee is {money(o.cardFeeCents ?? 0)}. <span className="font-semibold">Your share: {money(o.shopGetsCents ?? 0)}</span> (what was paid, less the sales tax and both fees), paid to you by MakerFoundry.
+            </li>
+            <li>{o.fulfilment === "SHIP" ? "To be shipped to:" : "Pickup at the shop."}</li>
+          </ul>
+          {o.fulfilment === "SHIP" && o.shipTo && typeof o.shipTo === "object" && (
+            <address className="mt-1 whitespace-pre-line text-base not-italic">
+              {addressLines(o.shipTo as Record<string, string>)}
+            </address>
+          )}
+          <p className="muted mt-2 text-sm">The customer&apos;s email and phone are never sent to you; you reach them through the order&apos;s messages on MakerFoundry.</p>
+        </Section>
+      )}
+      {o.status === "READY" && write && o.source === "MAKERFOUNDRY" && (
+        <div className="card card-pad space-y-2">
+          <h2 className="text-base font-semibold">{o.fulfilment === "SHIP" ? "Ship it" : "Customer picks it up"}</h2>
+          <p className="muted text-sm">Already paid on MakerFoundry: nothing to take at the register. It is booked as a sale paid online, and MakerFoundry tells the customer.</p>
+          <ActionForm action={handOverDecorOrder.bind(null, o.id)} className="flex flex-wrap items-end gap-2">
+            {o.fulfilment === "SHIP" && (
+              <div className="field">
+                <label className="label" htmlFor="ho-track">
+                  Tracking number (the customer is told it)
+                </label>
+                <input id="ho-track" name="tracking" className="input" maxLength={80} />
+              </div>
+            )}
+            <Submit className="btn btn-primary">{o.fulfilment === "SHIP" ? "Mark shipped" : "Handed over"}</Submit>
+          </ActionForm>
+        </div>
+      )}
+      {o.status === "COLLECTED" && o.fulfilment === "SHIP" && o.shippedAt && (
+        <p className="text-base">
+          Shipped {fmtDateTime(o.shippedAt, tz)}
+          {o.tracking ? `, tracking ${o.tracking}` : ""}. The customer&apos;s address is cleared 30 days after it ships.
+        </p>
+      )}
+      {o.status === "READY" && write && !o.source && (
         <div className="card card-pad space-y-2">
           <h2 className="text-base font-semibold">Picked up: take the payment</h2>
           <ActionForm action={collectDecorOrder.bind(null, o.id)} className="flex flex-wrap items-center gap-2">
@@ -220,19 +273,21 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
         )}
       </Section>
 
-      <Section title="The price">
+      <Section title={o.source ? "The price (as paid)" : "The price"}>
         <ul className="space-y-1 text-base">
-          <li>
-            Garments: {money(o.garmentCents)}
-          </li>
-          <li>Decoration: {money(decorationCents)}</li>
+          {!o.source && (
+            <li>
+              Garments: {money(o.garmentCents)}
+            </li>
+          )}
+          {!o.source && <li>Decoration: {money(decorationCents)}</li>}
           {o.digitizingCents > 0 && <li>Digitizing: {money(o.digitizingCents)}</li>}
           {o.screenCents > 0 && <li>Screens: {money(o.screenCents)}</li>}
           {o.setupCents > 0 && <li>Set-up: {money(o.setupCents)}</li>}
-          <li className="text-xl font-semibold">Total {money(o.quoteCents)} before tax</li>
+          <li className="text-xl font-semibold">{o.source ? `Goods and set-up ${money(o.quoteCents)}, paid` : `Total ${money(o.quoteCents)} before tax`}</li>
           {o.runMinutesTotal > 0 && <li className="muted text-sm">About {formatMinutes(o.runMinutesTotal)} on the machines for the whole order, at your set speeds.</li>}
         </ul>
-        {editable && s.admin && (
+        {editable && s.admin && !o.source && (
           <div className="mt-2">
             <ActionButton action={requoteDecorOrder.bind(null, o.id)} className="btn btn-sm">
               Work the price out again from today&apos;s table
@@ -264,13 +319,58 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
             )}
           </ActionForm>
         )}
+        {o.source === "MAKERFOUNDRY" && (
+          <div className="mt-2 space-y-2 text-base">
+            {o.proofNo > 0 ? (
+              <p>
+                Proof {o.proofNo} sent {o.proofSentAt ? fmtDateTime(o.proofSentAt, tz) : ""}:{" "}
+                {o.proofAnswer === "approved" ? "the customer approved it" : o.proofAnswer === "changes" ? "the customer asked for changes" : "waiting for the customer's answer"}
+                {o.proofNote ? `: ${o.proofNote}` : ""}.
+              </p>
+            ) : (
+              <p className="muted text-sm">No proof sent yet. The customer sees the mock-up picture on MakerFoundry and approves it or asks for changes; you never see their email or phone.</p>
+            )}
+            {write && o.status === "QUOTED" && o.hasMockup && (
+              <ActionForm action={sendDecorOnlineProof.bind(null, o.id)} className="flex flex-wrap items-end gap-3">
+                <div className="field min-w-64 flex-1">
+                  <label className="label" htmlFor="op-note">
+                    Note with the proof
+                  </label>
+                  <input id="op-note" name="note" className="input" maxLength={500} />
+                </div>
+                <Submit className="btn btn-primary">{o.proofNo > 0 ? `Send proof ${o.proofNo + 1}` : "Send the proof"}</Submit>
+              </ActionForm>
+            )}
+            {write && o.status === "QUOTED" && !o.hasMockup && <p className="muted text-sm">Add a mock-up picture above, then send it as the proof.</p>}
+            {isDemo() && write && ["QUOTED", "APPROVED"].includes(o.status) && (
+              <div className="card card-pad space-y-2">
+                <p className="muted text-sm">Demo: pretend to be the customer.</p>
+                <div className="flex flex-wrap gap-2">
+                  {o.status === "QUOTED" && o.proofNo > 0 && o.proofAnswer === null && (
+                    <>
+                      <ActionButton action={simulateOnlineCustomer.bind(null, o.id, "approved")} className="btn" success="Done">
+                        The customer approves the proof
+                      </ActionButton>
+                      <ActionButton action={simulateOnlineCustomer.bind(null, o.id, "changes")} className="btn" success="Done">
+                        The customer asks for changes
+                      </ActionButton>
+                    </>
+                  )}
+                  <ActionButton action={simulateOnlineCustomer.bind(null, o.id, "cancel")} className="btn" confirm="Tap again: the customer cancels">
+                    The customer cancels
+                  </ActionButton>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {o.link && (
           <p className="mt-2 text-sm">
             Quote sent by link:{" "}
             {o.link.answer ? `${o.link.answer === "APPROVED" ? "approved" : "declined"} ${o.link.answeredAt ? fmtDateTime(o.link.answeredAt, tz) : ""}${o.link.answerNote ? `: ${o.link.answerNote}` : ""}` : o.link.revokedAt ? "stopped (the order changed, or it was replaced): send it again" : `waiting for an answer (until ${fmtDate(o.link.expiresAt, tz)})`}
           </p>
         )}
-        {write && o.status === "QUOTED" && marketing === "on" && o.customerId && (
+        {write && o.status === "QUOTED" && marketing === "on" && o.customerId && !o.source && (
           <details className="mt-2">
             <summary className="link cursor-pointer text-sm">Send the quote and proof for them to approve</summary>
             <ActionForm action={sendDecorProof.bind(null, o.id)} className="mt-2 flex flex-wrap items-end gap-3">
@@ -290,7 +390,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
             </ActionForm>
           </details>
         )}
-        {write && o.status === "QUOTED" && marketing !== "on" && <p className="muted mt-2 text-sm">To send this by text or email, turn on Messages (Marketing). Until then, tell the customer the price and mark the order approved.</p>}
+        {write && o.status === "QUOTED" && marketing !== "on" && !o.source && <p className="muted mt-2 text-sm">To send this by text or email, turn on Messages (Marketing). Until then, tell the customer the price and mark the order approved.</p>}
       </Section>
 
       {o.note && (
