@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# Python's compiled files (scripts/library, scripts/hub)
+__pycache__/
 
 # license signing keys: the private halves stay out of the repo (scripts/license/keygen.ts refuses an --out inside it);
 # the development key is committed on purpose (modules-design.md section 3.3)
