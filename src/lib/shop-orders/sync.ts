@@ -77,7 +77,9 @@ export async function pollShop(shopId: string): Promise<number> {
       if (BigInt(next) > BigInt(row.cursor)) await tx.shopOrdersSync.update({ where: { shopId }, data: { cursor: next } });
     });
     await ackStored(shopId);
-    if (raw.length < PAGE) break;
+    // The real hub hands out a conversation one message at a time (the next waits for the one before it), so a page that was not full can still
+    // be followed by more: ask again until it has nothing left (the round is bounded by MAX_PAGES).
+    if (raw.length === 0) break;
   }
   return fresh;
 }
