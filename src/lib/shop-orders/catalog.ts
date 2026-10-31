@@ -1,12 +1,25 @@
 // The catalogue a shop publishes to MakerFoundry (docs/plans/makerfoundry-orders-plan.md 3.4 and 3.5), built from the shop's online
 // products (a blank garment and its price) and its decoration offers (a flat price per piece by quantity, plus a set-up fee).
 // Pure. A customer is charged only prices from a catalogue the shop published, so the figures here are exactly what is sent:
-// the price of a piece in the catalogue is the blank plus the decoration, at each quantity break, all in cents.
+// a piece costs the garment's own price (`cents`) plus the decoration at its quantity break (`price_breaks`), as MakerFoundry's contract says; shipping
+// is by the piece; the pick-up address is where customers collect (sales tax on a pick-up order is worked out from it). Sales tax itself is MakerFoundry's.
 import { parseBody, METHODS, type CatalogBody, type Method } from "@/lib/shop-orders/contract";
 
 export type ProductIn = { sku: string; name: string; kind: string; colours: string; sizes: string; blankCents: number };
 export type OfferIn = { method: string; placement: string; breaks: { min: number; cents: number }[]; setupCents: number };
-export type CatalogIn = { shopName: string; ships: boolean; shippingCents: number; products: ProductIn[]; offers: OfferIn[] };
+export type PickupAddress = { line1: string; line2?: string; city: string; region?: string; postcode: string; country: string };
+export type CatalogIn = {
+  shopName: string;
+  ships: boolean;
+  /** Shipping: the price for one piece, then so much for each piece after the first, free when goods and set-up reach freeOverCents (0 = never). */
+  shippingCents: number;
+  perExtraPieceCents?: number;
+  freeOverCents?: number;
+  pickup?: boolean;
+  pickupAddress?: PickupAddress | null;
+  products: ProductIn[];
+  offers: OfferIn[];
+};
 
 export const METHOD_WORDS: Record<Method, string> = { embroidery: "Embroidery", screen_print: "Screen print" };
 export const isMethod = (v: unknown): v is Method => typeof v === "string" && (METHODS as readonly string[]).includes(v);
@@ -69,18 +82,29 @@ export function buildCatalog(c: CatalogIn): { ok: true; body: CatalogBody } | { 
       kind: p.kind,
       colours: splitList(p.colours, 50),
       sizes: splitList(p.sizes, 20),
+      // The garment's own price per piece; each method's price breaks are the decoration alone (the customer pays both).
+      cents: p.blankCents,
       methods: [...groups.values()].slice(0, 6).map((g) => ({
         method: g.method,
         placements: g.placements,
-        // The customer pays one price for a finished piece: the blank plus the decoration, at each quantity.
-        price_breaks: g.breaks.map((b) => ({ min: b.min, cents: p.blankCents + b.cents })),
+        price_breaks: g.breaks,
         setup_cents: g.setupCents,
       })),
     }))
     .filter((p) => p.colours.length > 0 && p.sizes.length > 0)
     .slice(0, 200);
   if (!products.length) return { ok: false, why: "Add at least one garment, with its colours and sizes, first." };
-  const body = { shop: { name: c.shopName, ships: c.ships, pickup: true }, products, shipping: { flat_cents: c.ships ? c.shippingCents : 0 }, currency: "usd" as const };
+  const pickup = c.pickup ?? true;
+  if (!c.ships && !pickup) return { ok: false, why: "Turn on shipping or pick-up, so customers have a way to get their order." };
+  const a = c.pickupAddress;
+  const shipping = c.ships ? { flat_cents: c.shippingCents, per_extra_piece_cents: c.perExtraPieceCents ?? 0, free_over_cents: c.freeOverCents ?? 0 } : { flat_cents: 0 };
+  // Without a pick-up address MakerFoundry offers only shipping while it collects sales tax: say pick-up only when it can be used.
+  const body = {
+    shop: { name: c.shopName, ships: c.ships, pickup, ...(pickup && a ? { address: { line1: a.line1, ...(a.line2 ? { line2: a.line2 } : {}), city: a.city, ...(a.region ? { region: a.region } : {}), postcode: a.postcode, country: a.country } } : {}) },
+    products,
+    shipping,
+    currency: "usd" as const,
+  };
   const parsed = parseBody("catalog", 1, body, "shop");
   if (!parsed.ok) return { ok: false, why: parsed.error };
   return { ok: true, body: parsed.body as CatalogBody };

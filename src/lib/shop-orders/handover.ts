@@ -46,7 +46,7 @@ export async function handOverOnlineOrderFor(user: CurrentUser, id: string, trac
       ].filter((l) => l.unitPriceCents > 0);
       const sale = await completeSaleAs(
         user,
-        { customerId: null, lines, tenders: [], note: `MakerFoundry order #${o.number}, paid online (${o.onlineRef})`, clientKey: `mf-${o.id}`, taxCents: 0 },
+        { customerId: null, lines, tenders: [], note: `MakerFoundry order #${o.number}, paid online (${o.onlineRef}). Marketplace sale: sales tax${o.taxPaidCents ? ` of $${(o.taxPaidCents / 100).toFixed(2)}` : ""} was collected and paid over by MakerFoundry, not by the shop.`, clientKey: `mf-${o.id}`, taxCents: 0 },
         { paidOnline: true, internal: true, tenderExact: { method: "ONLINE", amountCents: 0, note: `MakerFoundry order #${o.number}` } },
       );
       saleId = sale.saleId;

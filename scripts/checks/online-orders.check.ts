@@ -1,7 +1,7 @@
 import "dotenv/config";
 // Taking orders from MakerFoundry (docs/plans/makerfoundry-orders-plan.md package 2; src/lib/shop-orders/online.ts): the opt-in
 // (refused until there is something to sell and a hub; the hub told), the catalogue built from the garments and decoration prices and
-// published (all-in prices, pickup only until the shop ships), every edit publishing the new one in place of any not yet sent, who may
+// published (the garment's own price and the decoration's, pickup only until the shop ships, the pick-up address, shipping by the piece), every edit publishing the new one in place of any not yet sent, who may
 // change it, and one company never touching another's list. The hub is a stand-in (scripts/checks/orders-hub.ts).
 //   npm run check scripts/checks/online-orders.check.ts
 import assert from "node:assert/strict";
@@ -28,7 +28,8 @@ const refused = async (what: string, fn: () => Promise<unknown>, re: RegExp) => 
 };
 const tee = { sku: "TEE-01", name: "Heavy cotton tee", colours: "Black, Navy", sizes: "S, M, L, XL", blank: "9.00" };
 const chest = { method: "embroidery", placement: "Left chest", breaks: "1: 12.00\n12: 10.00", setup: "25", maxStitches: "8000" };
-type Catalog = { products: { sku: string; methods: { placements: string[]; price_breaks: { min: number; cents: number }[]; setup_cents: number }[] }[]; shop: { ships: boolean; pickup: boolean }; shipping: { flat_cents: number } };
+type Catalog = { products: { sku: string; methods: { placements: string[]; price_breaks: { min: number; cents: number }[]; setup_cents: number }[] }[]; shop: { ships: boolean; pickup: boolean; address?: Record<string, string> }; shipping: { flat_cents: number; per_extra_piece_cents?: number; free_over_cents?: number } };
+const ADDRESS = { pickup: "on", pa_line1: "210 Main Street", pa_city: "Elmwood", pa_region: "OH", pa_postcode: "44001", pa_country: "US" };
 const catalogs = (hub: Awaited<ReturnType<typeof startOrdersHub>>) => (hub.posted as { type: string; body: Catalog }[]).filter((p) => p.type === "catalog");
 
 async function main() {
@@ -52,6 +53,10 @@ async function main() {
     await saveProductFor(A.user, form(tee));
     await saveOfferFor(A.user, form(chest));
     assert.equal(catalogs(hub).length, 0, "nothing is published while the shop is not taking orders");
+    // Pick-up is on until it is switched off, and then the pick-up address is needed: sales tax on a pick-up order is worked out from it.
+    await refused("pick-up without an address", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /pick-up address/);
+    await refused("a pick-up address needs a zip", () => saveShippingFor(A.user, form({ ...ADDRESS, pa_postcode: "" })), /address \(street, town and zip\)/);
+    await saveShippingFor(A.user, form(ADDRESS));
     await refused("a bad maximum", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "0" })), /whole number/);
     hub.knobs.optinStatuses.push({ status: 404, error: "unknown service" });
     await refused("a hub that has no MakerFoundry", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /doesn't take MakerFoundry orders/);
@@ -66,7 +71,9 @@ async function main() {
     assert.ok(first, "the catalogue was posted");
     assert.ok(parseBody("catalog", 1, first.body, "shop").ok, "and it passes the contract");
     const m = first.body.products[0].methods[0];
-    assert.deepEqual(m.price_breaks, [{ min: 1, cents: 2100 }, { min: 12, cents: 1900 }], "all-in: the garment plus the decoration");
+    assert.deepEqual(m.price_breaks, [{ min: 1, cents: 1200 }, { min: 12, cents: 1000 }], "the decoration alone");
+    assert.equal((first.body.products[0] as unknown as { cents: number }).cents, 900, "and the garment's own price beside it");
+    assert.deepEqual(first.body.shop.address, { line1: "210 Main Street", city: "Elmwood", region: "OH", postcode: "44001", country: "US" }, "the pick-up address goes with pick-up");
     assert.equal(m.setup_cents, 2500);
     assert.deepEqual(m.placements, ["Left chest"]);
     assert.equal(first.body.shop.ships, false);
@@ -74,7 +81,7 @@ async function main() {
     assert.equal(first.body.shipping.flat_cents, 0);
     const row = await db.shopOrdersSync.findUniqueOrThrow({ where: { shopId: A.shopId } });
     assert.ok(row.optedIn && row.maxOpen === 50 && row.catalogPublishedAt);
-    ok("opting in tells the hub and publishes an all-in catalogue, pickup only");
+    ok("opting in tells the hub and publishes the catalogue (the garment and the decoration priced apart), with the pick-up address");
 
     // ----- an edit publishes the new one in place of any not yet sent -----
     hub.knobs.offline = true;
@@ -91,15 +98,22 @@ async function main() {
     assert.ok(catalogs(hub).length >= 2);
     ok("an edit publishes the new catalogue and replaces one still waiting to be sent (e.g. while the hub was out of reach)");
 
-    // ----- shipping is pickup until the shop says -----
-    await saveShippingFor(A.user, form({ ships: "on", shipping: "8.99" }));
+    // ----- shipping by the piece, and pick-up with its address -----
+    await saveShippingFor(A.user, form({ ...ADDRESS, ships: "on", shipping: "8.99", perExtra: "0.50", freeOver: "300" }));
     const shipped = catalogs(hub).at(-1);
-    assert.ok(shipped?.body.shop.ships && shipped.body.shipping.flat_cents === 899);
-    await saveShippingFor(A.user, form({ shipping: "8.99" }));
+    assert.ok(shipped?.body.shop.ships);
+    assert.deepEqual(shipped.body.shipping, { flat_cents: 899, per_extra_piece_cents: 50, free_over_cents: 30000 }, "one piece, each extra piece, free over an amount");
+    await saveShippingFor(A.user, form({ ...ADDRESS, shipping: "8.99", perExtra: "0.50", freeOver: "300" }));
     const picked = catalogs(hub).at(-1);
-    assert.ok(!picked?.body.shop.ships && picked?.body.shipping.flat_cents === 0, "unticked: pickup only, no shipping price");
-    await refused("bad shipping", () => saveShippingFor(A.user, form({ ships: "on", shipping: "abc" })), /dollars/);
-    ok("shipping is off, and priced at nothing, until the shop turns it on");
+    assert.ok(!picked?.body.shop.ships && picked?.body.shipping.flat_cents === 0 && picked.body.shipping.per_extra_piece_cents === undefined, "unticked: pick-up only, no shipping prices");
+    await saveShippingFor(A.user, form({ ships: "on", shipping: "8.99", perExtra: "0", freeOver: "0" }));
+    const noPickup = catalogs(hub).at(-1);
+    assert.ok(noPickup?.body.shop.ships && !noPickup.body.shop.pickup && noPickup.body.shop.address === undefined, "no pick-up, no address published");
+    await refused("neither", () => saveShippingFor(A.user, form({})), /shipping or pick-up/);
+    await refused("bad shipping", () => saveShippingFor(A.user, form({ ...ADDRESS, ships: "on", shipping: "abc" })), /dollars/);
+    await refused("bad extra shipping", () => saveShippingFor(A.user, form({ ...ADDRESS, ships: "on", shipping: "8", perExtra: "-1" })), /dollars/);
+    await saveShippingFor(A.user, form(ADDRESS));
+    ok("shipping is by the piece (one piece, each extra, free over an amount), pick-up publishes its address, and neither is refused");
 
     // ----- bad input -----
     await refused("a bad code", () => saveProductFor(A.user, form({ ...tee, sku: "-x" })), /Code/);

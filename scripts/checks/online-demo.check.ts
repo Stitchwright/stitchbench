@@ -12,7 +12,7 @@ import { sendOnlineProofFor } from "@/lib/shop-orders/proofs";
 import { expectNotFound, makeCompany, removeCompany } from "./tenant";
 import { imageType } from "@/lib/decor";
 import { readEmbroidery } from "@/lib/embroidery-file";
-import { saveOfferFor, saveProductFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
+import { saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
 
 let steps = 0;
 const ok = (what: string) => {
@@ -62,7 +62,9 @@ async function main() {
     assert.equal(o.lines[0].description, "Pique polo");
     assert.equal(o.lines[0].qty, 6);
     assert.equal(o.quoteCents, (1400 + 900) * 6 + 2000, "the shop's own prices: garment plus decoration at the 4-piece break for 6 pieces, plus set-up");
-    assert.equal(o.paidCents, o.quoteCents);
+    assert.ok((o.taxPaidCents ?? 0) > 0, "the simulated order carries sales tax, collected by MakerFoundry");
+    assert.equal(o.paidCents, o.quoteCents + (o.shippingPaidCents ?? 0) + (o.taxPaidCents ?? 0));
+    assert.equal(o.shopGetsCents, o.paidCents! - o.taxPaidCents! - o.feeCents! - o.cardFeeCents!, "the shop's share leaves the tax out");
     assert.equal(o.customerId, null);
     assert.equal(o.fulfilment, "PICKUP");
     assert.ok(o.placements[0].fileData && o.placements[0].fileReadable && o.placements[0].stitches === 1500, "the design was checked and read like a real one");
@@ -117,6 +119,8 @@ async function main() {
     ok("the customer can cancel; the address goes");
 
     // ----- the opt-in in a demo needs no hub -----
+    await assert.rejects(() => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "20" })), /pick-up address/, "even in a demo, pick-up asks for its address");
+    await saveShippingFor(A.user, form({ pickup: "on", pa_line1: "1 Demo Lane", pa_city: "Springfield", pa_postcode: "00000", pa_country: "US" }));
     const on = await setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "20" }));
     assert.match(on, /You take orders from MakerFoundry/, "the opt-in works without a hub");
     assert.equal((await db.shopOrdersSync.findUniqueOrThrow({ where: { shopId: A.shopId } })).optedIn, true);

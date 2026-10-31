@@ -16,7 +16,7 @@ import pg from "pg";
 import { db } from "@/lib/db";
 import { setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 import { handOverOnlineOrderFor } from "@/lib/shop-orders/handover";
-import { saveOfferFor, saveProductFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
+import { saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
 import { sendOnlineProofFor } from "@/lib/shop-orders/proofs";
 import { syncShop } from "@/lib/shop-orders/sync";
 import { makeCompany, removeCompany } from "./tenant";
@@ -176,6 +176,7 @@ async function main() {
     // ----- the shop opts in on the real hub and its catalogue arrives -----
     await saveProductFor(A.user, form({ sku: "REAL-TEE", name: "Real tee", colours: "Navy, White", sizes: "M, L", blank: "9.00" }));
     await saveOfferFor(A.user, form({ method: "embroidery", placement: "Left chest", breaks: "1: 12.00\n12: 10.00", setup: "25", maxStitches: "5000" }));
+    await saveShippingFor(A.user, form({ pickup: "on", ships: "on", shipping: "8.99", perExtra: "0.50", freeOver: "300", pa_line1: "210 Main Street", pa_city: "Elmwood", pa_region: "OH", pa_postcode: "44001", pa_country: "US" }));
     const said = await setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "5" }));
     assert.match(said, /You take orders from MakerFoundry/);
     let shops: { id: string; name: string; ready: boolean }[] = [];
@@ -193,8 +194,10 @@ async function main() {
       if (!cat) await sleep(250);
     }
     assert.ok(cat, "the service received the catalogue through the real hub");
-    assert.deepEqual(cat.body.products[0].methods[0].price_breaks, [{ min: 1, cents: 2100 }, { min: 12, cents: 1900 }]);
-    assert.equal(cat.body.shop.ships, false);
+    assert.equal(cat.body.products[0].cents, 900, "the garment's own price comes through the real hub");
+    assert.deepEqual(cat.body.products[0].methods[0].price_breaks, [{ min: 1, cents: 1200 }, { min: 12, cents: 1000 }], "and the decoration's, apart");
+    assert.deepEqual(cat.body.shipping, { flat_cents: 899, per_extra_piece_cents: 50, free_over_cents: 30000 }, "shipping by the piece");
+    assert.deepEqual(cat.body.shop.address, { line1: "210 Main Street", city: "Elmwood", region: "OH", postcode: "44001", country: "US" }, "and the pick-up address");
     ok("the shop opts in on the real hub, is listed, and the service receives its catalogue");
 
     // ----- B has not opted in: the real hub refuses an order for it -----
@@ -229,6 +232,26 @@ async function main() {
     await syncShop(A.shopId);
     assert.equal(await db.decorOrder.count({ where: { shopId: A.shopId, onlineRef: "mf-e2e-0001" } }), 1);
     ok("the same order sent twice is one order");
+
+    // ----- a taxed order: the sales tax is the marketplace's, outside the shop's earnings -----
+    const artT = dst(500);
+    await upload("mf-e2e-0010", artT, "art", TO);
+    const taxed = fixture("order.placed.v1.taxed.valid.json");
+    taxed.lines[0].decorations[0].art = { file: "logo.dst", size: artT.length, sha256: sha(artT) };
+    taxed.lines[0].sku = "REAL-TEE";
+    delete taxed.preview;
+    expect((await sendAs(TO, "mf-e2e-0010", "order.placed", taxed)).res, 202, "a taxed order through the real hub");
+    await syncUntil(A.shopId, async () => (await db.decorOrder.count({ where: { shopId: A.shopId, onlineRef: "mf-e2e-0010" } })) === 1, "the taxed order arrives");
+    const ot = await db.decorOrder.findFirstOrThrow({ where: { shopId: A.shopId, onlineRef: "mf-e2e-0010" } });
+    assert.equal(ot.taxPaidCents, 1603);
+    assert.equal(ot.shopGetsCents, 21131, "$259.52 paid, $16.03 tax, $24.35 and $7.83 in fees: the shop earns $211.31");
+    assert.equal((ot.shipTo as { postcode: string }).postcode, "44000");
+    const wrong = JSON.parse(JSON.stringify(taxed));
+    wrong.totals.shop_gets_cents = 25952 - 2435 - 783;
+    const refusedEarn = await sendAs(TO, "mf-e2e-0011", "order.placed", wrong);
+    assert.equal(refusedEarn.res.status, 400);
+    assert.equal(refusedEarn.res.body.code, "totals_dont_add_up");
+    ok("a taxed order comes through the real hub with the shop earning $211.31; earnings that count the tax are refused by the hub");
 
     // ----- the hub's privacy rules hold -----
     const leak = order(art);

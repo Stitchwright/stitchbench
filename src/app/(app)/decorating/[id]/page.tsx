@@ -23,7 +23,7 @@ const NEXT: Record<string, string> = { QUOTED: "APPROVED", APPROVED: "IN_PRODUCT
 const NEXT_WORD: Record<string, string> = { APPROVED: "The customer approved it", IN_PRODUCTION: "Start production", READY: "It is ready" };
 
 /** A shipping address as lines of text. */
-const addressLines = (a: Record<string, string>) => [a.name, a.line1, a.line2, [a.city, a.region, a.postal].filter(Boolean).join(" "), a.country].filter(Boolean).join("\n");
+const addressLines = (a: Record<string, string>) => [a.name, a.line1, a.line2, [a.city, a.region, a.postcode ?? a.postal].filter(Boolean).join(" "), a.country].filter(Boolean).join("\n");
 
 export default async function DecorOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -90,10 +90,10 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
           {o.fileError && <p className="mb-2 text-base">Some of the customer&apos;s files haven&apos;t arrived yet; trying again. ({o.fileError})</p>}
           <ul className="space-y-1 text-base">
             <li>
-              The customer paid <span className="num">{money(o.paidCents ?? 0)}</span> on MakerFoundry: goods and set-up {money(o.quoteCents)}, shipping {money(o.shippingPaidCents ?? 0)}, tax {money(o.taxPaidCents ?? 0)}.
+              The customer paid <span className="num">{money(o.paidCents ?? 0)}</span> on MakerFoundry: goods and set-up {money(o.quoteCents)}, shipping {money(o.shippingPaidCents ?? 0)}, and {money(o.taxPaidCents ?? 0)} sales tax (collected by MakerFoundry, who pays it over: it is not yours and you add none).
             </li>
             <li>
-              MakerFoundry keeps {money(o.feeCents ?? 0)}; the card fee is {money(o.cardFeeCents ?? 0)}. <span className="font-semibold">Your share: {money(o.shopGetsCents ?? 0)}</span>, paid to you by MakerFoundry.
+              MakerFoundry keeps {money(o.feeCents ?? 0)} (10% of the price before tax); the card fee is {money(o.cardFeeCents ?? 0)}. <span className="font-semibold">Your share: {money(o.shopGetsCents ?? 0)}</span> (what was paid, less the sales tax and both fees), paid to you by MakerFoundry.
             </li>
             <li>{o.fulfilment === "SHIP" ? "To be shipped to:" : "Pickup at the shop."}</li>
           </ul>

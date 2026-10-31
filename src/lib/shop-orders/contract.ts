@@ -101,6 +101,8 @@ export type Preview = FileRef & { type: "image/png" | "image/jpeg" };
 export type Money = number;
 export const METHODS = ["embroidery", "screen_print"] as const;
 export type Method = (typeof METHODS)[number];
+/** What a catalogue from any shop may list (MakerFoundry also prints direct to garment); this program offers and takes orders for the two above. */
+const CATALOG_METHODS = ["embroidery", "screen_print", "dtg"] as const;
 
 export type OrderPlaced = {
   fulfilment: "ship" | "pickup";
@@ -110,16 +112,18 @@ export type OrderPlaced = {
   totals: Record<(typeof TOTALS)[number], Money>;
   note?: string;
 };
-export type ShipTo = { name: string; line1: string; line2?: string; city: string; region?: string; postal: string; country: string };
+/** A shipping or pick-up address. The postcode is `postcode` (what MakerFoundry sends); `postal` is read too. */
+export type ShipTo = { name?: string; line1: string; line2?: string; city: string; region?: string; postcode?: string; postal?: string; country: string };
 export type ProofAnswer = { proof: number; answer: "approved" | "changes"; note?: string };
 export type CancelBody = { by: "shop" | "customer"; why: string };
 export type Expired = { id: string; type: string; conversation: string; to?: string; reason: "expired" | "recipient_too_old" };
 export type StatusBody = { status: "received" | "proof_sent" | "approved" | "in_production" | "ready" | "shipped" | "collected"; tracking?: string; note?: string };
 export type ProofSent = { proof: number; mockup: Preview; note?: string };
 export type CatalogBody = {
-  shop: { name: string; town?: string; ships: boolean; pickup: boolean };
-  products: { sku: string; name: string; kind: string; colours: string[]; sizes: string[]; methods: { method: Method; placements: string[]; price_breaks: { min: number; cents: Money }[]; setup_cents: Money }[] }[];
-  shipping: { flat_cents: Money };
+  shop: { name: string; town?: string; ships: boolean; pickup: boolean; account?: number; address?: ShipTo };
+  products: { sku: string; name: string; kind: string; cents?: Money; colours: string[]; sizes: string[]; methods: { method: Method; placements: string[]; price_breaks: { min: number; cents: Money }[]; setup_cents: Money }[] }[];
+  /** The price for one piece, then so much for each piece after the first; free when goods and set-up reach free_over_cents (0 = never). */
+  shipping: { flat_cents: Money; per_extra_piece_cents?: Money; free_over_cents?: Money };
   currency: "usd";
 };
 
@@ -127,21 +131,26 @@ const TOTALS = ["goods_cents", "setup_cents", "shipping_cents", "tax_cents", "pa
 const money = (x: unknown, p: string) => int(x, 0, 100_000_000, p);
 const art = (v: unknown, p: string, d: string[]) => shaped(v, p, { file: [true, (x, q) => text(x, 120, q, { re: FILE_NAME })], size: [true, (x, q) => int(x, 1, MAX_ART_BYTES, q)], sha256: [true, sha256] }, d);
 const preview = (v: unknown, p: string, d: string[]) => shaped(v, p, { size: [true, (x, q) => int(x, 1, MAX_PREVIEW_BYTES, q)], sha256: [true, sha256], type: [true, (x, q) => oneOf(x, ["image/png", "image/jpeg"] as const, q)] }, d);
-const shipTo = (v: unknown, p: string, d: string[]) =>
-  shaped(
+/** An address (customer.ship_to, or the shop's pick-up address): one of postcode / postal is needed and not empty; an empty line2 or region is kept as sent. */
+const shipTo = (v: unknown, p: string, d: string[]) => {
+  const out = shaped(
     v,
     p,
     {
-      name: [true, (x, q) => free(x, 120, q)],
+      name: [false, (x, q) => free(x, 120, q)],
       line1: [true, (x, q) => text(x, 120, q)],
-      line2: [false, (x, q) => text(x, 120, q)],
+      line2: [false, (x, q) => text(x, 120, q, { min: 0 })],
       city: [true, (x, q) => text(x, 80, q)],
-      region: [false, (x, q) => text(x, 40, q)],
-      postal: [true, (x, q) => text(x, 20, q)],
+      region: [false, (x, q) => text(x, 40, q, { min: 0 })],
+      postcode: [false, (x, q) => text(x, 20, q, { min: 0 })],
+      postal: [false, (x, q) => text(x, 20, q, { min: 0 })],
       country: [true, (x, q) => text(x, 2, q, { re: /^[A-Z]{2}$/ })],
     },
     d,
   );
+  if (!(out.postcode || out.postal)) bad("bad_field", `${p}.postcode is missing or empty.`);
+  return out;
+};
 
 const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
   catalog: (b, d) =>
@@ -149,7 +158,7 @@ const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
       b,
       "body",
       {
-        shop: [true, (x, p) => shaped(x, p, { name: [true, (y, q) => text(y, 120, q)], town: [false, (y, q) => text(y, 80, q)], ships: [true, bool], pickup: [true, bool] }, d)],
+        shop: [true, (x, p) => shaped(x, p, { name: [true, (y, q) => text(y, 120, q)], town: [false, (y, q) => text(y, 80, q)], ships: [true, bool], pickup: [true, bool], account: [false, (y, q) => int(y, 1, 2_147_483_647, q)], address: [false, (y, q) => shipTo(y, q, d)] }, d)],
         products: [
           true,
           (x, p) =>
@@ -161,6 +170,7 @@ const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
                   sku: [true, (z, r) => text(z, 60, r, { re: SKU })],
                   name: [true, (z, r) => text(z, 120, r)],
                   kind: [true, (z, r) => text(z, 30, r)],
+                  cents: [false, (z, r) => money(z, r)],
                   colours: [true, (z, r) => list(z, 50, r, (w, s) => text(w, 40, s))],
                   sizes: [true, (z, r) => list(z, 20, r, (w, s) => text(w, 10, s))],
                   methods: [
@@ -175,7 +185,7 @@ const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
                             w,
                             s,
                             {
-                              method: [true, (u, t) => oneOf(u, METHODS, t)],
+                              method: [true, (u, t) => oneOf(u, CATALOG_METHODS, t)],
                               placements: [true, (u, t) => list(u, 10, t, (a, c) => text(a, 40, c), 1)],
                               price_breaks: [true, (u, t) => list(u, 10, t, (a, c) => shaped(a, c, { min: [true, (e, f) => int(e, 1, 100_000, f)], cents: [true, money] }, d), 1)],
                               setup_cents: [true, money],
@@ -190,7 +200,7 @@ const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
               ),
             ),
         ],
-        shipping: [true, (x, p) => shaped(x, p, { flat_cents: [true, money] }, d)],
+        shipping: [true, (x, p) => shaped(x, p, { flat_cents: [true, money], per_extra_piece_cents: [false, money], free_over_cents: [false, money] }, d)],
         currency: [true, (x, p) => oneOf(x, ["usd"] as const, p)],
       },
       d,
@@ -236,6 +246,11 @@ const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
       },
       d,
     ) as unknown as OrderPlaced;
+    // The marketplace collects the sales tax: it is part of what was paid and outside the shop's share (the 10% is of the price before tax, the card
+    // fee of everything paid). Totals that don't add up are refused rather than shown as the shop's earnings.
+    const t = out.totals;
+    if (t.goods_cents + t.setup_cents + t.shipping_cents + t.tax_cents !== t.paid_cents) bad("totals_dont_add_up", "totals: goods + set-up + shipping + tax has to equal paid_cents.");
+    if (t.paid_cents - t.tax_cents - t.fee_cents - t.card_fee_cents !== t.shop_gets_cents) bad("totals_dont_add_up", "totals: shop_gets_cents has to be paid_cents - tax_cents - fee_cents - card_fee_cents.");
     if (out.fulfilment === "ship" && !out.customer.ship_to) bad("ship_to_missing", "An order to be shipped needs the shipping address (customer.ship_to).");
     if (out.fulfilment === "pickup" && out.customer.ship_to) bad("ship_to_not_allowed", "The shipping address goes only with an order that is to be shipped.");
     return out;
@@ -246,7 +261,7 @@ const BODIES: Record<string, (b: unknown, d: string[]) => unknown> = {
       "body",
       {
         status: [true, (x, p) => oneOf(x, ["received", "proof_sent", "approved", "in_production", "ready", "shipped", "collected"] as const, p)],
-        tracking: [false, (x, p) => text(x, 80, p)],
+        tracking: [false, (x, p) => text(x, 80, p, { min: 0 })],
         note: [false, (x, p) => free(x, 500, p)],
       },
       d,

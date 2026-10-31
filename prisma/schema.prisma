@@ -4717,6 +4717,12 @@ model ShopOrdersSync {
   // Shipping on orders from MakerFoundry: off until the owner decides how it is priced (docs/plans/makerfoundry-orders-plan.md, question 4)
   shipsOrders Boolean   @default(false)
   shippingCents Int     @default(0)
+  // Shipping by the piece: shippingCents is for one piece, this much more for each piece after the first, free when goods and set-up reach freeOverCents (0 = never)
+  perExtraPieceCents Int @default(0)
+  freeOverCents Int     @default(0)
+  // Pick-up at the shop: on by default, and then the pick-up address is needed (sales tax on a pick-up order is worked out from it)
+  offersPickup  Boolean @default(true)
+  pickupAddress Json?
   products   OnlineProduct[]
   offers     OnlineOffer[]
 }
