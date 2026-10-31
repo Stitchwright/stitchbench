@@ -1,7 +1,7 @@
 # Print the slow requests from a Playwright trace (test-results/**/trace.zip): method, url, status, ms, start offset.
 import glob, json, sys, zipfile
 
-root = sys.argv[1] if len(sys.argv) > 1 else "C:/Users/bwatt/stitchbench/test-results"
+root = sys.argv[1] if len(sys.argv) > 1 else "test-results"
 for z in glob.glob(root + "/**/trace.zip", recursive=True):
     print("==", z)
     with zipfile.ZipFile(z) as zf:
