@@ -17,7 +17,8 @@ export async function startOrdersHub() {
   const hellos: Record<string, unknown>[] = [];
   const optins: (Record<string, unknown> & { shop: string | null })[] = [];
   const files = new Map<string, Buffer>();
-  const knobs = { minClient: null as string | null, failAcks: 0, postStatuses: [] as { status: number; error: string; code?: string }[], optinStatuses: [] as { status: number; error: string }[], fileStatuses: [] as { status: number; error: string }[], corruptFiles: new Set<string>(), offline: false };
+  const done = new Set<string>(); // files the sender said it finished uploading (the real hub checks the size then)
+  const knobs = { minClient: null as string | null, failAcks: 0, postStatuses: [] as { status: number; error: string; code?: string }[], optinStatuses: [] as { status: number; error: string }[], fileStatuses: [] as { status: number; error: string }[], putFailures: 0, putAsks: [] as Record<string, unknown>[], corruptFiles: new Set<string>(), offline: false };
   let seq = 0;
 
   const server = http.createServer(async (req, res) => {
@@ -28,6 +29,19 @@ export async function startOrdersHub() {
     const url = new URL(req.url ?? "/", "http://x");
     if (url.pathname === "/health") return send(200, { ok: true });
     // The bucket: the short-lived address the hub hands out for a file (no hub credentials, as the real one).
+    const bucketPut = /^\/bucket-put\/([0-9a-f]{64})$/.exec(url.pathname);
+    if (bucketPut && req.method === "PUT") {
+      const chunks2: Buffer[] = [];
+      for await (const c of req) chunks2.push(c as Buffer);
+      const bytes = Buffer.concat(chunks2);
+      if (knobs.putFailures > 0) {
+        knobs.putFailures -= 1;
+        return void res.writeHead(500).end();
+      }
+      if (crypto.createHash("sha256").update(bytes).digest("hex") !== bucketPut[1]) return void res.writeHead(400).end("BadDigest");
+      files.set(bucketPut[1], bytes);
+      return void res.writeHead(200).end();
+    }
     const bucket = /^\/bucket\/([0-9a-f]{64})$/.exec(url.pathname);
     if (bucket && req.method === "GET") {
       const f = files.get(bucket[1]);
@@ -55,6 +69,16 @@ export async function startOrdersHub() {
     if (url.pathname === "/v2/hello" && req.method === "POST") {
       hellos.push({ shop, ...json });
       return send(200, { hub: "2.0.0", types: {}, limits: {}, released: 0 });
+    }
+    if (url.pathname === "/v2/files/put" && req.method === "POST") {
+      knobs.putAsks.push({ shop, ...json });
+      if (files.has(String(json?.sha256)) && done.has(String(json?.sha256))) return send(200, { ready: true });
+      return send(200, { ready: false, url: `http://127.0.0.1:${(server.address() as { port: number }).port}/bucket-put/${json.sha256}`, method: "PUT", expires_in: 900, headers: { "content-length": String(json.size) } });
+    }
+    if (url.pathname === "/v2/files/done" && req.method === "POST") {
+      if (!files.has(String(json?.sha256))) return send(409, { error: "The file is not in the storage yet.", code: "not_uploaded" });
+      done.add(String(json.sha256));
+      return send(200, { ready: true });
     }
     if (url.pathname === "/v2/files/get" && req.method === "POST") {
       const scripted = knobs.fileStatuses.shift();
@@ -89,6 +113,9 @@ export async function startOrdersHub() {
     if (url.pathname === "/v2/messages" && req.method === "POST") {
       const scripted = knobs.postStatuses.shift();
       if (scripted) return send(scripted.status, { error: scripted.error, code: scripted.code });
+      // A message may only name a file the sender finished uploading (the real hub: file_not_ready).
+      const named = (json?.type === "proof.sent" ? (json.body as { mockup?: { sha256?: string } })?.mockup?.sha256 : undefined);
+      if (named && !done.has(named)) return send(400, { error: "The file has to be uploaded and confirmed first.", code: "file_not_ready" });
       posted.push(json);
       return send(202, { queued: true });
     }

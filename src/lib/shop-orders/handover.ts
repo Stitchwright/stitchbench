@@ -20,6 +20,9 @@ export const SHIP_ADDRESS_DAYS = 30;
 /** What MakerFoundry is told for each step of an order here. */
 export const ONLINE_STATUS: Record<string, "received" | "approved" | "in_production" | "ready"> = { QUOTED: "received", APPROVED: "approved", IN_PRODUCTION: "in_production", READY: "ready" };
 
+/** What MakerFoundry is told when an order is back at "quoted": a proof is out (and not answered), or just received. */
+export const quotedWord = (o: { proofNo: number; proofAnswer: string | null }): "received" | "proof_sent" => (o.proofNo > 0 && o.proofAnswer === null ? "proof_sent" : "received");
+
 export async function handOverOnlineOrderFor(user: CurrentUser, id: string, tracking: string | null): Promise<string> {
   await requireBaseWritable(user);
   await requireModule(user, "decorating");

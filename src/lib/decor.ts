@@ -21,13 +21,13 @@ import { queueToCustomer } from "@/lib/messaging/queue";
 import { firstName } from "@/lib/messaging/templates";
 import { currentStoreId } from "@/lib/stores";
 import { enqueue } from "@/lib/shop-orders/outbox";
-import { ONLINE_STATUS } from "@/lib/shop-orders/handover";
+import { ONLINE_STATUS, quotedWord } from "@/lib/shop-orders/handover";
 import { createEstimateLink, estimateByToken, estimateContent } from "@/lib/estimate-links";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
 import { MAX_DESIGN_BYTES, formatOf, readEmbroidery } from "@/lib/embroidery-file";
 import { DECOR_MOVES, OPEN_DECOR, METHOD_LABEL, cleanPrices, decorStatusLabel, effectiveColors, isDecorMethod, orderPrice, parseBreaks, parseScreenRows, parseTiers, pieceCents, placementMinutes, runMinutes, screenPieceCents, sizesTotal, type DecorPrices, type DecorStatus } from "@/lib/decor-math";
 import type { CurrentUser } from "@/lib/session";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 
 const MAX_CENTS = 10_000_000;
 const MAX_LINES = 60;
@@ -365,8 +365,13 @@ export async function setOrderStatusFor(user: CurrentUser, id: string, to: strin
   // An order from MakerFoundry: the customer is told each step, in the same transaction as the step.
   const r = await db.$transaction(async (tx) => {
     const done = await tx.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId, status: o.status }, data: { status: to, ...stamps } });
-    const word = ONLINE_STATUS[to];
+    const word = to === "QUOTED" ? quotedWord(o) : ONLINE_STATUS[to];
     if (done.count === 1 && o.source === "MAKERFOUNDRY" && o.onlineRef && word) await enqueue(tx, user.shopId, { conversation: o.onlineRef, type: "order.status", body: { status: word } });
+    // The shop cancels an online order: the customer is told, and MakerFoundry refunds (in full before production). The address is no longer needed.
+    if (done.count === 1 && to === "CANCELLED" && o.source === "MAKERFOUNDRY" && o.onlineRef) {
+      await enqueue(tx, user.shopId, { conversation: o.onlineRef, type: "order.cancel", body: { by: "shop", why: "The shop cancelled the order." } });
+      await tx.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId }, data: { shipTo: Prisma.DbNull } });
+    }
     return done;
   });
   if (r.count !== 1) throw new UserError("The order changed while you were looking. Reload and try again.");
@@ -400,9 +405,17 @@ export async function turnDownOrderFor(user: CurrentUser, id: string, why: strin
   const reason = String(why ?? "").trim().slice(0, 300);
   if (!reason) throw new UserError("Say why, in a few words (the customer may ask).");
   if (!["QUOTED", "APPROVED"].includes(o.status)) throw new UserError(`An order that is ${decorStatusLabel(o.status).toLowerCase()} can't be turned down.`);
-  const r = await db.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId, status: o.status }, data: { status: "TURNED_DOWN", turnedDownWhy: reason, closedAt: new Date() } });
+  const r = await db.$transaction(async (tx) => {
+    const done = await tx.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId, status: o.status }, data: { status: "TURNED_DOWN", turnedDownWhy: reason, closedAt: new Date() } });
+    // An order from MakerFoundry: the customer is told why and refunded in full by MakerFoundry; the address is no longer needed.
+    if (done.count === 1 && o.source === "MAKERFOUNDRY" && o.onlineRef) {
+      await enqueue(tx, user.shopId, { conversation: o.onlineRef, type: "order.cancel", body: { by: "shop", why: reason } });
+      await tx.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId }, data: { shipTo: Prisma.DbNull } });
+    }
+    return done;
+  });
   if (r.count !== 1) throw new UserError("The order changed while you were looking. Reload and try again.");
-  return `Order #${o.number} is turned down.`;
+  return `Order #${o.number} is turned down.${o.source === "MAKERFOUNDRY" ? " MakerFoundry tells the customer and refunds them in full." : ""}`;
 }
 
 /**
