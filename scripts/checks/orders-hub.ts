@@ -15,7 +15,8 @@ export async function startOrdersHub() {
   const calls: { method: string; path: string; shop: string | null; client: string | null; auth: string | null; json?: unknown }[] = [];
   const posted: Record<string, unknown>[] = [];
   const hellos: Record<string, unknown>[] = [];
-  const knobs = { minClient: null as string | null, failAcks: 0, postStatuses: [] as { status: number; error: string; code?: string }[], offline: false };
+  const optins: (Record<string, unknown> & { shop: string | null })[] = [];
+  const knobs = { minClient: null as string | null, failAcks: 0, postStatuses: [] as { status: number; error: string; code?: string }[], optinStatuses: [] as { status: number; error: string }[], offline: false };
   let seq = 0;
 
   const server = http.createServer(async (req, res) => {
@@ -45,6 +46,12 @@ export async function startOrdersHub() {
     if (url.pathname === "/v2/hello" && req.method === "POST") {
       hellos.push({ shop, ...json });
       return send(200, { hub: "2.0.0", types: {}, limits: {}, released: 0 });
+    }
+    if (url.pathname === "/v2/optin" && req.method === "PUT") {
+      const scripted = knobs.optinStatuses.shift();
+      if (scripted) return send(scripted.status, { error: scripted.error });
+      optins.push({ shop, ...json });
+      return send(200, { service: json?.service, enabled: json?.enabled !== false, maxOpen: json?.maxOpen ?? 200, perMinute: 50 });
     }
     if (url.pathname === "/v2/messages" && req.method === "GET") {
       const after = Number(url.searchParams.get("after") ?? "0");
@@ -82,6 +89,7 @@ export async function startOrdersHub() {
     calls,
     posted,
     hellos,
+    optins,
     knobs,
     /** A message waiting for the company on the hub (as MakerFoundry's would be). */
     put(shopRef: string, m: { type: string; conversation: string; seq: number; body: unknown; id?: string; from?: string; version?: number; createdAt?: Date; expiresAt?: Date | null }): string {

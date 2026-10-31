@@ -29,7 +29,7 @@ export function clientId(): string {
 }
 const clientVersion = () => clientId().split("/")[1];
 
-const v2 = (shopId: string, path: string, init: { method?: string; json?: unknown } = {}) => hubFetch(path, { ...init, shopRef: shopId, headers: { "X-Client": clientId() } });
+export const v2 = (shopId: string, path: string, init: { method?: string; json?: unknown } = {}) => hubFetch(path, { ...init, shopRef: shopId, headers: { "X-Client": clientId() } });
 const backoff = (tries: number) => new Date(Date.now() + Math.min(2 ** Math.min(tries, 12), 60) * 60_000);
 const plain = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.").slice(0, 300);
 
@@ -262,7 +262,8 @@ export function syncOrders(): Promise<void> {
   shared.__ordersSync ??= inBackground(async () => {
     if (!(await hubJoined())) return;
     const ids = new Set<string>();
-    for (const r of await db.shopOrdersSync.findMany({ where: { optedIn: true }, select: { shopId: true } })) ids.add(r.shopId);
+    // Every company that ever touched the feature: one that stopped taking new orders still hears about the orders it has open.
+    for (const r of await db.shopOrdersSync.findMany({ where: { OR: [{ optedIn: true }, { catalogPublishedAt: { not: null } }] }, select: { shopId: true } })) ids.add(r.shopId);
     for (const r of await db.syncOut.findMany({ where: { sentAt: null, deadAt: null, expiredAt: null }, select: { shopId: true }, distinct: ["shopId"] })) ids.add(r.shopId);
     for (const r of await db.syncIn.findMany({ where: { appliedAt: null }, select: { shopId: true }, distinct: ["shopId"] })) ids.add(r.shopId);
     for (const shopId of ids) {

@@ -4680,6 +4680,11 @@ model ShopOrdersSync {
   // The hub said this program is too old for it (426): shown to the owner, nothing is sent until an update
   upgradeNeeded      String?
   catalogPublishedAt DateTime?
+  // Shipping on orders from MakerFoundry: off until the owner decides how it is priced (docs/plans/makerfoundry-orders-plan.md, question 4)
+  shipsOrders Boolean   @default(false)
+  shippingCents Int     @default(0)
+  products   OnlineProduct[]
+  offers     OnlineOffer[]
 }
 
 // A message the hub handed over, kept before it is acknowledged (so an acknowledged message is never lost) and applied in its order.
@@ -4752,4 +4757,38 @@ model SyncOutSeq {
   nextSeq      Int    @default(1)
 
   @@id([shopId, conversation])
+}
+
+// A blank garment the shop offers through MakerFoundry (docs/plans/makerfoundry-orders-plan.md 3.5): colours and sizes one a line.
+model OnlineProduct {
+  id         String         @id @default(cuid())
+  shopId     String
+  sync       ShopOrdersSync @relation(fields: [shopId], references: [shopId], onDelete: Cascade)
+  sku        String
+  name       String
+  kind       String         @default("shirt")
+  colours    String
+  sizes      String
+  blankCents Int
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([shopId, sku])
+}
+
+// A decoration the shop offers through MakerFoundry: a flat price per piece by quantity (breaks: [{min, cents}]), a set-up fee, and the
+// biggest design (stitches) the price covers. The price a customer pays for a piece is the blank plus this.
+model OnlineOffer {
+  id          String         @id @default(cuid())
+  shopId      String
+  sync        ShopOrdersSync @relation(fields: [shopId], references: [shopId], onDelete: Cascade)
+  method      String
+  placement   String
+  breaks      Json
+  setupCents  Int            @default(0)
+  maxStitches Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([shopId, method, placement])
 }
