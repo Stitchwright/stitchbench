@@ -312,7 +312,7 @@ export async function hubFetch(path: string, init: RequestInit & { json?: unknow
   const base = storedHubUrl(s.url);
   // Only API paths, and nothing in them that could climb out of the path (ids are checked by hubId too).
   const route = path.split("?")[0];
-  if (!route.startsWith("/v1/") || /(^|\/)\.\.?(\/|$)|%2e|%2f|%5c|\\|#/i.test(route) || path.includes("#")) {
+  if (!/^\/v[12]\//.test(route) || /(^|\/)\.\.?(\/|$)|%2e|%2f|%5c|\\|#/i.test(route) || path.includes("#")) {
     throw new UserError("That hub request isn't allowed.");
   }
   const { json, shopRef, ...rest } = init;
