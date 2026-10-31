@@ -8,8 +8,8 @@ import { fmtDate, fmtDateTime, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { gateFor } from "@/lib/module-gate";
 import { orderView } from "@/lib/decor";
-import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
-import { addDecorLine, collectDecorOrder, removeDecorLine, removeDecorMockup, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, sendDecorProof, setDecorMockup, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
+import { DECOR_MOVES, DECOR_TONE, METHOD_LABEL, decorOrderLabel, decorStatusLabel, formatMinutes } from "@/lib/decor-math";
+import { addDecorLine, collectDecorOrder, handOverDecorOrder, removeDecorLine, removeDecorMockup, removeDecorPlacement, requoteDecorOrder, saveDecorOrder, sendDecorProof, setDecorMockup, setDecorStatus, turnDownDecorOrder } from "@/actions/decorating";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
@@ -39,7 +39,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
       what="This order"
       sub={
         <>
-          <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorStatusLabel(o.status)}</span> for{" "}
+          <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorOrderLabel(o.status, o.fulfilment)}</span> for{" "}
           {o.customerId ? (
             <Link href={`/customers/${o.customerId}`} className="link">
               {o.name}
@@ -98,6 +98,29 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
           )}
           <p className="muted mt-2 text-sm">The customer&apos;s email and phone are never sent to you; you reach them through the order&apos;s messages on MakerFoundry.</p>
         </Section>
+      )}
+      {o.status === "READY" && write && o.source === "MAKERFOUNDRY" && (
+        <div className="card card-pad space-y-2">
+          <h2 className="text-base font-semibold">{o.fulfilment === "SHIP" ? "Ship it" : "Customer picks it up"}</h2>
+          <p className="muted text-sm">Already paid on MakerFoundry: nothing to take at the register. It is booked as a sale paid online, and MakerFoundry tells the customer.</p>
+          <ActionForm action={handOverDecorOrder.bind(null, o.id)} className="flex flex-wrap items-end gap-2">
+            {o.fulfilment === "SHIP" && (
+              <div className="field">
+                <label className="label" htmlFor="ho-track">
+                  Tracking number (the customer is told it)
+                </label>
+                <input id="ho-track" name="tracking" className="input" maxLength={80} />
+              </div>
+            )}
+            <Submit className="btn btn-primary">{o.fulfilment === "SHIP" ? "Mark shipped" : "Handed over"}</Submit>
+          </ActionForm>
+        </div>
+      )}
+      {o.status === "COLLECTED" && o.fulfilment === "SHIP" && o.shippedAt && (
+        <p className="text-base">
+          Shipped {fmtDateTime(o.shippedAt, tz)}
+          {o.tracking ? `, tracking ${o.tracking}` : ""}. The customer&apos;s address is cleared 30 days after it ships.
+        </p>
       )}
       {o.status === "READY" && write && !o.source && (
         <div className="card card-pad space-y-2">

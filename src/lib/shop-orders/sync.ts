@@ -13,6 +13,7 @@ import { HubError, hubJoined, hubStatus, inBackground } from "@/lib/hub";
 import { backoff, plain, v2, clientVersion } from "@/lib/shop-orders/hubv2";
 import { withLease } from "@/lib/lease";
 import { parseBody, UNDERSTOOD } from "@/lib/shop-orders/contract";
+import { clearShippedAddresses } from "@/lib/shop-orders/handover";
 import { retryPendingFiles } from "@/lib/shop-orders/intake";
 import { parseEnvelope, planApply, senderKind } from "@/lib/shop-orders/protocol";
 import { handlerFor, type Applied } from "@/lib/shop-orders/handlers";
@@ -231,6 +232,7 @@ export async function syncShop(shopId: string): Promise<ShopRun | { busy: true }
       await ackStored(shopId);
       const a = await applyWaiting(shopId);
       await retryPendingFiles(shopId);
+      await clearShippedAddresses(shopId);
       const s = await flushOutbox(shopId);
       await db.shopOrdersSync.update({ where: { shopId }, data: { lastPollAt: new Date(), lastOkAt: new Date(), lastError: null } });
       return { polled, applied: a.applied, sent: s.sent };
