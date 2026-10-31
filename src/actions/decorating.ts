@@ -10,6 +10,7 @@ import { str } from "@/lib/format";
 import { UserError } from "@/lib/user-error";
 import { takeInboxItemFor } from "@/lib/decor-inbox";
 import { handOverOnlineOrderFor } from "@/lib/shop-orders/handover";
+import { sendOnlineProofFor } from "@/lib/shop-orders/proofs";
 import { addLineFor, addPlacementFor, collectOrderFor, createOrderFor, removeLineFor, removeMockupFor, removePlacementFor, requoteFor, saveDecorPricesFor, saveOrderFor, sendProofFor, setMockupFor, setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 
 const refresh = (id?: string) => {
@@ -138,5 +139,13 @@ export const handOverDecorOrder = safe(async function handOverDecorOrder(id: str
   const text = await handOverOnlineOrderFor(user, id, str(formData.get("tracking")));
   refresh(id);
   revalidatePath("/register/sales");
+  return noted(text);
+});
+
+/** The mock-up goes to a MakerFoundry customer as a proof (through the hub), with a note. */
+export const sendDecorOnlineProof = safe(async function sendDecorOnlineProof(id: string, formData: FormData) {
+  const user = await requireUser();
+  const text = await sendOnlineProofFor(user, id, str(formData.get("note")));
+  refresh(id);
   return noted(text);
 });

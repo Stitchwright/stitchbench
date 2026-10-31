@@ -2464,6 +2464,11 @@ model DecorOrder {
   // Handed over by post: when, and the tracking number the customer is told. The status stays COLLECTED; fulfilment says it was shipped.
   shippedAt     DateTime?
   tracking      String?
+  // The proof sent to a MakerFoundry customer: its number, when, and the customer's answer (approved | changes, with their note)
+  proofNo       Int              @default(0)
+  proofSentAt   DateTime?
+  proofAnswer   String?
+  proofNote     String?
   // A note for the shop to read first, such as a design bigger than the offer covers
   onlineFlag    String?
   // The customer's picture from the order, fetched after the order is made (PNG or JPEG)

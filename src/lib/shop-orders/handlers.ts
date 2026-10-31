@@ -5,6 +5,7 @@ import "server-only";
 // try again later, and the ones after it wait). Throwing is the same as "defer" with the error kept.
 import { db } from "@/lib/db";
 import { takeOrder } from "@/lib/shop-orders/intake";
+import { applyCustomerCancel, applyProofAnswer } from "@/lib/shop-orders/proofs";
 
 export type Applied = "applied" | "defer";
 export type MessageContext = { shopId: string; messageId: string; sender: string; conversation: string; seq: number; sentAt: Date; body: unknown };
@@ -29,3 +30,7 @@ registerHandler("order.placed", 1, async (c) => {
   await takeOrder(c);
   return "applied";
 });
+
+// The customer answered the proof, or cancelled (see proofs.ts).
+registerHandler("proof.answer", 1, applyProofAnswer);
+registerHandler("order.cancel", 1, applyCustomerCancel);
