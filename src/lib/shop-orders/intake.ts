@@ -42,7 +42,7 @@ export const sizesText = (sizes: Record<string, number>, order: string[] = []): 
  * The order as a DecorOrder. Idempotent: the same order reference twice is one order (a unique key on the company and the reference), so a
  * message applied again after a crash does nothing. Returns the order's id.
  */
-export async function takeOrder(c: MessageContext): Promise<string> {
+export async function takeOrder(c: MessageContext, files?: Map<string, Uint8Array<ArrayBuffer>>): Promise<string> {
   const o = c.body as OrderPlaced;
   const shopId = c.shopId;
   const existing = await db.decorOrder.findFirst({ where: { shopId, onlineRef: c.conversation }, select: { id: true } });
@@ -133,14 +133,20 @@ export async function takeOrder(c: MessageContext): Promise<string> {
     return made.id;
   });
   // The files come after, and never undo the order: a failure is kept on it and tried again.
-  await fetchOrderFiles(shopId, id).catch(() => {});
+  await fetchOrderFiles(shopId, id, files).catch(() => {});
   return id;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // the customer's files
 
-async function download(shopId: string, conversation: string, sha256: string, size: number, max: number): Promise<Uint8Array<ArrayBuffer>> {
+async function download(shopId: string, conversation: string, sha256: string, size: number, max: number, given?: Map<string, Uint8Array<ArrayBuffer>>): Promise<Uint8Array<ArrayBuffer>> {
+  // The demo's simulated orders bring their files with them (there is no hub to ask); they are checked just the same.
+  const have = given?.get(sha256);
+  if (have) {
+    if (have.length !== size || have.length > max || crypto.createHash("sha256").update(have).digest("hex") !== sha256) throw new Error("The file isn't the one the order named.");
+    return have;
+  }
   const a = (await (await v2(shopId, "/v2/files/get", { method: "POST", json: { conversation, sha256 } })).json()) as { url?: unknown; size?: unknown };
   if (typeof a.size === "number" && a.size !== size) throw new Error("The hub says the file is a different size than the order does, so it wasn't used.");
   const r = await fetch(checkBucketUrl(a.url), { redirect: "manual", signal: AbortSignal.timeout(2 * 60_000) });
@@ -157,7 +163,7 @@ async function download(shopId: string, conversation: string, sha256: string, si
  * kept. A design bigger than the shop's offer covers is flagged on the order for the shop to read (turning it down is the shop's call).
  * Errors are kept on the order with a retry time; what already arrived stays.
  */
-export async function fetchOrderFiles(shopId: string, orderId: string): Promise<{ fetched: number; failed: number }> {
+export async function fetchOrderFiles(shopId: string, orderId: string, given?: Map<string, Uint8Array<ArrayBuffer>>): Promise<{ fetched: number; failed: number }> {
   const o = await db.decorOrder.findFirst({
     where: { id: orderId, shopId, source: "MAKERFOUNDRY" },
     select: { id: true, onlineRef: true, previewSha256: true, previewSize: true, mockupName: true, fileTries: true, placements: { select: { id: true, location: true, method: true, fileName: true, artSha256: true, artSize: true, fileFormat: true, fileData: false }, orderBy: { sortOrder: "asc" } } },
@@ -176,7 +182,7 @@ export async function fetchOrderFiles(shopId: string, orderId: string): Promise<
     try {
       let buf = cache.get(p.artSha256);
       if (!buf) {
-        buf = await download(shopId, o.onlineRef, p.artSha256, p.artSize, MAX_ART_BYTES);
+        buf = await download(shopId, o.onlineRef, p.artSha256, p.artSize, MAX_ART_BYTES, given);
         cache.set(p.artSha256, buf);
       }
       const info = p.method === "EMBROIDERY" ? readEmbroidery(p.fileName ?? "", buf) : null;
@@ -201,7 +207,7 @@ export async function fetchOrderFiles(shopId: string, orderId: string): Promise<
   }
   if (o.previewSha256 && o.previewSize && !o.mockupName) {
     try {
-      const buf = await download(shopId, o.onlineRef, o.previewSha256, o.previewSize, MAX_PREVIEW_BYTES);
+      const buf = await download(shopId, o.onlineRef, o.previewSha256, o.previewSize, MAX_PREVIEW_BYTES, given);
       const mime = imageType(buf);
       // The customer's picture is a nicety: one that isn't a PNG or JPEG is simply not used.
       if (mime) await db.decorOrder.updateMany({ where: { id: orderId, shopId, mockupData: null }, data: { mockupName: "customer-preview", mockupMime: mime, mockupData: buf } });

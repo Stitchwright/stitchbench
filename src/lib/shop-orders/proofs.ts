@@ -10,6 +10,7 @@ import { requireBaseWritable } from "@/lib/base-gate";
 import { requireModule } from "@/lib/modules";
 import { checkBucketUrl } from "@/lib/offsite/hub-store";
 import { imageType } from "@/lib/decor";
+import { isDemo } from "@/lib/demo-mode";
 import { MAX_PREVIEW_BYTES } from "@/lib/shop-orders/contract";
 import { Prisma } from "@/generated/prisma/client";
 import { plain, v2 } from "@/lib/shop-orders/hubv2";
@@ -45,7 +46,8 @@ export async function sendOnlineProofFor(user: CurrentUser, id: string, note: st
   const say = (note ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
   let sha256: string;
   try {
-    sha256 = await uploadMockup(shopId, o.onlineRef, bytes, type);
+    // A demo has no hub: the proof is shown as sent, and the customer's answer is pretended (src/lib/shop-orders/demo.ts).
+    sha256 = isDemo() ? crypto.createHash("sha256").update(bytes).digest("hex") : await uploadMockup(shopId, o.onlineRef, bytes, type);
   } catch (e) {
     if (e instanceof UserError) throw e;
     throw new UserError(`The picture couldn't be sent to StitchHub just now (${plain(e)}). Nothing was sent; try again.`);
