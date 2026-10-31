@@ -868,7 +868,7 @@ async function run() {
     console.log(`
 Demo company ready: ${SHOP_NAME}
   company id   ${shopId}
-  sign in      ${DEMO_EMAIL}  /  ${password}
+  sign in      ${DEMO_EMAIL}  /  ${process.env.DEMO_PASSWORD ? "the DEMO_PASSWORD you chose" : password}
   customers    ${custs.length}${guest ? " (incl. the guest from guest.local.json)" : ""}
   stock items  ${items.length}, ${items.filter((i) => i.online).length} listed in the online shop
   sales        ${sales.length} over three weeks, ${money(salesTotalCents)} taken

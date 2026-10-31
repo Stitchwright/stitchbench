@@ -337,6 +337,7 @@ model Shop {
   makeJobs          MakeJob[]
   decorSettings     DecorSettings?
   decorOrders       DecorOrder[]
+  ordersSync        ShopOrdersSync?
   // Phase 4 AI (shop-features-round-2-design.md section 5)
   patternNeeds      PatternNeed[]
   careTips          CareTip[]
@@ -2447,10 +2448,41 @@ model DecorOrder {
   closedAt      DateTime?
   createdById   String?
   createdAt     DateTime         @default(now())
+  // An order that came through MakerFoundry (docs/plans/makerfoundry-orders-plan.md package 3): MAKERFOUNDRY, the order reference there,
+  // and what the customer paid. quoteCents is goods plus set-up as paid, never re-worked from the price table; shipping and tax are kept
+  // apart (still open questions). The shipping address is kept only for an order to be shipped, and is for the order page alone.
+  source        String?
+  onlineRef     String?
+  paidCents     Int?
+  shopGetsCents Int?
+  feeCents      Int?
+  cardFeeCents  Int?
+  shippingPaidCents Int?
+  taxPaidCents  Int?
+  fulfilment    String?
+  shipTo        Json?
+  // Handed over by post: when, and the tracking number the customer is told. The status stays COLLECTED; fulfilment says it was shipped.
+  shippedAt     DateTime?
+  tracking      String?
+  // The proof sent to a MakerFoundry customer: its number, when, and the customer's answer (approved | changes, with their note)
+  proofNo       Int              @default(0)
+  proofSentAt   DateTime?
+  proofAnswer   String?
+  proofNote     String?
+  // A note for the shop to read first, such as a design bigger than the offer covers
+  onlineFlag    String?
+  // The customer's picture from the order, fetched after the order is made (PNG or JPEG)
+  previewSha256 String?
+  previewSize   Int?
+  // Fetching the art and the picture is tried again until it works
+  fileTries     Int              @default(0)
+  fileError     String?
+  filesNextTryAt DateTime?
   lines         DecorLine[]
   placements    DecorPlacement[]
 
   @@unique([shopId, number])
+  @@unique([shopId, onlineRef])
   @@index([shopId, status])
   @@index([shopId, customerId])
   @@index([shopId, locationId])
@@ -2500,6 +2532,9 @@ model DecorPlacement {
   fileFormat     String?
   fileData       Bytes?
   fileReadable   Boolean    @default(false)
+  // The design file of an online order, to be fetched (and checked against these) after the order is made
+  artSha256      String?
+  artSize        Int?
 
   @@index([orderId])
   @@index([shopId])
@@ -4658,4 +4693,142 @@ model FoundryLink {
   createdAt   DateTime  @default(now())
 
   @@index([foundryId])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// MakerFoundry orders through StitchHub's v2 queue (docs/plans/makerfoundry-orders-plan.md; src/lib/shop-orders/).
+
+// One row per company that takes (or took) orders from MakerFoundry: the opt-in, and where it is up to with the hub's queue.
+model ShopOrdersSync {
+  shopId             String    @id
+  shop               Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  optedIn            Boolean   @default(false)
+  // The most open orders at once (the hub enforces it for the company)
+  maxOpen            Int       @default(200)
+  // The hub's delivery cursor: only what was stored here is behind it
+  cursor             String    @default("0")
+  helloAt            DateTime?
+  lastPollAt         DateTime?
+  lastOkAt           DateTime?
+  lastError          String?
+  // The hub said this program is too old for it (426): shown to the owner, nothing is sent until an update
+  upgradeNeeded      String?
+  catalogPublishedAt DateTime?
+  // Shipping on orders from MakerFoundry: off until the owner decides how it is priced (docs/plans/makerfoundry-orders-plan.md, question 4)
+  shipsOrders Boolean   @default(false)
+  shippingCents Int     @default(0)
+  // Shipping by the piece: shippingCents is for one piece, this much more for each piece after the first, free when goods and set-up reach freeOverCents (0 = never)
+  perExtraPieceCents Int @default(0)
+  freeOverCents Int     @default(0)
+  // Pick-up at the shop: on by default, and then the pick-up address is needed (sales tax on a pick-up order is worked out from it)
+  offersPickup  Boolean @default(true)
+  pickupAddress Json?
+  products   OnlineProduct[]
+  offers     OnlineOffer[]
+}
+
+// A message the hub handed over, kept before it is acknowledged (so an acknowledged message is never lost) and applied in its order.
+model SyncIn {
+  id           String    @id @default(cuid())
+  shopId       String
+  messageId    String
+  sender       String
+  conversation String
+  seq          Int
+  type         String
+  version      Int
+  body         Json
+  sentAt       DateTime
+  expiresAt    DateTime?
+  receivedAt   DateTime  @default(now())
+  // When the hub was told it is safe (stored here); until then it is asked again every run, so the hub never gives up on a message held here
+  ackedAt      DateTime?
+  // null: waiting. applied | skipped (a type or version this program doesn't know, a body that failed its checks)
+  result       String?
+  appliedAt    DateTime?
+  tries        Int       @default(0)
+  nextTryAt    DateTime?
+  error        String?
+
+  @@unique([shopId, messageId])
+  @@index([shopId, appliedAt, sender, conversation])
+}
+
+// The next seq expected from a sender in a conversation (for applying in order).
+model SyncInSeq {
+  shopId       String
+  sender       String
+  conversation String
+  nextSeq      Int     @default(1)
+  gapped       Boolean @default(false)
+
+  @@id([shopId, sender, conversation])
+}
+
+// A message waiting to go to the hub: made once with its id and seq, sent again with the same ones until the hub takes it.
+model SyncOut {
+  id           String    @id
+  shopId       String
+  conversation String
+  seq          Int
+  type         String
+  version      Int       @default(1)
+  body         Json
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  sentAt       DateTime?
+  tries        Int       @default(0)
+  nextTryAt    DateTime?
+  error        String?
+  // The hub refused it for good: kept and shown, never retried
+  deadAt       DateTime?
+  // The hub gave up delivering it (message.expired)
+  expiredAt    DateTime?
+  expiredWhy   String?
+
+  @@unique([shopId, conversation, seq])
+  @@index([shopId, sentAt, deadAt])
+}
+
+// The next seq to use in a conversation this company speaks in.
+model SyncOutSeq {
+  shopId       String
+  conversation String
+  nextSeq      Int    @default(1)
+
+  @@id([shopId, conversation])
+}
+
+// A blank garment the shop offers through MakerFoundry (docs/plans/makerfoundry-orders-plan.md 3.5): colours and sizes one a line.
+model OnlineProduct {
+  id         String         @id @default(cuid())
+  shopId     String
+  sync       ShopOrdersSync @relation(fields: [shopId], references: [shopId], onDelete: Cascade)
+  sku        String
+  name       String
+  kind       String         @default("shirt")
+  colours    String
+  sizes      String
+  blankCents Int
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([shopId, sku])
+}
+
+// A decoration the shop offers through MakerFoundry: a flat price per piece by quantity (breaks: [{min, cents}]), a set-up fee, and the
+// biggest design (stitches) the price covers. The price a customer pays for a piece is the blank plus this.
+model OnlineOffer {
+  id          String         @id @default(cuid())
+  shopId      String
+  sync        ShopOrdersSync @relation(fields: [shopId], references: [shopId], onDelete: Cascade)
+  method      String
+  placement   String
+  breaks      Json
+  setupCents  Int            @default(0)
+  maxStitches Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([shopId, method, placement])
 }
