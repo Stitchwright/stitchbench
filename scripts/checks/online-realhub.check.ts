@@ -175,7 +175,7 @@ async function main() {
 
     // ----- the shop opts in on the real hub and its catalogue arrives -----
     const ownerLogin = await db.user.findFirstOrThrow({ where: { shopId: A.shopId, role: "OWNER" } });
-    const ACCOUNT = 8_000_000 + Math.floor(Math.random() * 90_000);
+    const ACCOUNT = crypto.randomInt(8_000_000, 8_090_000);
     await db.user.update({ where: { id: ownerLogin.id }, data: { foundryId: ACCOUNT } }); // the owner's linked Foundry Account
     await saveProductFor(A.user, form({ sku: "REAL-TEE", name: "Real tee", colours: "Navy, White", sizes: "M, L", blank: "9.00" }));
     await saveOfferFor(A.user, form({ method: "embroidery", placement: "Left chest", breaks: "1: 12.00\n12: 10.00", setup: "25", maxStitches: "5000" }));

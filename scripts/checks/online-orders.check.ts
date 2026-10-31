@@ -5,6 +5,7 @@ import "dotenv/config";
 // change it, and one company never touching another's list. The hub is a stand-in (scripts/checks/orders-hub.ts).
 //   npm run check scripts/checks/online-orders.check.ts
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { parseBody } from "@/lib/shop-orders/contract";
 import { removeOfferFor, removeProductFor, saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
@@ -60,7 +61,7 @@ async function main() {
     await db.user.create({ data: { shopId: A.shopId, email: `tech-${Date.now()}@stitchbench.test`, name: "Tech", passwordHash: "x", role: "TECH", foundryId: 7_000_001 } });
     await db.user.create({ data: { shopId: A.shopId, email: `old-${Date.now()}@stitchbench.test`, name: "Old owner", passwordHash: "x", role: "OWNER", active: false, foundryId: 7_000_002 } });
     await refused("only the owner's link counts", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /Link the owner's login to a Foundry Account/);
-    await db.user.update({ where: { id: techLogin.id }, data: { foundryId: 9_000_000 + Math.floor(Math.random() * 90_000) } }); // the owner links an account
+    await db.user.update({ where: { id: techLogin.id }, data: { foundryId: crypto.randomInt(9_000_000, 9_090_000) } }); // the owner links an account
     const account = (await db.user.findUniqueOrThrow({ where: { id: techLogin.id } })).foundryId!;
     // Pick-up is on until it is switched off, and then the pick-up address is needed: sales tax on a pick-up order is worked out from it.
     await refused("pick-up without an address", () => setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" })), /pick-up address/);
