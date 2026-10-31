@@ -15,7 +15,8 @@ import "server-only";
 // It is then shown only in the program's own Electron window (desktop/main.mjs adds X-Stitch-Window with a secret it
 // gave the server at start, on requests to the program's own address only), never on another device or a browser tab,
 // never mailed: "StitchHub asks to reset <email>'s password: Allow / Refuse". Allow sets a new 12-character password,
-// shown once there, and signs every device out of that login (sessionVersion + 1); both answers are told to the hub.
+// shown once there, and signs every device out of that login (sessionVersion + 1), and that window is known for the
+// login from then on (src/lib/known-device.ts); both answers are told to the hub.
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
@@ -218,12 +219,13 @@ function newPassword(length = 12): string {
 const isClash = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
 /**
- * The answer from the program's window. Allow: a new password for the owner, returned to be shown once there; every
- * device signed in as the owner signs in again. Refuse: nothing changes. Either way the grant is spent here and the hub
- * is told. Refused (UserError) outside the program's window, for a grant that expired or was answered, and when the
- * company stopped allowing resets or the owner login changed.
+ * The answer from the program's window. Allow: a new password for the owner, returned to be shown once there, with the
+ * owner's login (the window is known for it from then on: src/actions/hub-reset.ts); every device signed in as the owner
+ * signs in again. Refuse: nothing changes (null). Either way the grant is spent here and the hub is told. Refused
+ * (UserError) outside the program's window, for a grant that expired or was answered, and when the company stopped
+ * allowing resets or the owner login changed.
  */
-export async function answerResetGrant(id: unknown, allow: boolean, h: Headers): Promise<string | null> {
+export async function answerResetGrant(id: unknown, allow: boolean, h: Headers): Promise<{ password: string; userId: string } | null> {
   if (!inProgramWindow(h)) throw new UserError(WINDOW_ONLY);
   const g = typeof id === "string" ? store.get(id) : undefined;
   if (!g || g.expiresAt.getTime() <= Date.now()) {
@@ -261,5 +263,5 @@ export async function answerResetGrant(id: unknown, allow: boolean, h: Headers):
   store.delete(g.id);
   console.info(`[password] a StitchHub reset for the owner of company ${g.shopId} was ${allow ? "allowed" : "refused"} in the program's window`);
   await tellHub(g.shopId, g.id, allow ? "allowed" : "refused");
-  return password;
+  return password ? { password, userId: owner.id } : null;
 }
