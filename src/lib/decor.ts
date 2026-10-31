@@ -20,6 +20,8 @@ import { parseYmd, zonedTime } from "@/lib/zoned";
 import { queueToCustomer } from "@/lib/messaging/queue";
 import { firstName } from "@/lib/messaging/templates";
 import { currentStoreId } from "@/lib/stores";
+import { enqueue } from "@/lib/shop-orders/outbox";
+import { ONLINE_STATUS } from "@/lib/shop-orders/handover";
 import { createEstimateLink, estimateByToken, estimateContent } from "@/lib/estimate-links";
 import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
 import { MAX_DESIGN_BYTES, formatOf, readEmbroidery } from "@/lib/embroidery-file";
@@ -360,7 +362,13 @@ export async function setOrderStatusFor(user: CurrentUser, id: string, to: strin
   const at = new Date();
   const stamps: Prisma.DecorOrderUpdateManyMutationInput =
     to === "APPROVED" ? { approvedAt: o.approvedAt ?? at, startedAt: null, readyAt: null } : to === "IN_PRODUCTION" ? { startedAt: o.startedAt ?? at, readyAt: null } : to === "READY" ? { readyAt: at } : to === "QUOTED" ? { approvedAt: null } : to === "CANCELLED" ? { closedAt: at } : {};
-  const r = await db.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId, status: o.status }, data: { status: to, ...stamps } });
+  // An order from MakerFoundry: the customer is told each step, in the same transaction as the step.
+  const r = await db.$transaction(async (tx) => {
+    const done = await tx.decorOrder.updateMany({ where: { id: o.id, shopId: user.shopId, status: o.status }, data: { status: to, ...stamps } });
+    const word = ONLINE_STATUS[to];
+    if (done.count === 1 && o.source === "MAKERFOUNDRY" && o.onlineRef && word) await enqueue(tx, user.shopId, { conversation: o.onlineRef, type: "order.status", body: { status: word } });
+    return done;
+  });
   if (r.count !== 1) throw new UserError("The order changed while you were looking. Reload and try again.");
   let told = "";
   if (to === "READY" && o.customerId && (await moduleOn(user.shopId, "marketing"))) {
@@ -445,17 +453,17 @@ export async function collectOrderFor(user: CurrentUser, id: string, fd: FormDat
 // ---------------------------------------------------------------------------------------------------------------
 // Reading
 
-export type OrderRow = { online?: boolean; id: string; number: number; name: string; customerId: string | null; title: string; status: string; quoteCents: number; dueAt: Date | null; createdAt: Date; overdue: boolean; pieces: number };
+export type OrderRow = { online?: boolean; ship?: boolean; id: string; number: number; name: string; customerId: string | null; title: string; status: string; quoteCents: number; dueAt: Date | null; createdAt: Date; overdue: boolean; pieces: number };
 
 /** Open orders first (soonest due), then the latest closed ones. */
 export async function ordersFor(shopId: string, o: { closed?: boolean; take?: number } = {}, now = new Date()): Promise<OrderRow[]> {
   const rows = await db.decorOrder.findMany({
     where: { shopId, status: o.closed ? { in: ["COLLECTED", "CANCELLED", "TURNED_DOWN"] } : { in: OPEN_DECOR } },
-    select: { id: true, number: true, name: true, customerId: true, title: true, status: true, quoteCents: true, dueAt: true, createdAt: true, source: true, lines: { select: { qty: true } } },
+    select: { id: true, number: true, name: true, customerId: true, title: true, status: true, quoteCents: true, dueAt: true, createdAt: true, source: true, fulfilment: true, lines: { select: { qty: true } } },
     orderBy: o.closed ? [{ number: "desc" }] : [{ dueAt: { sort: "asc", nulls: "last" } }, { number: "asc" }],
     take: o.take ?? 200,
   });
-  return rows.map(({ lines, source, ...r }) => ({ ...r, online: source !== null, pieces: lines.reduce((s, l) => s + l.qty, 0), overdue: !!r.dueAt && r.status !== "READY" && r.dueAt.getTime() < now.getTime() }));
+  return rows.map(({ lines, source, fulfilment, ...r }) => ({ ...r, online: source !== null, ship: fulfilment === "SHIP", pieces: lines.reduce((s, l) => s + l.qty, 0), overdue: !!r.dueAt && r.status !== "READY" && r.dueAt.getTime() < now.getTime() }));
 }
 
 export type ProductionRow = { id: string; number: number; name: string; title: string; status: string; dueAt: Date | null; overdue: boolean; pieces: number; minutes: number; stitches: number; placements: number };

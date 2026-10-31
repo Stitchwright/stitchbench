@@ -6,7 +6,7 @@ import { fmtDate, money } from "@/lib/format";
 import { shopTimeZone } from "@/lib/shop-zone";
 import { decorPrices, ordersFor, type OrderRow } from "@/lib/decor";
 import { inboxFor } from "@/lib/decor-inbox";
-import { DECOR_TONE, breaksText, decorStatusLabel, screenRowsText, tiersText } from "@/lib/decor-math";
+import { DECOR_TONE, breaksText, decorOrderLabel, screenRowsText, tiersText } from "@/lib/decor-math";
 import { saveDecorPrices, startDecorOrder } from "@/actions/decorating";
 import { ActionForm, Submit } from "@/components/action-form";
 import { CustomerPicker } from "@/components/customer-picker";
@@ -31,7 +31,7 @@ function Rows({ rows, tz }: { rows: OrderRow[]; tz: string }) {
           <span className="flex flex-wrap items-center gap-2 text-base">
             <span className="num">{money(o.quoteCents)}</span>
             {o.dueAt && <span className={o.overdue ? "pill tone-bad" : "muted text-sm"}>{o.overdue ? "late: " : "by "}{fmtDate(o.dueAt, tz)}</span>}
-            <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorStatusLabel(o.status)}</span>
+            <span className={`pill ${DECOR_TONE[o.status] ?? ""}`}>{decorOrderLabel(o.status, o.ship ? "SHIP" : null)}</span>
           </span>
         </li>
       ))}
