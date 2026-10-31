@@ -92,7 +92,8 @@ async function main() {
     assert.ok(done.saleId);
     const sale = await db.sale.findUniqueOrThrow({ where: { id: done.saleId! } });
     assert.equal(sale.totalCents, 9000 + 2500, "goods and set-up as paid");
-    assert.equal(sale.taxCents, 0, "no tax is worked out here (still open)");
+    assert.equal(sale.taxCents, 0, "no tax is worked out here: it is MakerFoundry's");
+    assert.match(sale.note ?? "", /Marketplace sale: sales tax .*collected and paid over by MakerFoundry, not by the shop/, "the sale says it is a marketplace sale whose tax the marketplace collected");
     assert.deepEqual((sale.tenders as { method: string }[]).map((t) => t.method), ["ONLINE"], "one Paid online payment, no cash");
     await sendOut();
     assert.equal(statuses("mf-p0001").at(-1)?.[1], "collected");

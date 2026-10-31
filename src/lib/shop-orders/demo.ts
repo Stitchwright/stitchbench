@@ -109,8 +109,10 @@ export async function simulateOrderFor(user: CurrentUser, kind: "pickup" | "ship
   const goods = each * qty;
   const setup = offer.setupCents;
   const shipping = kind === "ship" ? 899 : 0;
-  const paid = goods + setup + shipping;
-  const fee = Math.round((goods + setup) * 0.1);
+  // Sales tax is MakerFoundry's: part of what the customer pays, outside the shop's share. The 10% is of the price before tax, the card fee of everything paid.
+  const tax = Math.round((goods + setup + shipping) * 0.06);
+  const paid = goods + setup + shipping + tax;
+  const fee = Math.round((goods + setup + shipping) * 0.1);
   const card = Math.round(paid * 0.029) + 30;
   const art = demoDst(Math.min(offer.maxStitches ?? 4000, 1500));
   const png = demoPng();
@@ -120,7 +122,7 @@ export async function simulateOrderFor(user: CurrentUser, kind: "pickup" | "ship
     lines: [{ sku: product.sku, colour: product.colours.split(/[\n,;]+/)[0].trim() || "Navy", sizes: counts, decorations: [{ method: offer.method, placement: offer.placement, art: { file: "logo.dst", size: art.length, sha256: sha(art) } }] }],
     preview: { size: png.length, sha256: sha(png), type: "image/png" },
     customer: { name: NAMES[Math.floor(Math.random() * NAMES.length)], ...(kind === "ship" ? { ship_to: { name: "Demo Customer", line1: "1 Demo Lane", city: "Springfield", region: "XX", postal: "00000", country: "US" } } : {}) },
-    totals: { goods_cents: goods, setup_cents: setup, shipping_cents: shipping, tax_cents: 0, paid_cents: paid, fee_cents: fee, card_fee_cents: card, shop_gets_cents: Math.max(0, goods + setup - fee - card) },
+    totals: { goods_cents: goods, setup_cents: setup, shipping_cents: shipping, tax_cents: tax, paid_cents: paid, fee_cents: fee, card_fee_cents: card, shop_gets_cents: paid - tax - fee - card },
     note: "A simulated order for the demo.",
   };
   const parsed = parseBody("order.placed", 1, body, "service");

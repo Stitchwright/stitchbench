@@ -15,7 +15,7 @@ const base: CatalogIn = {
   ],
 };
 
-test("the price of a piece in the catalogue is the blank plus the decoration at each break", () => {
+test("a piece costs the garment's own price plus the decoration at its break, as MakerFoundry's contract says", () => {
   const r = buildCatalog(base);
   assert.ok(r.ok);
   if (!r.ok) return;
@@ -23,16 +23,32 @@ test("the price of a piece in the catalogue is the blank plus the decoration at 
   assert.equal(methods.length, 2, "placements with the same prices share an entry");
   const chest = methods.find((m) => m.placements.includes("Left chest"));
   assert.deepEqual(chest?.placements, ["Left chest", "Right chest"]);
-  assert.deepEqual(chest?.price_breaks, [{ min: 1, cents: 2100 }, { min: 12, cents: 1900 }]);
+  assert.deepEqual(chest?.price_breaks, [{ min: 1, cents: 1200 }, { min: 12, cents: 1000 }], "the decoration alone");
+  assert.equal(r.body.products[0].cents, 900, "the garment's own price per piece");
   assert.equal(chest?.setup_cents, 2500);
   assert.deepEqual(r.body.products[0].colours, ["Navy", "White"], "repeated colours are dropped");
 });
 
 test("shipping is off, and priced at zero, until the shop says it ships", () => {
-  const off = buildCatalog(base);
+  const off = buildCatalog({ ...base, perExtraPieceCents: 50, freeOverCents: 30000 });
   assert.ok(off.ok && off.body.shop.ships === false && off.body.shipping.flat_cents === 0 && off.body.shop.pickup === true);
-  const on = buildCatalog({ ...base, ships: true });
-  assert.ok(on.ok && on.body.shop.ships === true && on.body.shipping.flat_cents === 800);
+  assert.equal(off.ok && off.body.shipping.per_extra_piece_cents, undefined, "no shipping, no shipping prices");
+  const on = buildCatalog({ ...base, ships: true, perExtraPieceCents: 50, freeOverCents: 30000 });
+  assert.ok(on.ok && on.body.shop.ships === true);
+  assert.deepEqual(on.ok && on.body.shipping, { flat_cents: 800, per_extra_piece_cents: 50, free_over_cents: 30000 }, "by the piece, free over an amount");
+});
+
+test("the pick-up address is published with pick-up, and a way to get the order is needed", () => {
+  const addr = { line1: "210 Main Street", city: "Elmwood", region: "OH", postcode: "44001", country: "US" };
+  const r = buildCatalog({ ...base, pickup: true, pickupAddress: addr });
+  assert.ok(r.ok);
+  if (r.ok) assert.deepEqual(r.body.shop.address, addr);
+  const none = buildCatalog({ ...base, pickup: false, ships: true, pickupAddress: addr });
+  assert.ok(none.ok && none.body.shop.pickup === false && none.body.shop.address === undefined, "no pick-up, no address");
+  const nothing = buildCatalog({ ...base, pickup: false, ships: false });
+  assert.equal(nothing.ok, false, "neither shipping nor pick-up leaves no way to get an order");
+  const noPostcode = buildCatalog({ ...base, pickup: true, pickupAddress: { ...addr, postcode: "" } });
+  assert.equal(noPostcode.ok, false, "an address without a postcode is not published");
 });
 
 test("nothing to sell is said, not published", () => {

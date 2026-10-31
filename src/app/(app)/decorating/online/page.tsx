@@ -211,22 +211,56 @@ export default async function OnlineOrdersPage() {
         )}
       </Section>
 
-      <Section title="Shipping">
-        <p className="muted mb-2 text-sm">Orders are pickup only until you decide how shipping is priced and who collects sales tax; the catalogue says pickup.</p>
+      <Section title="Shipping and pick-up">
+        <p className="muted mb-2 text-sm">
+          Shipping is priced by the piece: one price for the first piece, a smaller one for each extra, and free above an amount if you like. Pick-up needs your shop&apos;s address, because MakerFoundry works the sales tax on a pick-up order out from it.
+          Sales tax is collected and paid over by MakerFoundry, never by you; you can&apos;t add your own to these orders.
+        </p>
         {write && (
-          <ActionForm action={saveOnlineShipping} success="Saved" className="flex flex-wrap items-end gap-3">
-            <label className="flex min-h-11 items-center gap-2 text-base">
+          <ActionForm action={saveOnlineShipping} success="Saved" className="grid gap-3 sm:grid-cols-2">
+            <label className="flex min-h-11 items-center gap-2 text-base sm:col-span-2">
               <input type="checkbox" name="ships" value="on" className="check" defaultChecked={r.shipsOrders} /> I ship orders
             </label>
             <div className="field">
               <label className="label" htmlFor="sh-cents">
-                Flat shipping for an order ($)
+                Shipping for one piece ($)
               </label>
               <input id="sh-cents" name="shipping" inputMode="decimal" className="input num w-28" defaultValue={(r.shippingCents / 100).toFixed(2)} />
             </div>
-            <Submit className="btn">Save shipping</Submit>
+            <div className="field">
+              <label className="label" htmlFor="sh-extra">
+                For each extra piece ($)
+              </label>
+              <input id="sh-extra" name="perExtra" inputMode="decimal" className="input num w-28" defaultValue={(r.perExtraPieceCents / 100).toFixed(2)} />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="sh-free">
+                Free shipping when goods and set-up reach ($, 0 for never)
+              </label>
+              <input id="sh-free" name="freeOver" inputMode="decimal" className="input num w-28" defaultValue={(r.freeOverCents / 100).toFixed(2)} />
+            </div>
+            <label className="flex min-h-11 items-center gap-2 text-base sm:col-span-2">
+              <input type="checkbox" name="pickup" value="on" className="check" defaultChecked={r.offersPickup} /> Customers can pick up at the shop
+            </label>
+            {(["pa_line1", "pa_line2", "pa_city", "pa_region", "pa_postcode", "pa_country"] as const).map((k) => {
+              const a = (r.pickupAddress ?? {}) as Record<string, string>;
+              const key = { pa_line1: "line1", pa_line2: "line2", pa_city: "city", pa_region: "region", pa_postcode: "postcode", pa_country: "country" }[k];
+              const label = { pa_line1: "Pick-up address: street", pa_line2: "Street, second line", pa_city: "Town", pa_region: "State", pa_postcode: "Zip", pa_country: "Country (two letters)" }[k];
+              return (
+                <div key={k} className="field">
+                  <label className="label" htmlFor={`sh-${k}`}>
+                    {label}
+                  </label>
+                  <input id={`sh-${k}`} name={k} className="input" maxLength={k === "pa_country" ? 2 : 120} defaultValue={a[key] ?? (k === "pa_country" ? "US" : "")} />
+                </div>
+              );
+            })}
+            <div className="sm:col-span-2">
+              <Submit className="btn">Save shipping and pick-up</Submit>
+            </div>
           </ActionForm>
         )}
+        {r.offersPickup && !r.pickupAddress && <p className="mt-2 text-base">Pick-up is on but there is no pick-up address yet: add it before you can take orders.</p>}
       </Section>
 
       {write && r.optedIn && (

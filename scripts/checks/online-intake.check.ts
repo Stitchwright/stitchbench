@@ -196,6 +196,25 @@ async function main() {
     assert.match(o6?.note ?? "", /Not every line has every decoration/);
     ok("lines with different decorations keep each decoration once, and the note says which line has which");
 
+    // ----- a taxed order: the sales tax is MakerFoundry's, outside the shop's earnings, and the shop adds none -----
+    const artT = dst(600);
+    hub.files.set(sha(artT), artT);
+    const taxed = fixture("order.placed.v1.taxed.valid.json");
+    taxed.lines[0].decorations[0].art = { file: "logo.dst", size: artT.length, sha256: sha(artT) };
+    delete taxed.preview;
+    await db.shop.update({ where: { id: A.shopId }, data: { taxRatePct: 7 } }); // the shop's own tax rate must not touch these orders
+    await send(A, "mf-8f3a0009", taxed);
+    const ot = (await orders(A.shopId)).find((o) => o.onlineRef === "mf-8f3a0009");
+    assert.ok(ot, "the taxed order was taken in");
+    assert.equal(ot.taxPaidCents, 1603);
+    assert.equal(ot.paidCents, 25952);
+    assert.equal(ot.shopGetsCents, 21131, "$259.52 paid, $16.03 tax, $24.35 and $7.83 in fees: the shop earns $211.31");
+    assert.equal(ot.shopGetsCents, ot.paidCents! - ot.taxPaidCents! - ot.feeCents! - ot.cardFeeCents!, "the earnings leave the tax out");
+    assert.equal(ot.quoteCents, 20000 + 2500, "the quote is goods and set-up: no tax of the shop's own is added");
+    assert.equal(ot.taxable, false);
+    assert.equal((ot.shipTo as { postcode: string }).postcode, "44000", "the postcode is kept as MakerFoundry sent it");
+    ok("a taxed order's earnings exclude the sales tax, and the shop's own tax rate is never applied");
+
     // ----- the price paid is never re-worked; the register and the email proof are not for these -----
     const before = (await db.decorOrder.findUniqueOrThrow({ where: { id: o1.id } })).quoteCents;
     await addLineFor(A.user, o1.id, form({ description: "Extra tee", qty: "1", garment: "5.00" }));

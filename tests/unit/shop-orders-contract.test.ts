@@ -20,6 +20,41 @@ test("every valid fixture is accepted and comes out unchanged", () => {
   }
 });
 
+test("a taxed order (the tax is MakerFoundry's, outside the shop's share), a postcode and an empty tracking are accepted as sent", () => {
+  const taxed = fixture("order.placed.v1.taxed.valid.json");
+  const p = parseBody("order.placed", 1, taxed, "service");
+  assert.ok(p.ok, p.ok ? "" : p.error);
+  if (p.ok) assert.deepEqual(p.body, taxed);
+  const t = taxed.totals;
+  assert.equal(t.tax_cents, 1603);
+  assert.equal(t.shop_gets_cents, 21131, "$259.52 paid, $16.03 tax, $24.35 and $7.83 in fees: the shop gets $211.31");
+  assert.equal(t.shop_gets_cents, t.paid_cents - t.tax_cents - t.fee_cents - t.card_fee_cents, "the earnings exclude the tax");
+  const s = fixture("order.status.v1.empty-tracking.valid.json");
+  const q = parseBody("order.status", 1, s, "shop");
+  assert.ok(q.ok && JSON.stringify(q.body) === JSON.stringify(s));
+});
+
+test("earnings that count the tax, or totals that don't add up, are refused", () => {
+  const taxed = fixture("order.placed.v1.taxed.valid.json");
+  const t = taxed.totals;
+  for (const bad of [{ shop_gets_cents: t.paid_cents - t.fee_cents - t.card_fee_cents }, { paid_cents: t.paid_cents + 1, shop_gets_cents: t.shop_gets_cents + 1 }, { shop_gets_cents: 99999 }]) {
+    const p = parseBody("order.placed", 1, { ...taxed, totals: { ...t, ...bad } }, "service");
+    assert.equal(p.ok, false);
+    if (!p.ok) assert.equal(p.code, "totals_dont_add_up");
+  }
+});
+
+test("the catalogue's shipping by the piece, the pick-up address and the garment price are read as sent", () => {
+  const c = fixture("catalog.v1.valid.json");
+  const p = parseBody("catalog", 1, c, "shop");
+  assert.ok(p.ok, p.ok ? "" : p.error);
+  if (p.ok) assert.deepEqual(p.body, c);
+  assert.equal(c.shipping.per_extra_piece_cents, 50);
+  assert.equal(c.shipping.free_over_cents, 30000);
+  assert.equal(c.shop.address.postcode, "44001");
+  assert.equal(c.products[0].cents, 800);
+});
+
 test("every invalid fixture is refused with its code", () => {
   for (const f of fixture("invalid.json") as { name: string; type: string; from: "service" | "shop" | "hub"; code: string; body: unknown }[]) {
     const p = parseBody(f.type, 1, f.body, f.from);

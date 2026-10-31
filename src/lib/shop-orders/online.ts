@@ -10,10 +10,11 @@ import { requireBaseWritable } from "@/lib/base-gate";
 import { requireModule } from "@/lib/modules";
 import { hubJoined, hubStatus } from "@/lib/hub";
 import { isDemo } from "@/lib/demo-mode";
-import { buildCatalog, isMethod, parsePriceBreaks } from "@/lib/shop-orders/catalog";
+import { buildCatalog, isMethod, parsePriceBreaks, type PickupAddress } from "@/lib/shop-orders/catalog";
 import { enqueue } from "@/lib/shop-orders/outbox";
 import { v2 } from "@/lib/shop-orders/hubv2";
 import { ordersSyncRow, syncShop } from "@/lib/shop-orders/sync";
+import { Prisma } from "@/generated/prisma/client";
 import type { CurrentUser } from "@/lib/session";
 
 async function gate(user: CurrentUser) {
@@ -45,6 +46,10 @@ export async function publishCatalogFor(shopId: string): Promise<string> {
     shopName: shop.name,
     ships: row.shipsOrders,
     shippingCents: row.shippingCents,
+    perExtraPieceCents: row.perExtraPieceCents,
+    freeOverCents: row.freeOverCents,
+    pickup: row.offersPickup,
+    pickupAddress: (row.pickupAddress as PickupAddress | null) ?? null,
     products: products.map((p) => ({ sku: p.sku, name: p.name, kind: p.kind, colours: p.colours, sizes: p.sizes, blankCents: p.blankCents })),
     offers: offers.map((o) => ({ method: o.method, placement: o.placement, breaks: o.breaks as { min: number; cents: number }[], setupCents: o.setupCents })),
   });
@@ -84,7 +89,7 @@ export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promi
     const row = await ordersSyncRow(shopId);
     const [products, offers] = await Promise.all([db.onlineProduct.count({ where: { shopId } }), db.onlineOffer.count({ where: { shopId } })]);
     if (!products || !offers) throw new UserError("Add at least one garment and one decoration with prices first, so customers have something to order.");
-    void row;
+    if (row.offersPickup && !row.pickupAddress) throw new UserError("Add the shop's pick-up address under Shipping and pick-up first (or switch pick-up off): sales tax on a pick-up order is worked out from it.");
   }
   try {
     if (!isDemo()) await v2(shopId, "/v2/optin", { method: "PUT", json: { service: "makerfoundry", enabled: on, maxOpen } });
@@ -98,14 +103,42 @@ export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promi
   return `You take orders from MakerFoundry. ${await publishCatalogFor(shopId)}`;
 }
 
+/** Dollars from a form field, 0 when empty. */
+function dollars(fd: FormData, name: string, what: string): number {
+  const cents = toCents(str(fd.get(name)) ?? "0");
+  if (cents == null || cents < 0 || cents > 100_000) throw new UserError(`${what}: dollars, like 8.99 (0 for none).`);
+  return cents;
+}
+
+/**
+ * Shipping by the piece (the price for one piece, so much more for each piece after the first, free when goods and set-up reach an amount) and
+ * pick-up. Switching pick-up on asks for the pick-up address: MakerFoundry works the sales tax on a pick-up order out from it, and without it
+ * offers only shipping. Sales tax is MakerFoundry's, never the shop's.
+ */
 export async function saveShippingFor(user: CurrentUser, fd: FormData): Promise<string> {
   await gate(user);
   const ships = String(fd.get("ships") ?? "") === "on";
-  const cents = toCents(str(fd.get("shipping")) ?? "0");
-  if (cents == null || cents < 0 || cents > 100_000) throw new UserError("Shipping: dollars, like 8.99 (0 for none).");
+  const pickup = String(fd.get("pickup") ?? "") === "on";
+  if (!ships && !pickup) throw new UserError("Turn on shipping or pick-up, so customers have a way to get their order.");
+  const flat = ships ? dollars(fd, "shipping", "Shipping for one piece") : 0;
+  const extra = ships ? dollars(fd, "perExtra", "Shipping for each extra piece") : 0;
+  const freeOver = ships ? dollars(fd, "freeOver", "Free shipping from") : 0;
+  let address: PickupAddress | null = null;
+  if (pickup) {
+    const line1 = text(fd.get("pa_line1"), 120);
+    const city = text(fd.get("pa_city"), 80);
+    const postcode = text(fd.get("pa_postcode"), 20);
+    const country = text(fd.get("pa_country"), 2).toUpperCase() || "US";
+    if (!line1 || !city || !postcode) throw new UserError("Pick-up needs the shop's address (street, town and zip): sales tax on a pick-up order is worked out from it.");
+    if (!/^[A-Z]{2}$/.test(country)) throw new UserError("Country: two letters, like US.");
+    address = { line1, ...(text(fd.get("pa_line2"), 120) ? { line2: text(fd.get("pa_line2"), 120) } : {}), city, ...(text(fd.get("pa_region"), 40) ? { region: text(fd.get("pa_region"), 40) } : {}), postcode, country };
+  }
   await ordersSyncRow(user.shopId);
-  await db.shopOrdersSync.update({ where: { shopId: user.shopId }, data: { shipsOrders: ships, shippingCents: ships ? cents : 0 } });
-  return afterEdit(user.shopId, ships ? "Shipping saved." : "Pickup only.");
+  await db.shopOrdersSync.update({
+    where: { shopId: user.shopId },
+    data: { shipsOrders: ships, shippingCents: flat, perExtraPieceCents: extra, freeOverCents: freeOver, offersPickup: pickup, pickupAddress: address ? (address as Prisma.InputJsonValue) : Prisma.DbNull },
+  });
+  return afterEdit(user.shopId, `${ships ? "Shipping" : "No shipping"}${pickup ? " and pick-up" : ""} saved.`);
 }
 
 export async function saveProductFor(user: CurrentUser, fd: FormData): Promise<string> {
