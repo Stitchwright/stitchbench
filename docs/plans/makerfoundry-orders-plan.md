@@ -1,0 +1,78 @@
+# MakerFoundry orders in StitchShop: report and plan (#74)
+
+**Status:** 2026-10-31. **For the owner's approval; nothing is built.** Part 1 of Stitchwright/stitchbench#74. Inputs: the owner's decisions in SiteSentrix/makerfoundry#2 (customers order physical goods from shops through MakerFoundry, live; MakerFoundry takes the payment and keeps 10 %; the shop pays the card fee; orders go through StitchHub), MakerFoundry's proposed contract (`docs/shop-orders-contract.md` on `issue-2-ordering-audit`), and StitchHub's design as built (`docs/hub-sync-design.md`; the transport is stitchhub PR #36, the order messages PR #37, **both open, not merged**). Code read at `47df015`.
+
+## In one minute
+- It fits the **Decorating module** well: an order from MakerFoundry becomes a `DecorOrder` (QUOTED, already paid) with lines, placements and the customer's art, and the existing mock-up, statuses and production list carry on from there.
+- Five things do **not** fit and need a decision or new fields (section 3): the order is **prepaid** (the register's collect step would bill it again), there is **no "shipped"** step, the **proof** goes through the hub instead of an email or text link (the shop is never given the customer's contact), the shop's **price table is by stitch count** while the catalogue wants a **fixed price per placement**, and the **catalogue of blank garments** does not exist yet.
+- The contract has moved on in the hub's design (section 4); I build to the hub's text, not the proposal's.
+- Two things I need from you before building: the open questions in section 6 (shipping and tax stay open, as you said), and the hub PRs merged and deployed with a bucket.
+
+## 1. How it fits the Decorating module
+| Piece today | What it does | MakerFoundry order |
+|---|---|---|
+| `DecorOrder` (`prisma/schema.prisma`) | `QUOTED → APPROVED → IN_PRODUCTION → READY → COLLECTED`, plus `CANCELLED`, `TURNED_DOWN`; `quoteCents` and its parts (`digitizingCents`, `screenCents`, `setupCents`, each line's `garmentCents`, each placement's `quotedEachCents`) are kept so a later price change never moves a quoted order | Created by the hub message, status `QUOTED`, quote set **from the order's totals** (not worked out from the price table); a new `source = "MAKERFOUNDRY"` and the order reference |
+| `DecorLine` | Garment, colour, sizes as typed ("M 4, L 2"), qty, blank price | One per `lines[]` entry; description from the catalogue name; sizes text from `sizes{}`; `garmentCents` from the catalogue price |
+| `DecorPlacement` | Location, method, stitches, colours, the design file (`fileData`), `quotedEachCents`, `newDesign` | One per `decorations[]`; the art is fetched and checked, then kept as `fileData`. A file the DST reader can't read (PES, a picture) is kept with `fileReadable = false` and the shop digitizes, as for a picture a customer brings today |
+| `decor-math.ts` price table | Stitch tiers, quantity breaks, digitizing, set-up | **Not used for the price of these orders** (the customer already paid the catalogue price); still used for the shop's production time |
+| `decor-inbox.ts` | Hub inbox list, download from the bucket, size and SHA-256 check, `createOrderFor` / `addPlacementFor` / `adoptMockupFor` | The download-and-verify code is reused for art (through `POST /v2/files/get` instead of `/v1/inbox/get`) |
+| Mock-up (`mockupData`, PNG or JPEG, 2 MB) | Shown on the quote page | Becomes the proof sent to the customer, and the customer's `preview` from the order is adopted as the first mock-up |
+| Estimate links (`/api/e/[token]`) and `sendProofFor` | Quote and proof by email or text, answered on a public page | **Not used** for these orders: the shop never has the customer's email or phone (the owner's privacy rule). The proof is a `proof.sent` message and the answer is a `proof.answer` message; MakerFoundry shows the customer the page |
+| `collectOrderFor` | Takes payment at the counter by a register sale built from the kept parts, and checks they add up to `quoteCents` | Must **not** bill again. See 3.1 |
+
+## 2. Where the opt-in lives
+**Settings › Decorating › "Online orders: take orders from MakerFoundry"** (a section of the Decorating settings next to the price table), owner or admin only, off by default. It is a setting of the Decorating module rather than a module of its own: it needs Decorating and does nothing without it. (The existing "online shop" setting is the shop's *own* storefront; the name "Online orders" is kept off it to avoid confusion: the label says MakerFoundry.)
+
+Turning it on: requires the company to be on a hub and a published catalogue with at least one product and one decoration price; calls the hub's `PUT /v2/optin` (`{ service: "makerfoundry", enabled, maxOpen }`), then publishes the catalogue. Fields: **"Most open orders at once"** (the per-shop cap, default 200, the hub enforces it) and a pause switch ("stop taking new orders; finish the ones I have", which is `enabled: false`; the hub still delivers messages about orders already open). Turning it off says so plainly and keeps open orders.
+
+## 3. What does not fit StitchShop, and what I propose
+**3.1 The order is prepaid.** `collectOrderFor` takes payment and posts a register sale; for a MakerFoundry order that would count the money twice. Proposal: new `paidCents` and `paidVia` ("MakerFoundry") on `DecorOrder`; collecting (or shipping) such an order records the hand-over **without a tender**, and the books show it as a sale paid through MakerFoundry (a "MakerFoundry (prepaid)" tender, so the Z-report and sales-tax report still add up). The shop's share (`shop_gets_cents`) and the two fees are kept on the order for the reports. *Owner question 6.3: should these orders appear as register sales (with a prepaid tender), or only on a separate "online orders" report?*
+
+**3.2 There is no "shipped".** The module is counter pickup. New: `fulfilment` (`PICKUP` | `SHIP`), `shippedAt`, `tracking`, and a status step **READY → SHIPPED** for a `SHIP` order (and `COLLECTED` stays for pickup). Shipping labels already exist (Shippo, Settings › shipping); the order page gets "Mark shipped" with an optional tracking number, which sends `order.status shipped`. The shipping address (`ship_to`) is stored on the order, shown only on the order page, and **cleared N days after it ships** (open question 6.5: N).
+
+**3.3 The proof goes through the hub.** New on `DecorOrder`: `proofNo` (1, 2, ...), `proofSentAt`, `proofAnswer`, `proofNote`. "Send proof" on a MakerFoundry order sends `proof.sent { proof, mockup, note }` (mock-up uploaded with `/v2/files/put`), and the status shown to the customer is `proof_sent` (QUOTED with a proof out). `proof.answer approved` moves the order to `APPROVED`; `changes` keeps it QUOTED, records the customer's note on the order, and the shop edits the mock-up and sends proof 2. The existing "send by email or text" button is hidden for these orders.
+
+**3.4 Prices: a catalogue, and it is fixed per placement.** The price table prices decoration by stitch count, which is unknown until the art arrives; the contract's catalogue wants `price_breaks: [{min, cents}]` per placement and method. So the catalogue needs a **flat price per placement and quantity break**, with a limit on the design (a maximum stitch count) so the shop is not committed to an unbounded job. New model **`OnlineProduct`** (sku, name, kind, colours, sizes, blank price, active) and **`OnlinePlacement`** (per method and placement: price breaks, set-up fee, maximum stitches). The published price for a piece is blank + placement price; the shop sees how each compares with what its stitch-count table would give for a typical design. The stitch limit has to be carried to MakerFoundry (it is not in the hub's catalogue body today; the hub drops fields it doesn't know, so this needs a small addition on the hub, see 4). *Owner question 6.1.*
+
+**3.5 There is no catalogue of blank garments.** Garment prices on a decorating order are typed on each line. `OnlineProduct` above is the first list of blanks the program has; it is separate from stock on purpose (a blank may be ordered from a supplier after the order arrives). Product photos are not carried (the proposal's open question: MakerFoundry draws garments in code).
+
+**3.6 Small ones.**
+- The customer has **no contact**: the `DecorOrder` keeps only `name` (the order carries a name and a note), no `Customer` row, so nothing in Messages can try to reach them.
+- `taxable` is set **false** and `tax_cents` kept as a separate figure; shipping is kept as `shippingCents`, outside `quoteCents`. Both are the open questions below.
+- Art in the order can be any format the customer used; the check is size (10 MB) and SHA-256, never the format.
+
+## 4. Where I build to the hub's text, not the proposal's
+The hub's design (stitchhub PRs #35 to #37) adopted most of MakerFoundry's proposal and changed these, which matter here:
+| Proposal | As built in the hub | What StitchShop does |
+|---|---|---|
+| `order` on every message | `conversation` (the order reference) | Uses `conversation` |
+| `from`/`to` `makerfoundry` | `service:makerfoundry`, `shop:<hub shop id>`; the program names its company with `X-Shop-Ref` and never needs the hub id | Calls `/v2/*` with the install key and `X-Shop-Ref`, `X-Client: stitchshop/<version>` |
+| `art_urls` in the order, `url` in the mock-up | Files by `POST /v2/files/put`, `done`, `get`, addresses made when asked | Asks for each file's address when it is needed, checks size and SHA-256 |
+| Shop sends status with the customer's contact | Hub refuses a body that holds an email or phone | Nothing of the kind is ever put in a body |
+| Polling every minute | `GET /v2/messages?after&limit&wait` (up to 25 s) and `POST .../ack` | Polls with a cursor kept in the database; acks only after the change is committed |
+| Fixtures in each repo | stitchhub `test/fixtures/sync-orders/` (the `stitch-contracts` repo does not exist) | Copied to `tests/fixtures/shop-orders/` with the same file names and a check that they match (as `contracts/` does for Bench) |
+Also: `order.placed` is **signed** by MakerFoundry; the hub verifies it and publishes the key in `hello`. StitchShop does not have to verify it for the first version (the hub already did), and I propose not to (open question 6.6).
+
+## 5. The build, in small packages
+Each is one PR, with checks. Nothing starts until the hub PRs are merged and deployed (it can be written against the fixtures before).
+1. **Hub client and queue** (`src/lib/shop-sync.ts`): `/v2/hello` (also after reconnecting) with the types this version understands and the 426 "please update" message; a polling job beside the partner one in `instrumentation.ts` (every 60 s, `wait` on); the cursor; `SyncApplied` (message id, unique, for dedupe); per-order `seq` apply (a later message is held until the earlier one has been applied; a gap older than 24 hours is shown on the order); a durable `SyncOutbox` with a `seq` counter per order (survives restarts; retried with the same ids; dead after a hub refusal, shown); `message.expired` handled (a proof that expired says "the customer never saw this proof: send it again"; an expired status is simply resent next time).
+2. **Opt-in and catalogue** (3.4, 3.5, section 2): models, the two settings screens, publish on opt-in and on every change of prices or products; "published" state shown, and a plain warning that customers pay the published prices.
+3. **Taking an order**: `order.placed` → `DecorOrder` in one transaction (lines, placements, paid figures, ship-to, the order reference, unique so a repeat does nothing); art fetched and checked afterwards, one placement at a time, a failure leaves the order with "art not fetched yet" and a retry, never a half order; `received` sent. Order list shows a "MakerFoundry" badge and what is paid.
+4. **Status and fulfilment**: `order.status` for approved, in production, ready, shipped / collected; READY → SHIPPED and tracking; prepaid hand-over (3.1, 3.2).
+5. **Proofs and cancel** (3.3): send proof, apply `proof.answer`, `order.cancel` both ways (turning an order down sends `order.cancel by shop` with the reason; a customer cancel arrives and closes the order, with a warning if it is already in production).
+6. **Demo**: in `DEMO_MODE`, "Simulate a customer order" feeds a fixture `order.placed` through the same intake code, with no hub and no MakerFoundry (#39's demo, inside StitchShop's own demo as you said).
+7. **Contract and behaviour tests** (written with each package, not at the end): the shared fixtures (every valid body is accepted and round-trips, every invalid one is refused), and: a shop **offline for 3 days** (the cursor catches up, expired orders are never created, the rest arrive in order), a **duplicate order** (one order, one `received`), **out-of-order status** (an `approved` answer before the proof is held until the proof is applied), and an **order that expires undelivered** (nothing created; a late copy after the hub expired it is refused or ignored). Plus: a restart between "committed" and "acked" re-offers the message and nothing doubles.
+
+## 6. Questions for you
+Shipping and sales tax stay open, as you said. I will leave `shippingCents`, `tax_cents` and `taxable = false` as separate stored figures and guess nothing about them.
+1. **Fixed placement prices.** OK to publish a flat price per placement with a stitch limit (3.4)? What should happen to a design over the limit: the shop turns the order down for a full refund, or the shop may ask the customer for more? (Asking for more needs a message the contract doesn't have.)
+2. **Opt-in home.** Settings › Decorating (section 2), not a module of its own: OK?
+3. **Books.** Prepaid orders as register sales with a "MakerFoundry (prepaid)" tender (my suggestion), or only on a separate report?
+4. **Shipping and tax** (open, yours): who sets the shipping price, who collects and pays the tax on physical goods, and which state's rules. The catalogue has a flat shipping price; I will not fill it until you decide.
+5. **The customer's address:** how many days after shipping is it cleared? (My suggestion: 30, in line with the hub's 30 days for message bodies. Needs a line in the privacy text, which is yours.)
+6. **Signature:** trust the hub's check (my suggestion) or have each shop verify `order.placed` against the key in `hello` as well?
+7. **Hub PRs:** merge #35, #36, #37 in that order and deploy with the bucket settings; then I can build against the real thing. Also needed on the hub if you agree to 3.4: a `max_stitches` field on catalogue placements.
+8. **Version:** which StitchShop release does this go into (the hub gives "please update" answers by version)?
+
+## 7. What this plan did not check
+It was written from the code and the documents, with nothing run. I did not read the Decorating pages (UI), only the data and the library code. MakerFoundry's side (#1) was read only in its proposal. The hub side is read from its PRs, which are not merged.
