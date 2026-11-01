@@ -1,5 +1,6 @@
 // Decorating › Online orders (docs/plans/makerfoundry-orders-plan.md package 2): take orders from MakerFoundry, what the shop sells
 // there and at what price. Owner or admin. Customers are charged only the prices published here.
+import { isPlatformAdmin } from "@/lib/shops";
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { fmtDate, money } from "@/lib/format";
@@ -7,7 +8,7 @@ import { shopTimeZone } from "@/lib/shop-zone";
 import { isDemo } from "@/lib/demo-mode";
 import { onlineView } from "@/lib/shop-orders/online";
 import { breaksText, METHOD_WORDS, type OfferIn } from "@/lib/shop-orders/catalog";
-import { publishOnlineCatalog, simulateOnlineOrder, removeOnlineOffer, removeOnlineProduct, saveOnlineOffer, saveOnlineProduct, saveOnlineShipping, setOnlineOrders } from "@/actions/online-orders";
+import { publishOnlineCatalog, simulateOnlineOrder, removeOnlineOffer, removeOnlineProduct, saveOnlineOffer, saveOnlineProduct, saveOnlineShipping, setOnlineOrders, setOnlineService } from "@/actions/online-orders";
 import { ActionButton, ActionForm, Submit } from "@/components/action-form";
 import { Empty, Section } from "@/components/ui";
 import { DecorFrame, decorPageState } from "@/components/decorating/decor-page";
@@ -66,7 +67,7 @@ export default async function OnlineOrdersPage() {
         ) : (
           !isDemo() && <p className="mb-2 text-base">The owner&apos;s login isn&apos;t linked to a Foundry Account. Link it (Settings → Account): MakerFoundry pays the shop through that account and doesn&apos;t offer a shop without one.</p>
         )}
-        {!v.hub && <p className="muted mb-2 text-sm">Join the community hub first (Settings → StitchHub): orders come through it.</p>}
+        {!v.hub && !isDemo() && <p className="muted mb-2 text-sm">Join the community hub first (Settings → StitchHub): orders come through it.</p>}
         {write && (
           <ActionForm action={setOnlineOrders} success="Saved" className="flex flex-wrap items-end gap-3">
             <div className="field">
@@ -77,6 +78,17 @@ export default async function OnlineOrdersPage() {
             </div>
             <input type="hidden" name="on" value={r.optedIn ? "off" : "on"} />
             <Submit className="btn btn-primary">{r.optedIn ? "Stop taking new orders" : "Take orders from MakerFoundry"}</Submit>
+          </ActionForm>
+        )}
+        {write && isPlatformAdmin(user.email) && !r.optedIn && (
+          <ActionForm action={setOnlineService} success="Saved" className="mt-3 flex flex-wrap items-end gap-3">
+            <div className="field">
+              <label className="label" htmlFor="oo-service">
+                Order service (platform admin; makerfoundry is production)
+              </label>
+              <input id="oo-service" name="service" className="input w-56" defaultValue={r.service} />
+            </div>
+            <Submit className="btn">Change</Submit>
           </ActionForm>
         )}
         <p className="muted mt-2 text-sm">

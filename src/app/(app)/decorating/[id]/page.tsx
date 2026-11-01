@@ -168,7 +168,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
                   {l.sizes ? <span className="muted text-sm"> · {l.sizes}</span> : null}
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="num">{l.garmentCents > 0 ? `${money(l.garmentCents)} each = ${money(l.garmentCents * l.qty)}` : "customer brings them"}</span>
+                  <span className="num">{l.garmentCents > 0 ? `${money(l.garmentCents)} each = ${money(l.garmentCents * l.qty)}` : o.source ? "in the price paid" : "customer brings them"}</span>
                   {editable && (
                     <ActionButton action={removeDecorLine.bind(null, o.id, l.id)} className="btn btn-sm">
                       Remove
@@ -233,7 +233,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
                     {p.location} <span className="muted text-sm font-normal">· {METHOD_LABEL[p.method]?.toLowerCase() ?? p.method}</span>
                   </span>
                   <span className="flex items-center gap-2">
-                    <span className="num">{money(p.quotedEachCents)} each</span>
+                    <span className="num">{o.source ? "in the price paid" : `${money(p.quotedEachCents)} each`}</span>
                     {editable && (
                       <ActionButton action={removeDecorPlacement.bind(null, o.id, p.id)} className="btn btn-sm">
                         Remove
@@ -245,7 +245,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
                   {p.method === "SCREEN_PRINT"
                     ? `${p.colors} ${p.colors === 1 ? "colour" : "colours"}${p.underbase ? " + underbase" : ""} · ${p.colorsWithUnderbase} ${p.colorsWithUnderbase === 1 ? "screen" : "screens"}`
                     : `${p.stitches.toLocaleString("en-US")} stitches · ${p.colors} ${p.colors === 1 ? "colour" : "colours"}`}
-                  {p.widthMm != null && p.heightMm != null ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""}
+                  {p.widthMm != null && p.heightMm != null && p.widthMm > 0 && p.heightMm > 0 ? ` · ${p.widthMm} × ${p.heightMm} mm` : ""}
                   {p.method === "SCREEN_PRINT" ? ` · about ${formatMinutes(p.minutesTotal)} on the press for all ${o.pieces}` : ` · about ${p.runMinutesEach} min a piece`}
                   {p.priceEachCents != null ? " · price agreed, not from the table" : ""}
                   {p.newDesign ? (p.method === "SCREEN_PRINT" ? " · new screens (screen fee)" : " · new design (digitizing fee)") : ""}
@@ -325,7 +325,7 @@ export default async function DecorOrderPage({ params }: { params: Promise<{ id:
               <p>
                 Proof {o.proofNo} sent {o.proofSentAt ? fmtDateTime(o.proofSentAt, tz) : ""}:{" "}
                 {o.proofAnswer === "approved" ? "the customer approved it" : o.proofAnswer === "changes" ? "the customer asked for changes" : "waiting for the customer's answer"}
-                {o.proofNote ? `: ${o.proofNote}` : ""}.
+                {o.proofNote ? `: ${o.proofNote.replace(/\.+$/, "")}` : ""}.
               </p>
             ) : (
               <p className="muted text-sm">No proof sent yet. The customer sees the mock-up picture on MakerFoundry and approves it or asks for changes; you never see their email or phone.</p>

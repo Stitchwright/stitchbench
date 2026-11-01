@@ -197,7 +197,8 @@ async function main() {
     assert.equal(planWords({ plan: "shop", keyPlan: "t", founding: false }), "Shop (everyone at the shop), free trial");
     assert.equal(planWords({ plan: "shop", keyPlan: "w", founding: false }), "Shop (everyone at the shop), free while partnered");
     const src = fs.readFileSync(path.join(process.cwd(), "src/actions/settings.ts"), "utf8");
-    assert.match(src, /export const addUser = safe\(async function addUser\(formData: FormData\) \{\s+await addPersonAs\(await requireAdmin\(\), formData\);/);
+    // addUser keeps what addPersonAs returns (the one-time sign-in link under FOUNDRY_SIGNIN=only), so its first line may assign it.
+    assert.match(src, /export const addUser = safe\(async function addUser\(formData: FormData\) \{\s+(?:const \w+ = )?await addPersonAs\(await requireAdmin\(\), formData\);/);
     assert.match(src, /export const setUserActive = safe\(async function setUserActive\(userId: string, active: boolean\) \{\s+await setPersonActiveAs\(await requireAdmin\(\), userId, active === true\);/);
     ok("the refusal's words as decided, the plan's words for Settings → Account, and addUser / setUserActive go through src/lib/people.ts");
   }

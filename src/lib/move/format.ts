@@ -193,6 +193,19 @@ export const MOVE_TABLES: readonly MoveTable[] = [
   { t: "StoreNoteRead", key: `"noteId" || '|' || "userId"`, via: { column: "noteId", parent: "StoreNote" } }, // -> StoreNote, User
   { t: "Approval", key: "id" },
   { t: "SlipReceipt", key: `"shopId" || '|' || "key"` }, // packing slips already received (so a retry receives nothing twice)
+  // MakerFoundry orders through StitchHub's queue (docs/plans/makerfoundry-orders-plan.md): the company's catalogue, offers
+  // and shipping choices, and its place in the hub's queue, which is kept per company, not per install. The messages it
+  // received (so a repeat is dropped and nothing is applied twice), where each conversation stands, and its outbox with the
+  // ids and seqs they were made with (a moved company sends what it hadn't sent yet, and carries on each conversation at the
+  // next seq rather than again at 1, which the hub would take as old copies). How this copy last talked to the hub is cleared:
+  // the new install says hello again on its first run.
+  { t: "ShopOrdersSync", key: '"shopId"', cleared: ["helloAt", "lastPollAt", "lastOkAt", "lastError", "upgradeNeeded"] },
+  { t: "OnlineProduct", key: "id" }, // -> ShopOrdersSync
+  { t: "OnlineOffer", key: "id" }, // -> ShopOrdersSync
+  { t: "SyncIn", key: "id" },
+  { t: "SyncInSeq", key: `"sender" || '|' || "conversation"` },
+  { t: "SyncOut", key: "id" },
+  { t: "SyncOutSeq", key: '"conversation"' },
 ];
 
 /** Models with a shopId column that stay on the install (design section 2, second table), each with why. */

@@ -6,7 +6,10 @@ import type { Prisma } from "@/generated/prisma/client";
 import { isDemo } from "@/lib/demo-mode";
 import { parseBody, type SENDS } from "@/lib/shop-orders/contract";
 
-export const SERVICE = "service:makerfoundry";
+/** The hub address of a service (the name a shop opted in to). */
+export const serviceAddress = (service: string) => `service:${service}`;
+/** The default service: production MakerFoundry. */
+export const DEFAULT_SERVICE = "makerfoundry";
 /** How long the hub is asked to keep an undelivered message of each kind of ours (it clamps to its own longest). */
 const TTL_DAYS: Record<string, number> = { catalog: 14, "order.status": 14, "proof.sent": 14, "order.cancel": 14 };
 

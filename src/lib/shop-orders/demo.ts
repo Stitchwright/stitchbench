@@ -55,14 +55,28 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 export function demoPng(): Uint8Array<ArrayBuffer> {
+  const W = 160;
+  const H = 120;
   const ihdr = new Uint8Array(13);
   const dv = new DataView(ihdr.buffer);
-  dv.setUint32(0, 2);
-  dv.setUint32(4, 2);
-  ihdr.set([8, 2, 0, 0, 0], 8); // 8 bits, RGB
-  // Two rows, each a filter byte (0) and two RGB pixels.
-  const rows = new Uint8Array([0, 200, 30, 60, 30, 60, 200, 0, 30, 60, 200, 30, 60, 30]).slice(0, 14);
-  // zlib: header, one stored block, adler-32
+  dv.setUint32(0, W);
+  dv.setUint32(4, H);
+  ihdr.set([8, 2, 0, 0, 0], 8); // 8 bits, RGB, no interlace
+  // Rows of a filter byte (0) and W RGB pixels: a navy garment with a pale "stitched" ring and cross, so the proof picture is visible.
+  const rows = new Uint8Array(H * (1 + W * 3));
+  for (let y = 0; y < H; y++) {
+    const o = y * (1 + W * 3);
+    rows[o] = 0;
+    for (let x = 0; x < W; x++) {
+      const d = Math.hypot(x - W / 2, y - H / 2);
+      const ring = Math.abs(d - 34) < 2.5 || (Math.abs(x - W / 2) < 2 && d < 34) || (Math.abs(y - H / 2) < 2 && d < 34);
+      const px = o + 1 + x * 3;
+      rows[px] = ring ? 235 : 28;
+      rows[px + 1] = ring ? 225 : 46 + Math.round(y / 4);
+      rows[px + 2] = ring ? 200 : 92 + Math.round(x / 6);
+    }
+  }
+  // zlib: header, one stored block (under 65 535 bytes), adler-32
   let a = 1;
   let b = 0;
   for (const x of rows) {
@@ -70,7 +84,7 @@ export function demoPng(): Uint8Array<ArrayBuffer> {
     b = (b + a) % 65521;
   }
   const z = new Uint8Array(2 + 5 + rows.length + 4);
-  z.set([0x78, 0x01, 0x01, rows.length, 0, ~rows.length & 0xff, 0xff], 0);
+  z.set([0x78, 0x01, 0x01, rows.length & 0xff, rows.length >> 8, ~rows.length & 0xff, (~rows.length >> 8) & 0xff], 0);
   z.set(rows, 7);
   new DataView(z.buffer).setUint32(7 + rows.length, ((b << 16) | a) >>> 0);
   const parts = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", z), chunk("IEND", new Uint8Array(0))];
@@ -121,7 +135,7 @@ export async function simulateOrderFor(user: CurrentUser, kind: "pickup" | "ship
     fulfilment: kind,
     lines: [{ sku: product.sku, colour: product.colours.split(/[\n,;]+/)[0].trim() || "Navy", sizes: counts, decorations: [{ method: offer.method, placement: offer.placement, art: { file: "logo.dst", size: art.length, sha256: sha(art) } }] }],
     preview: { size: png.length, sha256: sha(png), type: "image/png" },
-    customer: { name: NAMES[Math.floor(Math.random() * NAMES.length)], ...(kind === "ship" ? { ship_to: { name: "Demo Customer", line1: "1 Demo Lane", city: "Springfield", region: "XX", postal: "00000", country: "US" } } : {}) },
+    customer: { name: NAMES[Math.floor(Math.random() * NAMES.length)], ...(kind === "ship" ? { ship_to: { name: "Demo Customer", line1: "1 Demo Lane", city: "Springfield", region: "XX", postcode: "00000", country: "US" } } : {}) },
     totals: { goods_cents: goods, setup_cents: setup, shipping_cents: shipping, tax_cents: tax, paid_cents: paid, fee_cents: fee, card_fee_cents: card, shop_gets_cents: paid - tax - fee - card },
     note: "A simulated order for the demo.",
   };

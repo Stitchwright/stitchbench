@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { noted, safe } from "@/lib/action";
 import { requireUser } from "@/lib/session";
 import { simulateCustomerFor, simulateOrderFor } from "@/lib/shop-orders/demo";
-import { publishCatalogFor, removeOfferFor, removeProductFor, saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
+import { publishCatalogFor, removeOfferFor, removeProductFor, saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor, setServiceFor } from "@/lib/shop-orders/online";
 
 const refresh = (id?: string) => {
   revalidatePath("/decorating", "layout");
@@ -16,6 +16,13 @@ const refresh = (id?: string) => {
 export const setOnlineOrders = safe(async function setOnlineOrders(formData: FormData) {
   const user = await requireUser();
   const text = await setOnlineOrdersFor(user, formData);
+  refresh();
+  return noted(text);
+});
+
+export const setOnlineService = safe(async function setOnlineService(formData: FormData) {
+  const user = await requireUser();
+  const text = await setServiceFor(user, String(formData.get("service") ?? "").trim().toLowerCase());
   refresh();
   return noted(text);
 });

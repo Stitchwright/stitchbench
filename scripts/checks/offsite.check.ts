@@ -223,7 +223,18 @@ async function main() {
     assert.ok(!lines.some((l) => l.id === custB.id));
     await removeCompany(a.shopId);
     assert.equal(await db.customer.count({ where: { shopId: a.shopId } }), 0);
-    const summary = await importCompany(file, { by: "operator" });
+    // The restore runs as the program (STITCH_DESKTOP above), and a PC takes a company from a file only while it has none
+    // (move-import.check covers that rule) or when it hosts several. The check's database has other companies (B, and
+    // whatever else the dev database holds), so this PC is set up to host several for the restore.
+    const admins = process.env.PLATFORM_ADMIN_EMAILS;
+    process.env.PLATFORM_ADMIN_EMAILS = "offsite-check@platform.invalid";
+    let summary;
+    try {
+      summary = await importCompany(file, { by: "operator" });
+    } finally {
+      if (admins === undefined) delete process.env.PLATFORM_ADMIN_EMAILS;
+      else process.env.PLATFORM_ADMIN_EMAILS = admins;
+    }
     assert.equal(summary.shopId, a.shopId);
     for (const mt of MOVE_TABLES) {
       if (["OffsiteObject", "Shop", "MessagingSettings", "OffsiteSettings"].includes(mt.t)) continue; // the index grew after the snapshot; the import's own changes

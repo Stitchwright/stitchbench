@@ -1,3 +1,4 @@
+import { SUPPORT_LINKS } from "@/lib/support-links";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { isInstallAdmin, requireUser } from "@/lib/session";
@@ -221,6 +222,20 @@ export default async function SettingsPage() {
         <Link href="/settings/whats-new" className="link text-sm">
           See what has changed in each version
         </Link>
+      </Section>
+
+      <Section title="Free, and kept going by you" id="support">
+        <p className="muted mb-2 text-sm">
+          StitchBench costs nothing. YouTube and donations pay for it. Giving is a gift: nothing here changes, locks or slows down whether you do or not.
+        </p>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <a href={SUPPORT_LINKS.youtube} target="_blank" rel="noreferrer" className="link">
+            Watch the videos on YouTube
+          </a>
+          <a href={SUPPORT_LINKS.donate} target="_blank" rel="noreferrer" className="link">
+            Buy us a coffee
+          </a>
+        </div>
       </Section>
 
       <Section title="Account" id="account">

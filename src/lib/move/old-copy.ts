@@ -50,6 +50,11 @@ export async function deleteMovedCompany(by: Remover, shopId: unknown, typedName
     // No foreign key to Shop on these two (package move-import's finding): they would outlive the company.
     db.partnerSeen.deleteMany({ where: { shopId: id } }),
     db.partnerFailure.deleteMany({ where: { shopId: id } }),
+    // Nor on the MakerFoundry queue's (messages received, the outbox, where each conversation stands).
+    db.syncIn.deleteMany({ where: { shopId: id } }),
+    db.syncInSeq.deleteMany({ where: { shopId: id } }),
+    db.syncOut.deleteMany({ where: { shopId: id } }),
+    db.syncOutSeq.deleteMany({ where: { shopId: id } }),
     // The hub's copies kept for it (a shopId without a foreign key): the hub sends them to the new install now.
     db.listing.deleteMany({ where: { shopId: id } }),
     db.marketOrder.deleteMany({ where: { shopId: id } }),

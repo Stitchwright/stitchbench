@@ -68,6 +68,66 @@ jobs:
           TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
         run: npm test
 
+  # The MakerFoundry order flow (docs/plans/makerfoundry-orders-plan.md): the six order checks against a real Postgres, then the whole flow
+  # through the REAL StitchHub, once as the production service (makerfoundry) and once as the test one (makerfoundry-test). The hub is the
+  # public Stitchwright/stitchhub repo, checked out at main: when its order messages change, this job is where it shows.
+  orders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/orders
+      STITCHHUB_DIR: ${{ github.workspace }}/stitchhub-src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Stitchwright/stitchhub
+          ref: main
+          path: stitchhub-src
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: The hub's packages
+        working-directory: stitchhub-src
+        run: npm ci --no-audit --no-fund
+      - name: Create the database and apply the migrations
+        env:
+          PGPASSWORD: test
+        run: |
+          psql -h localhost -U postgres -c "CREATE DATABASE orders"
+          npx prisma generate
+          npx prisma migrate deploy
+      - name: The order checks
+        run: |
+          for c in orders-sync online-orders online-intake online-handover online-proofs online-demo; do
+            echo "::group::$c"
+            npm run check -- scripts/checks/$c.check.ts
+            echo "::endgroup::"
+          done
+      - name: The whole flow through the real hub, as makerfoundry
+        run: npm run check -- scripts/checks/online-realhub.check.ts
+      - name: The whole flow through the real hub, as makerfoundry-test
+        env:
+          REALHUB_SERVICE: makerfoundry-test
+        run: npm run check -- scripts/checks/online-realhub.check.ts
+
   # The database check scripts (scripts/checks/*.check.ts) catch business-logic regressions the unit tests don't. Each
   # check gets a database of its own, cloned from a migrated template (scripts/checks/run-ci.mjs); four shards keep
   # each job short. Checks left out, with the reason, are listed in scripts/checks/ci-skip.txt. Test values only, no secrets.

@@ -361,6 +361,17 @@ async function seed(a: CheckShop, b: CheckShop, bigPhoto: Buffer) {
   await db.storeNoteRead.create({ data: { noteId: storeNote.id, userId: a.user.id } });
   await db.approval.create({ data: { shopId, locationId: florida.id, kind: "REFUND", amountCents: 25000, expiresAt: new Date(Date.now() + 3_600_000) } });
   await db.slipReceipt.create({ data: { shopId, key: "slip-move-fixture-0001", words: "Received 2 pieces." } });
+  // MakerFoundry orders (makerfoundry-orders-plan.md): the company's settings and place in the hub's queue (with how this copy
+  // last talked to the hub, which stays behind), its catalogue and offers, a message received, where a conversation stands,
+  // and an outbox message not sent yet with its seq.
+  const helloAt = new Date(Date.now() - 3_600_000);
+  await db.shopOrdersSync.create({ data: { shopId, optedIn: true, cursor: "41", helloAt, lastPollAt: helloAt, lastOkAt: helloAt, lastError: "hub busy", upgradeNeeded: "update please", shipsOrders: true, shippingCents: 900 } });
+  await db.onlineProduct.create({ data: { shopId, sku: "TEE-1", name: "Tee", colours: "Black", sizes: "S,M,L", blankCents: 500 } });
+  await db.onlineOffer.create({ data: { shopId, method: "embroidery", placement: "left-chest", breaks: [{ from: 1, cents: 900 }] } });
+  await db.syncIn.create({ data: { shopId, messageId: `msg_move_${crypto.randomBytes(6).toString("hex")}`, sender: "makerfoundry", conversation: "order:mf-1", seq: 1, type: "order.placed", version: 1, body: { order: "mf-1" }, sentAt: helloAt, ackedAt: helloAt, result: "applied", appliedAt: helloAt } });
+  await db.syncInSeq.create({ data: { shopId, sender: "makerfoundry", conversation: "order:mf-1", nextSeq: 2 } });
+  await db.syncOut.create({ data: { id: `out_move_${crypto.randomBytes(6).toString("hex")}`, shopId, conversation: "order:mf-1", seq: 3, type: "order.status", body: { order: "mf-1" }, expiresAt: new Date(Date.now() + 7 * 86_400_000) } });
+  await db.syncOutSeq.create({ data: { shopId, conversation: "order:mf-1", nextSeq: 4 } });
   await db.shop.update({
     where: { id: shopId },
     data: {
@@ -410,7 +421,7 @@ async function main() {
     await removeCompany(a.shopId);
     assert.equal(await db.shop.count({ where: { id: a.shopId } }), 0, "A is gone");
     // Deleting a company leaves the rows of the two tables without a foreign key to Shop; the import replaces them.
-    const loose = ["PartnerSeen", "PartnerFailure"];
+    const loose = ["PartnerSeen", "PartnerFailure", "SyncIn", "SyncInSeq", "SyncOut", "SyncOutSeq"];
     for (const t of MOVE_TABLES) assert.equal((await tableRows(t, a.shopId)).length, loose.includes(t.t) ? before[t.t].length : 0, `${t.t} rows of A left after the delete`);
     const progress: string[] = [];
     const t0 = Date.now();
@@ -457,6 +468,14 @@ async function main() {
     assert.ok(msRow.smtpHost && msRow.twilioSid, "the rest of the message settings came");
     assert.equal((await db.estimateLink.findFirstOrThrow({ where: { shopId: a.shopId } })).tokenSealed, null);
     assert.equal((await db.webOrder.findFirstOrThrow({ where: { shopId: a.shopId } })).linkSealed, null);
+    // MakerFoundry orders: the company's place in the hub's queue, its unsent outbox and its conversations' next seqs came;
+    // how the old copy last talked to the hub didn't (the new install says hello again).
+    const oss = await db.shopOrdersSync.findUniqueOrThrow({ where: { shopId: a.shopId } });
+    assert.ok(oss.optedIn && oss.cursor === "41" && oss.shipsOrders && oss.shippingCents === 900, "the MakerFoundry order settings and queue cursor came");
+    assert.ok(oss.helloAt === null && oss.lastPollAt === null && oss.lastOkAt === null && oss.lastError === null && oss.upgradeNeeded === null, "this copy's hub contact marks stayed behind");
+    assert.equal((await db.syncOut.findFirstOrThrow({ where: { shopId: a.shopId } })).sentAt, null, "the unsent outbox message came, still to send");
+    assert.equal((await db.syncOutSeq.findFirstOrThrow({ where: { shopId: a.shopId, conversation: "order:mf-1" } })).nextSeq, 4);
+    assert.equal(await db.onlineProduct.count({ where: { shopId: a.shopId } }), 1, "the MakerFoundry catalogue came");
     const moved = await db.companyMove.findMany({ where: { shopId: a.shopId } });
     assert.equal(moved.length, 1);
     assert.equal(moved[0].direction, "import");

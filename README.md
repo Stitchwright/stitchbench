@@ -6,6 +6,10 @@ A repair bench for sewing, embroidery, longarm and industrial machine techs.
 Windows, macOS and Linux. For your own server, use the Docker image `ghcr.io/stitchwright/stitchbench` (a
 ready-made [compose file](docker-compose.selfhost.yml) is included).
 
+**Free:** StitchBench and StitchShop cost nothing. YouTube and donations pay for them. Watch the videos at
+[@MakerFoundryApp](https://www.youtube.com/@MakerFoundryApp), or [buy us a coffee](https://buymeacoffee.com/bwattendorf).
+Giving is a gift: nothing changes or locks whether you do or not.
+
 **Install it:** see **[INSTALL.md](INSTALL.md)**. It runs either as a program on the shop PC (Windows, Mac or Linux, no
 monthly cost) or hosted (Railway or Docker).
 

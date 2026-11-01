@@ -14,6 +14,7 @@ import { buildCatalog, isMethod, parsePriceBreaks, type PickupAddress } from "@/
 import { enqueue } from "@/lib/shop-orders/outbox";
 import { v2 } from "@/lib/shop-orders/hubv2";
 import { ordersSyncRow, syncShop } from "@/lib/shop-orders/sync";
+import { isPlatformAdmin } from "@/lib/shops";
 import { Prisma } from "@/generated/prisma/client";
 import type { CurrentUser } from "@/lib/session";
 
@@ -35,6 +36,25 @@ export async function onlineView(shopId: string) {
     db.syncOut.count({ where: { shopId, deadAt: { not: null } } }),
   ]);
   return { row, products, offers, catalogOut, failedOut, hub: await hubJoined(), account: await payoutAccountOf(shopId) };
+}
+
+/**
+ * Which hub service this company takes orders from. Production is makerfoundry; a platform admin points a test shop at another
+ * (makerfoundry-test). Only while the company is not taking orders and nothing is waiting to be sent: the hub keeps an opt-in
+ * per service name, and queued messages go to the one named when they are sent.
+ */
+export async function setServiceFor(user: CurrentUser, service: string): Promise<string> {
+  await gate(user);
+  if (!isPlatformAdmin(user.email)) throw new UserError("Only the platform admin changes the order service.");
+  if (!/^[a-z][a-z0-9-]{1,30}$/.test(service)) throw new UserError("Service name: lower-case letters, digits and -, for example makerfoundry-test.");
+  const row = await ordersSyncRow(user.shopId);
+  if (row.service === service) return "Unchanged.";
+  if (row.optedIn) throw new UserError("Stop taking new orders first: the hub keeps the opt-in under the old service name.");
+  // An open order's replies (proofs, status, cancels) go to the service the order came from: while one is open the name stays.
+  if (await db.decorOrder.count({ where: { shopId: user.shopId, source: "MAKERFOUNDRY", closedAt: null } })) throw new UserError("This company still has open orders from MakerFoundry: their replies go to the old service. Finish or close them first.");
+  if (await db.syncOut.count({ where: { shopId: user.shopId, sentAt: null, deadAt: null, expiredAt: null } })) throw new UserError("Messages are still waiting to be sent to the old service. Let them go first.");
+  await db.shopOrdersSync.update({ where: { shopId: user.shopId }, data: { service, catalogPublishedAt: null } });
+  return `Orders now come through ${service}. Take orders again to publish the catalogue to it.`;
 }
 
 /** The Foundry Account the shop is paid through: the one the company's owner login is linked to (the oldest active owner login that is linked), or null. */
@@ -101,7 +121,7 @@ export async function setOnlineOrdersFor(user: CurrentUser, fd: FormData): Promi
     if (row.offersPickup && !row.pickupAddress) throw new UserError("Add the shop's pick-up address under Shipping and pick-up first (or switch pick-up off): sales tax on a pick-up order is worked out from it.");
   }
   try {
-    if (!isDemo()) await v2(shopId, "/v2/optin", { method: "PUT", json: { service: "makerfoundry", enabled: on, maxOpen } });
+    if (!isDemo()) await v2(shopId, "/v2/optin", { method: "PUT", json: { service: (await ordersSyncRow(shopId)).service, enabled: on, maxOpen } });
   } catch (e) {
     if (hubStatus(e) === 404) throw new UserError("This hub doesn't take MakerFoundry orders yet. Ask whoever runs it.");
     if (hubStatus(e) === 426) throw new UserError("StitchHub needs a newer StitchShop before it can take orders. Please update the program.");

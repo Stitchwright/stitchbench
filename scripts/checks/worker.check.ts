@@ -686,7 +686,9 @@ async function estimate() {
         customerId: c,
         totalCents: 14500,
         lines: [{ description: "Clean and oil", amountCents: 14500 }],
-        expiresAt: new Date(NOON_ISH.getTime() + 7 * DAY),
+        // Good for a week on the check's clock and on the real one: the worker's "still wanted?" asks whether the link
+        // has run out by the real clock (estimateStillWanted), while this check drives the worker on its own clock.
+        expiresAt: new Date(Math.max(NOON_ISH.getTime(), Date.now()) + 7 * DAY),
       },
     });
     const r = await queueToCustomer(db, {

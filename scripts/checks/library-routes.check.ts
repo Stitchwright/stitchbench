@@ -6,9 +6,12 @@
 //     owner of one of several companies) unable to replace it, whoever runs the install (the administrator) able to
 // A throwaway library folder and companies; no hub is joined (the check stops if this database has joined one, so
 // nothing is pushed). The sign-in is mocked at "@/auth", so the real sessionUser() still reads the database.
-//   npx tsx --conditions=react-server --experimental-test-module-mocks scripts/checks/library-routes.check.ts
+//   npm run check scripts/checks/library-routes.check.ts
+// Module mocking (mock.module) needs Node's --experimental-test-module-mocks on the Node versions we run (22 and 24, as
+// CI and the Dockerfile); without it the check runs itself again with it, so `npm run check` works like every other check.
 import "dotenv/config";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,6 +26,11 @@ const ok = (what: string) => {
   steps += 1;
   console.log(`  ok  ${what}`);
 };
+
+if (typeof mock.module !== "function") {
+  const again = spawnSync(process.execPath, [...process.execArgv, "--experimental-test-module-mocks", ...process.argv.slice(1)], { stdio: "inherit" });
+  process.exit(again.status ?? 1);
+}
 
 // Who is signed in: null, or the user the next request is made as.
 let session: { user: { id: string; shopId: string; sv: number } } | null = null;
