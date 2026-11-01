@@ -12,9 +12,9 @@
 //      email 409 (an address that owns another company is fine), nothing secret in the log
 //   7. the hub's reset grant on the Windows program, with a mock hub and a throwaway key: not fetched until opted in (and
 //      the claim says so), refused when the signature, company, install, life or owner is wrong, refused outside the
-//      program's own window, allowed once in it (a new password shown once, sessionVersion + 1, the hub told), refused
-//      on request, refused after the opt-in went; nothing verifies with the compiled keys while the hub1 line is a
-//      placeholder
+//      program's own window, allowed once in it (a new password shown once, sessionVersion + 1, the window known for
+//      the owner's login again at the new version, the hub told), refused on request, refused after the opt-in went;
+//      nothing verifies with the compiled keys while the hub1 line is a placeholder
 //   8. tenant: company A's links, grants and the administrator's link never touch company B
 //   npm run check scripts/checks/hosted-provisioning.check.ts
 // Shares the dev database: throwaway companies "Check <run>" (removed at the end); the HubState row and the variables
@@ -35,6 +35,8 @@ import { linksHostDecision } from "@/lib/links-host";
 import { hubState } from "@/lib/hub";
 import { setResetOptInFor } from "@/lib/hub-account";
 import { answerResetGrant, GRANT_CONTEXT, grantHash, grantKeysForChecks, inProgramWindow, pendingResetGrants, pullResetGrants, verifyResetGrant, WINDOW_HEADER } from "@/lib/hub-reset-grants";
+import { knownDeviceCookieName, knownDeviceFor, knownDeviceValue, withKnownDevice } from "@/lib/known-device";
+import { checkSignIn } from "@/lib/sign-in";
 import { checkResetLink, finishReset, issueResetLink, ownerResetLinkFor, requestResetFor, resetByEmailProblem, SAME_ANSWER, tokenHash, TRAY_WORDS } from "@/lib/password-reset";
 import { forgetWrongTokens, handlePlatformCompanies, platformToken } from "@/lib/platform-api";
 import type { CurrentUser } from "@/lib/session";
@@ -460,11 +462,23 @@ async function main() {
     process.env.STITCH_DESKTOP = "1";
     assert.equal(inProgramWindow(win), true);
     assert.deepEqual((await userOf(a.user.id)).passwordHash, ownerBefore.passwordHash, "nothing changed yet");
-    const password = await answerResetGrant(g.id, true, win);
+    const allowed = await answerResetGrant(g.id, true, win);
+    const password = allowed?.password;
     assert.match(password ?? "", /^[a-km-zA-HJ-NP-Z2-9]{12}$/, "12 characters, none easily misread");
     const ownerAfter = await userOf(a.user.id);
     assert.ok(await bcrypt.compare(password!, ownerAfter.passwordHash), "the owner signs in with it");
     assert.equal(ownerAfter.sessionVersion, ownerBefore.sessionVersion + 1, "every device signed in as the owner signs in again");
+    // The program's window had signed in as the owner before: the reset ends its standing like every other browser's,
+    // and allowHubReset makes it known again for the login answered here, at the new sessionVersion (rememberThisDevice
+    // sets knownDeviceValue's value), so the owner gets in there during a flood (as signin.check group 5 shows).
+    assert.equal(allowed?.userId, a.user.id, "the owner's login comes back with the password");
+    const windowBefore = withKnownDevice(null, a.user.id, Date.now() - 86_400_000, ownerBefore.sessionVersion);
+    assert.ok(windowBefore, "AUTH_SECRET (from .env) is needed: the known-device cookie is keyed from it");
+    assert.equal(knownDeviceFor(windowBefore, a.user.id, Date.now(), ownerAfter.sessionVersion), null, "the reset ends the window's standing too");
+    const windowAfter = await knownDeviceValue(windowBefore, allowed!.userId);
+    assert.ok(knownDeviceFor(windowAfter, a.user.id, Date.now(), ownerAfter.sessionVersion), "known again at the new sessionVersion");
+    const fromWindow = new Request("http://localhost:3100/api/auth/callback/credentials", { method: "POST", headers: { cookie: `${knownDeviceCookieName()}=${encodeURIComponent(windowAfter!)}` } });
+    assert.equal((await checkSignIn({ email: a.user.email, password }, fromWindow))?.id, a.user.id, "and signs in there with the new password");
     assert.equal((await db.passwordReset.findUniqueOrThrow({ where: { tokenHash: grantHash(g.nonce) } })).kind, "hub");
     assert.deepEqual(mock.done.at(-1), { shopRef: a.shopId, id: g.id, body: { result: "allowed" } }, "the hub is told");
     await expectError("used once", () => answerResetGrant(g.id, true, win), /expired or was answered/);
@@ -476,7 +490,7 @@ async function main() {
       mock.done.slice(doneBefore).map((d) => [d.id, d.body.result]),
       [[g.id, "allowed"]],
     );
-    ok("a good grant: refused outside the program's window, allowed once in it (12 characters, sessionVersion + 1, the hub told), never again");
+    ok("a good grant: refused outside the program's window, allowed once in it (12 characters, sessionVersion + 1, the window known for the owner again, the hub told), never again");
 
     // Refuse: nothing changes. The opt-in gone before the answer: refused.
     const gr = grant();

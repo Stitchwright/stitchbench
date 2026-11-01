@@ -2,6 +2,8 @@
 // specs, factory settings, test modes and, for a bench with a manual library, the manual list. A new install gets them on its first
 // start and an update brings in a changed set. What was loaded is recorded as the table's comment (seed:<hash>), so an
 // unchanged set costs one query per start. Same result as `npm run db:seed` in the repo: the shipped rows, nothing else.
+// A set whose file isn't shipped (a build without the manufacturers' data, which isn't in the public code) is left as
+// it is: the rows an earlier version loaded stay, never emptied.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";

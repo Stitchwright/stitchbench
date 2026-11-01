@@ -308,6 +308,16 @@ jobs:
             package-lock.json
             desktop/package-lock.json
 
+      # The manufacturers' reference data (tension specs, factory settings, the manual list) isn't part of the public code:
+      # it comes from the private data repository (INSTALL.md, "The manufacturers' reference data"). Fetched first, before
+      # any package's install scripts have run, so the token only meets our own script (it needs no packages). With the
+      # secret set, a download that fails stops the build: an official installer never ships without the data. Without
+      # it (a fork), the installers are built without that data.
+      - name: Fetch the reference data
+        env:
+          STITCH_DATA_TOKEN: ${{ secrets.STITCH_DATA_TOKEN }}
+        run: node scripts/data/fetch-reference-data.mjs
+
       # @emnapi/core and @emnapi/runtime are listed as optional dependencies so every platform's npm keeps them in the
       # lock file (Tailwind's and sharp's WebAssembly builds need them); the checks workflow runs npm ci on Linux too.
       - name: Install the app's packages

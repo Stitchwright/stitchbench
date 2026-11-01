@@ -35,6 +35,11 @@ const keptVariables = [
   "SEED_OWNER_NAME",
   "SEED_OWNER_PASSWORD",
   "SEED_SHOP_NAME",
+  // The manufacturers' reference data, fetched at build time from the private data repository
+  // (scripts/data/fetch-reference-data.mjs): the token, and the repository and branch if they aren't the defaults.
+  "STITCH_DATA_TOKEN",
+  "STITCH_DATA_REPO",
+  "STITCH_DATA_REF",
   "TRUST_PROXY",
 ];
 

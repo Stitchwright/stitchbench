@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { safe, shownOnce, UserError } from "@/lib/action";
 import { requireAdmin, requireUser } from "@/lib/session";
+import { rememberThisDevice } from "@/lib/known-device";
 import { str, ticketNo, toCents } from "@/lib/format";
 import { assertId } from "@/lib/input";
 import { shopKinds } from "@/lib/equipment/shop";
@@ -217,5 +218,9 @@ export const changePassword = safe.whileLapsed("changePassword")(async function 
   if (!(await bcrypt.compare(current, u.passwordHash))) throw new UserError("Current password is wrong.");
   // Every device signed in with the old password (this one too) signs in again.
   await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10), sessionVersion: { increment: 1 } } });
+  // The bump also ends this browser's known-device standing; it just gave the current password, so it is known again at
+  // the new version, as after signing out: someone sending wrong passwords for this login (perhaps why it is being
+  // changed) can't queue its owner out here (src/lib/known-device.ts, round 3 M44). Other devices stay unknown.
+  await rememberThisDevice(user.id);
   await audit(db, actorOf(user), { action: "user.password_change", subjectType: "User", subjectId: user.id, subjectLabel: `${user.name} (${user.email})` });
 });
