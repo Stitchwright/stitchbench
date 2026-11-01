@@ -165,6 +165,9 @@ async function main() {
     await refused("only the platform admin sets the service", () => setServiceFor(A.user, "makerfoundry-test"), /platform admin/);
     process.env.PLATFORM_ADMIN_EMAILS = A.user.email;
     await refused("a bad service name", () => setServiceFor(A.user, "Maker Foundry"), /Service name/);
+    const openOrder = await db.decorOrder.create({ data: { shopId: A.shopId, number: 987001, source: "MAKERFOUNDRY", onlineRef: "mf-open-1", status: "APPROVED", name: "Open order", title: "Polos" } });
+    await refused("no change while a MakerFoundry order is open", () => setServiceFor(A.user, "makerfoundry-test"), /open orders from MakerFoundry/);
+    await db.decorOrder.update({ where: { id: openOrder.id }, data: { closedAt: new Date(), status: "COLLECTED" } });
     await db.onlineProduct.count({ where: { shopId: A.shopId } }).then(async (n) => { if (!n) await saveProductFor(A.user, form(tee)); });
     await db.onlineOffer.count({ where: { shopId: A.shopId } }).then(async (n) => { if (!n) await saveOfferFor(A.user, form(chest)); });
     await flushOutbox(A.shopId);
