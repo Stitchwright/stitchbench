@@ -33,7 +33,7 @@ jobs:
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/stitchbench" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
           images: ${{ steps.name.outputs.image }}
@@ -43,7 +43,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         if: ${{ github.event_name != 'pull_request' }}
         with:
           registry: ghcr.io

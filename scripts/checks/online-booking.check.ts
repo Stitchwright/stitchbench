@@ -126,6 +126,15 @@ async function main() {
     const a2 = await db.appointment.findUniqueOrThrow({ where: { id: r2.appointmentId } });
     assert.equal(a2.customerId, a1.customerId, "matched by email, any case");
     assert.equal(await db.customer.count({ where: { shopId: a.shopId, email: { equals: "olivia@example.test", mode: "insensitive" } } }), 1);
+    // A type rented by the hour: the appointment and its confirmation carry the hourly fee (90 minutes at $20 = $30), not the ignored flat fee.
+    const rental = await db.appointmentType.create({ data: { shopId: a.shopId, name: "Longarm rental", minutes: 90, capacity: 1, feeCents: 0, hourlyCents: 2000, hours: everyDay, online: true } });
+    const rr = await bookOnline({ slug: slugA, typeId: rental.id, startsAt: slot2, customer: cust("Rita Rental", null, "rita@example.test"), note: null }, now);
+    const ra = await db.appointment.findUniqueOrThrow({ where: { id: rr.appointmentId } });
+    assert.equal(ra.feeCents, 3000);
+    const rm = await db.outMessage.findFirstOrThrow({ where: { shopId: a.shopId, refType: "appointment", refId: ra.id } });
+    assert.match(rm.body, /Fee: \$30\.00, paid at the counter/, "the confirmation quotes the hourly fee");
+    await db.appointment.delete({ where: { id: ra.id } });
+    await db.appointmentType.update({ where: { id: rental.id }, data: { online: false } });
     // Refusals.
     await expectError("inside the lead time", () => bookOnline({ slug: slugA, typeId: fitting.id, startsAt: new Date(now.getTime() + 3_600_000), customer: cust("Xavier Example", "2125550100", null), note: null }, now), /earliest time/);
     await expectError("too far ahead", () => bookOnline({ slug: slugA, typeId: fitting.id, startsAt: zonedTime(addDays(today, 45), 10 * 60, NY), customer: cust("Xavier Example", "2125550100", null), note: null }, now), /days ahead/);

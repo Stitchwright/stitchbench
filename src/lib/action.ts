@@ -7,6 +7,7 @@ import { asCompany } from "@/lib/acting-company";
 import { actingUser, lapseGuard } from "@/lib/lapse-guard";
 import type { WhileLapsed } from "@/lib/lapse-allow";
 import { isUserError, UserError } from "@/lib/user-error";
+import { DEMO_REFUSAL, demoRefuses } from "@/lib/demo-mode";
 
 export { UserError, isUserError };
 
@@ -65,6 +66,8 @@ export function safe<A extends unknown[]>(fn: (...args: A) => Promise<unknown>, 
   return async (...args: A): Promise<ActionResult> => {
     let user: Awaited<ReturnType<typeof actingUser>> = null;
     try {
+      // An action on the lapse allow-list carries its own name (safe.whileLapsed); the others are named functions.
+      if (demoRefuses(opts.whileLapsed ?? fn.name)) throw new UserError(DEMO_REFUSAL);
       user = await actingUser();
       if (!opts.whileLapsed) await lapseGuard(user);
       const out = await asCompany(user?.shopId, () => fn(...args));

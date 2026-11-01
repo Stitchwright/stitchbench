@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DemoBanner } from "@/components/demo-banner";
+import { isDemo } from "@/lib/demo-mode";
 import { requireUser, sessionUser } from "@/lib/session";
 import { endEverySession } from "@/lib/sign-in";
 import { endFoundrySession } from "@/lib/foundry/session";
@@ -90,6 +92,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const secureUrl = secureAddress();
 
   return (
+    <>
+    {isDemo() && <DemoBanner />}
     <div className="flex min-h-screen flex-col side:flex-row">
       <TextSizeStyle size={parseTextSize(me?.textSize)} />
       {secureUrl && <meta name={SECURE_ADDRESS_META} content={secureUrl} />}
@@ -203,5 +207,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           the install isn't on a hub yet. */}
       <HelpButton program={appName()} email={user.email} connected={Boolean(hub?.installKey)} helpEmail={validEmail(process.env.HELP_EMAIL)} replies={await helpReplies(user.shopId)} />
     </div>
+    </>
   );
 }
