@@ -8,7 +8,7 @@ import "dotenv/config";
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { isUserError } from "@/lib/action";
-import { bookingSettings, bookOnline, cancelByToken, manageByToken, moveByToken, publicClasses, publicFreeTimes, publicShop, publicTypes, saveBookingSettingsFor, signUpOnline, slugOf, SLUG_RE } from "@/lib/online-booking";
+import { bookingSettings, bookOnline, cancelByToken, freeTimesForMove, manageByToken, moveByToken, publicClasses, publicFreeTimes, publicShop, publicTypes, saveBookingSettingsFor, signUpOnline, slugOf, SLUG_RE } from "@/lib/online-booking";
 import { addDays, ymdOf, zonedTime } from "@/lib/zoned";
 import { checkShop, cleanup, clearKick, messagingFor, withSink } from "./lib";
 import { RUN } from "./tenant";
@@ -169,6 +169,15 @@ async function main() {
     await moveByToken(r1.token, slot4, now);
     assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: a1.id } })).startsAt.getTime(), slot4.getTime());
     await expectError("move onto a taken time", () => moveByToken(r1.token, slot3, now), /just taken/);
+    // A type the shop no longer offers online (off the booking page, switched off, or now needing a certification) can't be moved into new times.
+    const slot5 = freeAfter.flatMap((d) => d.starts).find((t) => ymdOf(t, NY) === addDays(today, 7))!;
+    for (const off of [{ online: false }, { active: false }, { needsCert: true }]) {
+      await db.appointmentType.update({ where: { id: fitting.id }, data: off });
+      await expectError(`move a type no longer offered (${Object.keys(off)[0]})`, () => moveByToken(r1.token, slot5, now), /call the shop/);
+      assert.deepEqual(await freeTimesForMove(m1, null, now), [], "no times are offered for a type no longer offered online");
+      await db.appointmentType.update({ where: { id: fitting.id }, data: { online: true, active: true, needsCert: false } });
+    }
+    assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: a1.id } })).startsAt.getTime(), slot4.getTime(), "the booking stayed where it was");
     await cancelByToken(r1.token, now);
     const c1 = await db.appointment.findUniqueOrThrow({ where: { id: a1.id } });
     assert.ok(c1.status === "CANCELLED" && c1.cancelledAt);
