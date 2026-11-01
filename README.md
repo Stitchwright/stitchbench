@@ -17,7 +17,9 @@ monthly cost) or hosted (Railway or Docker).
   - its full service history, and every other machine of the same model you've worked on
 - **Factory specs.** 634 upper and bobbin tension-gauge values and 14,000+ timing and adjustment settings, read
   out of OEM service, technical and operator manuals. Each comes with the page it came from and, where
-  available, the manual's figure.
+  available, the manual's figure. They come with the official installers and the hosted service; that text isn't
+  part of the public code, so a copy built from the public code shows none (see
+  [INSTALL.md](INSTALL.md#the-manufacturers-reference-data)).
 - **Important facts and gotchas** per brand and model, written by your techs, shown on every machine and ticket of
   that model.
 - **Manuals.** With the Windows program, the shop PC's manuals folder is served to every device. When hosted,
@@ -94,6 +96,10 @@ npm run db:migrate              # create tables
 npm run db:seed                 # factory specs + first shop and owner (prints the password)
 npm run dev
 ```
+
+The factory specs are the manufacturers' reference data, which isn't in the public code: without it the seed says so
+and skips them, and everything else works. With access to it, set `STITCH_DATA_TOKEN` and run
+`node scripts/data/fetch-reference-data.mjs` before seeding ([INSTALL.md](INSTALL.md#the-manufacturers-reference-data)).
 
 ## Tests
 

@@ -66,7 +66,7 @@ jobs:
         run: npm run installer:stitchshop:linux
 
       - name: Keep the installers
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ matrix.name }}
           path: |
@@ -269,7 +269,7 @@ jobs:
           done
 
       - name: Keep the installers
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ matrix.name }}
           path: |
@@ -308,6 +308,16 @@ jobs:
             package-lock.json
             desktop/package-lock.json
 
+      # The manufacturers' reference data (tension specs, factory settings, the manual list) isn't part of the public code:
+      # it comes from the private data repository (INSTALL.md, "The manufacturers' reference data"). Fetched first, before
+      # any package's install scripts have run, so the token only meets our own script (it needs no packages). With the
+      # secret set, a download that fails stops the build: an official installer never ships without the data. Without
+      # it (a fork), the installers are built without that data.
+      - name: Fetch the reference data
+        env:
+          STITCH_DATA_TOKEN: ${{ secrets.STITCH_DATA_TOKEN }}
+        run: node scripts/data/fetch-reference-data.mjs
+
       # @emnapi/core and @emnapi/runtime are listed as optional dependencies so every platform's npm keeps them in the
       # lock file (Tailwind's and sharp's WebAssembly builds need them); the checks workflow runs npm ci on Linux too.
       - name: Install the app's packages
@@ -328,7 +338,7 @@ jobs:
           npm run unpacked:stitchshop
 
       - name: Keep the unpacked programs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: win-unpacked
           path: |
@@ -459,7 +469,7 @@ jobs:
           }
 
       - name: Keep the installers
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers
           path: |

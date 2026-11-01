@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# Python's compiled files (scripts/library, scripts/hub)
+__pycache__/
 
 # license signing keys: the private halves stay out of the repo (scripts/license/keygen.ts refuses an --out inside it);
 # the development key is committed on purpose (modules-design.md section 3.3)
@@ -48,6 +50,15 @@ next-env.d.ts
 # prisma client
 /src/generated
 !.env.example
+
+# The manufacturers' reference data, read out of OEM manuals: it lives in a private repository, not in the public code
+# (INSTALL.md, "The manufacturers' reference data"). scripts/data/fetch-reference-data.mjs downloads it for official
+# builds; ignored so a copy fetched into a clone of the public code is never committed there. Already tracked: stays.
+/prisma/seed-data/factory_settings.json
+/prisma/seed-data/tension_specs.json
+/prisma/seed-data/library_docs.json
+/prisma/seed-data/hub_links.json
+/prisma/seed-data/.*.part
 
 # playwright
 /test-results

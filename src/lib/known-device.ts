@@ -1,8 +1,8 @@
 import "server-only";
 // The known-device cookie (round 3 M44). Wrong passwords for one login queue its tries and, past 20 waiting, refuse them
 // all (src/lib/sign-in.ts), the right password too, so someone guessing at the owner's email every 30 seconds would keep
-// the owner out. A browser that has signed in as that login before (or used a reset link for it) carries proof of it in
-// this cookie, and its tries skip that login's queue and cap; it has a small failure count of its own instead
+// the owner out. A browser that has signed in as that login before (or completed a reset of its password) carries proof
+// of it in this cookie, and its tries skip that login's queue and cap; it has a small failure count of its own instead
 // (5 wrong in 15 minutes, then it is treated like any other browser). The per-address limit still applies to it.
 //
 // The cookie holds up to 10 entries, newest first, one per login signed in on this browser (a shared counter tablet has
@@ -11,8 +11,10 @@ import "server-only";
 // W1), so the entry is per login, not per email; key text v3 means every browser is unknown once after that release. No email is in it, and it opens nothing by itself: it never signs anyone in, only
 // lets this browser's own tries at the password through while a flood is queued. An entry lasts 180 days from the last
 // sign-in. The login's sessionVersion is in the mac, so a password change or reset (which bumps it) ends every device's
-// standing at once; the browser the reset link was used in gets a fresh entry at the new version, so the owner can get
-// back in during a flood. Changing AUTH_SECRET cancels them all. Without AUTH_SECRET it is simply off.
+// standing at once; the browser that completed the reset gets a fresh entry at the new version (the one a reset link was
+// used in, src/actions/password-reset.ts; the Windows program's window that allowed a reset asked for on StitchHub,
+// src/actions/hub-reset.ts), so the owner can get back in there during a flood. The tray's reset on the shop PC happens
+// outside any browser and marks none. Changing AUTH_SECRET cancels them all. Without AUTH_SECRET it is simply off.
 import crypto from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { db } from "@/lib/db";
@@ -103,16 +105,25 @@ export function knownDeviceCookie(req: Request | Headers | undefined): string | 
 }
 
 /**
- * After a right password (the sign-in page) or a reset link used (/reset): this browser is known for that login from now
- * on. Server actions only (it sets a cookie). httpOnly, SameSite=Lax, Secure when the request came over https.
+ * The cookie value `current` with this browser known for the login `userId` at the login's sessionVersion now (after a
+ * reset it is the new one, so a password change ends older entries), or null without AUTH_SECRET. What
+ * rememberThisDevice sets; the check scripts call it directly, as setting a cookie needs a request.
+ */
+export async function knownDeviceValue(current: string | null | undefined, userId: string): Promise<string | null> {
+  const sv = (await db.user.findUnique({ where: { id: userId }, select: { sessionVersion: true } }))?.sessionVersion ?? 0;
+  return withKnownDevice(current, userId, Date.now(), sv);
+}
+
+/**
+ * After a right password (the sign-in page) or a reset (a link used on /reset; StitchHub's, allowed in the Windows
+ * program's window): this browser is known for that login from now on. Server actions only (it sets a cookie).
+ * httpOnly, SameSite=Lax, Secure when the request came over https.
  */
 export async function rememberThisDevice(userId: unknown): Promise<void> {
   if (typeof userId !== "string" || !userId) return;
   const jar = await cookies();
   const name = knownDeviceCookieName();
-  // The login's current sessionVersion (after a reset it is the new one), so a password change ends older entries.
-  const sv = (await db.user.findUnique({ where: { id: userId }, select: { sessionVersion: true } }))?.sessionVersion ?? 0;
-  const value = withKnownDevice(jar.get(name)?.value, userId, Date.now(), sv);
+  const value = await knownDeviceValue(jar.get(name)?.value, userId);
   if (!value) return;
   const proto = (await headers()).get("x-forwarded-proto")?.split(",")[0]?.trim();
   jar.set(name, value, { httpOnly: true, sameSite: "lax", path: "/", secure: proto === "https", maxAge: KNOWN_DEVICE_DAYS * 86_400 });
