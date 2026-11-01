@@ -21,6 +21,7 @@
     "license": "tsx scripts/license/issue.ts",
     "license:keygen": "tsx scripts/license/keygen.ts",
     "check": "tsx --conditions=react-server",
+    "demo:reset": "tsx --conditions=react-server scripts/demo/reset.ts",
     "foundry:retire-passwords": "tsx --conditions=react-server scripts/foundry/retire-passwords.ts",
     "foundry:owner-link": "tsx --conditions=react-server scripts/foundry/owner-link.ts",
     "postinstall": "node scripts/copy-pdf-worker.mjs",
