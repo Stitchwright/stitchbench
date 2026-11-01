@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { parseBody } from "@/lib/shop-orders/contract";
-import { removeOfferFor, removeProductFor, saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
+import { removeOfferFor, removeProductFor, saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor, setServiceFor } from "@/lib/shop-orders/online";
 import { flushOutbox } from "@/lib/shop-orders/sync";
 import type { CurrentUser } from "@/lib/session";
 import { expectNotFound, makeCompany, removeCompany } from "./tenant";
@@ -160,6 +160,23 @@ async function main() {
     assert.equal(hub.optins.at(-1)?.enabled, false);
     assert.equal((await db.shopOrdersSync.findUniqueOrThrow({ where: { shopId: A.shopId } })).optedIn, false);
     ok("stopping tells the hub; orders already open carry on");
+
+    // ----- a test shop points at another service -----
+    await refused("only the platform admin sets the service", () => setServiceFor(A.user, "makerfoundry-test"), /platform admin/);
+    process.env.PLATFORM_ADMIN_EMAILS = A.user.email;
+    await refused("a bad service name", () => setServiceFor(A.user, "Maker Foundry"), /Service name/);
+    await db.onlineProduct.count({ where: { shopId: A.shopId } }).then(async (n) => { if (!n) await saveProductFor(A.user, form(tee)); });
+    await db.onlineOffer.count({ where: { shopId: A.shopId } }).then(async (n) => { if (!n) await saveOfferFor(A.user, form(chest)); });
+    await flushOutbox(A.shopId);
+    await setServiceFor(A.user, "makerfoundry-test");
+    const optinsBefore = hub.optins.length;
+    await setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "50" }));
+    assert.deepEqual(hub.optins.slice(optinsBefore).map((o) => o.service), ["makerfoundry-test"], "the opt-in names the test service");
+    await refused("no change while taking orders", () => setServiceFor(A.user, "makerfoundry"), /Stop taking new orders/);
+    await flushOutbox(A.shopId);
+    const sent = hub.posted.filter((p) => (p as { to?: string }).to === "service:makerfoundry-test");
+    assert.ok(sent.length > 0, "its messages are addressed to the test service");
+    ok("a platform admin points a test shop at its own service; opt-in and messages follow, production stays the default");
     console.log(`online-orders: ${steps} steps ok`);
   } finally {
     await hub.close();
