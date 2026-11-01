@@ -303,6 +303,9 @@ async function retail(m: Shop, b: Shop, linkId: string, bLinkId: string) {
 
 async function reminders(m: Shop, n: Shop) {
   const NOW = at("2026-10-14", "09:00"); // Wed
+  // Bookings made two days before the check's clock (NOW), not at the machine's: the scheduler tells a sign-up made the day
+  // before apart from one made in good time by createdAt, and the clock here is pinned to this date.
+  const made = new Date(+NOW - 2 * DAY);
   const tomorrow = "2026-10-15";
   const start = at(tomorrow, "18:00");
   const cls = await db.shopClass.create({ data: { shopId: m.shopId, title: "Beginning Quilting", location: "Back room", supplies: "Rotary cutter", seats: 8, remind: "every", status: "OPEN" } });
@@ -311,7 +314,7 @@ async function reminders(m: Shop, n: Shop) {
   const b = await customer(m.shopId, { name: "Bea Enrolled", notifyBy: "email" });
   const late = await customer(m.shopId, { name: "Lee Late", notifyBy: "email" });
   const cancelledE = await customer(m.shopId, { name: "Cy Cancelled", notifyBy: "email" });
-  const en = (customerId: string, extra: Record<string, unknown> = {}) => db.enrollment.create({ data: { shopId: m.shopId, classId: cls.id, customerId, name: "x", feeCents: 0, status: "ENROLLED", ...extra } as never });
+  const en = (customerId: string, extra: Record<string, unknown> = {}) => db.enrollment.create({ data: { shopId: m.shopId, classId: cls.id, customerId, name: "x", feeCents: 0, status: "ENROLLED", createdAt: made, ...extra } as never });
   const eA = await en(a);
   const eB = await en(b, { attendee: "Her daughter" });
   await en(late, { createdAt: new Date(+start - 10 * HOUR) }); // signed up 10 h before: staff just told them
@@ -347,14 +350,14 @@ async function reminders(m: Shop, n: Shop) {
   await db.classMeeting.create({ data: { shopId: m.shopId, classId: first.id, startsAt: at("2026-10-13", "18:00"), endsAt: at("2026-10-13", "20:00") } });
   const second = await db.classMeeting.create({ data: { shopId: m.shopId, classId: first.id, startsAt: at(tomorrow, "18:00"), endsAt: at(tomorrow, "20:00") } });
   const f = await customer(m.shopId, { name: "Fay First", notifyBy: "email" });
-  await db.enrollment.create({ data: { shopId: m.shopId, classId: first.id, customerId: f, name: "Fay", feeCents: 0, status: "ENROLLED" } });
+  await db.enrollment.create({ data: { shopId: m.shopId, classId: first.id, customerId: f, name: "Fay", feeCents: 0, status: "ENROLLED", createdAt: made } });
   const only = await db.shopClass.create({ data: { shopId: m.shopId, title: "Knitting", seats: 8, remind: "first", status: "OPEN" } });
   const onlyM = await db.classMeeting.create({ data: { shopId: m.shopId, classId: only.id, startsAt: at(tomorrow, "11:00"), endsAt: at(tomorrow, "12:00") } });
   await db.classMeeting.create({ data: { shopId: m.shopId, classId: only.id, startsAt: at("2026-10-22", "11:00"), endsAt: at("2026-10-22", "12:00") } });
-  await db.enrollment.create({ data: { shopId: m.shopId, classId: only.id, customerId: f, name: "Fay", feeCents: 0, status: "ENROLLED" } });
+  await db.enrollment.create({ data: { shopId: m.shopId, classId: only.id, customerId: f, name: "Fay", feeCents: 0, status: "ENROLLED", createdAt: made } });
   const never = await db.shopClass.create({ data: { shopId: m.shopId, title: "Never", seats: 8, remind: "never", status: "OPEN" } });
   await db.classMeeting.create({ data: { shopId: m.shopId, classId: never.id, startsAt: at(tomorrow, "13:00"), endsAt: at(tomorrow, "14:00") } });
-  await db.enrollment.create({ data: { shopId: m.shopId, classId: never.id, customerId: f, name: "Fay", feeCents: 0, status: "ENROLLED" } });
+  await db.enrollment.create({ data: { shopId: m.shopId, classId: never.id, customerId: f, name: "Fay", feeCents: 0, status: "ENROLLED", createdAt: made } });
   await runSchedulers(new Date(+NOW + 20 * MIN), [m.shopId]);
   clearKick();
   assert.equal((await rowsOf(m.shopId, { kind: "reminder", refId: second.id })).length, 0, "remind first: the second meeting isn't reminded");
@@ -362,8 +365,8 @@ async function reminders(m: Shop, n: Shop) {
   assert.equal((await rowsOf(m.shopId, { kind: "reminder", customerId: f })).length, 1, "remind never: nothing");
 
   // An appointment tomorrow (and a blocked one).
-  const appt = await db.appointment.create({ data: { shopId: m.shopId, customerId: a, name: "Ann", title: "Longarm rental", startsAt: at(tomorrow, "15:00"), endsAt: at(tomorrow, "16:00"), status: "BOOKED" } });
-  await db.appointment.create({ data: { shopId: m.shopId, name: "", title: "Blocked", blocked: true, startsAt: at(tomorrow, "09:00"), endsAt: at(tomorrow, "10:00"), status: "BOOKED" } });
+  const appt = await db.appointment.create({ data: { shopId: m.shopId, customerId: a, name: "Ann", title: "Longarm rental", startsAt: at(tomorrow, "15:00"), endsAt: at(tomorrow, "16:00"), status: "BOOKED", createdAt: made } });
+  await db.appointment.create({ data: { shopId: m.shopId, name: "", title: "Blocked", blocked: true, startsAt: at(tomorrow, "09:00"), endsAt: at(tomorrow, "10:00"), status: "BOOKED", createdAt: made } });
   await runSchedulers(new Date(+NOW + 30 * MIN), [m.shopId]);
   clearKick();
   const ar = await rowsOf(m.shopId, { kind: "reminder", refType: "appointment" });
@@ -395,7 +398,7 @@ async function reminders(m: Shop, n: Shop) {
   assert.equal(await stillWanted(r2), null, "an unchanged booking is still wanted");
   await db.enrollment.update({ where: { id: eB.id }, data: { status: "CANCELLED" } });
   assert.equal(await stillWanted(r2), "The booking changed");
-  await db.enrollment.update({ where: { id: eB.id }, data: { status: "ENROLLED" } });
+  await db.enrollment.update({ where: { id: eB.id }, data: { status: "ENROLLED", createdAt: made } });
   await db.classMeeting.update({ where: { id: meeting.id }, data: { cancelled: true } });
   assert.equal(await stillWanted(r2), "The booking changed");
   await db.classMeeting.update({ where: { id: meeting.id }, data: { cancelled: false } });
@@ -413,7 +416,7 @@ async function reminders(m: Shop, n: Shop) {
   await setMs(m.shopId, { reminders: false });
   const cls2 = await db.shopClass.create({ data: { shopId: m.shopId, title: "Off", seats: 8, remind: "every", status: "OPEN" } });
   await db.classMeeting.create({ data: { shopId: m.shopId, classId: cls2.id, startsAt: at(tomorrow, "10:00"), endsAt: at(tomorrow, "11:00") } });
-  await db.enrollment.create({ data: { shopId: m.shopId, classId: cls2.id, customerId: a, name: "Ann", feeCents: 0, status: "ENROLLED" } });
+  await db.enrollment.create({ data: { shopId: m.shopId, classId: cls2.id, customerId: a, name: "Ann", feeCents: 0, status: "ENROLLED", createdAt: made } });
   await runSchedulers(at("2026-10-14", "10:20"), [m.shopId]);
   assert.equal((await rowsOf(m.shopId, { kind: "reminder", refType: "meeting" })).filter((r) => r.body.includes("Off")).length, 0, "reminders off -> nothing");
   await setMs(m.shopId, { reminders: true });
@@ -421,7 +424,7 @@ async function reminders(m: Shop, n: Shop) {
   const cn = await customer(n.shopId, { notifyBy: "email" });
   const cn2 = await db.shopClass.create({ data: { shopId: n.shopId, title: "Nope", seats: 8, remind: "every", status: "OPEN" } });
   await db.classMeeting.create({ data: { shopId: n.shopId, classId: cn2.id, startsAt: at(tomorrow, "10:00"), endsAt: at(tomorrow, "11:00") } });
-  await db.enrollment.create({ data: { shopId: n.shopId, classId: cn2.id, customerId: cn, name: "N", feeCents: 0, status: "ENROLLED" } });
+  await db.enrollment.create({ data: { shopId: n.shopId, classId: cn2.id, customerId: cn, name: "N", feeCents: 0, status: "ENROLLED", createdAt: made } });
   await runSchedulers(NOW, [n.shopId]);
   assert.equal(await db.outMessage.count({ where: { shopId: n.shopId } }), 0, "no Marketing -> the scheduler skips the company");
   ok("reminders: one per enrolled customer (not a sign-up under 24 h before), a second run queues nothing, remind first / never, appointments, a moved meeting is cancelled by stillWanted and re-queued, booking-changed reasons, nothing says tomorrow");
@@ -700,7 +703,9 @@ async function serviceDue(m: Shop, n: Shop) {
   await ticket(m.shopId, { customerId: one, machineId: mOne, intakeAt: new Date(Date.now() + 5000) });
   assert.equal(await stillWanted({ ...r1, createdAt: new Date(Date.now() - 1000) }), "The machine came back in");
 
-  // The daily cap counts only QUEUED / SENDING / SENT.
+  // The daily cap counts only QUEUED / SENDING / SENT. The rows queued above are dated by the database's clock; on the check's
+  // clock they were queued on NOW's day, not on X's (else they would count toward X's cap whenever the machine's date is later).
+  await db.outMessage.updateMany({ where: { shopId: m.shopId, kind: "service_due" }, data: { createdAt: NOW } });
   const X = at("2026-10-20", "10:30");
   const day = (k: number) => at(addDays("2026-10-20", k), "10:30");
   const mk = async (i: number, status: string) =>
