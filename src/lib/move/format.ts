@@ -208,6 +208,13 @@ export const PER_INSTALL: Readonly<Record<string, string>> = {
   HelpOutbox: "what the Help button and the error alerts sent (or are about to send) to the hub from this install: the new install sends its own",
   FoundryLink: "this PC's optional link to a Foundry Account: its token is sealed under this install's key and means nothing to another install, so the new install links again if the company chooses to",
   HelpReply: "our answers to what this install's Help button sent: fetched from the hub by this install, so the new install asks for its own",
+  ShopOrdersSync: "the company's opt-in to MakerFoundry orders through THIS install's hub account, its delivery cursor and its shipping and pick-up prices: the opt-in and cursor mean nothing to another install, so after a move the owner takes orders again (Decorating, Online orders) and checks the prices",
+  OnlineProduct: "the garments the company sells through MakerFoundry: they hang on the opt-in above (a foreign key), which stays, so the owner adds them again after a move",
+  OnlineOffer: "the decorations and prices the company sells through MakerFoundry: they hang on the opt-in above, which stays, so the owner adds them again after a move",
+  SyncIn: "messages this install's hub delivered and their apply state: tied to this install's hub queue",
+  SyncInSeq: "where each MakerFoundry conversation stands on this install's hub queue",
+  SyncOut: "messages this install is sending to its hub: the new install has its own queue",
+  SyncOutSeq: "the next number of each conversation this install sends: the new install's hub numbers its own",
 };
 
 /** "Table.column" for every column the file sets to null, as the header's leftOut list. */
