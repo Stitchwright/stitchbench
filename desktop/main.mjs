@@ -30,6 +30,9 @@ const HERE = import.meta.dirname;
 const PKG = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
 const FLAVOR = (process.env.SB_FLAVOR ?? PKG.flavor) === "stitchshop" ? "stitchshop" : "stitchbench";
 const NAME = FLAVOR === "stitchshop" ? "StitchShop" : "StitchBench";
+// The programs are free; the YouTube channel and donations pay for them (the tray menu links to both).
+const YOUTUBE_URL = "https://www.youtube.com/@MakerFoundryApp";
+const DONATE_URL = "https://buymeacoffee.com/bwattendorf";
 app.setName(NAME); // before anything asks for userData
 // The installer's shortcut carries this id; Windows shows the program's notifications only when they match.
 app.setAppUserModelId(`com.timingandtension.${FLAVOR}`);
@@ -1447,6 +1450,9 @@ function buildTray() {
         enabled: !maintenance && !!pool,
         click: () => resetPasswordDialog().catch((e) => dialog.showErrorBox(`${NAME}: reset a password`, String(e instanceof Error ? e.message : e))),
       },
+      { type: "separator" },
+      { label: "Watch how-to videos on YouTube", click: () => void shell.openExternal(YOUTUBE_URL) },
+      { label: "Buy us a coffee (donate)", click: () => void shell.openExternal(DONATE_URL) },
       { type: "separator" },
       { label: "Check for a new version", enabled: !updating && !maintenance && !!pool, click: () => void updateProgram({ fromTray: true }) },
       {
