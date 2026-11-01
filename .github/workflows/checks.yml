@@ -67,3 +67,47 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
         run: npm test
+
+  # The database check scripts (scripts/checks/*.check.ts) catch business-logic regressions the unit tests don't. Each
+  # check gets a database of its own, cloned from a migrated template (scripts/checks/run-ci.mjs); four shards keep
+  # each job short. Checks left out, with the reason, are listed in scripts/checks/ci-skip.txt. Test values only, no secrets.
+  db-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ADMIN_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+      AUTH_SECRET: ci-auth-secret
+      SETTINGS_KEY: ci-settings-key
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # restore-optouts.check.ts loads the Windows program's restore code, which needs its packages.
+      - name: Windows program's packages (no Electron download)
+        working-directory: desktop
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx prisma generate
+      - name: Database checks, shard ${{ matrix.shard }} of 4
+        run: node scripts/checks/run-ci.mjs ${{ matrix.shard }} 4
