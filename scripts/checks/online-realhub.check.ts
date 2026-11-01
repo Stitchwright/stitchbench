@@ -5,6 +5,8 @@ import "dotenv/config";
 // the hub's routes as the service and signs `order.placed` with the hub's own signing code. StitchShop's side is the real code under test.
 // Needs a StitchHub checkout with the order messages (STITCHHUB_DIR, default ../stitchhub); without one it says SKIPPED, which is not a pass.
 //   STITCHHUB_DIR=/path/to/stitchhub npm run check scripts/checks/online-realhub.check.ts
+// REALHUB_SERVICE=makerfoundry-test runs the same flow as the TEST identity: a platform admin points the shop at that service, its key is a
+// different one from production's, the order is signed as service:makerfoundry-test, and the production key (also issued) sees no shop.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -16,11 +18,12 @@ import pg from "pg";
 import { db } from "@/lib/db";
 import { setOrderStatusFor, turnDownOrderFor } from "@/lib/decor";
 import { handOverOnlineOrderFor } from "@/lib/shop-orders/handover";
-import { saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor } from "@/lib/shop-orders/online";
+import { saveOfferFor, saveProductFor, saveShippingFor, setOnlineOrdersFor, setServiceFor } from "@/lib/shop-orders/online";
 import { sendOnlineProofFor } from "@/lib/shop-orders/proofs";
 import { syncShop } from "@/lib/shop-orders/sync";
 import { makeCompany, removeCompany } from "./tenant";
 
+const SERVICE = (process.env.REALHUB_SERVICE ?? "makerfoundry").trim();
 const HUB_DIR = path.resolve(process.env.STITCHHUB_DIR ?? path.join(process.cwd(), "..", "stitchhub"));
 const fixture = (n: string) => JSON.parse(fs.readFileSync(path.join(process.cwd(), "tests/fixtures/shop-orders", n), "utf8"));
 const sha = (b: Uint8Array) => crypto.createHash("sha256").update(b).digest("hex");
@@ -96,7 +99,7 @@ async function main() {
     };
 
     // ----- the admin issues the service key and registers its signing key; the shop's install joins -----
-    const issued = expect(await call("/v1/admin/service-keys", { key: ADMIN, json: { name: "makerfoundry" } }), 200, "service key");
+    const issued = expect(await call("/v1/admin/service-keys", { key: ADMIN, json: { name: SERVICE } }), 200, "service key");
     const SVK = issued.key as string;
     const kp = crypto.generateKeyPairSync("ed25519");
     expect(await call(`/v1/admin/service-keys/${issued.id}/public-key`, { key: ADMIN, method: "PUT", json: { publicKey: kp.publicKey.export({ type: "spki", format: "der" }).toString("base64") } }), 200, "public key");
@@ -140,7 +143,7 @@ async function main() {
       const seq = o.seq ?? (seqs.get(conversation) ?? 0) + 1;
       seqs.set(conversation, Math.max(seq, seqs.get(conversation) ?? 0));
       const env: Record<string, unknown> = { id: o.id ?? crypto.randomUUID(), type, version: 1, conversation, seq, to, created_at: new Date().toISOString(), body };
-      if (type === "order.placed" && o.sign !== false) env.sig = signEnvelope({ ...env, from: "service:makerfoundry" }, kp.privateKey);
+      if (type === "order.placed" && o.sign !== false) env.sig = signEnvelope({ ...env, from: `service:${SERVICE}` }, kp.privateKey);
       return { env, res: await call("/v2/messages", { ...SVC, json: env }) };
     };
     const upload = async (conversation: string, bytes: Buffer, kind: "art" | "mockup", to: string) => {
@@ -180,6 +183,15 @@ async function main() {
     await saveProductFor(A.user, form({ sku: "REAL-TEE", name: "Real tee", colours: "Navy, White", sizes: "M, L", blank: "9.00" }));
     await saveOfferFor(A.user, form({ method: "embroidery", placement: "Left chest", breaks: "1: 12.00\n12: 10.00", setup: "25", maxStitches: "5000" }));
     await saveShippingFor(A.user, form({ pickup: "on", ships: "on", shipping: "8.99", perExtra: "0.50", freeOver: "300", pa_line1: "210 Main Street", pa_city: "Elmwood", pa_region: "OH", pa_postcode: "44001", pa_country: "US" }));
+    // The other identity: a production key is issued as well when this run is as the test service, and must see nothing of the test shop.
+    let otherKey: string | null = null;
+    if (SERVICE !== "makerfoundry") {
+      process.env.PLATFORM_ADMIN_EMAILS = A.user.email;
+      await assert.rejects(() => setServiceFor(B.user, SERVICE), /platform admin/, "only the platform admin changes the order service");
+      assert.match(await setServiceFor(A.user, SERVICE), new RegExp(`now come through ${SERVICE}`));
+      otherKey = expect(await call("/v1/admin/service-keys", { key: ADMIN, json: { name: "makerfoundry" } }), 200, "production key").key as string;
+      expect(await call("/v2/hello", { key: otherKey, headers: { "X-Client": "makerfoundry/0.1.0" }, json: { app: "makerfoundry", version: "0.1.0", types: { "order.status": [1], "proof.sent": [1], "order.cancel": [1], catalog: [1], "message.expired": [1] } } }), 200, "production hello");
+    }
     const said = await setOnlineOrdersFor(A.user, form({ on: "on", maxOpen: "5" }));
     assert.match(said, /You take orders from MakerFoundry/);
     let shops: { id: string; name: string; ready: boolean }[] = [];
@@ -188,6 +200,11 @@ async function main() {
       if (!shops.length) await sleep(250);
     }
     assert.equal(shops.length, 1, "only the shop that opted in is listed");
+    if (otherKey) {
+      const prod = expect(await call("/v2/shops", { key: otherKey, headers: { "X-Client": "makerfoundry/0.1.0" } }), 200, "production lists shops").shops as unknown[];
+      assert.equal(prod.length, 0, "the production key sees nothing of a shop that opted in to the test service");
+      ok("the test service and the production service are separate: each sees only the shops that opted in to its own name");
+    }
     const TO = shops[0].id; // the hub lists a shop by its address, shop:<id>
     assert.equal(shops[0].ready, true, "and the hub sees its program understands orders");
     let cat: { body: Record<string, any> } | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
