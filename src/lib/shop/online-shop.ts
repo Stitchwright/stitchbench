@@ -20,7 +20,7 @@ import { messagingView, publicBaseUrl } from "@/lib/messaging/settings";
 import { plainText, renderKind } from "@/lib/messaging/templates";
 import { baseWritable } from "@/lib/base-gate";
 import { moduleOn } from "@/lib/module-gate";
-import { customerForOnline, SLUG_RE, slugOf, type OnlineCustomer } from "@/lib/online-booking";
+import { customerForOnline, SLUG_RE, slugOf, withStaffNote, type OnlineCustomer } from "@/lib/online-booking";
 import { KIND_LABEL, numberKey } from "@/lib/parts";
 import { partTags } from "@/lib/part-labels";
 import { belowMap } from "@/lib/map-math";
@@ -667,6 +667,8 @@ export async function startCheckout(a: CheckoutInput, now = new Date()): Promise
         taxVia: priced.taxAtCheckout ? "stripe" : "rate",
         tokenHash: sha256(token),
         note: a.note?.trim().slice(0, 500) || null,
+        // The contact the buyer typed is kept above; when it differs from the matched customer's record, staff are told.
+        staffNote: withStaffNote(null, customer.staffNote),
         createdAt: now,
       },
       select: { id: true, number: true },

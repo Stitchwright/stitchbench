@@ -355,6 +355,8 @@ async function main() {
     );
     const o2 = await db.webOrder.findUniqueOrThrow({ where: { id: r2.orderId } });
     assert.ok(o2.customerId === c1.id && o2.shipCents === 600 && o2.fulfil === "ship" && o2.number === 1002, "matched by email, shipping charged");
+    assert.match(o2.staffNote ?? "", /online shop form gave name "O\. Online"/, "staff see that the form's name differs from the record");
+    assert.equal((await db.customer.findUniqueOrThrow({ where: { id: c1.id } })).name, "Olivia Online");
     await confirmFromReturn(r2.token, now); // not paid yet: nothing
     assert.equal((await db.webOrder.findUniqueOrThrow({ where: { id: o2.id } })).status, "PENDING");
     await mock.pay(o2.stripeSessionId!);

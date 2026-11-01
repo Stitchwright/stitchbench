@@ -609,7 +609,7 @@ export async function pickUpBy(shopId: string, hereAt: Date): Promise<string> {
  */
 export async function startPreorder(a: { slug: string; partId: string; qty?: number; customer: import("@/lib/online-booking").OnlineCustomer }): Promise<string> {
   const { publicStore, booksUserFor } = await import("@/lib/shop/online-shop");
-  const { customerForOnline } = await import("@/lib/online-booking");
+  const { customerForOnline, withStaffNote } = await import("@/lib/online-booking");
   const { openPayLink } = await import("@/lib/pay-links");
   const store = await publicStore(a.slug);
   if (!store || !store.open) throw new UserError("The shop isn't taking online orders right now. Please call us.");
@@ -638,7 +638,8 @@ export async function startPreorder(a: { slug: string; partId: string; qty?: num
       depositCents: deposit,
       depositRule: part.depositKept ? "keep" : settings.rule,
       expectedOn: part.comingSoonOn,
-      note: "Pre-ordered online",
+      // "Pre-ordered online" first: expireUnpaidPreorders finds them by it. Then what the form gave that the record lacks.
+      note: withStaffNote("Pre-ordered online", customer.staffNote),
     },
   });
   const link = await makePayLinkFor(user, { customerId: customer.id, lines: [{ description: `Pre-order ${o.number}: ${o.description}, deposit`, unitPriceCents: deposit, specialOrderId: o.id }], send: "none", days: 2 }, { trusted: true });
@@ -650,7 +651,7 @@ export async function startPreorder(a: { slug: string; partId: string; qty?: num
  * cancelled, so they don't hold stock when it arrives. Run with the online shop's sweep. Returns how many.
  */
 export async function expireUnpaidPreorders(now = new Date()): Promise<number> {
-  const rows = await db.specialOrder.findMany({ where: { kind: "PREORDER", note: "Pre-ordered online", status: { in: ["WAITING", "ORDERED"] }, createdAt: { lt: new Date(now.getTime() - 2 * 86_400_000) } }, select: { id: true, shopId: true, status: true }, take: 500 });
+  const rows = await db.specialOrder.findMany({ where: { kind: "PREORDER", OR: [{ note: "Pre-ordered online" }, { note: { startsWith: "Pre-ordered online\n" } }], status: { in: ["WAITING", "ORDERED"] }, createdAt: { lt: new Date(now.getTime() - 2 * 86_400_000) } }, select: { id: true, shopId: true, status: true }, take: 500 });
   let n = 0;
   for (const o of rows) {
     if ((await paidTowardOrders(o.shopId, [o.id])).get(o.id)) continue;

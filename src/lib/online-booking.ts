@@ -92,8 +92,16 @@ export async function publicFreeTimes(shop: PublicShop, type: AppointmentType, f
 
 export type OnlineCustomer = { name: string; phone: string | null; email: string | null; notify: string };
 
-/** The customer as the public form gave them: matched by mobile number or email within the shop, else made; the way to tell them recorded. */
-export async function customerForOnline(tx: Db, shopId: string, c: OnlineCustomer, source = "online booking"): Promise<{ id: string; name: string }> {
+/**
+ * The customer a public form names: matched by mobile number or email within the shop, else made (with the form's
+ * contact and the way to tell them recorded). Nobody signs in on a public form, so a match proves nothing: an existing
+ * customer's phone, email and way to tell them are never changed from here (else anyone who knows a number could
+ * redirect that customer's estimate links and ready notices), and their stored name is never given back (`name` is
+ * what the form said, so the public page can't reveal who a number belongs to). What the form gave that the record
+ * lacks comes back as `staffNote`, for the caller to keep on the booking or order: staff check it's the same person
+ * before they change the customer.
+ */
+export async function customerForOnline(tx: Db, shopId: string, c: OnlineCustomer, source = "online booking"): Promise<{ id: string; name: string; staffNote: string | null }> {
   const name = c.name.trim().slice(0, 120);
   if (name.length < 2) throw new UserError("Please give us your name.");
   const phone = c.phone ? toE164(c.phone) : null;
@@ -110,18 +118,28 @@ export async function customerForOnline(tx: Db, shopId: string, c: OnlineCustome
     select: { id: true, name: true, kind: true, notifyBy: true, phone: true, email: true },
   });
   if (found?.kind === "TRADE") throw new UserError(`That number or email belongs to a trade account. Please call us${source === "online booking" ? " to book" : ""}.`);
-  if (found) {
-    const data: Prisma.CustomerUpdateInput = {};
-    if (!found.phone && phone) data.phone = phone;
-    if (!found.email && email) data.email = email;
-    if (notify && notify !== found.notifyBy) data.notifyBy = notify;
-    if (Object.keys(data).length) await tx.customer.update({ where: { id: found.id }, data });
-    if (notify && notify !== found.notifyBy) await recordConsent(tx, { shopId, customerId: found.id, channel: "any", event: "notify_pref", source, detail: notify });
-    return { id: found.id, name: found.name };
-  }
-  const made = await tx.customer.create({ data: { shopId, kind: "RETAIL", name, phone, email, notifyBy: notify }, select: { id: true, name: true } });
+  if (found) return { id: found.id, name, staffNote: formDiffers(found, { name, phone, email, notify }, source) };
+  const made = await tx.customer.create({ data: { shopId, kind: "RETAIL", name, phone, email, notifyBy: notify }, select: { id: true } });
   if (notify) await recordConsent(tx, { shopId, customerId: made.id, channel: "any", event: "notify_pref", source, detail: notify });
-  return made;
+  return { id: made.id, name, staffNote: null };
+}
+
+/** What an online form gave that differs from the matched customer's record, in words for staff; null when nothing does. */
+function formDiffers(rec: { name: string; phone: string | null; email: string | null; notifyBy: string }, form: { name: string; phone: string | null; email: string | null; notify: string }, source: string): string | null {
+  const bare = (p: string | null) => (p ?? "").replace(/^\+1/, "");
+  const parts: string[] = [];
+  if (form.name.toLowerCase() !== rec.name.trim().toLowerCase()) parts.push(`name "${form.name}"`);
+  if (form.phone && bare(form.phone) !== bare(rec.phone)) parts.push(`mobile ${form.phone}`);
+  if (form.email && form.email.toLowerCase() !== (rec.email ?? "").toLowerCase()) parts.push(`email ${form.email}`);
+  if (form.notify && form.notify !== rec.notifyBy) parts.push(`tell by ${form.notify}`);
+  if (!parts.length) return null;
+  return `The ${source} form gave ${parts.join(", ")}, which isn't on the customer's record (not changed). Check it's them before updating the customer.`;
+}
+
+/** A booking's or order's note with the staff note after it (kept within `max`). */
+export function withStaffNote(note: string | null, staffNote: string | null, max = 1000): string | null {
+  if (!staffNote) return note;
+  return (note ? `${note}\n${staffNote}` : staffNote).slice(0, max);
 }
 
 /** The manage link: a fresh token, hashed in BookingLink, good until the booking is over (plus a day). */
@@ -180,7 +198,7 @@ export async function bookOnline(a: BookInput, now = new Date()): Promise<{ appo
     const taken = await overlapCount(tx, { shopId: shop.id, resource: type.resource, typeId: type.id }, startsAt, endsAt);
     if (taken >= type.capacity) throw new UserError("That time was just taken. Please pick another.");
     const appt = await tx.appointment.create({
-      data: { shopId: shop.id, typeId: type.id, resource: type.resource?.trim() || null, customerId: customer.id, name: customer.name, title: type.name, startsAt, endsAt, feeCents, taxable: type.taxable, note, source: "online" },
+      data: { shopId: shop.id, typeId: type.id, resource: type.resource?.trim() || null, customerId: customer.id, name: customer.name, title: type.name, startsAt, endsAt, feeCents, taxable: type.taxable, note: withStaffNote(note, customer.staffNote), source: "online" },
       select: { id: true },
     });
     const token = await makeLink(tx, { shopId: shop.id, appointmentId: appt.id, customerId: customer.id, until: endsAt });
@@ -200,7 +218,7 @@ export async function signUpOnline(a: SignUpInput, now = new Date()): Promise<{ 
   return db.$transaction(async (tx) => {
     const customer = await customerForOnline(tx, shop.id, a.customer);
     const e = await enrollIn(tx, { shopId: shop.id, classId: c.id, customer, attendee: a.attendee, byUserId: "", skipWaitlist: false, now });
-    await tx.enrollment.updateMany({ where: { id: e.id, shopId: shop.id }, data: { source: "online", note: a.note?.trim().slice(0, 500) || null, createdById: null } });
+    await tx.enrollment.updateMany({ where: { id: e.id, shopId: shop.id }, data: { source: "online", note: withStaffNote(a.note?.trim().slice(0, 500) || null, customer.staffNote), createdById: null } });
     const until = c.lastAt ?? c.firstAt ?? new Date(now.getTime() + 180 * DAY);
     const token = await makeLink(tx, { shopId: shop.id, enrollmentId: e.id, customerId: customer.id, until });
     if (e.status === "ENROLLED") {
