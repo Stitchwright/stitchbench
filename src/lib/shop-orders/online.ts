@@ -50,6 +50,8 @@ export async function setServiceFor(user: CurrentUser, service: string): Promise
   const row = await ordersSyncRow(user.shopId);
   if (row.service === service) return "Unchanged.";
   if (row.optedIn) throw new UserError("Stop taking new orders first: the hub keeps the opt-in under the old service name.");
+  // An open order's replies (proofs, status, cancels) go to the service the order came from: while one is open the name stays.
+  if (await db.decorOrder.count({ where: { shopId: user.shopId, source: "MAKERFOUNDRY", closedAt: null } })) throw new UserError("This company still has open orders from MakerFoundry: their replies go to the old service. Finish or close them first.");
   if (await db.syncOut.count({ where: { shopId: user.shopId, sentAt: null, deadAt: null, expiredAt: null } })) throw new UserError("Messages are still waiting to be sent to the old service. Let them go first.");
   await db.shopOrdersSync.update({ where: { shopId: user.shopId }, data: { service, catalogPublishedAt: null } });
   return `Orders now come through ${service}. Take orders again to publish the catalogue to it.`;
