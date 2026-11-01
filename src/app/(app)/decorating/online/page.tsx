@@ -66,7 +66,7 @@ export default async function OnlineOrdersPage() {
         ) : (
           !isDemo() && <p className="mb-2 text-base">The owner&apos;s login isn&apos;t linked to a Foundry Account. Link it (Settings → Account): MakerFoundry pays the shop through that account and doesn&apos;t offer a shop without one.</p>
         )}
-        {!v.hub && <p className="muted mb-2 text-sm">Join the community hub first (Settings → StitchHub): orders come through it.</p>}
+        {!v.hub && !isDemo() && <p className="muted mb-2 text-sm">Join the community hub first (Settings → StitchHub): orders come through it.</p>}
         {write && (
           <ActionForm action={setOnlineOrders} success="Saved" className="flex flex-wrap items-end gap-3">
             <div className="field">
