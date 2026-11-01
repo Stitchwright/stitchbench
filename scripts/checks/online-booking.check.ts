@@ -126,6 +126,7 @@ async function main() {
     const a2 = await db.appointment.findUniqueOrThrow({ where: { id: r2.appointmentId } });
     assert.equal(a2.customerId, a1.customerId, "matched by email, any case");
     assert.equal(await db.customer.count({ where: { shopId: a.shopId, email: { equals: "olivia@example.test", mode: "insensitive" } } }), 1);
+    assert.equal((await db.customer.findUniqueOrThrow({ where: { id: a1.customerId! } })).notifyBy, "email", "a later form's choice doesn't change the record");
     // A type rented by the hour: the appointment and its confirmation carry the hourly fee (90 minutes at $20 = $30), not the ignored flat fee.
     const rental = await db.appointmentType.create({ data: { shopId: a.shopId, name: "Longarm rental", minutes: 90, capacity: 1, feeCents: 0, hourlyCents: 2000, hours: everyDay, online: true } });
     const rr = await bookOnline({ slug: slugA, typeId: rental.id, startsAt: slot2, customer: cust("Rita Rental", null, "rita@example.test"), note: null }, now);
@@ -145,6 +146,40 @@ async function main() {
     const trade = await db.customer.create({ data: { shopId: a.shopId, name: "Trade Co", kind: "TRADE", email: "trade@example.test" } });
     await expectError("a trade account", () => bookOnline({ slug: slugA, typeId: fitting.id, startsAt: slot2, customer: cust("Trade Co", null, trade.email, "email"), note: null }, now), /trade account/);
     ok("booking: the customer is made (or matched by mobile or email) with how to tell them and its consent record; the confirmation carries the manage link; the refusals");
+
+    // 4b. A public form proves nothing about who is typing: someone who knows a customer's number books with it, their own
+    // email and "tell me by email". The booking still links to that customer for staff, but the customer's contact and
+    // way to tell them stay as they were, the stored name isn't shown back, and staff get a note of what the form gave.
+    const victim = await db.customer.create({ data: { shopId: a.shopId, kind: "RETAIL", name: "Victoria Vance", phone: "+12125550177", notifyBy: "sms" } });
+    const consentBefore = await db.consentEvent.count({ where: { shopId: a.shopId, customerId: victim.id } });
+    const slotV = all.find((t) => ymdOf(t, NY) === addDays(today, 7))!;
+    const rv = await bookOnline({ slug: slugA, typeId: fitting.id, startsAt: slotV, customer: cust("Anyone Atall", "(212) 555-0177", "taker@example.test", "email"), note: "hi" }, now);
+    const av = await db.appointment.findUniqueOrThrow({ where: { id: rv.appointmentId } });
+    assert.equal(av.customerId, victim.id, "a returning customer's booking still links to their record");
+    const vAfter = await db.customer.findUniqueOrThrow({ where: { id: victim.id } });
+    assert.equal(vAfter.email, null, "the form's email isn't added to an existing customer");
+    assert.equal(vAfter.notifyBy, "sms", "the form doesn't change how an existing customer is told");
+    assert.equal(vAfter.phone, "+12125550177");
+    assert.equal(await db.consentEvent.count({ where: { shopId: a.shopId, customerId: victim.id } }), consentBefore, "no preference recorded for them");
+    assert.equal(av.name, "Anyone Atall", "the booking carries the name the form gave");
+    const mv = await manageByToken(rv.token, now);
+    assert.ok(mv && mv.view.firstName === "Anyone", `the manage page doesn't reveal the stored name (got ${mv?.view.firstName})`);
+    assert.ok(av.note?.startsWith("hi\n") && /email taker@example\.test/.test(av.note) && /tell by email/.test(av.note) && /name "Anyone Atall"/.test(av.note), `staff see what the form gave: ${av.note}`);
+    const vm = await db.outMessage.findMany({ where: { shopId: a.shopId, refType: "appointment", refId: av.id } });
+    assert.ok(vm.every((m) => m.address !== "taker@example.test"), "nothing about the customer goes to the address the form typed");
+    // The same customer typed exactly as on record: no note for staff.
+    const slotW = all.find((t) => ymdOf(t, NY) === addDays(today, 8))!;
+    const rw = await bookOnline({ slug: slugA, typeId: fitting.id, startsAt: slotW, customer: cust("victoria vance", "2125550177", null, "sms"), note: null }, now);
+    const aw = await db.appointment.findUniqueOrThrow({ where: { id: rw.appointmentId } });
+    assert.ok(aw.customerId === victim.id && aw.note === null, `nothing new, no note: ${aw.note}`);
+    // A class sign-up is the same: the roster keeps the name the form gave; the customer is untouched.
+    const ev = await signUpOnline({ slug: slugA, classId: cls.id, customer: cust("Anyone Atall", "2125550177", "taker@example.test", "email"), attendee: null, note: null }, now);
+    const env = await db.enrollment.findUniqueOrThrow({ where: { id: ev.enrollmentId } });
+    assert.ok(env.customerId === victim.id && env.name === "Anyone Atall" && /email taker@example\.test/.test(env.note ?? ""), `enrollment: ${env.name} / ${env.note}`);
+    assert.equal((await db.customer.findUniqueOrThrow({ where: { id: victim.id } })).email, null);
+    await db.enrollment.delete({ where: { id: env.id } });
+    await db.appointment.deleteMany({ where: { id: { in: [av.id, aw.id] } } });
+    ok("a public form never changes an existing customer's contact or way to tell them, nor shows their stored name; staff get a note of what it gave");
 
     // 5. The last slot: two customers at once, one gets it.
     const slot3 = all.find((t) => ymdOf(t, NY) === addDays(today, 5))!;
