@@ -295,7 +295,7 @@ export async function moveByToken(token: string, startsAt: Date, now = new Date(
   if (!f.view.canMove) throw new UserError(`It's too close to the time to move it online. Please call ${f.view.shop.phone ?? "the shop"}.`);
   const shop = await publicShop(f.view.shop.slug ?? "");
   if (!shop || !shop.open) throw new UserError("Online booking isn't available right now. Please call the shop.");
-  const type = await db.appointmentType.findFirst({ where: { id: f.view.typeId, shopId: shop.id } });
+  const type = await db.appointmentType.findFirst({ where: { id: f.view.typeId, shopId: shop.id, active: true, online: true, needsCert: false } });
   if (!type) throw new UserError("Please call the shop to move it.");
   if (!(startsAt instanceof Date) || Number.isNaN(startsAt.getTime())) throw new UserError("Pick a time.");
   const endsAt = new Date(startsAt.getTime() + type.minutes * 60_000);
@@ -367,7 +367,7 @@ export function bookingUrl(slug: string | null): string | null {
 export async function freeTimesForMove(f: Found, fromYmd: string | null, now = new Date()): Promise<FreeDay[]> {
   if (f.view.kind !== "appointment" || !f.view.typeId || !f.view.shop.slug) return [];
   const shop = await publicShop(f.view.shop.slug);
-  const type = await db.appointmentType.findFirst({ where: { id: f.view.typeId, shopId: f.view.shopId } });
+  const type = await db.appointmentType.findFirst({ where: { id: f.view.typeId, shopId: f.view.shopId, active: true, online: true, needsCert: false } });
   if (!shop || !type) return [];
   return publicFreeTimes(shop, type, fromYmd ?? addDays(ymdOf(now, shop.timeZone), 0), now);
 }
