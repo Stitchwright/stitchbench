@@ -18,7 +18,7 @@ import { retryPendingFiles } from "@/lib/shop-orders/intake";
 import { parseEnvelope, planApply, senderKind } from "@/lib/shop-orders/protocol";
 import { handlerFor, type Applied } from "@/lib/shop-orders/handlers";
 
-import { SERVICE } from "@/lib/shop-orders/outbox";
+import { serviceAddress } from "@/lib/shop-orders/outbox";
 const PAGE = 50;
 const MAX_PAGES = 10;
 const HELLO_EVERY_MS = 6 * 3600_000;
@@ -187,10 +187,11 @@ export async function flushOutbox(shopId: string): Promise<{ sent: number; dead:
   const out = { sent: 0, dead: 0 };
   const now = new Date();
   const rows = await db.syncOut.findMany({ where: { shopId, sentAt: null, deadAt: null, expiredAt: null, expiresAt: { gt: now }, OR: [{ nextTryAt: null }, { nextTryAt: { lte: now } }] }, orderBy: [{ conversation: "asc" }, { seq: "asc" }], take: 200 });
+  const to = serviceAddress((await ordersSyncRow(shopId)).service);
   const stopped = new Set<string>();
   for (const r of rows) {
     if (stopped.has(r.conversation)) continue;
-    const env = { id: r.id, type: r.type, version: r.version, conversation: r.conversation, seq: r.seq, to: SERVICE, created_at: new Date().toISOString(), expires_at: r.expiresAt.toISOString(), body: r.body };
+    const env = { id: r.id, type: r.type, version: r.version, conversation: r.conversation, seq: r.seq, to, created_at: new Date().toISOString(), expires_at: r.expiresAt.toISOString(), body: r.body };
     try {
       await v2(shopId, "/v2/messages", { method: "POST", json: env });
       await db.syncOut.update({ where: { id: r.id }, data: { sentAt: new Date(), error: null } });

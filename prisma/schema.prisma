@@ -4703,6 +4703,8 @@ model ShopOrdersSync {
   shopId             String    @id
   shop               Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   optedIn            Boolean   @default(false)
+  // The hub service orders come through: makerfoundry, except on a test shop (a platform admin sets it, while not taking orders)
+  service            String    @default("makerfoundry")
   // The most open orders at once (the hub enforces it for the company)
   maxOpen            Int       @default(200)
   // The hub's delivery cursor: only what was stored here is behind it
