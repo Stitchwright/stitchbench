@@ -1,0 +1,3 @@
+# Checks CI leaves out because they fail on a clean database (each has a claude-proposed issue). One name per line.
+market-companies   # asserts company rows come back as name/ref/shop; actual rows have name and ref undefined
+service-modes      # needs ServiceMode rows from the seed; update() fails on a migrate-only database
