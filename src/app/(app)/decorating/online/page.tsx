@@ -92,7 +92,7 @@ export default async function OnlineOrdersPage() {
           </ActionForm>
         )}
         <p className="muted mt-2 text-sm">
-          MakerFoundry takes the customer&apos;s payment and keeps 10%; you pay the card fee. Your share is on each order. Customers are charged only the prices below, as last published.
+          MakerFoundry takes the customer&apos;s payment. It keeps 10% of the price before tax, and the card fee comes out of your share too. Sales tax is MakerFoundry&apos;s, not yours. There is no monthly fee. Your share is on each order. Customers are charged only the prices below, as last published.
         </p>
       </Section>
 
